@@ -53,10 +53,10 @@ func (p *BudgetGuard) Process(ctx context.Context, sess *session.Session, req *l
 		return nil
 	}
 
-	// In Phase 2, each event will have a Cost field.
-	// For now, we rely on the session's events to estimate cost if available.
 	totalCost := 0.0
-	// ... (Implementation depends on event structure updates)
+	for _, e := range sess.Events() {
+		totalCost += e.Cost
+	}
 
 	if totalCost >= p.Limit {
 		return fmt.Errorf("budget exceeded: %.4f >= %.4f", totalCost, p.Limit)

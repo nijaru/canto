@@ -2,6 +2,7 @@ package context
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -60,15 +61,32 @@ func (p *OffloadProcessor) Process(ctx context.Context, sess *session.Session, r
 		return nil
 	}
 
+	events := sess.Events()
+	findEventID := func(content string) string {
+		for i := len(events) - 1; i >= 0; i-- {
+			e := events[i]
+			if e.Type == session.EventTypeMessageAdded {
+				var m llm.Message
+				if err := json.Unmarshal(e.Data, &m); err == nil && m.Content == content {
+					return e.ID.String()
+				}
+			}
+		}
+		return ""
+	}
+
 	// Simple implementation: Offload Tool results that are not in the last N messages
 	candidates := req.Messages[:numMessages-p.MinKeepTurns]
 	var newMessages []llm.Message
-	
-	for i, m := range candidates {
+
+	for _, m := range candidates {
 		if m.Role == llm.RoleTool && len(m.Content) > 1000 {
 			// Offload it
-			eventID := fmt.Sprintf("offload-%s-%d", sess.ID(), i) // Should ideally be the original event ID
-			path := filepath.Join(p.OffloadDir, eventID+".json")
+			id := findEventID(m.Content)
+			if id == "" {
+				id = fmt.Sprintf("offload-%s-%d", sess.ID(), len(newMessages))
+			}
+			path := filepath.Join(p.OffloadDir, id+".json")
 			
 			if err := os.WriteFile(path, []byte(m.Content), 0644); err != nil {
 				return fmt.Errorf("failed to write offload file: %w", err)

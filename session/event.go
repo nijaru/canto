@@ -22,11 +22,12 @@ const (
 
 // Event is a single append-only fact in a session.
 type Event struct {
-	ID        ulid.ULID       `json:"id"`
-	SessionID string          `json:"session_id"`
-	Type      EventType       `json:"type"`
-	Timestamp time.Time       `json:"timestamp"`
+	ID        ulid.ULID `json:"id"`
+	SessionID string    `json:"session_id"`
+	Type      EventType `json:"type"`
+	Timestamp time.Time `json:"timestamp"`
 	Data      json.RawMessage `json:"data"`
+	Cost      float64   `json:"cost,omitempty"`
 }
 
 // NewEvent creates a new event with a unique ID and current timestamp.

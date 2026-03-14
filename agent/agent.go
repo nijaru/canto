@@ -1,6 +1,7 @@
 package agent
 
 import (
+	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/tool"
 )
@@ -13,11 +14,12 @@ type Agent struct {
 	MaxSteps     int // Maximum tool-calling steps per turn
 	Provider     llm.Provider
 	Tools        *tool.Registry
+	Builder      *ccontext.Builder
 }
 
-// New creates a new agent.
+// New creates a new agent with a default context builder chain.
 func New(id, instructions, model string, p llm.Provider, t *tool.Registry) *Agent {
-	return &Agent{
+	a := &Agent{
 		ID:           id,
 		Instructions: instructions,
 		Model:        model,
@@ -25,4 +27,12 @@ func New(id, instructions, model string, p llm.Provider, t *tool.Registry) *Agen
 		Provider:     p,
 		Tools:        t,
 	}
+
+	a.Builder = ccontext.NewBuilder(
+		ccontext.InstructionProcessor(instructions),
+		ccontext.ToolProcessor(t),
+		ccontext.HistoryProcessor(),
+	)
+
+	return a
 }

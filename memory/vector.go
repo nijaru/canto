@@ -3,8 +3,10 @@ package memory
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"math"
+	"slices"
 
 	_ "modernc.org/sqlite"
 )
@@ -59,10 +61,11 @@ func (s *SQLiteVectorStore) init() error {
 
 // Upsert adds or updates a vector in the store.
 func (s *SQLiteVectorStore) Upsert(ctx context.Context, id string, vector []float32, metadata map[string]any) error {
-	vData, err := json.Marshal(vector)
-	if err != nil {
-		return err
+	vData := make([]byte, len(vector)*4)
+	for i, f := range vector {
+		binary.LittleEndian.PutUint32(vData[i*4:], math.Float32bits(f))
 	}
+
 	mData, err := json.Marshal(metadata)
 	if err != nil {
 		return err
@@ -83,7 +86,12 @@ func (s *SQLiteVectorStore) Search(ctx context.Context, queryVector []float32, k
 	}
 	defer rows.Close()
 
-	var results []SearchResult
+	type rawResult struct {
+		id    string
+		score float32
+		data  string
+	}
+	var rawResults []rawResult
 	for rows.Next() {
 		var id string
 		var vData []byte
@@ -92,37 +100,49 @@ func (s *SQLiteVectorStore) Search(ctx context.Context, queryVector []float32, k
 			return nil, err
 		}
 
-		var vector []float32
-		if err := json.Unmarshal(vData, &vector); err != nil {
-			return nil, err
+		if len(vData)%4 != 0 {
+			continue // Should not happen
 		}
 
-		var metadata map[string]any
-		if err := json.Unmarshal([]byte(mData), &metadata); err != nil {
-			return nil, err
+		vector := make([]float32, len(vData)/4)
+		for i := 0; i < len(vector); i++ {
+			vector[i] = math.Float32frombits(binary.LittleEndian.Uint32(vData[i*4:]))
 		}
 
 		score := cosineSimilarity(queryVector, vector)
-		results = append(results, SearchResult{
-			ID:       id,
-			Score:    score,
-			Metadata: metadata,
+		rawResults = append(rawResults, rawResult{
+			id:    id,
+			score: score,
+			data:  mData,
 		})
 	}
 
-	// Sort results and take top k
-	// Simple bubble sort for now (since it's a small collection)
-	// In a real implementation, use a max-heap.
-	for i := 0; i < len(results); i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[i].Score < results[j].Score {
-				results[i], results[j] = results[j], results[i]
-			}
+	// Sort results descending by score
+	slices.SortFunc(rawResults, func(a, b rawResult) int {
+		if a.score > b.score {
+			return -1
 		}
+		if a.score < b.score {
+			return 1
+		}
+		return 0
+	})
+
+	if len(rawResults) > k {
+		rawResults = rawResults[:k]
 	}
 
-	if len(results) > k {
-		results = results[:k]
+	var results []SearchResult
+	for _, r := range rawResults {
+		var metadata map[string]any
+		if err := json.Unmarshal([]byte(r.data), &metadata); err != nil {
+			return nil, err
+		}
+		results = append(results, SearchResult{
+			ID:       r.id,
+			Score:    r.score,
+			Metadata: metadata,
+		})
 	}
 
 	return results, nil

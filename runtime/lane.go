@@ -41,6 +41,7 @@ type lane struct {
 	lastUsed  time.Time
 	mu        sync.Mutex
 	done      chan struct{}
+	cancel    context.CancelFunc
 }
 
 // Execute queues a function for execution in the specified session's lane.
@@ -53,19 +54,25 @@ func (m *LaneManager) Execute(ctx context.Context, sessionID string, fn func(ctx
 		Result: result,
 	}
 
-	l := m.getOrCreateLane(sessionID)
-	
-	select {
-	case l.requests <- req:
-		// Queued successfully
-	case <-ctx.Done():
-		result <- ctx.Err()
-	default:
-		// Buffer full
-		result <- fmt.Errorf("session lane %s is full", sessionID)
-	}
+	for {
+		l := m.getOrCreateLane(sessionID)
 
-	return result
+		select {
+		case <-l.done:
+			// Lane is shutting down, get a new one
+			continue
+		case l.requests <- req:
+			// Queued successfully
+			return result
+		case <-ctx.Done():
+			result <- ctx.Err()
+			return result
+		default:
+			// Buffer full
+			result <- fmt.Errorf("session lane %s is full", sessionID)
+			return result
+		}
+	}
 }
 
 func (m *LaneManager) getOrCreateLane(sessionID string) *lane {
@@ -88,25 +95,33 @@ func (m *LaneManager) getOrCreateLane(sessionID string) *lane {
 		return l
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	l = &lane{
 		sessionID: sessionID,
 		requests:  make(chan Request, m.LaneBufferSize),
 		lastUsed:  time.Now(),
 		done:      make(chan struct{}),
+		cancel:    cancel,
 	}
 	m.lanes[sessionID] = l
 
-	go m.runLane(l)
+	go m.runLane(ctx, l)
 
 	return l
 }
 
-func (m *LaneManager) runLane(l *lane) {
+func (m *LaneManager) runLane(ctx context.Context, l *lane) {
 	defer func() {
 		m.mu.Lock()
 		delete(m.lanes, l.sessionID)
 		m.mu.Unlock()
 		close(l.done)
+
+		// Drain remaining requests to unblock waiting callers
+		close(l.requests)
+		for req := range l.requests {
+			req.Result <- fmt.Errorf("lane shutting down")
+		}
 	}()
 
 	timer := time.NewTimer(m.IdleTimeout)
@@ -118,15 +133,15 @@ func (m *LaneManager) runLane(l *lane) {
 			if !timer.Stop() {
 				<-timer.C
 			}
-			
+
 			// Process request
 			err := req.Fn(req.Ctx)
 			req.Result <- err
-			
+
 			l.mu.Lock()
 			l.lastUsed = time.Now()
 			l.mu.Unlock()
-			
+
 			timer.Reset(m.IdleTimeout)
 
 		case <-timer.C:
@@ -138,6 +153,10 @@ func (m *LaneManager) runLane(l *lane) {
 			}
 			l.mu.Unlock()
 			timer.Reset(m.IdleTimeout)
+
+		case <-ctx.Done():
+			// Shutdown signal
+			return
 		}
 	}
 }
@@ -151,6 +170,8 @@ func (m *LaneManager) Stop() {
 	}
 	m.mu.Unlock()
 
-	// In a real implementation, we might want to close the requests channel
-	// and wait for the done signal.
+	for _, l := range lanes {
+		l.cancel()
+		<-l.done
+	}
 }

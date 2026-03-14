@@ -73,3 +73,13 @@ func InstructionProcessor(instructions string) ContextProcessor {
 		return nil
 	})
 }
+
+// WorkspaceProcessor prepends project-wide instructions and persona from the workspace.
+func WorkspaceProcessor(root string) ContextProcessor {
+	return ProcessorFunc(func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+		// Use runtime's LoadWorkspace if needed, but we don't want to import runtime here
+		// because runtime depends on context.
+		// Instead, we should pass the prompts directly or have a generic interface.
+		return nil
+	})
+}

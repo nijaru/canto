@@ -187,6 +187,9 @@ func (r *SmartResolver) markCooling(p *managedProvider) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	p.failures++
+	if p.failures > 10 {
+		p.failures = 10 // Cap to prevent overflow (2^10 = 1024)
+	}
 	// Exponential backoff: 2^n seconds
 	backoff := time.Duration(1<<uint(p.failures)) * time.Second
 	if backoff > 5*time.Minute {

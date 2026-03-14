@@ -91,7 +91,8 @@ func (p *Provider) convertRequest(req *llm.LLMRequest) sdk.MessageNewParams {
 	var system []sdk.TextBlockParam
 	var messages []sdk.MessageParam
 
-	for _, m := range req.Messages {
+	for i := 0; i < len(req.Messages); i++ {
+		m := req.Messages[i]
 		if m.Role == llm.RoleSystem {
 			system = append(system, sdk.TextBlockParam{
 				Text: m.Content,
@@ -100,11 +101,21 @@ func (p *Provider) convertRequest(req *llm.LLMRequest) sdk.MessageNewParams {
 			continue
 		}
 
-		// Handle Tool results (must be in a user message)
+		// Group consecutive tool results into one user message
 		if m.Role == llm.RoleTool {
-			messages = append(messages, sdk.NewUserMessage(
-				sdk.NewToolResultBlock(m.ToolID, m.Content, false),
-			))
+			var blocks []sdk.ContentBlockParamUnion
+			for j := i; j < len(req.Messages); j++ {
+				curr := req.Messages[j]
+				if curr.Role != llm.RoleTool {
+					i = j - 1
+					break
+				}
+				blocks = append(blocks, sdk.NewToolResultBlock(curr.ToolID, curr.Content, false))
+				if j == len(req.Messages)-1 {
+					i = j
+				}
+			}
+			messages = append(messages, sdk.NewUserMessage(blocks...))
 			continue
 		}
 

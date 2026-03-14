@@ -10,23 +10,18 @@ import (
 
 // Step executes a single turn of the agentic loop.
 func (a *Agent) Step(ctx context.Context, s *session.Session) error {
-	messages := s.Messages()
-
-	// Prepend instructions if not present
-	// For simplicity, always prepend instructions as a system message
-	// A more sophisticated context processor would handle this in Layer 3
-	fullMessages := append([]llm.Message{
-		{Role: llm.RoleSystem, Content: a.Instructions},
-	}, messages...)
-
 	req := &llm.LLMRequest{
-		Model:    a.Model,
-		Messages: fullMessages,
-	}
-	if a.Tools != nil {
-		req.Tools = a.Tools.Specs()
+		Model: a.Model,
 	}
 
+	// Build context
+	if err := a.Builder.Build(ctx, s, req); err != nil {
+		return err
+	}
+
+	// Always ensure agent's primary instructions are included if not handled by builder
+	// (Optional: move this to a dedicated processor in NewAgent)
+	
 	resp, err := a.Provider.Generate(ctx, req)
 	if err != nil {
 		return err
