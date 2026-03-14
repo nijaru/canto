@@ -8,30 +8,29 @@ import (
 )
 
 // Runner orchestrates the execution of an agent within a session.
+// It always uses a LaneManager to serialize execution within a session
+// while allowing concurrent execution across different sessions.
 type Runner struct {
 	Store session.Store
 	Agent *agent.Agent
 	Lanes *LaneManager
 }
 
-// NewRunner creates a new runner.
+// NewRunner creates a Runner with per-session lane serialization enabled.
 func NewRunner(s session.Store, a *agent.Agent) *Runner {
 	return &Runner{
 		Store: s,
 		Agent: a,
+		Lanes: NewLaneManager(),
 	}
 }
 
-// Run executes the agent on the given session.
-// If LaneManager is configured, the execution is serialized per session ID.
+// Run executes the agent on the given session, serialized within the session lane.
 func (r *Runner) Run(ctx context.Context, sessionID string) error {
-	if r.Lanes != nil {
-		result := r.Lanes.Execute(ctx, sessionID, func(ctx context.Context) error {
-			return r.execute(ctx, sessionID)
-		})
-		return <-result
-	}
-	return r.execute(ctx, sessionID)
+	result := r.Lanes.Execute(ctx, sessionID, func(ctx context.Context) error {
+		return r.execute(ctx, sessionID)
+	})
+	return <-result
 }
 
 func (r *Runner) execute(ctx context.Context, sessionID string) error {

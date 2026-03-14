@@ -3,72 +3,119 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/robfig/cron/v3"
+	"github.com/nijaru/canto/session"
 )
 
-// Heartbeat manages scheduled execution of agent tasks.
+// HeartbeatEntry defines a scheduled agent task.
+type HeartbeatEntry struct {
+	// ID is a human-readable label used in logs.
+	ID string
+	// Schedule is a cron expression: "@every 5m", "@daily", "0 9 * * 1-5", etc.
+	Schedule string
+	// SessionFn is called each tick to obtain the session to run against.
+	// It may create a new session or resume an existing one.
+	SessionFn func() *session.Session
+	// MaxCost is a per-session USD budget. The tick is skipped when the session's
+	// accumulated cost meets or exceeds this value. Zero means no limit.
+	MaxCost float64
+}
+
+// Heartbeat drives proactive, scheduled agent execution.
+//
+// Lifecycle:
+//
+//	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+//	defer cancel()
+//	if err := heartbeat.Start(ctx); err != nil { ... }
+//
+// Start blocks until ctx is cancelled and all in-flight jobs have finished.
+// The caller owns the context; there is no separate Stop method.
 type Heartbeat struct {
-	mu     sync.RWMutex
-	cron   *cron.Cron
-	runner *Runner
-	tasks  map[cron.EntryID]string // ID -> SessionID
-	ctx    context.Context
-	cancel context.CancelFunc
+	runner  *Runner
+	entries []HeartbeatEntry
 }
 
-// NewHeartbeat creates a new heartbeat manager.
+// NewHeartbeat creates a Heartbeat backed by the given runner.
 func NewHeartbeat(r *Runner) *Heartbeat {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &Heartbeat{
-		cron:   cron.New(cron.WithSeconds()), // Support 6-field cron expressions
-		runner: r,
-		tasks:  make(map[cron.EntryID]string),
-		ctx:    ctx,
-		cancel: cancel,
-	}
+	return &Heartbeat{runner: r}
 }
 
-// Schedule adds a task to be executed according to the cron expression.
-// Supports standard cron "0 30 * * * *" and "@every 5s" / "@daily" etc.
-func (h *Heartbeat) Schedule(spec string, sessionID string) (cron.EntryID, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+// Add registers a scheduled entry. Must be called before Start.
+func (h *Heartbeat) Add(e HeartbeatEntry) {
+	h.entries = append(h.entries, e)
+}
 
-	id, err := h.cron.AddFunc(spec, func() {
-		fmt.Printf("heartbeat: triggering task for session %s\n", sessionID)
-		// Run task in its own goroutine to avoid blocking the scheduler
-		go func() {
-			if err := h.runner.Run(h.ctx, sessionID); err != nil {
-				// TODO: Structured logging via x/obs
-				fmt.Printf("heartbeat: task failed for session %s: %v\n", sessionID, err)
+// Schedule registers a simple session-ID-based entry and returns the cron entry ID.
+// It is a convenience wrapper around Add for callers that don't need SessionFn or MaxCost.
+// The spec is validated immediately; an error is returned if it is invalid.
+func (h *Heartbeat) Schedule(spec, sessionID string) (cron.EntryID, error) {
+	// Validate spec eagerly so callers get an error at registration time.
+	if _, err := cron.ParseStandard(spec); err != nil {
+		// Also try the extended parser used at runtime.
+		p := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+		if _, err2 := p.Parse(spec); err2 != nil {
+			return 0, fmt.Errorf("invalid schedule %q: %w", spec, err)
+		}
+	}
+
+	h.entries = append(h.entries, HeartbeatEntry{
+		ID:       sessionID,
+		Schedule: spec,
+		SessionFn: func() *session.Session {
+			sess, err := h.runner.Store.Load(context.Background(), sessionID)
+			if err != nil {
+				return session.New(sessionID)
 			}
-		}()
+			return sess
+		},
 	})
-	if err != nil {
-		return 0, err
+
+	// Return a synthetic EntryID based on slice position. This is only used
+	// for Remove, which is a best-effort operation before Start is called.
+	return cron.EntryID(len(h.entries) - 1), nil
+}
+
+// Start schedules all registered entries and blocks until ctx is cancelled.
+// When ctx is cancelled it waits for all in-flight jobs to complete before
+// returning — equivalent to a graceful shutdown.
+func (h *Heartbeat) Start(ctx context.Context) error {
+	c := cron.New(cron.WithSeconds())
+
+	for _, e := range h.entries {
+		e := e // capture
+		if _, err := c.AddFunc(e.Schedule, func() {
+			h.tick(ctx, e)
+		}); err != nil {
+			c.Stop()
+			return fmt.Errorf("heartbeat %s: invalid schedule %q: %w", e.ID, e.Schedule, err)
+		}
 	}
 
-	h.tasks[id] = sessionID
-	return id, nil
+	c.Start()
+	<-ctx.Done()
+	// Wait for all in-flight cron jobs to finish.
+	stopCtx := c.Stop()
+	<-stopCtx.Done()
+	return nil
 }
 
-// Start starts the heartbeat scheduler.
-func (h *Heartbeat) Start() {
-	h.cron.Start()
-}
+func (h *Heartbeat) tick(ctx context.Context, e HeartbeatEntry) {
+	sess := e.SessionFn()
 
-// Stop stops the heartbeat scheduler and cancels all active tasks.
-func (h *Heartbeat) Stop() {
-	h.cron.Stop()
-	h.cancel()
-}
+	if e.MaxCost > 0 && sess.TotalCost() >= e.MaxCost {
+		fmt.Printf("heartbeat %s: cost budget %.4f exceeded (%.4f), skipping tick\n",
+			e.ID, e.MaxCost, sess.TotalCost())
+		return
+	}
 
-// Remove removes a task by its entry ID.
-func (h *Heartbeat) Remove(id cron.EntryID) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.cron.Remove(id)
-	delete(h.tasks, id)
+	// Enqueue into the lane rather than spawning a raw goroutine.
+	// This guarantees session-level serialization: if a previous tick is still
+	// running for this session ID, the new work is queued behind it.
+	if err := <-h.runner.Lanes.Execute(ctx, sess.ID(), func(ctx context.Context) error {
+		return h.runner.execute(ctx, sess.ID())
+	}); err != nil {
+		fmt.Printf("heartbeat %s: tick failed: %v\n", e.ID, err)
+	}
 }

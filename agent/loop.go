@@ -37,9 +37,15 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) error {
 
 	// Execute tools and append results
 	for _, call := range resp.Calls {
-		output, err := a.Tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
-		if err != nil {
-			output = fmt.Sprintf("Error: %s", err)
+		var output string
+		if a.Tools != nil {
+			var err error
+			output, err = a.Tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
+			if err != nil {
+				output = fmt.Sprintf("Error: %s", err)
+			}
+		} else {
+			output = fmt.Sprintf("Error: no tool registry configured; cannot execute %q", call.Function.Name)
 		}
 
 		toolMsg := llm.Message{

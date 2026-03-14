@@ -172,25 +172,31 @@ func TestPhase3RuntimeFeatures(t *testing.T) {
 	store.Save(context.Background(), session.NewEvent(sessionID, session.EventTypeMessageAdded, userMsg))
 
 	r := runtime.NewRunner(store, a)
-	
+
 	// 3. Scheduled agent runs autonomously
 	h := runtime.NewHeartbeat(r)
-	h.Start()
-	defer h.Stop()
 
-	// Schedule to run immediately
+	// Schedule before Start.
 	_, err = h.Schedule("@every 1s", sessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Wait for the scheduled job to run at least once
-	time.Sleep(1500 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
 
-	// Verify session state from reloaded session
+	done := make(chan error, 1)
+	go func() { done <- h.Start(ctx) }()
+
+	// Wait long enough for at least one tick to fire.
+	time.Sleep(1500 * time.Millisecond)
+	cancel() // stop the heartbeat
+	<-done   // wait for Start to return (all in-flights drained)
+
+	// Verify session state from reloaded session.
 	sess, _ := store.Load(context.Background(), sessionID)
 	messages := sess.Messages()
-	
+
 	// We expect the session to have progressed:
 	// User -> initial prompt
 	// Assistant -> I will check the RSS feed + tool_call
@@ -200,4 +206,5 @@ func TestPhase3RuntimeFeatures(t *testing.T) {
 		t.Errorf("expected at least 4 messages (agent ran), got %d", len(messages))
 	}
 }
+
 

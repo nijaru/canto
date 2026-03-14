@@ -63,6 +63,17 @@ func (s *Session) Messages() []llm.Message {
 	return res
 }
 
+// TotalCost returns the sum of costs across all events in the session.
+func (s *Session) TotalCost() float64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var total float64
+	for _, e := range s.events {
+		total += e.Cost
+	}
+	return total
+}
+
 // Store is an interface for persisting session state.
 type Store interface {
 	Save(ctx context.Context, e Event) error

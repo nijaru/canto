@@ -35,27 +35,34 @@ func TestHeartbeat(t *testing.T) {
 	r := NewRunner(s, a)
 
 	h := NewHeartbeat(r)
-	h.Start()
 
-	// Use @every 1s because cron.WithSeconds() gives 1s resolution
 	sessionID := "test-heartbeat"
 	if _, err = h.Schedule("@every 1s", sessionID); err != nil {
 		t.Fatal(err)
 	}
 
-	// Wait for at least 1 execution or timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Run Start in background; it blocks until ctx is cancelled.
+	errCh := make(chan error, 1)
+	go func() { errCh <- h.Start(ctx) }()
+
+	// Wait for at least 1 execution or timeout.
 	select {
 	case <-p.done:
-		// Success
-	case <-time.After(3 * time.Second):
-		t.Errorf("timed out waiting for heartbeat execution")
+		// Success — cancel the context to let Start return.
+		cancel()
+	case <-ctx.Done():
+		t.Error("timed out waiting for heartbeat execution")
+	}
+
+	// Start must return after ctx is cancelled (and in-flights drain).
+	if err := <-errCh; err != nil {
+		t.Errorf("Start returned error: %v", err)
 	}
 
 	if p.count.Load() < 1 {
 		t.Errorf("expected at least 1 execution, got %d", p.count.Load())
 	}
-
-	h.Stop()
-	// Allow background goroutines to cleanly close file handles before returning (so TempDir cleans up).
-	time.Sleep(100 * time.Millisecond)
 }
