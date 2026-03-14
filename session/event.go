@@ -29,7 +29,12 @@ type Event struct {
 
 // NewEvent creates a new event with a unique ID and current timestamp.
 func NewEvent(sessionID string, eventType EventType, data any) Event {
-	raw, _ := json.Marshal(data)
+	raw, err := json.Marshal(data)
+	if err != nil {
+		// This should only happen if data contains something that cannot be marshaled
+		// like a channel or a cyclic reference. We use a fallback error message.
+		raw, _ = json.Marshal(map[string]string{"error": "failed to marshal event data: " + err.Error()})
+	}
 	return Event{
 		ID:        ulid.Make(),
 		SessionID: sessionID,

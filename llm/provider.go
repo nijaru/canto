@@ -44,11 +44,11 @@ type ToolSpec struct {
 
 // LLMRequest is the unified request sent to any provider.
 type LLMRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Tools       []ToolSpec `json:"tools,omitempty"`
-	Temperature float64   `json:"temperature"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
+	Model       string      `json:"model"`
+	Messages    []Message   `json:"messages"`
+	Tools       []*ToolSpec `json:"tools,omitempty"`
+	Temperature float64     `json:"temperature"`
+	MaxTokens   int         `json:"max_tokens,omitempty"`
 }
 
 // LLMResponse is the unified response from any provider.

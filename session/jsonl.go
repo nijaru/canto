@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 // JSONLStore is a file-backed store that saves events as JSON lines.
 type JSONLStore struct {
+	mu  sync.RWMutex
 	dir string
 }
 
@@ -24,6 +26,9 @@ func NewJSONLStore(dir string) (*JSONLStore, error) {
 
 // Save appends an event to the session file.
 func (s *JSONLStore) Save(ctx context.Context, e Event) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	path := filepath.Join(s.dir, fmt.Sprintf("%s.jsonl", e.SessionID))
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -36,6 +41,9 @@ func (s *JSONLStore) Save(ctx context.Context, e Event) error {
 
 // Load reads all events for a session and reconstructs it.
 func (s *JSONLStore) Load(ctx context.Context, sessionID string) (*Session, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	path := filepath.Join(s.dir, fmt.Sprintf("%s.jsonl", sessionID))
 	f, err := os.Open(path)
 	if err != nil {

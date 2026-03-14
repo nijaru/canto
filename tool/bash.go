@@ -30,6 +30,8 @@ func (b *BashTool) Spec() llm.ToolSpec {
 }
 
 // Execute runs the shell command.
+// WARNING: This tool is prone to command injection if the LLM is not trusted
+// or if the inputs are not properly sanitized. Use with caution in production.
 func (b *BashTool) Execute(ctx context.Context, args string) (string, error) {
 	// Parse arguments (simple JSON extraction or just assume it's correctly formatted)
 	// For Phase 1, we'll keep it simple.

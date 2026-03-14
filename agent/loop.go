@@ -62,11 +62,13 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) error {
 // Turn executes one or more steps until the agent finishes its response
 // or makes tool calls.
 func (a *Agent) Turn(ctx context.Context, s *session.Session) error {
-	for {
+	steps := 0
+	for steps < a.MaxSteps {
 		err := a.Step(ctx, s)
 		if err != nil {
 			return err
 		}
+		steps++
 
 		// Check if the last message in the session is a tool response.
 		// If it is, we should call the model again to process the results.
@@ -80,5 +82,10 @@ func (a *Agent) Turn(ctx context.Context, s *session.Session) error {
 			break
 		}
 	}
+
+	if steps >= a.MaxSteps {
+		return fmt.Errorf("maximum tool calling steps reached (%d)", a.MaxSteps)
+	}
+
 	return nil
 }

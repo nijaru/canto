@@ -13,6 +13,7 @@ type Registry struct {
 	mu        sync.RWMutex
 	providers map[string]Provider
 	models    map[string]catwalk.Model // modelID -> Model
+	resolver  map[string]string        // modelID -> providerID
 }
 
 // NewRegistry creates a new registry.
@@ -20,6 +21,7 @@ func NewRegistry() *Registry {
 	r := &Registry{
 		providers: make(map[string]Provider),
 		models:    make(map[string]catwalk.Model),
+		resolver:  make(map[string]string),
 	}
 	return r
 }
@@ -29,6 +31,15 @@ func (r *Registry) Register(p Provider) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.providers[p.ID()] = p
+
+	// Pre-populate resolver from provider's static model list if available
+	models, err := p.Models(context.Background())
+	if err == nil {
+		for _, m := range models {
+			r.models[m.ID] = m
+			r.resolver[m.ID] = p.ID()
+		}
+	}
 }
 
 // GetProvider returns a provider by its ID.
@@ -65,6 +76,10 @@ func (r *Registry) Sync(ctx context.Context) error {
 	for _, p := range providers {
 		for _, m := range p.Models {
 			r.models[m.ID] = m
+			// Only update resolver if we have the provider registered
+			if _, ok := r.providers[string(p.ID)]; ok {
+				r.resolver[m.ID] = string(p.ID)
+			}
 		}
 	}
 
@@ -76,20 +91,16 @@ func (r *Registry) ResolveModel(modelID string) (Provider, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	// 1. Lookup in model registry to find provider ID
-	// 2. Lookup provider in registry
-	
-	for _, p := range r.providers {
-		models, err := p.Models(context.Background())
-		if err != nil {
-			continue
-		}
-		for _, m := range models {
-			if m.ID == modelID {
-				return p, nil
-			}
-		}
+	providerID, ok := r.resolver[modelID]
+	if !ok {
+		return nil, fmt.Errorf("model not found: %s", modelID)
 	}
 
-	return nil, fmt.Errorf("model not found: %s", modelID)
+	provider, ok := r.providers[providerID]
+	if !ok {
+		return nil, fmt.Errorf("provider %s not registered for model %s", providerID, modelID)
+	}
+
+	return provider, nil
 }
+

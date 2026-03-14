@@ -10,6 +10,7 @@ type Agent struct {
 	ID           string
 	Instructions string
 	Model        string
+	MaxSteps     int // Maximum tool-calling steps per turn
 	Provider     llm.Provider
 	Tools        *tool.Registry
 }
@@ -20,6 +21,7 @@ func New(id, instructions, model string, p llm.Provider, t *tool.Registry) *Agen
 		ID:           id,
 		Instructions: instructions,
 		Model:        model,
+		MaxSteps:     10, // Default safety break
 		Provider:     p,
 		Tools:        t,
 	}

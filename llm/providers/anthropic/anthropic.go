@@ -162,15 +162,17 @@ func (p *Provider) convertSchema(params any) sdk.ToolInputSchemaParam {
 
 	// Canto ToolSpec.Parameters is usually the full JSON Schema object.
 	// Anthropic expects the 'properties' and 'required' fields.
-	
-	if m, ok := params.(map[string]any); ok {
-		if props, ok := m["properties"]; ok {
-			schema.Properties = props
-		} else {
-			// If not a full schema, assume it's the properties themselves
-			schema.Properties = m
-		}
-		
+
+	m, ok := params.(map[string]any)
+	if !ok {
+		// Fallback for simple properties map
+		schema.Properties = params
+		return schema
+	}
+
+	// Case 1: Full JSON Schema object
+	if props, ok := m["properties"]; ok {
+		schema.Properties = props
 		if req, ok := m["required"].([]any); ok {
 			for _, r := range req {
 				if s, ok := r.(string); ok {
@@ -181,8 +183,10 @@ func (p *Provider) convertSchema(params any) sdk.ToolInputSchemaParam {
 			schema.Required = req
 		}
 	} else {
-		schema.Properties = params
+		// Case 2: Just the properties themselves
+		schema.Properties = m
 	}
 
 	return schema
 }
+
