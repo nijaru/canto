@@ -19,9 +19,6 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) error {
 		return err
 	}
 
-	// Always ensure agent's primary instructions are included if not handled by builder
-	// (Optional: move this to a dedicated processor in NewAgent)
-	
 	resp, err := a.Provider.Generate(ctx, req)
 	if err != nil {
 		return err

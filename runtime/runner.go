@@ -13,7 +13,7 @@ import (
 type Runner struct {
 	Store session.Store
 	Agent *agent.Agent
-	Lanes *LaneManager
+	lanes *LaneManager
 }
 
 // NewRunner creates a Runner with per-session lane serialization enabled.
@@ -21,13 +21,13 @@ func NewRunner(s session.Store, a *agent.Agent) *Runner {
 	return &Runner{
 		Store: s,
 		Agent: a,
-		Lanes: NewLaneManager(),
+		lanes: NewLaneManager(),
 	}
 }
 
 // Run executes the agent on the given session, serialized within the session lane.
 func (r *Runner) Run(ctx context.Context, sessionID string) error {
-	result := r.Lanes.Execute(ctx, sessionID, func(ctx context.Context) error {
+	result := r.lanes.Execute(ctx, sessionID, func(ctx context.Context) error {
 		return r.execute(ctx, sessionID)
 	})
 	return <-result

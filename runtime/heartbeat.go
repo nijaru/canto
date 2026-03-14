@@ -47,17 +47,15 @@ func (h *Heartbeat) Add(e HeartbeatEntry) {
 	h.entries = append(h.entries, e)
 }
 
-// Schedule registers a simple session-ID-based entry and returns the cron entry ID.
-// It is a convenience wrapper around Add for callers that don't need SessionFn or MaxCost.
-// The spec is validated immediately; an error is returned if it is invalid.
-func (h *Heartbeat) Schedule(spec, sessionID string) (cron.EntryID, error) {
-	// Validate spec eagerly so callers get an error at registration time.
-	if _, err := cron.ParseStandard(spec); err != nil {
-		// Also try the extended parser used at runtime.
-		p := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
-		if _, err2 := p.Parse(spec); err2 != nil {
-			return 0, fmt.Errorf("invalid schedule %q: %w", spec, err)
-		}
+// Schedule registers a session-ID-based entry and validates the spec immediately.
+// It is a convenience wrapper around Add for callers that don't need a full HeartbeatEntry.
+// Returns an error if the schedule expression is invalid.
+func (h *Heartbeat) Schedule(spec, sessionID string) error {
+	// Validate spec eagerly so callers get an error at registration time, not at Start.
+	// Try the extended parser first (supports seconds field and descriptors like @every).
+	p := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+	if _, err := p.Parse(spec); err != nil {
+		return fmt.Errorf("invalid schedule %q: %w", spec, err)
 	}
 
 	h.entries = append(h.entries, HeartbeatEntry{
@@ -71,10 +69,7 @@ func (h *Heartbeat) Schedule(spec, sessionID string) (cron.EntryID, error) {
 			return sess
 		},
 	})
-
-	// Return a synthetic EntryID based on slice position. This is only used
-	// for Remove, which is a best-effort operation before Start is called.
-	return cron.EntryID(len(h.entries) - 1), nil
+	return nil
 }
 
 // Start schedules all registered entries and blocks until ctx is cancelled.
@@ -113,7 +108,7 @@ func (h *Heartbeat) tick(ctx context.Context, e HeartbeatEntry) {
 	// Enqueue into the lane rather than spawning a raw goroutine.
 	// This guarantees session-level serialization: if a previous tick is still
 	// running for this session ID, the new work is queued behind it.
-	if err := <-h.runner.Lanes.Execute(ctx, sess.ID(), func(ctx context.Context) error {
+	if err := <-h.runner.lanes.Execute(ctx, sess.ID(), func(ctx context.Context) error {
 		return h.runner.execute(ctx, sess.ID())
 	}); err != nil {
 		fmt.Printf("heartbeat %s: tick failed: %v\n", e.ID, err)

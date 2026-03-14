@@ -177,8 +177,7 @@ func TestPhase3RuntimeFeatures(t *testing.T) {
 	h := runtime.NewHeartbeat(r)
 
 	// Schedule before Start.
-	_, err = h.Schedule("@every 1s", sessionID)
-	if err != nil {
+	if err = h.Schedule("@every 1s", sessionID); err != nil {
 		t.Fatal(err)
 	}
 

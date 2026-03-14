@@ -49,7 +49,9 @@ func (a *HTTPAdapter) Listen(ctx context.Context, handler runtime.ChannelHandler
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		a.server.Shutdown(shutdownCtx)
+		if err := a.server.Shutdown(shutdownCtx); err != nil {
+			fmt.Printf("http channel: server shutdown error: %v\n", err)
+		}
 	}()
 
 	fmt.Printf("HTTP Channel Adapter listening on %s\n", a.addr)

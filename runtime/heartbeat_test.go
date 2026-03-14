@@ -37,7 +37,7 @@ func TestHeartbeat(t *testing.T) {
 	h := NewHeartbeat(r)
 
 	sessionID := "test-heartbeat"
-	if _, err = h.Schedule("@every 1s", sessionID); err != nil {
+	if err = h.Schedule("@every 1s", sessionID); err != nil {
 		t.Fatal(err)
 	}
 
