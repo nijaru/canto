@@ -67,4 +67,5 @@ func (s *Session) Messages() []llm.Message {
 type Store interface {
 	Save(ctx context.Context, e Event) error
 	Load(ctx context.Context, sessionID string) (*Session, error)
+	Search(ctx context.Context, sessionID string, query string) ([]Event, error)
 }

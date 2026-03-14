@@ -70,3 +70,9 @@ func (s *JSONLStore) Load(ctx context.Context, sessionID string) (*Session, erro
 
 	return sess, nil
 }
+
+// Search implements the Store interface for JSONLStore.
+// For now, it returns an error as Search is optimized for SQLite.
+func (s *JSONLStore) Search(ctx context.Context, sessionID string, query string) ([]Event, error) {
+	return nil, fmt.Errorf("search not implemented for JSONLStore; use SQLiteStore")
+}

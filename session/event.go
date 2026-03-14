@@ -16,6 +16,8 @@ const (
 	EventTypeToolOutput     EventType = "tool_output"
 	EventTypeSessionCreated EventType = "session_created"
 	EventTypeMetaUpdated    EventType = "meta_updated"
+	EventTypeCompaction     EventType = "compaction"
+	EventTypeContextOffload EventType = "context_offload"
 )
 
 // Event is a single append-only fact in a session.

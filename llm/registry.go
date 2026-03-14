@@ -13,7 +13,7 @@ type Registry struct {
 	mu        sync.RWMutex
 	providers map[string]Provider
 	models    map[string]catwalk.Model // modelID -> Model
-	resolver  map[string]string        // modelID -> providerID
+	resolver  map[string][]string      // modelID -> []providerID
 }
 
 // NewRegistry creates a new registry.
@@ -21,7 +21,7 @@ func NewRegistry() *Registry {
 	r := &Registry{
 		providers: make(map[string]Provider),
 		models:    make(map[string]catwalk.Model),
-		resolver:  make(map[string]string),
+		resolver:  make(map[string][]string),
 	}
 	return r
 }
@@ -37,9 +37,19 @@ func (r *Registry) Register(p Provider) {
 	if err == nil {
 		for _, m := range models {
 			r.models[m.ID] = m
-			r.resolver[m.ID] = p.ID()
+			r.addResolver(m.ID, p.ID())
 		}
 	}
+}
+
+func (r *Registry) addResolver(modelID, providerID string) {
+	ids := r.resolver[modelID]
+	for _, id := range ids {
+		if id == providerID {
+			return
+		}
+	}
+	r.resolver[modelID] = append(ids, providerID)
 }
 
 // GetProvider returns a provider by its ID.
@@ -78,7 +88,7 @@ func (r *Registry) Sync(ctx context.Context) error {
 			r.models[m.ID] = m
 			// Only update resolver if we have the provider registered
 			if _, ok := r.providers[string(p.ID)]; ok {
-				r.resolver[m.ID] = string(p.ID)
+				r.addResolver(m.ID, string(p.ID))
 			}
 		}
 	}
@@ -86,21 +96,40 @@ func (r *Registry) Sync(ctx context.Context) error {
 	return nil
 }
 
-// ResolveModel finds which provider can handle the given model ID.
+// ResolveModel finds which provider(s) can handle the given model ID.
+// Returns a SmartResolver if multiple providers are available.
 func (r *Registry) ResolveModel(modelID string) (Provider, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	providerID, ok := r.resolver[modelID]
-	if !ok {
+	providerIDs, ok := r.resolver[modelID]
+	if !ok || len(providerIDs) == 0 {
 		return nil, fmt.Errorf("model not found: %s", modelID)
 	}
 
-	provider, ok := r.providers[providerID]
-	if !ok {
-		return nil, fmt.Errorf("provider %s not registered for model %s", providerID, modelID)
+	if len(providerIDs) == 1 {
+		provider, ok := r.providers[providerIDs[0]]
+		if !ok {
+			return nil, fmt.Errorf("provider %s not registered for model %s", providerIDs[0], modelID)
+		}
+		return provider, nil
 	}
 
-	return provider, nil
-}
+	// Multiple providers available, return a SmartResolver
+	var providers []Provider
+	for _, id := range providerIDs {
+		if p, ok := r.providers[id]; ok {
+			providers = append(providers, p)
+		}
+	}
 
+	if len(providers) == 0 {
+		return nil, fmt.Errorf("no registered providers found for model %s", modelID)
+	}
+
+	if len(providers) == 1 {
+		return providers[0], nil
+	}
+
+	return NewSmartResolver(StrategyPriority, providers...), nil
+}
