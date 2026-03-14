@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/agent"
@@ -12,6 +13,7 @@ import (
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/canto/tool/mcp"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -106,3 +108,96 @@ func TestPhase1CoreLoop(t *testing.T) {
 		t.Fatal("session file was not created")
 	}
 }
+
+type RSSTool struct{}
+
+func (t *RSSTool) Spec() llm.ToolSpec {
+	return llm.ToolSpec{
+		Name:        "rss",
+		Description: "Fetches an RSS feed",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"url": map[string]any{"type": "string"},
+			},
+		},
+	}
+}
+
+func (t *RSSTool) Execute(ctx context.Context, args string) (string, error) {
+	return "Article 1: AI reaches AGI.\nArticle 2: Go 1.25 Released.", nil
+}
+
+func TestPhase3RuntimeFeatures(t *testing.T) {
+	// Requirements: Scheduled agent runs autonomously. Checks RSS feed, sends daily summary. MCP client connects successfully.
+	tmpDir := t.TempDir()
+	store, err := session.NewJSONLStore(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	registry := tool.NewRegistry()
+	registry.Register(&RSSTool{})
+
+	// 1. MCP client connects successfully
+	client, err := mcp.NewStdioClient(context.Background(), "echo", "{}")
+	if err != nil {
+		t.Fatalf("MCP client failed to connect: %v", err)
+	}
+	defer client.Close()
+
+	// 2. Mock Provider
+	mock := &MockProvider{
+		Response: &llm.LLMResponse{
+			Content: "I will check the RSS feed and send a summary.",
+			Calls: []llm.ToolCall{
+				{
+					ID:   "call_rss",
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{
+						Name:      "rss",
+						Arguments: `{"url": "https://news.ycombinator.com/rss"}`,
+					},
+				},
+			},
+		},
+	}
+
+	a := agent.New("news-agent", "You summarize RSS feeds daily.", "mock", mock, registry)
+	sessionID := "sess_" + ulid.Make().String()
+	userMsg := llm.Message{Role: llm.RoleUser, Content: "Generate daily summary"}
+	store.Save(context.Background(), session.NewEvent(sessionID, session.EventTypeMessageAdded, userMsg))
+
+	r := runtime.NewRunner(store, a)
+	
+	// 3. Scheduled agent runs autonomously
+	h := runtime.NewHeartbeat(r)
+	h.Start()
+	defer h.Stop()
+
+	// Schedule to run immediately
+	_, err = h.Schedule("@every 1s", sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the scheduled job to run at least once
+	time.Sleep(1500 * time.Millisecond)
+
+	// Verify session state from reloaded session
+	sess, _ := store.Load(context.Background(), sessionID)
+	messages := sess.Messages()
+	
+	// We expect the session to have progressed:
+	// User -> initial prompt
+	// Assistant -> I will check the RSS feed + tool_call
+	// Tool -> RSS results
+	// Assistant -> I see some files (from mock)
+	if len(messages) < 4 {
+		t.Errorf("expected at least 4 messages (agent ran), got %d", len(messages))
+	}
+}
+

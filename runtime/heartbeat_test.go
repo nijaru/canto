@@ -36,7 +36,6 @@ func TestHeartbeat(t *testing.T) {
 
 	h := NewHeartbeat(r)
 	h.Start()
-	defer h.Stop()
 
 	// Use @every 1s because cron.WithSeconds() gives 1s resolution
 	sessionID := "test-heartbeat"
@@ -55,4 +54,8 @@ func TestHeartbeat(t *testing.T) {
 	if p.count.Load() < 1 {
 		t.Errorf("expected at least 1 execution, got %d", p.count.Load())
 	}
+
+	h.Stop()
+	// Allow background goroutines to cleanly close file handles before returning (so TempDir cleans up).
+	time.Sleep(100 * time.Millisecond)
 }
