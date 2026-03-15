@@ -2,6 +2,8 @@ package graph_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/nijaru/canto/agent"
@@ -87,5 +89,301 @@ func TestGraphTerminatesAtTerminalNode(t *testing.T) {
 	msgs := sess.Messages()
 	if len(msgs) < 2 {
 		t.Errorf("expected at least 2 messages, got %d", len(msgs))
+	}
+}
+
+// --- Validate tests ---
+
+func TestValidate_ValidGraph(t *testing.T) {
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "a"}, nil)
+	b := agent.New("b", "Do B.", "gpt-4", &mockProvider{msg: "b"}, nil)
+
+	g := graph.New("a")
+	g.AddNode(a)
+	g.AddNode(b)
+	g.AddEdge("a", "b", nil)
+
+	if err := g.Validate(); err != nil {
+		t.Fatalf("expected valid graph, got error: %v", err)
+	}
+}
+
+func TestValidate_EntryNodeMissing(t *testing.T) {
+	g := graph.New("missing")
+	// No nodes registered — entry node not present.
+	err := g.Validate()
+	if err == nil {
+		t.Fatal("expected error for missing entry node, got nil")
+	}
+}
+
+func TestValidate_EdgeMissingSourceNode(t *testing.T) {
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "a"}, nil)
+	b := agent.New("b", "Do B.", "gpt-4", &mockProvider{msg: "b"}, nil)
+
+	g := graph.New("a")
+	g.AddNode(a)
+	g.AddNode(b)
+	// Add an edge from a node that is not registered.
+	g.AddEdge("ghost", "b", nil)
+
+	err := g.Validate()
+	if err == nil {
+		t.Fatal("expected error for edge referencing unregistered source node, got nil")
+	}
+}
+
+func TestValidate_EdgeMissingTargetNode(t *testing.T) {
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "a"}, nil)
+
+	g := graph.New("a")
+	g.AddNode(a)
+	g.AddEdge("a", "nowhere", nil)
+
+	err := g.Validate()
+	if err == nil {
+		t.Fatal("expected error for edge referencing unregistered target node, got nil")
+	}
+}
+
+func TestValidate_CycleDetected(t *testing.T) {
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "a"}, nil)
+	b := agent.New("b", "Do B.", "gpt-4", &mockProvider{msg: "b"}, nil)
+	c := agent.New("c", "Do C.", "gpt-4", &mockProvider{msg: "c"}, nil)
+
+	g := graph.New("a")
+	g.AddNode(a)
+	g.AddNode(b)
+	g.AddNode(c)
+	// a → b → c → b forms a cycle.
+	g.AddEdge("a", "b", nil)
+	g.AddEdge("b", "c", nil)
+	g.AddEdge("c", "b", nil)
+
+	err := g.Validate()
+	if err == nil {
+		t.Fatal("expected error for cycle, got nil")
+	}
+}
+
+// --- AddEdge: nil condition (unconditional) ---
+
+func TestAddEdge_NilConditionIsUnconditional(t *testing.T) {
+	ctx := context.Background()
+
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "a"}, nil)
+	b := agent.New("b", "Do B.", "gpt-4", &mockProvider{msg: "b"}, nil)
+
+	g := graph.New("a")
+	g.AddNode(a)
+	g.AddNode(b)
+	// nil condition — must be treated as unconditional.
+	g.AddEdge("a", "b", nil)
+
+	sess := session.New("nil-cond-test")
+	sess.Append(session.NewEvent("nil-cond-test", session.EventTypeMessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "Go.",
+	}))
+
+	_, err := g.Run(ctx, sess)
+	if err != nil {
+		t.Fatalf("graph.Run with nil condition edge: %v", err)
+	}
+
+	msgs := sess.Messages()
+	last := msgs[len(msgs)-1]
+	if last.Content != "b" {
+		t.Errorf("expected last message from node b, got %q", last.Content)
+	}
+}
+
+// --- Run: context cancellation ---
+
+func TestRun_ContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "a"}, nil)
+
+	g := graph.New("a")
+	g.AddNode(a)
+
+	sess := session.New("cancel-test")
+	sess.Append(session.NewEvent("cancel-test", session.EventTypeMessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "Go.",
+	}))
+
+	_, err := g.Run(ctx, sess)
+	if err == nil {
+		t.Fatal("expected error from cancelled context, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got %v", err)
+	}
+}
+
+// --- Run: entry node not registered ---
+
+func TestRun_EntryNodeNotRegistered(t *testing.T) {
+	ctx := context.Background()
+
+	g := graph.New("missing")
+	// No nodes added.
+
+	sess := session.New("no-entry-test")
+	sess.Append(session.NewEvent("no-entry-test", session.EventTypeMessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "Go.",
+	}))
+
+	_, err := g.Run(ctx, sess)
+	if err == nil {
+		t.Fatal("expected error for unregistered entry node, got nil")
+	}
+}
+
+// --- CycleRunner tests ---
+
+func newTestSession(id string) *session.Session {
+	sess := session.New(id)
+	sess.Append(session.NewEvent(id, session.EventTypeMessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "Do work.",
+	}))
+	return sess
+}
+
+func TestCycleRunner_MaxCyclesZero(t *testing.T) {
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "done"}, nil)
+	cr := &graph.CycleRunner{
+		Agent:     a,
+		MaxCycles: 0,
+		CheckFn:   func(string) (bool, error) { return true, nil },
+		SessionFn: func(int) *session.Session { return newTestSession("c") },
+	}
+	err := cr.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected error for MaxCycles=0, got nil")
+	}
+}
+
+func TestCycleRunner_NilCheckFn(t *testing.T) {
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "done"}, nil)
+	cr := &graph.CycleRunner{
+		Agent:     a,
+		MaxCycles: 1,
+		CheckFn:   nil,
+		SessionFn: func(int) *session.Session { return newTestSession("c") },
+	}
+	err := cr.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected error for nil CheckFn, got nil")
+	}
+}
+
+func TestCycleRunner_NilSessionFn(t *testing.T) {
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "done"}, nil)
+	cr := &graph.CycleRunner{
+		Agent:     a,
+		MaxCycles: 1,
+		CheckFn:   func(string) (bool, error) { return true, nil },
+		SessionFn: nil,
+	}
+	err := cr.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected error for nil SessionFn, got nil")
+	}
+}
+
+func TestCycleRunner_CompletesEarly(t *testing.T) {
+	// CheckFn returns true on first cycle — should stop without error.
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "done"}, nil)
+	calls := 0
+	cr := &graph.CycleRunner{
+		Agent:     a,
+		MaxCycles: 5,
+		CheckFn: func(string) (bool, error) {
+			calls++
+			return true, nil // done immediately
+		},
+		SessionFn: func(cycle int) *session.Session {
+			return newTestSession(fmt.Sprintf("c-%d", cycle))
+		},
+	}
+	if err := cr.Run(context.Background()); err != nil {
+		t.Fatalf("expected no error on early completion, got: %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("expected CheckFn called once, got %d", calls)
+	}
+}
+
+func TestCycleRunner_HitsMaxCycles(t *testing.T) {
+	// CheckFn always returns false — should exhaust MaxCycles and return error.
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "done"}, nil)
+	calls := 0
+	cr := &graph.CycleRunner{
+		Agent:     a,
+		MaxCycles: 3,
+		CheckFn: func(string) (bool, error) {
+			calls++
+			return false, nil // never done
+		},
+		SessionFn: func(cycle int) *session.Session {
+			return newTestSession(fmt.Sprintf("c-%d", cycle))
+		},
+	}
+	err := cr.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected error when MaxCycles exhausted, got nil")
+	}
+	if calls != 3 {
+		t.Errorf("expected CheckFn called 3 times, got %d", calls)
+	}
+}
+
+func TestCycleRunner_CheckFnError(t *testing.T) {
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "done"}, nil)
+	checkErr := errors.New("check failed")
+	cr := &graph.CycleRunner{
+		Agent:     a,
+		MaxCycles: 3,
+		CheckFn: func(string) (bool, error) {
+			return false, checkErr
+		},
+		SessionFn: func(cycle int) *session.Session {
+			return newTestSession(fmt.Sprintf("c-%d", cycle))
+		},
+	}
+	err := cr.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected error from CheckFn, got nil")
+	}
+	if !errors.Is(err, checkErr) {
+		t.Errorf("expected wrapped checkErr, got: %v", err)
+	}
+}
+
+func TestCycleRunner_ContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "done"}, nil)
+	cr := &graph.CycleRunner{
+		Agent:     a,
+		MaxCycles: 5,
+		CheckFn:   func(string) (bool, error) { return false, nil },
+		SessionFn: func(cycle int) *session.Session {
+			return newTestSession(fmt.Sprintf("c-%d", cycle))
+		},
+	}
+	err := cr.Run(ctx)
+	if err == nil {
+		t.Fatal("expected error from cancelled context, got nil")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got: %v", err)
 	}
 }

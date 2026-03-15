@@ -25,6 +25,28 @@ func (m *mockEmbedder) EmbedContent(ctx context.Context, text string) ([]float32
 	return vec, nil
 }
 
+func TestArchivalMemoryInsertTool_Spec(t *testing.T) {
+	tool := &ArchivalMemoryInsertTool{}
+	spec := tool.Spec()
+	if spec.Name != "archival_memory_insert" {
+		t.Errorf("expected name 'archival_memory_insert', got %q", spec.Name)
+	}
+	if spec.Description == "" {
+		t.Error("expected non-empty description")
+	}
+}
+
+func TestArchivalMemorySearchTool_Spec(t *testing.T) {
+	tool := &ArchivalMemorySearchTool{}
+	spec := tool.Spec()
+	if spec.Name != "archival_memory_search" {
+		t.Errorf("expected name 'archival_memory_search', got %q", spec.Name)
+	}
+	if spec.Description == "" {
+		t.Error("expected non-empty description")
+	}
+}
+
 func TestArchivalMemoryInsertTool(t *testing.T) {
 	ctx := context.Background()
 
@@ -55,7 +77,12 @@ func TestArchivalMemorySearchTool(t *testing.T) {
 	store, _ := memory.NewSQLiteVectorStore("file::memory:?cache=shared")
 
 	// Pre-seed some mock data directly
-	_ = store.Upsert(ctx, "id1", []float32{0.9, 0.1, 0.0}, map[string]any{"content": "the sky query", "source": "log"})
+	_ = store.Upsert(
+		ctx,
+		"id1",
+		[]float32{0.9, 0.1, 0.0},
+		map[string]any{"content": "the sky query", "source": "log"},
+	)
 
 	searchTool := ArchivalMemorySearchTool{
 		Store:    store,

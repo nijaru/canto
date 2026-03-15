@@ -4,9 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/memory"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
 )
@@ -96,5 +98,298 @@ func TestOffloadProcessor(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join(tempDir, "*.json"))
 	if err != nil || len(files) == 0 {
 		t.Errorf("expected offload file to be created")
+	}
+}
+
+// --- CoreMemoryProcessor ---
+
+func newTestCoreStore(t *testing.T) *memory.CoreStore {
+	t.Helper()
+	dsn := "file::memory:?cache=shared&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	store, err := memory.NewCoreStore(dsn)
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+	return store
+}
+
+func TestCoreMemoryProcessor_NoPersona(t *testing.T) {
+	store := newTestCoreStore(t)
+	sess := session.New("sess-no-persona")
+	req := &llm.LLMRequest{}
+
+	proc := CoreMemoryProcessor(store)
+	if err := proc.Process(context.Background(), sess, req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// No persona set — messages should remain empty.
+	if len(req.Messages) != 0 {
+		t.Errorf("expected no messages, got %d", len(req.Messages))
+	}
+}
+
+func TestCoreMemoryProcessor_InjectsBlock(t *testing.T) {
+	store := newTestCoreStore(t)
+	ctx := context.Background()
+	sessID := "sess-with-persona"
+
+	if err := store.SetPersona(ctx, sessID, &memory.Persona{
+		Name:        "Aria",
+		Description: "A helpful assistant",
+		Directives:  "Be concise",
+	}); err != nil {
+		t.Fatalf("SetPersona: %v", err)
+	}
+
+	sess := session.New(sessID)
+	req := &llm.LLMRequest{}
+
+	proc := CoreMemoryProcessor(store)
+	if err := proc.Process(ctx, sess, req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(req.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(req.Messages))
+	}
+	msg := req.Messages[0]
+	if msg.Role != llm.RoleSystem {
+		t.Errorf("expected system role, got %s", msg.Role)
+	}
+	if !strings.Contains(msg.Content, "<core_memory>") {
+		t.Errorf("expected <core_memory> block, got: %s", msg.Content)
+	}
+	if !strings.Contains(msg.Content, "Aria") {
+		t.Errorf("expected persona name in block, got: %s", msg.Content)
+	}
+}
+
+func TestCoreMemoryProcessor_PrependToExistingSystemMessage(t *testing.T) {
+	store := newTestCoreStore(t)
+	ctx := context.Background()
+	sessID := "sess-prepend"
+
+	if err := store.SetPersona(ctx, sessID, &memory.Persona{
+		Name:        "Bot",
+		Description: "A bot",
+		Directives:  "Be brief",
+	}); err != nil {
+		t.Fatalf("SetPersona: %v", err)
+	}
+
+	sess := session.New(sessID)
+	req := &llm.LLMRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "You are a coding assistant."},
+		},
+	}
+
+	proc := CoreMemoryProcessor(store)
+	if err := proc.Process(ctx, sess, req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(req.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(req.Messages))
+	}
+	content := req.Messages[0].Content
+	if !strings.Contains(content, "<core_memory>") {
+		t.Errorf("expected core_memory block, got: %s", content)
+	}
+	if !strings.Contains(content, "You are a coding assistant.") {
+		t.Errorf("expected original system text preserved, got: %s", content)
+	}
+	// Block should precede the original text.
+	coreIdx := strings.Index(content, "<core_memory>")
+	origIdx := strings.Index(content, "You are")
+	if coreIdx >= origIdx {
+		t.Errorf("expected core_memory block before original instructions")
+	}
+}
+
+func TestCoreMemoryProcessor_ReplacesExistingBlock(t *testing.T) {
+	store := newTestCoreStore(t)
+	ctx := context.Background()
+	sessID := "sess-replace"
+
+	if err := store.SetPersona(ctx, sessID, &memory.Persona{
+		Name:        "Updated",
+		Description: "New description",
+		Directives:  "New directives",
+	}); err != nil {
+		t.Fatalf("SetPersona: %v", err)
+	}
+
+	existing := "<core_memory>\nAgent Name: Old\nPersona Context: Old desc\nDirectives: Old\n</core_memory>"
+	sess := session.New(sessID)
+	req := &llm.LLMRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: existing + "\n\nOriginal system text."},
+		},
+	}
+
+	proc := CoreMemoryProcessor(store)
+	if err := proc.Process(ctx, sess, req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	content := req.Messages[0].Content
+	// Old persona name should be gone.
+	if strings.Contains(content, "Agent Name: Old") {
+		t.Errorf("old block not replaced, got: %s", content)
+	}
+	// New persona name should be present.
+	if !strings.Contains(content, "Updated") {
+		t.Errorf("expected updated persona in block, got: %s", content)
+	}
+	// Original system text should still be there.
+	if !strings.Contains(content, "Original system text.") {
+		t.Errorf("expected original system text preserved, got: %s", content)
+	}
+}
+
+func TestCoreMemoryProcessor_NilStore(t *testing.T) {
+	sess := session.New("sess-nil-store")
+	req := &llm.LLMRequest{}
+	proc := CoreMemoryProcessor(nil)
+	if err := proc.Process(context.Background(), sess, req); err != nil {
+		t.Fatalf("unexpected error with nil store: %v", err)
+	}
+	if len(req.Messages) != 0 {
+		t.Errorf("expected no messages with nil store, got %d", len(req.Messages))
+	}
+}
+
+// --- WorkspaceProcessor ---
+
+func TestWorkspaceProcessor_NoOp(t *testing.T) {
+	dir := t.TempDir()
+	agentsPath := filepath.Join(dir, "AGENTS.md")
+	if err := os.WriteFile(agentsPath, []byte("# Project Instructions\nDo good work."), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	sess := session.New("sess-workspace")
+	req := &llm.LLMRequest{}
+
+	proc := WorkspaceProcessor(dir)
+	if err := proc.Process(context.Background(), sess, req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Current implementation is a no-op; just verify it doesn't error.
+}
+
+// --- TokenGuardProcessor ---
+
+func TestTokenGuard_PassingCase(t *testing.T) {
+	guard := NewTokenGuard(10000)
+	sess := session.New("sess-tg-pass")
+	req := &llm.LLMRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "hello"},
+		},
+	}
+	if err := guard.Process(context.Background(), sess, req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestTokenGuard_Exceeded(t *testing.T) {
+	guard := NewTokenGuard(1) // 1 token max — trivially exceeded
+	sess := session.New("sess-tg-exceed")
+	req := &llm.LLMRequest{
+		Messages: []llm.Message{
+			{
+				Role:    llm.RoleUser,
+				Content: "This is a message with plenty of content to exceed the limit.",
+			},
+		},
+	}
+	err := guard.Process(context.Background(), sess, req)
+	if err == nil {
+		t.Fatal("expected token budget error, got nil")
+	}
+	if !strings.Contains(err.Error(), "token budget exceeded") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestTokenGuard_ZeroMaxTokensSkips(t *testing.T) {
+	guard := NewTokenGuard(0)
+	sess := session.New("sess-tg-zero")
+	// Even enormous content should pass when MaxTokens == 0.
+	big := strings.Repeat("x", 100_000)
+	req := &llm.LLMRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: big},
+		},
+	}
+	if err := guard.Process(context.Background(), sess, req); err != nil {
+		t.Fatalf("expected no error with zero limit, got: %v", err)
+	}
+}
+
+// --- BudgetGuard ---
+
+func TestBudgetGuard_PassingCase(t *testing.T) {
+	guard := NewBudgetGuard(10.0)
+	sess := session.New("sess-bg-pass")
+
+	e := session.NewEvent(sess.ID(), session.EventTypeToolCalled, nil)
+	e.Cost = 0.50
+	sess.Append(e)
+
+	req := &llm.LLMRequest{}
+	if err := guard.Process(context.Background(), sess, req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestBudgetGuard_Exceeded(t *testing.T) {
+	guard := NewBudgetGuard(1.0)
+	sess := session.New("sess-bg-exceed")
+
+	e := session.NewEvent(sess.ID(), session.EventTypeToolCalled, nil)
+	e.Cost = 1.50
+	sess.Append(e)
+
+	req := &llm.LLMRequest{}
+	err := guard.Process(context.Background(), sess, req)
+	if err == nil {
+		t.Fatal("expected budget exceeded error, got nil")
+	}
+	if !strings.Contains(err.Error(), "budget exceeded") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestBudgetGuard_ZeroLimitSkips(t *testing.T) {
+	guard := NewBudgetGuard(0)
+	sess := session.New("sess-bg-zero")
+
+	e := session.NewEvent(sess.ID(), session.EventTypeToolCalled, nil)
+	e.Cost = 999.99
+	sess.Append(e)
+
+	req := &llm.LLMRequest{}
+	if err := guard.Process(context.Background(), sess, req); err != nil {
+		t.Fatalf("expected no error with zero limit, got: %v", err)
+	}
+}
+
+func TestBudgetGuard_ExactlyAtLimit(t *testing.T) {
+	guard := NewBudgetGuard(1.0)
+	sess := session.New("sess-bg-exact")
+
+	e := session.NewEvent(sess.ID(), session.EventTypeToolCalled, nil)
+	e.Cost = 1.0
+	sess.Append(e)
+
+	req := &llm.LLMRequest{}
+	err := guard.Process(context.Background(), sess, req)
+	// >= limit triggers error
+	if err == nil {
+		t.Fatal("expected budget exceeded error at exact limit, got nil")
 	}
 }
