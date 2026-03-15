@@ -13,7 +13,7 @@ import (
 // ListProcessor injects a summary list of all available skills.
 func ListProcessor(reg *Registry) ccontext.ContextProcessor {
 	return ccontext.ProcessorFunc(
-		func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error {
 			skills := reg.List()
 			if len(skills) == 0 {
 				return nil
@@ -26,7 +26,7 @@ func ListProcessor(reg *Registry) ccontext.ContextProcessor {
 			}
 
 			instructions := sb.String()
-			return ccontext.InstructionProcessor(instructions).Process(ctx, sess, req)
+			return ccontext.InstructionProcessor(instructions).Process(ctx, p, model, sess, req)
 		},
 	)
 }

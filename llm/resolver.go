@@ -159,6 +159,42 @@ func (r *SmartResolver) Models(ctx context.Context) ([]catwalk.Model, error) {
 	return all, nil
 }
 
+func (r *SmartResolver) CountTokens(ctx context.Context, model string, messages []Message) (int, error) {
+	healthy := r.getHealthy()
+	if len(healthy) == 0 {
+		// Fallback to first provider if none are healthy for counting
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		if len(r.providers) > 0 {
+			return r.providers[0].provider.CountTokens(ctx, model, messages)
+		}
+		return 0, fmt.Errorf("no providers available")
+	}
+	return healthy[0].provider.CountTokens(ctx, model, messages)
+}
+
+func (r *SmartResolver) Cost(ctx context.Context, model string, usage Usage) float64 {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, p := range r.providers {
+		// Try to find the provider that actually has this model configuration
+		models, err := p.provider.Models(ctx)
+		if err != nil {
+			continue
+		}
+		for _, m := range models {
+			if string(m.ID) == model {
+				return p.provider.Cost(ctx, model, usage)
+			}
+		}
+	}
+	// Fallback to first provider if model not found in any list
+	if len(r.providers) > 0 {
+		return r.providers[0].provider.Cost(ctx, model, usage)
+	}
+	return 0
+}
+
 func (r *SmartResolver) getHealthy() []*managedProvider {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -262,4 +298,29 @@ func (p *FailoverProvider) Models(ctx context.Context) ([]catwalk.Model, error) 
 		}
 	}
 	return all, nil
+}
+
+func (p *FailoverProvider) CountTokens(ctx context.Context, model string, messages []Message) (int, error) {
+	if len(p.providers) == 0 {
+		return 0, fmt.Errorf("no providers configured")
+	}
+	return p.providers[0].CountTokens(ctx, model, messages)
+}
+
+func (p *FailoverProvider) Cost(ctx context.Context, model string, usage Usage) float64 {
+	for _, sub := range p.providers {
+		models, err := sub.Models(ctx)
+		if err != nil {
+			continue
+		}
+		for _, m := range models {
+			if string(m.ID) == model {
+				return sub.Cost(ctx, model, usage)
+			}
+		}
+	}
+	if len(p.providers) > 0 {
+		return p.providers[0].Cost(ctx, model, usage)
+	}
+	return 0
 }

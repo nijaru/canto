@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"charm.land/catwalk/pkg/catwalk"
@@ -30,7 +31,10 @@ func NewRegistry() *Registry {
 func (r *Registry) Register(p Provider) {
 	// Fetch models before acquiring the lock to avoid blocking concurrent
 	// registry operations during a potentially slow network call.
-	models, _ := p.Models(context.Background())
+	models, err := p.Models(context.Background())
+	if err != nil {
+		slog.Warn("registry: failed to fetch models", "provider", p.ID(), "error", err)
+	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()

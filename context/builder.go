@@ -24,9 +24,9 @@ func NewBuilder(processors ...ContextProcessor) *Builder {
 }
 
 // Build executes the processor chain to transform the session and request.
-func (b *Builder) Build(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
-	for _, p := range b.Processors {
-		if err := p.Process(ctx, sess, req); err != nil {
+func (b *Builder) Build(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error {
+	for _, cp := range b.Processors {
+		if err := cp.Process(ctx, p, model, sess, req); err != nil {
 			return err
 		}
 	}
@@ -36,7 +36,7 @@ func (b *Builder) Build(ctx context.Context, sess *session.Session, req *llm.LLM
 // HistoryProcessor appends the session event log to the LLM request messages.
 func HistoryProcessor() ContextProcessor {
 	return ProcessorFunc(
-		func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error {
 			// Extract all messages from the session
 			messages := sess.Messages()
 			req.Messages = append(req.Messages, messages...)
@@ -48,7 +48,7 @@ func HistoryProcessor() ContextProcessor {
 // ToolProcessor appends tool definitions to the LLM request.
 func ToolProcessor(reg *tool.Registry) ContextProcessor {
 	return ProcessorFunc(
-		func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error {
 			if reg == nil {
 				return nil
 			}
@@ -61,7 +61,7 @@ func ToolProcessor(reg *tool.Registry) ContextProcessor {
 // InstructionProcessor prepends instructions as a system message.
 func InstructionProcessor(instructions string) ContextProcessor {
 	return ProcessorFunc(
-		func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error {
 			if instructions == "" {
 				return nil
 			}
@@ -89,7 +89,7 @@ var coreMemoryRegex = regexp.MustCompile(`(?s)<core_memory>.*?</core_memory>\n*`
 // CoreMemoryProcessor retrieves the core memory persona and injects it.
 func CoreMemoryProcessor(store *memory.CoreStore) ContextProcessor {
 	return ProcessorFunc(
-		func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error {
 			if store == nil {
 				return nil
 			}
@@ -129,9 +129,6 @@ func CoreMemoryProcessor(store *memory.CoreStore) ContextProcessor {
 }
 
 // WorkspaceProcessor prepends pre-loaded workspace instructions to the system message.
-// The caller is responsible for loading the workspace (e.g. via runtime.LoadWorkspace)
-// and passing the resulting instruction string. This avoids a circular dependency since
-// runtime depends on context.
 func WorkspaceProcessor(instructions string) ContextProcessor {
 	return InstructionProcessor(instructions)
 }

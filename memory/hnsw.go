@@ -31,6 +31,7 @@ func NewHNSWStore(ctx context.Context, dsn string) (*HNSWStore, error) {
 	}
 
 	if err := db.Ping(); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("hnsw: ping sqlite: %w", err)
 	}
 

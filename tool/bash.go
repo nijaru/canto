@@ -3,8 +3,6 @@ package tool
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"os/exec"
 
 	"github.com/nijaru/canto/llm"
 )
@@ -16,7 +14,7 @@ type BashTool struct{}
 func (b *BashTool) Spec() llm.ToolSpec {
 	return llm.ToolSpec{
 		Name:        "bash",
-		Description: "Execute a bash command and return its output.",
+		Description: "Execute a bash command and return its output. WARNING: This tool executes arbitrary shell commands with no sandboxing. Only use with trusted inputs.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -43,12 +41,6 @@ func (b *BashTool) Execute(ctx context.Context, args string) (string, error) {
 		return "", err
 	}
 
-	cmd := exec.CommandContext(ctx, "bash", "-c", input.Command)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		// Return the combined output with a nil error so the LLM sees the actual
-		// command output needed to diagnose the failure (exit code alone is not useful).
-		return fmt.Sprintf("exit error: %v\n%s", err, string(out)), nil
-	}
-	return string(out), nil
+	executor := DefaultExecutor
+	return executor.Execute(ctx, "bash", "-c", input.Command)
 }

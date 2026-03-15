@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -35,8 +36,7 @@ type Event struct {
 func NewEvent(sessionID string, eventType EventType, data any) Event {
 	raw, err := json.Marshal(data)
 	if err != nil {
-		// This should only happen if data contains something that cannot be marshaled
-		// like a channel or a cyclic reference. We use a fallback error message.
+		slog.Warn("event marshal failed", "error", err)
 		raw, _ = json.Marshal(
 			map[string]string{"error": "failed to marshal event data: " + err.Error()},
 		)

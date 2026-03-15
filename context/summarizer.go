@@ -34,6 +34,8 @@ func NewSummarizeProcessor(maxTokens int, provider llm.Provider, model string) *
 
 func (p *SummarizeProcessor) Process(
 	ctx context.Context,
+	pr llm.Provider,
+	model string,
 	sess *session.Session,
 	req *llm.LLMRequest,
 ) error {
@@ -42,13 +44,10 @@ func (p *SummarizeProcessor) Process(
 	}
 
 	// 1. Calculate usage
-	currentTokens := 0
-	for _, m := range req.Messages {
-		currentTokens += len(m.Content) / 4
-	}
+	currentTokens := EstimateMessagesTokens(ctx, pr, model, req.Messages)
 
 	// 2. If usage <= Threshold, do nothing
-	if float64(currentTokens) <= float64(p.MaxTokens)*p.ThresholdPct {
+	if !exceedsThreshold(currentTokens, p.MaxTokens, p.ThresholdPct) {
 		return nil
 	}
 

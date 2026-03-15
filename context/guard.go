@@ -25,14 +25,13 @@ func NewTokenGuard(maxTokens int) *TokenGuardProcessor {
 
 func (p *TokenGuardProcessor) Process(
 	ctx context.Context,
+	pr llm.Provider,
+	model string,
 	sess *session.Session,
 	req *llm.LLMRequest,
 ) error {
 	// 1. Calculate current token usage
-	currentTokens := 0
-	for _, m := range req.Messages {
-		currentTokens += len(m.Content) / 4
-	}
+	currentTokens := EstimateMessagesTokens(ctx, pr, model, req.Messages)
 
 	// 2. Check against budget
 	if p.MaxTokens > 0 && currentTokens > p.MaxTokens {
@@ -54,6 +53,8 @@ func NewBudgetGuard(limit float64) *BudgetGuard {
 
 func (p *BudgetGuard) Process(
 	ctx context.Context,
+	pr llm.Provider,
+	model string,
 	sess *session.Session,
 	req *llm.LLMRequest,
 ) error {
@@ -61,10 +62,7 @@ func (p *BudgetGuard) Process(
 		return nil
 	}
 
-	totalCost := 0.0
-	for _, e := range sess.Events() {
-		totalCost += e.Cost
-	}
+	totalCost := sess.TotalCost()
 
 	if totalCost >= p.Limit {
 		return fmt.Errorf("budget exceeded: %.4f >= %.4f", totalCost, p.Limit)

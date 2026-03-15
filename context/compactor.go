@@ -12,6 +12,14 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
+const (
+	defaultThresholdPct = 0.60
+	defaultMinKeepTurns = 3
+	dirPerm             = 0o755
+	filePerm            = 0o644
+	largeToolThreshold  = 1000
+)
+
 // OffloadProcessor offloads large or old messages to the filesystem.
 // It is the first step in the compaction hierarchy.
 type OffloadProcessor struct {
@@ -26,14 +34,16 @@ type OffloadProcessor struct {
 func NewOffloadProcessor(maxTokens int, offloadDir string) *OffloadProcessor {
 	return &OffloadProcessor{
 		MaxTokens:    maxTokens,
-		ThresholdPct: 0.60,
+		ThresholdPct: defaultThresholdPct,
 		OffloadDir:   offloadDir,
-		MinKeepTurns: 3,
+		MinKeepTurns: defaultMinKeepTurns,
 	}
 }
 
 func (p *OffloadProcessor) Process(
 	ctx context.Context,
+	pr llm.Provider,
+	model string,
 	sess *session.Session,
 	req *llm.LLMRequest,
 ) error {
@@ -42,13 +52,10 @@ func (p *OffloadProcessor) Process(
 	}
 
 	// 1. Calculate usage
-	currentTokens := 0
-	for _, m := range req.Messages {
-		currentTokens += len(m.Content) / 4
-	}
+	currentTokens := EstimateMessagesTokens(ctx, pr, model, req.Messages)
 
 	// 2. If usage <= Threshold, do nothing
-	if float64(currentTokens) <= float64(p.MaxTokens)*p.ThresholdPct {
+	if !exceedsThreshold(currentTokens, p.MaxTokens, p.ThresholdPct) {
 		return nil
 	}
 
@@ -61,7 +68,7 @@ func (p *OffloadProcessor) Process(
 	// For messages older than that, if they are large tool results, offload them.
 
 	// Ensure offload directory exists
-	if err := os.MkdirAll(p.OffloadDir, 0o755); err != nil {
+	if err := os.MkdirAll(p.OffloadDir, dirPerm); err != nil {
 		return fmt.Errorf("failed to create offload dir: %w", err)
 	}
 
@@ -90,7 +97,7 @@ func (p *OffloadProcessor) Process(
 	var newMessages []llm.Message
 
 	for _, m := range candidates {
-		if m.Role == llm.RoleTool && len(m.Content) > 1000 {
+		if m.Role == llm.RoleTool && len(m.Content) > largeToolThreshold {
 			// Offload it
 			id := findEventID(m.Content)
 			if id == "" {
@@ -98,7 +105,7 @@ func (p *OffloadProcessor) Process(
 			}
 			path := filepath.Join(p.OffloadDir, id+".json")
 
-			if err := os.WriteFile(path, []byte(m.Content), 0o644); err != nil {
+			if err := os.WriteFile(path, []byte(m.Content), filePerm); err != nil {
 				return fmt.Errorf("failed to write offload file: %w", err)
 			}
 

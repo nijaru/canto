@@ -29,6 +29,14 @@ func (m *mockProvider) Models(ctx context.Context) ([]catwalk.Model, error) {
 	return m.models, nil
 }
 
+func (m *mockProvider) CountTokens(ctx context.Context, model string, messages []Message) (int, error) {
+	return 0, nil
+}
+
+func (m *mockProvider) Cost(ctx context.Context, model string, usage Usage) float64 {
+	return 0
+}
+
 func TestFailoverProvider(t *testing.T) {
 	p1 := &mockProvider{
 		id: "p1",

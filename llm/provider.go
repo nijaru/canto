@@ -79,6 +79,12 @@ type Provider interface {
 
 	// Models returns the list of models supported by this provider.
 	Models(ctx context.Context) ([]catwalk.Model, error)
+
+	// CountTokens returns the number of tokens in the given messages for a specific model.
+	CountTokens(ctx context.Context, model string, messages []Message) (int, error)
+
+	// Cost calculates the cost in USD for the given usage on a specific model.
+	Cost(ctx context.Context, model string, usage Usage) float64
 }
 
 // Stream defines the interface for a streaming LLM response.

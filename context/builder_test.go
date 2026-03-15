@@ -34,7 +34,7 @@ func TestBuilder_Build(t *testing.T) {
 		Model: "gpt-4o",
 	}
 
-	err := builder.Build(context.Background(), sess, req)
+	err := builder.Build(context.Background(), nil, "", sess, req)
 	if err != nil {
 		t.Fatalf("build failed: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestOffloadProcessor(t *testing.T) {
 	offloader := NewOffloadProcessor(1000, tempDir)
 	offloader.MinKeepTurns = 2 // Keep last 2 messages
 
-	err = offloader.Process(context.Background(), sess, req)
+	err = offloader.Process(context.Background(), nil, "", sess, req)
 	if err != nil {
 		t.Fatalf("offload failed: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestCoreMemoryProcessor_NoPersona(t *testing.T) {
 	req := &llm.LLMRequest{}
 
 	proc := CoreMemoryProcessor(store)
-	if err := proc.Process(context.Background(), sess, req); err != nil {
+	if err := proc.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// No persona set — messages should remain empty.
@@ -146,7 +146,7 @@ func TestCoreMemoryProcessor_InjectsBlock(t *testing.T) {
 	req := &llm.LLMRequest{}
 
 	proc := CoreMemoryProcessor(store)
-	if err := proc.Process(ctx, sess, req); err != nil {
+	if err := proc.Process(ctx, nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -186,7 +186,7 @@ func TestCoreMemoryProcessor_PrependToExistingSystemMessage(t *testing.T) {
 	}
 
 	proc := CoreMemoryProcessor(store)
-	if err := proc.Process(ctx, sess, req); err != nil {
+	if err := proc.Process(ctx, nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -230,7 +230,7 @@ func TestCoreMemoryProcessor_ReplacesExistingBlock(t *testing.T) {
 	}
 
 	proc := CoreMemoryProcessor(store)
-	if err := proc.Process(ctx, sess, req); err != nil {
+	if err := proc.Process(ctx, nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -253,7 +253,7 @@ func TestCoreMemoryProcessor_NilStore(t *testing.T) {
 	sess := session.New("sess-nil-store")
 	req := &llm.LLMRequest{}
 	proc := CoreMemoryProcessor(nil)
-	if err := proc.Process(context.Background(), sess, req); err != nil {
+	if err := proc.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error with nil store: %v", err)
 	}
 	if len(req.Messages) != 0 {
@@ -268,7 +268,7 @@ func TestWorkspaceProcessor_InjectsInstructions(t *testing.T) {
 	req := &llm.LLMRequest{}
 
 	proc := WorkspaceProcessor("Do good work.")
-	if err := proc.Process(context.Background(), sess, req); err != nil {
+	if err := proc.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(req.Messages) != 1 {
@@ -284,7 +284,7 @@ func TestWorkspaceProcessor_EmptyIsNoOp(t *testing.T) {
 	req := &llm.LLMRequest{}
 
 	proc := WorkspaceProcessor("")
-	if err := proc.Process(context.Background(), sess, req); err != nil {
+	if err := proc.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(req.Messages) != 0 {
@@ -302,7 +302,7 @@ func TestTokenGuard_PassingCase(t *testing.T) {
 			{Role: llm.RoleUser, Content: "hello"},
 		},
 	}
-	if err := guard.Process(context.Background(), sess, req); err != nil {
+	if err := guard.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -318,7 +318,7 @@ func TestTokenGuard_Exceeded(t *testing.T) {
 			},
 		},
 	}
-	err := guard.Process(context.Background(), sess, req)
+	err := guard.Process(context.Background(), nil, "", sess, req)
 	if err == nil {
 		t.Fatal("expected token budget error, got nil")
 	}
@@ -337,7 +337,7 @@ func TestTokenGuard_ZeroMaxTokensSkips(t *testing.T) {
 			{Role: llm.RoleUser, Content: big},
 		},
 	}
-	if err := guard.Process(context.Background(), sess, req); err != nil {
+	if err := guard.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("expected no error with zero limit, got: %v", err)
 	}
 }
@@ -353,7 +353,7 @@ func TestBudgetGuard_PassingCase(t *testing.T) {
 	sess.Append(e)
 
 	req := &llm.LLMRequest{}
-	if err := guard.Process(context.Background(), sess, req); err != nil {
+	if err := guard.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -367,7 +367,7 @@ func TestBudgetGuard_Exceeded(t *testing.T) {
 	sess.Append(e)
 
 	req := &llm.LLMRequest{}
-	err := guard.Process(context.Background(), sess, req)
+	err := guard.Process(context.Background(), nil, "", sess, req)
 	if err == nil {
 		t.Fatal("expected budget exceeded error, got nil")
 	}
@@ -385,7 +385,7 @@ func TestBudgetGuard_ZeroLimitSkips(t *testing.T) {
 	sess.Append(e)
 
 	req := &llm.LLMRequest{}
-	if err := guard.Process(context.Background(), sess, req); err != nil {
+	if err := guard.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("expected no error with zero limit, got: %v", err)
 	}
 }
@@ -399,7 +399,7 @@ func TestBudgetGuard_ExactlyAtLimit(t *testing.T) {
 	sess.Append(e)
 
 	req := &llm.LLMRequest{}
-	err := guard.Process(context.Background(), sess, req)
+	err := guard.Process(context.Background(), nil, "", sess, req)
 	// >= limit triggers error
 	if err == nil {
 		t.Fatal("expected budget exceeded error at exact limit, got nil")

@@ -25,6 +25,14 @@ func (m *mockProvider) Models(ctx context.Context) ([]catwalk.Model, error) {
 	return nil, nil
 }
 
+func (m *mockProvider) CountTokens(ctx context.Context, model string, messages []llm.Message) (int, error) {
+	return 0, nil
+}
+
+func (m *mockProvider) Cost(ctx context.Context, model string, usage llm.Usage) float64 {
+	return 0
+}
+
 func TestSummarizeProcessor(t *testing.T) {
 	sess := session.New("test-session")
 
@@ -58,7 +66,7 @@ func TestSummarizeProcessor(t *testing.T) {
 	}
 
 	processor := NewSummarizeProcessor(100, provider, "mock-model")
-	err := processor.Process(context.Background(), sess, req)
+	err := processor.Process(context.Background(), nil, "", sess, req)
 	if err != nil {
 		t.Fatalf("processor failed: %v", err)
 	}

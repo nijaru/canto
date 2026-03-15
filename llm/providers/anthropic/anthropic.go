@@ -2,7 +2,6 @@ package anthropic
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"charm.land/catwalk/pkg/catwalk"
@@ -27,6 +26,8 @@ func NewProvider(cfg catwalk.Provider) *Provider {
 
 	opts := []option.RequestOption{
 		option.WithAPIKey(apiKey),
+		// Required for tool use in some versions of the API
+		option.WithHeader("anthropic-beta", "tools-2024-05-16"),
 	}
 	if cfg.APIEndpoint != "" {
 		opts = append(opts, option.WithBaseURL(cfg.APIEndpoint))
@@ -49,12 +50,15 @@ func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMR
 		return nil, err
 	}
 
+	usage := llm.Usage{
+		InputTokens:  int(resp.Usage.InputTokens),
+		OutputTokens: int(resp.Usage.OutputTokens),
+		TotalTokens:  int(resp.Usage.InputTokens + resp.Usage.OutputTokens),
+	}
+	usage.Cost = p.Cost(ctx, req.Model, usage)
+
 	res := &llm.LLMResponse{
-		Usage: llm.Usage{
-			InputTokens:  int(resp.Usage.InputTokens),
-			OutputTokens: int(resp.Usage.OutputTokens),
-			TotalTokens:  int(resp.Usage.InputTokens + resp.Usage.OutputTokens),
-		},
+		Usage: usage,
 	}
 
 	for _, block := range resp.Content {
@@ -79,12 +83,36 @@ func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMR
 }
 
 func (p *Provider) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream, error) {
-	// TODO: Implement streaming for Anthropic
-	return nil, fmt.Errorf("streaming not implemented for anthropic yet")
+	params := p.convertRequest(req)
+	stream := p.client.Messages.NewStreaming(ctx, params)
+	return &Stream{stream: stream}, nil
 }
 
 func (p *Provider) Models(ctx context.Context) ([]catwalk.Model, error) {
 	return p.config.Models, nil
+}
+
+// CountTokens returns an estimate of the tokens in the given messages.
+func (p *Provider) CountTokens(ctx context.Context, model string, messages []llm.Message) (int, error) {
+	// For Phase 1, we use a simple heuristic.
+	total := 0
+	for _, m := range messages {
+		total += len(m.Content) / 4
+		for _, call := range m.Calls {
+			total += len(call.Function.Name)/4 + len(call.Function.Arguments)/4
+		}
+	}
+	return total, nil
+}
+
+// Cost calculates the cost in USD based on the model configuration.
+func (p *Provider) Cost(ctx context.Context, model string, usage llm.Usage) float64 {
+	for _, m := range p.config.Models {
+		if string(m.ID) == model {
+			return (float64(usage.InputTokens) * m.CostPer1MIn / 1_000_000) + (float64(usage.OutputTokens) * m.CostPer1MOut / 1_000_000)
+		}
+	}
+	return 0.0
 }
 
 func (p *Provider) convertRequest(req *llm.LLMRequest) sdk.MessageNewParams {
@@ -174,32 +202,105 @@ func (p *Provider) convertSchema(params any) sdk.ToolInputSchemaParam {
 		Type: constant.Object("object"),
 	}
 
-	// Canto ToolSpec.Parameters is usually the full JSON Schema object.
-	// Anthropic expects the 'properties' and 'required' fields.
+	if params == nil {
+		return schema
+	}
 
 	m, ok := params.(map[string]any)
 	if !ok {
-		// Fallback for simple properties map
+		// If it's not a map, we can't safely extract properties/required.
+		// Fallback to direct assignment if possible.
 		schema.Properties = params
 		return schema
 	}
 
-	// Case 1: Full JSON Schema object
+	// Safely extract properties
 	if props, ok := m["properties"]; ok {
 		schema.Properties = props
-		if req, ok := m["required"].([]any); ok {
-			for _, r := range req {
-				if s, ok := r.(string); ok {
-					schema.Required = append(schema.Required, s)
-				}
-			}
-		} else if req, ok := m["required"].([]string); ok {
-			schema.Required = req
-		}
 	} else {
-		// Case 2: Just the properties themselves
 		schema.Properties = m
 	}
 
+	// Safely extract required
+	if req, ok := m["required"]; ok {
+		switch r := req.(type) {
+		case []any:
+			for _, item := range r {
+				if s, ok := item.(string); ok {
+					schema.Required = append(schema.Required, s)
+				}
+			}
+		case []string:
+			schema.Required = r
+		}
+	}
+
 	return schema
+}
+
+// Stream implements llm.Stream for Anthropic.
+type Stream struct {
+	// The SDK returns a pointer to a struct from an internal package.
+	// We use the same type returned by MessageService.NewStreaming.
+	stream interface {
+		Next() bool
+		Current() sdk.MessageStreamEventUnion
+		Err() error
+		Close() error
+	}
+	err        error
+	activeCall *llm.ToolCall
+}
+
+func (s *Stream) Next() (*llm.Chunk, bool) {
+	for s.stream.Next() {
+		event := s.stream.Current()
+
+		switch event.Type {
+		case "content_block_start":
+			start := event.AsContentBlockStart()
+			if start.ContentBlock.Type == "tool_use" {
+				s.activeCall = &llm.ToolCall{
+					ID:   start.ContentBlock.ID,
+					Type: "function",
+				}
+				s.activeCall.Function.Name = start.ContentBlock.Name
+				// Emit the ID and Name immediately
+				return &llm.Chunk{
+					Calls: []llm.ToolCall{*s.activeCall},
+				}, true
+			}
+		case "content_block_delta":
+			delta := event.AsContentBlockDelta()
+			switch delta.Delta.Type {
+			case "text_delta":
+				return &llm.Chunk{Content: delta.Delta.Text}, true
+			case "input_json_delta":
+				if s.activeCall != nil {
+					call := *s.activeCall
+					call.Function.Arguments = delta.Delta.PartialJSON
+					return &llm.Chunk{
+						Calls: []llm.ToolCall{call},
+					}, true
+				}
+			}
+		case "content_block_stop":
+			s.activeCall = nil
+		case "message_stop":
+			return nil, false
+		}
+	}
+
+	if err := s.stream.Err(); err != nil {
+		s.err = err
+	}
+	return nil, false
+}
+
+func (s *Stream) Err() error {
+	return s.err
+}
+
+func (s *Stream) Close() error {
+	return s.stream.Close()
 }

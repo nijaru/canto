@@ -47,6 +47,14 @@ func (m *MockProvider) Models(ctx context.Context) ([]catwalk.Model, error) {
 	return nil, nil
 }
 
+func (m *MockProvider) CountTokens(ctx context.Context, model string, messages []llm.Message) (int, error) {
+	return 0, nil
+}
+
+func (m *MockProvider) Cost(ctx context.Context, model string, usage llm.Usage) float64 {
+	return 0
+}
+
 func TestPhase1CoreLoop(t *testing.T) {
 	tmpDir := t.TempDir()
 	store, err := session.NewJSONLStore(tmpDir)

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -20,7 +21,7 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error
 	}
 
 	// Build context
-	if err := a.Builder.Build(ctx, s, req); err != nil {
+	if err := a.Builder.Build(ctx, a.Provider, a.Model, s, req); err != nil {
 		return StepResult{}, err
 	}
 
@@ -111,17 +112,23 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error
 				if execErr != nil {
 					output = fmt.Sprintf("%s\nError: %s", output, execErr)
 					if a.Hooks != nil {
-						a.Hooks.Run(ctx, hook.EventPostToolUseFailure, s, map[string]any{
+						_, hookErr := a.Hooks.Run(ctx, hook.EventPostToolUseFailure, s, map[string]any{
 							"tool":  call.Function.Name,
 							"error": execErr.Error(),
 						})
+						if hookErr != nil {
+							slog.Warn("PostToolUseFailure hook failed", "tool", call.Function.Name, "error", hookErr)
+						}
 					}
 				} else {
 					if a.Hooks != nil {
-						a.Hooks.Run(ctx, hook.EventPostToolUse, s, map[string]any{
+						_, hookErr := a.Hooks.Run(ctx, hook.EventPostToolUse, s, map[string]any{
 							"tool":   call.Function.Name,
 							"output": toolOutput,
 						})
+						if hookErr != nil {
+							slog.Warn("PostToolUse hook failed", "tool", call.Function.Name, "error", hookErr)
+						}
 					}
 				}
 			} else {
