@@ -29,7 +29,7 @@ func TestSQLiteVectorStore(t *testing.T) {
 
 	// 2. Search
 	query := []float32{1.0, 0.1}
-	results, err := store.Search(ctx, query, 2)
+	results, err := store.Search(ctx, query, 2, nil)
 	if err != nil {
 		t.Fatalf("search failed: %v", err)
 	}

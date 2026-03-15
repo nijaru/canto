@@ -14,7 +14,11 @@ import (
 // VectorStore is an interface for storing and searching high-dimensional vectors.
 type VectorStore interface {
 	Upsert(ctx context.Context, id string, vector []float32, metadata map[string]any) error
-	Search(ctx context.Context, vector []float32, k int) ([]SearchResult, error)
+	// Search finds the k nearest vectors to the query.
+	// filter is an optional set of metadata key-value constraints; implementations
+	// may ignore filters they do not support (e.g. SQLite brute-force).
+	Search(ctx context.Context, vector []float32, k int, filter map[string]any) ([]SearchResult, error)
+	Delete(ctx context.Context, id string) error
 }
 
 // SearchResult represents a match in the vector store.
@@ -79,7 +83,9 @@ func (s *SQLiteVectorStore) Upsert(ctx context.Context, id string, vector []floa
 }
 
 // Search performs a brute-force cosine similarity search.
-func (s *SQLiteVectorStore) Search(ctx context.Context, queryVector []float32, k int) ([]SearchResult, error) {
+// The filter parameter is accepted for interface compatibility but ignored;
+// the SQLite implementation scans all vectors regardless.
+func (s *SQLiteVectorStore) Search(ctx context.Context, queryVector []float32, k int, _ map[string]any) ([]SearchResult, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT id, vector, metadata FROM vectors")
 	if err != nil {
 		return nil, err
@@ -166,4 +172,10 @@ func cosineSimilarity(v1, v2 []float32) float32 {
 
 func (s *SQLiteVectorStore) Close() error {
 	return s.db.Close()
+}
+
+// Delete removes a vector from the store by ID.
+func (s *SQLiteVectorStore) Delete(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM vectors WHERE id = ?", id)
+	return err
 }
