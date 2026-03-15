@@ -101,7 +101,6 @@ func (p *OffloadProcessor) Process(
 				"[Content offloaded to %s. Use read_offload tool to retrieve.]",
 				path,
 			)
-			// TODO: Add metadata/ref to allow retrieval
 		}
 		newMessages = append(newMessages, m)
 	}
@@ -112,13 +111,4 @@ func (p *OffloadProcessor) Process(
 	req.Messages = newMessages
 
 	return nil
-}
-
-// Helper to estimate tokens (same as in guard.go)
-func estimateTokens(messages []llm.Message) int {
-	tokens := 0
-	for _, m := range messages {
-		tokens += len(m.Content) / 4
-	}
-	return tokens
 }

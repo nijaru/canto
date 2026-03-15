@@ -123,10 +123,8 @@ func (s *HNSWStore) Upsert(
 		return fmt.Errorf("hnsw: sqlite insert: %w", err)
 	}
 
-	// Update in-memory graph
-	if ok := s.graph.Delete(id); ok {
-		// Existing node successfully deleted from graph structure
-	}
+	// Update in-memory graph (delete old node if present, then add updated one)
+	s.graph.Delete(id)
 	s.graph.Add(hnsw.MakeNode(id, vector))
 
 	return nil
@@ -152,7 +150,8 @@ func (s *HNSWStore) Search(
 	results := make([]SearchResult, 0, len(nodes))
 	for _, node := range nodes {
 		var mData string
-		err := s.db.QueryRowContext(ctx, "SELECT metadata FROM vectors WHERE id = ?", node.Key).Scan(&mData)
+		err := s.db.QueryRowContext(ctx, "SELECT metadata FROM vectors WHERE id = ?", node.Key).
+			Scan(&mData)
 		if err != nil {
 			// If node exists in memory index but not disk, ignore cleanly
 			if err == sql.ErrNoRows {

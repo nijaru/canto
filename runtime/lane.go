@@ -121,10 +121,18 @@ func (m *LaneManager) runLane(ctx context.Context, l *lane) {
 		m.mu.Unlock()
 		close(l.done)
 
-		// Drain remaining requests to unblock waiting callers
-		close(l.requests)
-		for req := range l.requests {
-			req.Result <- fmt.Errorf("lane shutting down")
+		// Drain any buffered requests. Do NOT close(l.requests): closing while
+		// Execute callers may still hold a reference to this lane would cause a
+		// send-on-closed-channel panic. After close(l.done) no new sends will
+		// succeed (callers see done and continue to a new lane), so the buffer
+		// is bounded and this loop terminates.
+		for {
+			select {
+			case req := <-l.requests:
+				req.Result <- fmt.Errorf("lane shutting down")
+			default:
+				return
+			}
 		}
 	}()
 

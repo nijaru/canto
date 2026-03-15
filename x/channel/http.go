@@ -104,8 +104,13 @@ func (a *HTTPAdapter) handleChat(w http.ResponseWriter, r *http.Request) {
 		resp.Messages[i] = m.Content
 	}
 
+	data, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	w.Write(data)
 }
 
 func (a *HTTPAdapter) handleStream(w http.ResponseWriter, r *http.Request) {

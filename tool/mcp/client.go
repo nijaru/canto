@@ -78,7 +78,7 @@ func (c *Client) initialize() error {
 // DiscoverTools fetches available tools from the MCP server.
 func (c *Client) DiscoverTools() ([]tool.Tool, error) {
 	// A complete implementation would send tools/list request and parse the result.
-	return nil, nil
+	return nil, fmt.Errorf("mcp: DiscoverTools not implemented")
 }
 
 // CallTool executes a tool on the MCP server.

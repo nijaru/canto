@@ -263,21 +263,33 @@ func TestCoreMemoryProcessor_NilStore(t *testing.T) {
 
 // --- WorkspaceProcessor ---
 
-func TestWorkspaceProcessor_NoOp(t *testing.T) {
-	dir := t.TempDir()
-	agentsPath := filepath.Join(dir, "AGENTS.md")
-	if err := os.WriteFile(agentsPath, []byte("# Project Instructions\nDo good work."), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
+func TestWorkspaceProcessor_InjectsInstructions(t *testing.T) {
 	sess := session.New("sess-workspace")
 	req := &llm.LLMRequest{}
 
-	proc := WorkspaceProcessor(dir)
+	proc := WorkspaceProcessor("Do good work.")
 	if err := proc.Process(context.Background(), sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Current implementation is a no-op; just verify it doesn't error.
+	if len(req.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(req.Messages))
+	}
+	if req.Messages[0].Content != "Do good work." {
+		t.Errorf("unexpected content: %s", req.Messages[0].Content)
+	}
+}
+
+func TestWorkspaceProcessor_EmptyIsNoOp(t *testing.T) {
+	sess := session.New("sess-workspace-empty")
+	req := &llm.LLMRequest{}
+
+	proc := WorkspaceProcessor("")
+	if err := proc.Process(context.Background(), sess, req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(req.Messages) != 0 {
+		t.Errorf("expected no messages for empty instructions, got %d", len(req.Messages))
+	}
 }
 
 // --- TokenGuardProcessor ---

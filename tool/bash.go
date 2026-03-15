@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os/exec"
 
 	"github.com/nijaru/canto/llm"
@@ -45,7 +46,9 @@ func (b *BashTool) Execute(ctx context.Context, args string) (string, error) {
 	cmd := exec.CommandContext(ctx, "bash", "-c", input.Command)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(out), err
+		// Return the combined output with a nil error so the LLM sees the actual
+		// command output needed to diagnose the failure (exit code alone is not useful).
+		return fmt.Sprintf("exit error: %v\n%s", err, string(out)), nil
 	}
 	return string(out), nil
 }

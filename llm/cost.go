@@ -14,6 +14,7 @@ var (
 	inputTokens    metric.Int64Counter
 	outputTokens   metric.Int64Counter
 	totalCostUsage metric.Float64Counter
+	metricsOK      bool
 )
 
 func init() {
@@ -24,7 +25,7 @@ func init() {
 		metric.WithUnit("{token}"),
 	)
 	if err != nil {
-		panic(err)
+		return
 	}
 
 	outputTokens, err = meter.Int64Counter(
@@ -33,7 +34,7 @@ func init() {
 		metric.WithUnit("{token}"),
 	)
 	if err != nil {
-		panic(err)
+		return
 	}
 
 	totalCostUsage, err = meter.Float64Counter(
@@ -42,8 +43,10 @@ func init() {
 		metric.WithUnit("USD"),
 	)
 	if err != nil {
-		panic(err)
+		return
 	}
+
+	metricsOK = true
 }
 
 // CalculateCost computes the cost of an LLM call based on token counts and model pricing.
@@ -69,11 +72,12 @@ func (b *Budget) Add(ctx context.Context, model catwalk.Model, usage Usage) {
 	cost := CalculateCost(model, usage)
 	b.TotalCost += cost
 
-	attrs := metric.WithAttributes(
-		attribute.String("gen_ai.request.model", model.Name),
-	)
-
-	inputTokens.Add(ctx, int64(usage.InputTokens), attrs)
-	outputTokens.Add(ctx, int64(usage.OutputTokens), attrs)
-	totalCostUsage.Add(ctx, cost, attrs)
+	if metricsOK {
+		attrs := metric.WithAttributes(
+			attribute.String("gen_ai.request.model", model.Name),
+		)
+		inputTokens.Add(ctx, int64(usage.InputTokens), attrs)
+		outputTokens.Add(ctx, int64(usage.OutputTokens), attrs)
+		totalCostUsage.Add(ctx, cost, attrs)
+	}
 }

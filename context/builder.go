@@ -101,7 +101,12 @@ func CoreMemoryProcessor(store *memory.CoreStore) ContextProcessor {
 				return nil
 			}
 
-			memBlock := fmt.Sprintf("<core_memory>\nAgent Name: %s\nPersona Context: %s\nDirectives: %s\n</core_memory>", persona.Name, persona.Description, persona.Directives)
+			memBlock := fmt.Sprintf(
+				"<core_memory>\nAgent Name: %s\nPersona Context: %s\nDirectives: %s\n</core_memory>",
+				persona.Name,
+				persona.Description,
+				persona.Directives,
+			)
 
 			// Prepend or replace system instruction if not already there
 			for i, m := range req.Messages {
@@ -123,14 +128,10 @@ func CoreMemoryProcessor(store *memory.CoreStore) ContextProcessor {
 	)
 }
 
-// WorkspaceProcessor prepends project-wide instructions and persona from the workspace.
-func WorkspaceProcessor(root string) ContextProcessor {
-	return ProcessorFunc(
-		func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
-			// Use runtime's LoadWorkspace if needed, but we don't want to import runtime here
-			// because runtime depends on context.
-			// Instead, we should pass the prompts directly or have a generic interface.
-			return nil
-		},
-	)
+// WorkspaceProcessor prepends pre-loaded workspace instructions to the system message.
+// The caller is responsible for loading the workspace (e.g. via runtime.LoadWorkspace)
+// and passing the resulting instruction string. This avoids a circular dependency since
+// runtime depends on context.
+func WorkspaceProcessor(instructions string) ContextProcessor {
+	return InstructionProcessor(instructions)
 }

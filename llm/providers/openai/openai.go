@@ -149,37 +149,39 @@ type Stream struct {
 }
 
 func (s *Stream) Next() (*llm.Chunk, bool) {
-	resp, err := s.stream.Recv()
-	if err != nil {
-		if errors.Is(err, io.EOF) {
+	for {
+		resp, err := s.stream.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil, false
+			}
+			s.err = err
 			return nil, false
 		}
-		s.err = err
-		return nil, false
-	}
 
-	if len(resp.Choices) == 0 {
-		return nil, true // Empty chunk, try again?
-	}
-
-	choice := resp.Choices[0]
-	chunk := &llm.Chunk{
-		Content: choice.Delta.Content,
-	}
-
-	if len(choice.Delta.ToolCalls) > 0 {
-		chunk.Calls = make([]llm.ToolCall, len(choice.Delta.ToolCalls))
-		for i, call := range choice.Delta.ToolCalls {
-			chunk.Calls[i] = llm.ToolCall{
-				ID:   call.ID,
-				Type: string(call.Type),
-			}
-			chunk.Calls[i].Function.Name = call.Function.Name
-			chunk.Calls[i].Function.Arguments = call.Function.Arguments
+		if len(resp.Choices) == 0 {
+			continue // keepalive frame — skip and read next
 		}
-	}
 
-	return chunk, true
+		choice := resp.Choices[0]
+		chunk := &llm.Chunk{
+			Content: choice.Delta.Content,
+		}
+
+		if len(choice.Delta.ToolCalls) > 0 {
+			chunk.Calls = make([]llm.ToolCall, len(choice.Delta.ToolCalls))
+			for i, call := range choice.Delta.ToolCalls {
+				chunk.Calls[i] = llm.ToolCall{
+					ID:   call.ID,
+					Type: string(call.Type),
+				}
+				chunk.Calls[i].Function.Name = call.Function.Name
+				chunk.Calls[i].Function.Arguments = call.Function.Arguments
+			}
+		}
+
+		return chunk, true
+	}
 }
 
 func (s *Stream) Err() error {

@@ -28,17 +28,17 @@ func NewRegistry() *Registry {
 
 // Register adds a provider to the registry.
 func (r *Registry) Register(p Provider) {
+	// Fetch models before acquiring the lock to avoid blocking concurrent
+	// registry operations during a potentially slow network call.
+	models, _ := p.Models(context.Background())
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.providers[p.ID()] = p
 
-	// Pre-populate resolver from provider's static model list if available
-	models, err := p.Models(context.Background())
-	if err == nil {
-		for _, m := range models {
-			r.models[m.ID] = m
-			r.addResolver(m.ID, p.ID())
-		}
+	for _, m := range models {
+		r.models[m.ID] = m
+		r.addResolver(m.ID, p.ID())
 	}
 }
 

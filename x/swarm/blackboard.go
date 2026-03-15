@@ -48,7 +48,7 @@ type Blackboard interface {
 // Suitable for single-process swarms. For distributed use, replace with a
 // Redis or SQLite-backed implementation that satisfies the same interface.
 type MemoryBlackboard struct {
-	mu    sync.Mutex
+	mu    sync.RWMutex
 	kv    map[string]any
 	tasks map[string]*Task
 }
@@ -69,13 +69,15 @@ func (b *MemoryBlackboard) Post(_ context.Context, agentID, key string, value an
 }
 
 func (b *MemoryBlackboard) Read(_ context.Context, key string) (any, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 	return b.kv[key], nil
 }
 
-func (b *MemoryBlackboard) ReadAgent(ctx context.Context, agentID, key string) (any, error) {
-	return b.Read(ctx, agentID+"/"+key)
+func (b *MemoryBlackboard) ReadAgent(_ context.Context, agentID, key string) (any, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.kv[agentID+"/"+key], nil
 }
 
 func (b *MemoryBlackboard) ClaimTask(_ context.Context, agentID, taskID string) (bool, error) {
@@ -94,8 +96,8 @@ func (b *MemoryBlackboard) ClaimTask(_ context.Context, agentID, taskID string) 
 }
 
 func (b *MemoryBlackboard) ListUnclaimed(_ context.Context) ([]Task, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 	var out []Task
 	for _, t := range b.tasks {
 		if t.ClaimedBy == "" {

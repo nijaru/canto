@@ -128,6 +128,9 @@ func (s *SQLiteStore) Load(ctx context.Context, sessionID string) (*Session, err
 		e.Timestamp = t
 		sess.Append(e)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return sess, nil
 }
@@ -167,6 +170,9 @@ func (s *SQLiteStore) Search(ctx context.Context, sessionID string, query string
 		e.Type = EventType(typeStr)
 		e.Timestamp = t
 		res = append(res, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return res, nil
 }

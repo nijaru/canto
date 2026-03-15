@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/nijaru/canto/session"
 	"github.com/robfig/cron/v3"
@@ -102,7 +103,7 @@ func (h *Heartbeat) tick(ctx context.Context, e HeartbeatEntry) {
 	sess := e.SessionFn()
 
 	if e.MaxCost > 0 && sess.TotalCost() >= e.MaxCost {
-		fmt.Printf("heartbeat %s: cost budget %.4f exceeded (%.4f), skipping tick\n",
+		log.Printf("heartbeat %s: cost budget %.4f exceeded (%.4f), skipping tick",
 			e.ID, e.MaxCost, sess.TotalCost())
 		return
 	}
@@ -113,6 +114,6 @@ func (h *Heartbeat) tick(ctx context.Context, e HeartbeatEntry) {
 	if err := <-h.runner.lanes.Execute(ctx, sess.ID(), func(ctx context.Context) error {
 		return h.runner.execute(ctx, sess.ID())
 	}); err != nil {
-		fmt.Printf("heartbeat %s: tick failed: %v\n", e.ID, err)
+		log.Printf("heartbeat %s: tick failed: %v", e.ID, err)
 	}
 }
