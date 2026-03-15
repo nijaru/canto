@@ -24,7 +24,13 @@ func NewBuilder(processors ...ContextProcessor) *Builder {
 }
 
 // Build executes the processor chain to transform the session and request.
-func (b *Builder) Build(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error {
+func (b *Builder) Build(
+	ctx context.Context,
+	p llm.Provider,
+	model string,
+	sess *session.Session,
+	req *llm.LLMRequest,
+) error {
 	for _, cp := range b.Processors {
 		if err := cp.Process(ctx, p, model, sess, req); err != nil {
 			return err
@@ -126,9 +132,4 @@ func CoreMemoryProcessor(store *memory.CoreStore) ContextProcessor {
 			return nil
 		},
 	)
-}
-
-// WorkspaceProcessor prepends pre-loaded workspace instructions to the system message.
-func WorkspaceProcessor(instructions string) ContextProcessor {
-	return InstructionProcessor(instructions)
 }

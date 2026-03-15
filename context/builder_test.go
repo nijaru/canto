@@ -261,37 +261,6 @@ func TestCoreMemoryProcessor_NilStore(t *testing.T) {
 	}
 }
 
-// --- WorkspaceProcessor ---
-
-func TestWorkspaceProcessor_InjectsInstructions(t *testing.T) {
-	sess := session.New("sess-workspace")
-	req := &llm.LLMRequest{}
-
-	proc := WorkspaceProcessor("Do good work.")
-	if err := proc.Process(context.Background(), nil, "", sess, req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(req.Messages) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(req.Messages))
-	}
-	if req.Messages[0].Content != "Do good work." {
-		t.Errorf("unexpected content: %s", req.Messages[0].Content)
-	}
-}
-
-func TestWorkspaceProcessor_EmptyIsNoOp(t *testing.T) {
-	sess := session.New("sess-workspace-empty")
-	req := &llm.LLMRequest{}
-
-	proc := WorkspaceProcessor("")
-	if err := proc.Process(context.Background(), nil, "", sess, req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(req.Messages) != 0 {
-		t.Errorf("expected no messages for empty instructions, got %d", len(req.Messages))
-	}
-}
-
 // --- TokenGuardProcessor ---
 
 func TestTokenGuard_PassingCase(t *testing.T) {
