@@ -143,14 +143,14 @@ func (t *ArchivalMemorySearchTool) Execute(ctx context.Context, args string) (st
 		if !ok {
 			continue
 		}
-		
+
 		content, ok := contentVal.(string)
 		if !ok {
 			content = fmt.Sprintf("%v", contentVal)
 		}
-		
+
 		source, _ := r.Metadata["source"].(string)
-		
+
 		hits = append(hits, hit{
 			Content: content,
 			Source:  source,

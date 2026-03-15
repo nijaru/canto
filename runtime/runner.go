@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/nijaru/canto/agent"
+	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/session"
 )
 
@@ -14,6 +15,7 @@ type Runner struct {
 	Store session.Store
 	Agent *agent.Agent
 	lanes *LaneManager
+	Hooks *hook.Runner
 }
 
 // NewRunner creates a Runner with per-session lane serialization enabled.
@@ -22,6 +24,7 @@ func NewRunner(s session.Store, a *agent.Agent) *Runner {
 		Store: s,
 		Agent: a,
 		lanes: NewLaneManager(),
+		Hooks: hook.NewRunner(),
 	}
 }
 
@@ -39,6 +42,13 @@ func (r *Runner) execute(ctx context.Context, sessionID string) error {
 	if err != nil {
 		return err
 	}
+
+	if _, err := r.Hooks.Run(ctx, hook.EventSessionStart, sess, nil); err != nil {
+		return err
+	}
+	defer func() {
+		r.Hooks.Run(context.Background(), hook.EventSessionEnd, sess, nil)
+	}()
 
 	// 2. Capture initial event count for durability
 	initialEvents := sess.Events()

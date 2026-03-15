@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -21,6 +22,15 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error
 	// Build context
 	if err := a.Builder.Build(ctx, s, req); err != nil {
 		return StepResult{}, err
+	}
+
+	if a.Hooks != nil {
+		_, err := a.Hooks.Run(ctx, hook.EventUserPromptSubmit, s, map[string]any{
+			"model": a.Model,
+		})
+		if err != nil {
+			return StepResult{}, err
+		}
 	}
 
 	resp, err := a.Provider.Generate(ctx, req)
@@ -62,11 +72,37 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error
 		go func(i int, call llm.ToolCall) {
 			defer wg.Done()
 			var output string
+
+			if a.Hooks != nil {
+				_, err := a.Hooks.Run(ctx, hook.EventPreToolUse, s, map[string]any{
+					"tool": call.Function.Name,
+					"args": call.Function.Arguments,
+				})
+				if err != nil {
+					output = fmt.Sprintf("Error (Hook Blocked): %s", err)
+					results[i] = toolResult{call: call, output: output}
+					return
+				}
+			}
+
 			if a.Tools != nil {
 				var execErr error
 				output, execErr = a.Tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
 				if execErr != nil {
 					output = fmt.Sprintf("Error: %s", execErr)
+					if a.Hooks != nil {
+						a.Hooks.Run(ctx, hook.EventPostToolUseFailure, s, map[string]any{
+							"tool":  call.Function.Name,
+							"error": execErr.Error(),
+						})
+					}
+				} else {
+					if a.Hooks != nil {
+						a.Hooks.Run(ctx, hook.EventPostToolUse, s, map[string]any{
+							"tool":   call.Function.Name,
+							"output": output,
+						})
+					}
 				}
 			} else {
 				output = fmt.Sprintf("Error: no tool registry configured; cannot execute %q", call.Function.Name)
@@ -124,6 +160,10 @@ func (a *Agent) Turn(ctx context.Context, s *session.Session) (StepResult, error
 
 	if steps >= a.MaxSteps {
 		return StepResult{}, fmt.Errorf("maximum tool calling steps reached (%d)", a.MaxSteps)
+	}
+
+	if a.Hooks != nil {
+		a.Hooks.Run(ctx, hook.EventStop, s, nil)
 	}
 
 	return result, nil

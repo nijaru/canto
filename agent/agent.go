@@ -2,6 +2,7 @@ package agent
 
 import (
 	ccontext "github.com/nijaru/canto/context"
+	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/tool"
 )
@@ -15,6 +16,7 @@ type Agent struct {
 	Provider     llm.Provider
 	Tools        *tool.Registry
 	Builder      *ccontext.Builder
+	Hooks        *hook.Runner
 }
 
 // New creates a new agent with a default context builder chain.
@@ -26,6 +28,7 @@ func New(id, instructions, model string, p llm.Provider, t *tool.Registry) *Agen
 		MaxSteps:     10, // Default safety break
 		Provider:     p,
 		Tools:        t,
+		Hooks:        hook.NewRunner(),
 	}
 
 	a.Builder = ccontext.NewBuilder(

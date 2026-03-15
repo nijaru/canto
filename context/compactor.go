@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -18,6 +19,7 @@ type OffloadProcessor struct {
 	ThresholdPct float64
 	OffloadDir   string
 	MinKeepTurns int
+	Hooks        *hook.Runner
 }
 
 // NewOffloadProcessor creates a new offload processor.
@@ -48,6 +50,10 @@ func (p *OffloadProcessor) Process(
 	// 2. If usage <= Threshold, do nothing
 	if float64(currentTokens) <= float64(p.MaxTokens)*p.ThresholdPct {
 		return nil
+	}
+
+	if p.Hooks != nil {
+		p.Hooks.Run(ctx, hook.EventPreCompact, sess, nil)
 	}
 
 	// 3. Select messages to offload
