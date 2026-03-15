@@ -44,8 +44,9 @@ func (r *Runner) execute(ctx context.Context, sessionID string) error {
 	initialEvents := sess.Events()
 	initialCount := len(initialEvents)
 
-	// 3. Execute agent turn
-	if err := r.Agent.Turn(ctx, sess); err != nil {
+	// 3. Execute agent turn (handoff result ignored at this layer;
+	//    graph/swarm handle routing above the Runner).
+	if _, err := r.Agent.Turn(ctx, sess); err != nil {
 		return err
 	}
 

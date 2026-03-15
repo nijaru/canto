@@ -8,20 +8,22 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-// Step executes a single turn of the agentic loop.
-func (a *Agent) Step(ctx context.Context, s *session.Session) error {
+// Step executes a single turn of the agentic loop and returns its result.
+// If any tool call produces a Handoff payload targeting a known peer agent,
+// the result's Handoff field is set so callers can route accordingly.
+func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error) {
 	req := &llm.LLMRequest{
 		Model: a.Model,
 	}
 
 	// Build context
 	if err := a.Builder.Build(ctx, s, req); err != nil {
-		return err
+		return StepResult{}, err
 	}
 
 	resp, err := a.Provider.Generate(ctx, req)
 	if err != nil {
-		return err
+		return StepResult{}, err
 	}
 
 	// Record assistant response
@@ -33,13 +35,19 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) error {
 	s.Append(session.NewEvent(s.ID(), session.EventTypeMessageAdded, msg))
 
 	// Execute tools and append results
+	var handoffTargets []string
+	if a.Tools != nil {
+		for _, spec := range a.Tools.Specs() {
+			handoffTargets = append(handoffTargets, spec.Name)
+		}
+	}
 	for _, call := range resp.Calls {
 		var output string
 		if a.Tools != nil {
-			var err error
-			output, err = a.Tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
-			if err != nil {
-				output = fmt.Sprintf("Error: %s", err)
+			var execErr error
+			output, execErr = a.Tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
+			if execErr != nil {
+				output = fmt.Sprintf("Error: %s", execErr)
 			}
 		} else {
 			output = fmt.Sprintf("Error: no tool registry configured; cannot execute %q", call.Function.Name)
@@ -54,27 +62,36 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) error {
 		s.Append(session.NewEvent(s.ID(), session.EventTypeMessageAdded, toolMsg))
 	}
 
-	return nil
+	// Check for a handoff in the tool results just appended.
+	h := extractHandoff(s, handoffTargets)
+	return StepResult{Handoff: h}, nil
 }
 
-// Turn executes one or more steps until the agent finishes its response
-// or makes tool calls.
-func (a *Agent) Turn(ctx context.Context, s *session.Session) error {
+// Turn executes one or more steps until the agent finishes (no pending tool
+// calls) or a handoff is requested, or MaxSteps is reached.
+// The returned StepResult reflects the final step's outcome.
+func (a *Agent) Turn(ctx context.Context, s *session.Session) (StepResult, error) {
 	steps := 0
+	var result StepResult
 	for steps < a.MaxSteps {
-		err := a.Step(ctx, s)
+		var err error
+		result, err = a.Step(ctx, s)
 		if err != nil {
-			return err
+			return StepResult{}, err
 		}
 		steps++
 
-		// Check if the last message in the session is a tool response.
-		// If it is, we should call the model again to process the results.
+		// If a handoff was requested, stop immediately so the caller can route.
+		if result.Handoff != nil {
+			return result, nil
+		}
+
+		// Continue only if the last message is a tool result (model must
+		// process it). Any other role means the agent has finished.
 		messages := s.Messages()
 		if len(messages) == 0 {
 			break
 		}
-
 		last := messages[len(messages)-1]
 		if last.Role != llm.RoleTool {
 			break
@@ -82,8 +99,8 @@ func (a *Agent) Turn(ctx context.Context, s *session.Session) error {
 	}
 
 	if steps >= a.MaxSteps {
-		return fmt.Errorf("maximum tool calling steps reached (%d)", a.MaxSteps)
+		return StepResult{}, fmt.Errorf("maximum tool calling steps reached (%d)", a.MaxSteps)
 	}
 
-	return nil
+	return result, nil
 }

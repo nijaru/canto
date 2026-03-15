@@ -37,7 +37,7 @@ func TestAgentTurn(t *testing.T) {
 		Content: "Hi!",
 	}))
 
-	err := a.Turn(context.Background(), s)
+	_, err := a.Turn(context.Background(), s)
 	if err != nil {
 		t.Fatal(err)
 	}

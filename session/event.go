@@ -18,6 +18,7 @@ const (
 	EventTypeMetaUpdated    EventType = "meta_updated"
 	EventTypeCompaction     EventType = "compaction"
 	EventTypeContextOffload EventType = "context_offload"
+	EventTypeHandoff        EventType = "handoff"
 )
 
 // Event is a single append-only fact in a session.
