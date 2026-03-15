@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"sync"
 	"time"
 
 	"github.com/nijaru/canto/session"
@@ -130,6 +131,7 @@ func (h *CommandHook) Execute(ctx context.Context, payload *HookPayload) *HookRe
 
 // Runner manages and executes hooks.
 type Runner struct {
+	mu    sync.RWMutex
 	hooks []Hook
 }
 
@@ -140,6 +142,8 @@ func NewRunner() *Runner {
 
 // Register adds a hook to the runner.
 func (r *Runner) Register(h Hook) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.hooks = append(r.hooks, h)
 }
 
@@ -154,7 +158,12 @@ func (r *Runner) Run(ctx context.Context, event HookEvent, sess *session.Session
 
 	var results []*HookResult
 
-	for _, h := range r.hooks {
+	r.mu.RLock()
+	hooks := make([]Hook, len(r.hooks))
+	copy(hooks, r.hooks)
+	r.mu.RUnlock()
+
+	for _, h := range hooks {
 		matches := false
 		for _, e := range h.Events() {
 			if e == event {

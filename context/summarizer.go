@@ -85,11 +85,28 @@ func (p *SummarizeProcessor) Process(
 	// We format the older messages into a string to prompt the LLM to summarize them
 	var sb strings.Builder
 	for _, m := range candidates {
-		name := string(m.Role)
+		role := strings.ToUpper(string(m.Role))
 		if m.Name != "" {
-			name = fmt.Sprintf("%s (%s)", m.Role, m.Name)
+			role = fmt.Sprintf("%s (%s)", role, m.Name)
 		}
-		sb.WriteString(fmt.Sprintf("%s: %s\n\n", strings.ToUpper(name), m.Content))
+		sb.WriteString(fmt.Sprintf("%s: ", role))
+
+		if m.Content != "" {
+			sb.WriteString(m.Content)
+		}
+
+		if len(m.Calls) > 0 {
+			sb.WriteString("\nTOOL CALLS:")
+			for _, call := range m.Calls {
+				sb.WriteString(fmt.Sprintf("\n- %s(%s) [ID: %s]", call.Function.Name, call.Function.Arguments, call.ID))
+			}
+		}
+
+		if m.Role == llm.RoleTool && m.ToolID != "" {
+			sb.WriteString(fmt.Sprintf("\n[TOOL ID: %s]", m.ToolID))
+		}
+
+		sb.WriteString("\n\n")
 	}
 
 	// Generate summary

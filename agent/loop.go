@@ -25,11 +25,23 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error
 	}
 
 	if a.Hooks != nil {
-		_, err := a.Hooks.Run(ctx, hook.EventUserPromptSubmit, s, map[string]any{
+		results, err := a.Hooks.Run(ctx, hook.EventUserPromptSubmit, s, map[string]any{
 			"model": a.Model,
 		})
 		if err != nil {
 			return StepResult{}, err
+		}
+
+		// Inject hook output into request context if provided
+		for _, res := range results {
+			if res.Output != "" {
+				// Prepend as a system message to provide context
+				msg := llm.Message{
+					Role:    llm.RoleSystem,
+					Content: fmt.Sprintf("<hook_context name=%q>\n%s\n</hook_context>", "UserPromptSubmit", res.Output),
+				}
+				req.Messages = append([]llm.Message{msg}, req.Messages...)
+			}
 		}
 	}
 
@@ -64,6 +76,7 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error
 	type toolResult struct {
 		call   llm.ToolCall
 		output string
+		err    error
 	}
 	results := make([]toolResult, len(resp.Calls))
 	var wg sync.WaitGroup
@@ -74,22 +87,29 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error
 			var output string
 
 			if a.Hooks != nil {
-				_, err := a.Hooks.Run(ctx, hook.EventPreToolUse, s, map[string]any{
+				hookResults, err := a.Hooks.Run(ctx, hook.EventPreToolUse, s, map[string]any{
 					"tool": call.Function.Name,
 					"args": call.Function.Arguments,
 				})
 				if err != nil {
-					output = fmt.Sprintf("Error (Hook Blocked): %s", err)
-					results[i] = toolResult{call: call, output: output}
+					results[i] = toolResult{call: call, err: fmt.Errorf("hook blocked tool %q: %w", call.Function.Name, err)}
 					return
+				}
+
+				// Inject hook output into context as system hint for this tool call if provided
+				for _, res := range hookResults {
+					if res.Output != "" {
+						output += fmt.Sprintf("<hook_context name=%q>\n%s\n</hook_context>\n", "PreToolUse", res.Output)
+					}
 				}
 			}
 
 			if a.Tools != nil {
 				var execErr error
-				output, execErr = a.Tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
+				toolOutput, execErr := a.Tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
+				output += toolOutput
 				if execErr != nil {
-					output = fmt.Sprintf("Error: %s", execErr)
+					output = fmt.Sprintf("%s\nError: %s", output, execErr)
 					if a.Hooks != nil {
 						a.Hooks.Run(ctx, hook.EventPostToolUseFailure, s, map[string]any{
 							"tool":  call.Function.Name,
@@ -100,7 +120,7 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error
 					if a.Hooks != nil {
 						a.Hooks.Run(ctx, hook.EventPostToolUse, s, map[string]any{
 							"tool":   call.Function.Name,
-							"output": output,
+							"output": toolOutput,
 						})
 					}
 				}
@@ -113,6 +133,9 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error
 	wg.Wait()
 
 	for _, r := range results {
+		if r.err != nil {
+			return StepResult{}, r.err
+		}
 		toolMsg := llm.Message{
 			Role:    llm.RoleTool,
 			Content: r.output,

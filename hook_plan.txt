@@ -1,5 +1,0 @@
-1. Inject Hooks into agent.Agent? 
-   Wait, if we add `Hooks *HookRunner` to `Agent`, we create a circular dependency between `agent` and `runtime` packages, because `runtime` imports `agent`.
-   Ah! `runtime/hooks.go` should maybe be in its own package `hook`, or we should keep `Hooks` inside `Runner` and pass it down.
-2. If we keep `Hooks` inside `Runner`, we can't easily trigger `PreToolUse` or `PostToolUse` which happen inside `agent.Turn()`.
-3. Solution: Move `hook` into its own package `github.com/nijaru/canto/hook` so both `runtime` and `agent` can import it.
