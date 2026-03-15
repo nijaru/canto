@@ -167,7 +167,7 @@ func (s *HNSWStore) Search(
 
 		results = append(results, SearchResult{
 			ID:       node.Key,
-			Score:    hnsw.CosineDistance(queryVector, node.Value),
+			Score:    1.0 - hnsw.CosineDistance(queryVector, node.Value),
 			Metadata: metadata,
 		})
 	}
