@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -46,23 +47,41 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error
 			}
 		}
 	}
-	for _, call := range resp.Calls {
-		var output string
-		if a.Tools != nil {
-			var execErr error
-			output, execErr = a.Tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
-			if execErr != nil {
-				output = fmt.Sprintf("Error: %s", execErr)
+	// Execute tools in parallel — frontier models return multiple calls per turn
+	// and expect them dispatched concurrently. Results are collected into a
+	// fixed-size slice indexed by call position so messages are appended in
+	// a deterministic order after all goroutines complete.
+	type toolResult struct {
+		call   llm.ToolCall
+		output string
+	}
+	results := make([]toolResult, len(resp.Calls))
+	var wg sync.WaitGroup
+	for i, call := range resp.Calls {
+		wg.Add(1)
+		go func(i int, call llm.ToolCall) {
+			defer wg.Done()
+			var output string
+			if a.Tools != nil {
+				var execErr error
+				output, execErr = a.Tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
+				if execErr != nil {
+					output = fmt.Sprintf("Error: %s", execErr)
+				}
+			} else {
+				output = fmt.Sprintf("Error: no tool registry configured; cannot execute %q", call.Function.Name)
 			}
-		} else {
-			output = fmt.Sprintf("Error: no tool registry configured; cannot execute %q", call.Function.Name)
-		}
+			results[i] = toolResult{call: call, output: output}
+		}(i, call)
+	}
+	wg.Wait()
 
+	for _, r := range results {
 		toolMsg := llm.Message{
 			Role:    llm.RoleTool,
-			Content: output,
-			ToolID:  call.ID,
-			Name:    call.Function.Name,
+			Content: r.output,
+			ToolID:  r.call.ID,
+			Name:    r.call.Function.Name,
 		}
 		s.Append(session.NewEvent(s.ID(), session.EventTypeMessageAdded, toolMsg))
 	}
