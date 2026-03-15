@@ -3,6 +3,7 @@ package context
 import (
 	"context"
 	"fmt"
+	"regexp"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/memory"
@@ -82,6 +83,9 @@ func InstructionProcessor(instructions string) ContextProcessor {
 	)
 }
 
+// coreMemoryRegex matches an existing core_memory block and any trailing newlines.
+var coreMemoryRegex = regexp.MustCompile(`(?s)<core_memory>.*?</core_memory>\n*`)
+
 // CoreMemoryProcessor retrieves the core memory persona and injects it.
 func CoreMemoryProcessor(store *memory.CoreStore) ContextProcessor {
 	return ProcessorFunc(
@@ -99,10 +103,14 @@ func CoreMemoryProcessor(store *memory.CoreStore) ContextProcessor {
 
 			memBlock := fmt.Sprintf("<core_memory>\nAgent Name: %s\nPersona Context: %s\nDirectives: %s\n</core_memory>", persona.Name, persona.Description, persona.Directives)
 
-			// Prepend system instruction if not already there
+			// Prepend or replace system instruction if not already there
 			for i, m := range req.Messages {
 				if m.Role == llm.RoleSystem {
-					req.Messages[i].Content = memBlock + "\n\n" + m.Content
+					if loc := coreMemoryRegex.FindStringIndex(m.Content); loc != nil {
+						req.Messages[i].Content = m.Content[:loc[0]] + memBlock + "\n\n" + m.Content[loc[1]:]
+					} else {
+						req.Messages[i].Content = memBlock + "\n\n" + m.Content
+					}
 					return nil
 				}
 			}

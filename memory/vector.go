@@ -24,6 +24,7 @@ type VectorStore interface {
 		filter map[string]any,
 	) ([]SearchResult, error)
 	Delete(ctx context.Context, id string) error
+	Close() error
 }
 
 // SearchResult represents a match in the vector store.

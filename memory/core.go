@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -23,6 +24,12 @@ type CoreStore struct {
 
 // NewCoreStore creates a new core store backed by SQLite.
 func NewCoreStore(dsn string) (*CoreStore, error) {
+	if !strings.Contains(dsn, "?") {
+		dsn += "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	} else if !strings.Contains(dsn, "journal_mode") {
+		dsn += "&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	}
+
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

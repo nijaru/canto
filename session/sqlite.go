@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -16,6 +17,12 @@ type SQLiteStore struct {
 
 // NewSQLiteStore creates a new SQLite store.
 func NewSQLiteStore(dsn string) (*SQLiteStore, error) {
+	if !strings.Contains(dsn, "?") {
+		dsn += "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	} else if !strings.Contains(dsn, "journal_mode") {
+		dsn += "&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	}
+
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

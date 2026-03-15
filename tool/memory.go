@@ -2,10 +2,10 @@ package tool
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-
-	"github.com/oklog/ulid/v2"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/memory"
@@ -58,7 +58,9 @@ func (t *ArchivalMemoryInsertTool) Execute(ctx context.Context, args string) (st
 		return "", fmt.Errorf("failed to generate embedding: %w", err)
 	}
 
-	id := ulid.Make().String()
+	hash := sha256.Sum256([]byte(parsed.Content))
+	id := hex.EncodeToString(hash[:])
+
 	metadata := map[string]any{
 		"content": parsed.Content,
 		"source":  parsed.Source,
@@ -137,7 +139,16 @@ func (t *ArchivalMemorySearchTool) Execute(ctx context.Context, args string) (st
 
 	hits := make([]hit, 0, len(results))
 	for _, r := range results {
-		content, _ := r.Metadata["content"].(string)
+		contentVal, ok := r.Metadata["content"]
+		if !ok {
+			continue
+		}
+		
+		content, ok := contentVal.(string)
+		if !ok {
+			content = fmt.Sprintf("%v", contentVal)
+		}
+		
 		source, _ := r.Metadata["source"].(string)
 		
 		hits = append(hits, hit{

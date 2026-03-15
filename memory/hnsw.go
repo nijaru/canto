@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/coder/hnsw"
@@ -171,6 +172,16 @@ func (s *HNSWStore) Search(
 			Metadata: metadata,
 		})
 	}
+
+	slices.SortFunc(results, func(a, b SearchResult) int {
+		if a.Score > b.Score {
+			return -1
+		}
+		if a.Score < b.Score {
+			return 1
+		}
+		return 0
+	})
 
 	return results, nil
 }
