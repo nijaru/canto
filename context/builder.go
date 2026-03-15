@@ -2,8 +2,10 @@ package context
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/memory"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
 )
@@ -74,6 +76,39 @@ func InstructionProcessor(instructions string) ContextProcessor {
 
 			// Prepend new system message
 			sys := llm.Message{Role: llm.RoleSystem, Content: instructions}
+			req.Messages = append([]llm.Message{sys}, req.Messages...)
+			return nil
+		},
+	)
+}
+
+// CoreMemoryProcessor retrieves the core memory persona and injects it.
+func CoreMemoryProcessor(store *memory.CoreStore) ContextProcessor {
+	return ProcessorFunc(
+		func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+			if store == nil {
+				return nil
+			}
+			persona, err := store.GetPersona(ctx, sess.ID())
+			if err != nil {
+				return err
+			}
+			if persona == nil {
+				return nil
+			}
+
+			memBlock := fmt.Sprintf("<core_memory>\nAgent Name: %s\nPersona Context: %s\nDirectives: %s\n</core_memory>", persona.Name, persona.Description, persona.Directives)
+
+			// Prepend system instruction if not already there
+			for i, m := range req.Messages {
+				if m.Role == llm.RoleSystem {
+					req.Messages[i].Content = memBlock + "\n\n" + m.Content
+					return nil
+				}
+			}
+
+			// Prepend new system message
+			sys := llm.Message{Role: llm.RoleSystem, Content: memBlock}
 			req.Messages = append([]llm.Message{sys}, req.Messages...)
 			return nil
 		},
