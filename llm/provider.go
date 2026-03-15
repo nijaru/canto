@@ -18,18 +18,18 @@ const (
 
 // Message represents a single message in the LLM conversation.
 type Message struct {
-	Role    Role        `json:"role"`
-	Content string      `json:"content"`
-	Name    string      `json:"name,omitempty"` // For tool output or identifying the assistant
-	ToolID  string      `json:"tool_id,omitempty"`
-	Calls   []ToolCall  `json:"tool_calls,omitempty"`
+	Role    Role       `json:"role"`
+	Content string     `json:"content"`
+	Name    string     `json:"name,omitempty"` // For tool output or identifying the assistant
+	ToolID  string     `json:"tool_id,omitempty"`
+	Calls   []ToolCall `json:"tool_calls,omitempty"`
 }
 
 // ToolCall represents a request from the LLM to call a tool.
 type ToolCall struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"` // e.g., "function"
-	Function  struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"` // e.g., "function"
+	Function struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"` // JSON string
 	} `json:"function"`

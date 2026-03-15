@@ -11,8 +11,8 @@ import (
 // TokenGuardProcessor ensures the LLM request doesn't exceed the token budget.
 // It also detects if the context is nearing the "rot threshold" (default 60%).
 type TokenGuardProcessor struct {
-	MaxTokens        int
-	RotThresholdPct  float64
+	MaxTokens       int
+	RotThresholdPct float64
 }
 
 // NewTokenGuard creates a new token guard processor.
@@ -23,7 +23,11 @@ func NewTokenGuard(maxTokens int) *TokenGuardProcessor {
 	}
 }
 
-func (p *TokenGuardProcessor) Process(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+func (p *TokenGuardProcessor) Process(
+	ctx context.Context,
+	sess *session.Session,
+	req *llm.LLMRequest,
+) error {
 	// 1. Calculate current token usage
 	currentTokens := 0
 	for _, m := range req.Messages {
@@ -48,7 +52,11 @@ func NewBudgetGuard(limit float64) *BudgetGuard {
 	return &BudgetGuard{Limit: limit}
 }
 
-func (p *BudgetGuard) Process(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+func (p *BudgetGuard) Process(
+	ctx context.Context,
+	sess *session.Session,
+	req *llm.LLMRequest,
+) error {
 	if p.Limit <= 0 {
 		return nil
 	}

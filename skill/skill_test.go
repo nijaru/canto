@@ -17,7 +17,7 @@ Use this skill for testing purposes.
 `
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "SKILL.md")
-	os.WriteFile(path, []byte(content), 0644)
+	os.WriteFile(path, []byte(content), 0o644)
 
 	s, err := Load(path)
 	if err != nil {
@@ -41,7 +41,7 @@ Use this skill for testing purposes.
 func TestRegistry(t *testing.T) {
 	tmp := t.TempDir()
 	skillDir := filepath.Join(tmp, "skills", "test")
-	os.MkdirAll(skillDir, 0755)
+	os.MkdirAll(skillDir, 0o755)
 
 	content := `---
 name: registry-test
@@ -49,7 +49,7 @@ description: Testing registry discovery.
 ---
 Instructions here.
 `
-	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0644)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644)
 
 	reg := NewRegistry(tmp)
 	err := reg.Discover()

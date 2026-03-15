@@ -17,7 +17,8 @@ func buildSession(id string, turns []struct {
 	assistantMsg string
 	toolName     string
 	cost         float64
-}) *session.Session {
+},
+) *session.Session {
 	sess := session.New(id)
 	sess.Append(session.NewEvent(id, session.EventTypeMessageAdded, llm.Message{
 		Role:    llm.RoleUser,
@@ -73,7 +74,12 @@ func TestRunEval(t *testing.T) {
 		&eval.TurnCountScorer{},
 	}
 
-	results, err := eval.RunEval(context.Background(), []*session.Session{sess1, sess2}, scorers, outPath)
+	results, err := eval.RunEval(
+		context.Background(),
+		[]*session.Session{sess1, sess2},
+		scorers,
+		outPath,
+	)
 	if err != nil {
 		t.Fatalf("RunEval: %v", err)
 	}

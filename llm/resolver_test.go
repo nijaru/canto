@@ -20,9 +20,11 @@ func (m *mockProvider) ID() string { return m.id }
 func (m *mockProvider) Generate(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
 	return m.genFn(ctx, req)
 }
+
 func (m *mockProvider) Stream(ctx context.Context, req *LLMRequest) (Stream, error) {
 	return nil, errors.New("not implemented")
 }
+
 func (m *mockProvider) Models(ctx context.Context) ([]catwalk.Model, error) {
 	return m.models, nil
 }
@@ -73,7 +75,7 @@ func TestSmartResolver_RateLimit(t *testing.T) {
 	}
 
 	smart := NewSmartResolver(StrategyPriority, p1, p2)
-	
+
 	// First call: p1 should fail with rate limit, p2 should succeed
 	resp, err := smart.Generate(context.Background(), &LLMRequest{})
 	if err != nil {
@@ -92,7 +94,11 @@ func TestSmartResolver_RateLimit(t *testing.T) {
 		t.Fatalf("smart resolver failed on second call: %v", err)
 	}
 	if p1Calls != 1 || p2Calls != 2 {
-		t.Errorf("expected p1 to be skipped (1 call) and p2 to be called (2 calls), got p1=%d, p2=%d", p1Calls, p2Calls)
+		t.Errorf(
+			"expected p1 to be skipped (1 call) and p2 to be called (2 calls), got p1=%d, p2=%d",
+			p1Calls,
+			p2Calls,
+		)
 	}
 }
 
@@ -115,14 +121,14 @@ func TestSmartResolver_RoundRobin(t *testing.T) {
 	}
 
 	smart := NewSmartResolver(StrategyRoundRobin, p1, p2)
-	
+
 	// Should rotate between p1 and p2
 	// Note: current implementation uses atomic.AddUint32 which starts at 0, so 1%2=1, 2%2=0
 	// So it might call p2 then p1 or vice-versa depending on the first Add.
-	
+
 	smart.Generate(context.Background(), &LLMRequest{})
 	smart.Generate(context.Background(), &LLMRequest{})
-	
+
 	if p1Calls != 1 || p2Calls != 1 {
 		t.Errorf("expected 1 call each to p1 and p2, got p1=%d, p2=%d", p1Calls, p2Calls)
 	}
@@ -166,5 +172,6 @@ func TestIsRateLimit(t *testing.T) {
 }
 
 type statusErr int
-func (e statusErr) Error() string { return "error" }
+
+func (e statusErr) Error() string   { return "error" }
 func (e statusErr) StatusCode() int { return int(e) }

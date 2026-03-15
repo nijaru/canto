@@ -53,6 +53,56 @@ func (g *Graph) AddEdge(from, to string, condition func(agent.StepResult) bool) 
 	g.edges = append(g.edges, Edge{From: from, To: to, Condition: condition})
 }
 
+// Validate checks the graph for structural errors (missing nodes, cycles).
+// Must be called before Run to ensure the graph is a valid DAG.
+func (g *Graph) Validate() error {
+	if _, ok := g.nodes[g.entry]; !ok {
+		return fmt.Errorf("validate: entry node %q not registered", g.entry)
+	}
+
+	for _, e := range g.edges {
+		if _, ok := g.nodes[e.From]; !ok {
+			return fmt.Errorf("validate: edge references missing source node %q", e.From)
+		}
+		if _, ok := g.nodes[e.To]; !ok {
+			return fmt.Errorf("validate: edge references missing target node %q", e.To)
+		}
+	}
+
+	visited := make(map[string]bool)
+	recStack := make(map[string]bool)
+
+	var checkCycle func(string) error
+	checkCycle = func(node string) error {
+		visited[node] = true
+		recStack[node] = true
+
+		for _, e := range g.edges {
+			if e.From == node {
+				if !visited[e.To] {
+					if err := checkCycle(e.To); err != nil {
+						return err
+					}
+				} else if recStack[e.To] {
+					return fmt.Errorf("validate: cycle detected involving node %q", e.To)
+				}
+			}
+		}
+		recStack[node] = false
+		return nil
+	}
+
+	for node := range g.nodes {
+		if !visited[node] {
+			if err := checkCycle(node); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // Run executes the graph starting at the entry node.
 // It follows edges whose conditions are satisfied by each StepResult.
 // Returns the final StepResult (from the last agent to execute) and any error.

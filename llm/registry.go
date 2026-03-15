@@ -110,7 +110,11 @@ func (r *Registry) ResolveModel(modelID string) (Provider, error) {
 	if len(providerIDs) == 1 {
 		provider, ok := r.providers[providerIDs[0]]
 		if !ok {
-			return nil, fmt.Errorf("provider %s not registered for model %s", providerIDs[0], modelID)
+			return nil, fmt.Errorf(
+				"provider %s not registered for model %s",
+				providerIDs[0],
+				modelID,
+			)
 		}
 		return provider, nil
 	}

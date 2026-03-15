@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -34,11 +35,15 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error
 	}
 	s.Append(session.NewEvent(s.ID(), session.EventTypeMessageAdded, msg))
 
-	// Execute tools and append results
+	// Execute tools and append results.
+	// Collect the target agent IDs for any registered handoff tools
+	// (named "transfer_to_{agentID}") so extractHandoff can match them.
 	var handoffTargets []string
 	if a.Tools != nil {
 		for _, spec := range a.Tools.Specs() {
-			handoffTargets = append(handoffTargets, spec.Name)
+			if after, ok := strings.CutPrefix(spec.Name, "transfer_to_"); ok {
+				handoffTargets = append(handoffTargets, after)
+			}
 		}
 	}
 	for _, call := range resp.Calls {

@@ -9,10 +9,10 @@ import (
 
 func TestExportTrajectory(t *testing.T) {
 	sess := New("test-session")
-	
+
 	// Add some events
 	now := time.Now()
-	
+
 	// User message
 	e1 := NewEvent(sess.ID(), EventTypeMessageAdded, llm.Message{
 		Role:    llm.RoleUser,
@@ -27,7 +27,10 @@ func TestExportTrajectory(t *testing.T) {
 		Role:    llm.RoleAssistant,
 		Content: "Let me check",
 		Calls: []llm.ToolCall{
-			{ID: "call_1", Type: "function", Function: struct{Name string "json:\"name\""; Arguments string "json:\"arguments\""}{Name: "search", Arguments: "{}"}},
+			{ID: "call_1", Type: "function", Function: struct {
+				Name      string "json:\"name\""
+				Arguments string "json:\"arguments\""
+			}{Name: "search", Arguments: "{}"}},
 		},
 	})
 	e2.Timestamp = now.Add(time.Second)
@@ -64,7 +67,7 @@ func TestExportTrajectory(t *testing.T) {
 	if traj.TotalCost != 0.08 {
 		t.Errorf("expected cost 0.08, got %f", traj.TotalCost)
 	}
-	
+
 	if len(traj.Turns) != 2 {
 		t.Fatalf("expected 2 turns, got %d", len(traj.Turns))
 	}

@@ -125,7 +125,10 @@ func (p *Provider) convertRequest(req *llm.LLMRequest) sdk.MessageNewParams {
 			blocks = append(blocks, sdk.NewTextBlock(m.Content))
 		}
 		for _, call := range m.Calls {
-			blocks = append(blocks, sdk.NewToolUseBlock(call.ID, call.Function.Arguments, call.Function.Name))
+			blocks = append(
+				blocks,
+				sdk.NewToolUseBlock(call.ID, call.Function.Arguments, call.Function.Name),
+			)
 		}
 
 		if m.Role == llm.RoleAssistant {
@@ -200,4 +203,3 @@ func (p *Provider) convertSchema(params any) sdk.ToolInputSchemaParam {
 
 	return schema
 }
-

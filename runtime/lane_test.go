@@ -10,7 +10,7 @@ import (
 func TestLaneManager_Serialization(t *testing.T) {
 	m := NewLaneManager()
 	sessionID := "test-session"
-	
+
 	var (
 		mu      sync.Mutex
 		results []int
@@ -18,7 +18,7 @@ func TestLaneManager_Serialization(t *testing.T) {
 
 	count := 5
 	channels := make([]<-chan error, count)
-	
+
 	for i := 0; i < count; i++ {
 		val := i
 		channels[i] = m.Execute(context.Background(), sessionID, func(ctx context.Context) error {
@@ -52,13 +52,13 @@ func TestLaneManager_Serialization(t *testing.T) {
 
 func TestLaneManager_Concurrency(t *testing.T) {
 	m := NewLaneManager()
-	
+
 	// Two different sessions should run concurrently
 	session1 := "s1"
 	session2 := "s2"
-	
+
 	start := time.Now()
-	
+
 	ch1 := m.Execute(context.Background(), session1, func(ctx context.Context) error {
 		time.Sleep(50 * time.Millisecond)
 		return nil
@@ -67,11 +67,11 @@ func TestLaneManager_Concurrency(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		return nil
 	})
-	
+
 	// If serial, this would take 100ms. If concurrent, ~50ms.
 	<-ch1
 	<-ch2
-	
+
 	duration := time.Since(start)
 	if duration > 90*time.Millisecond {
 		t.Errorf("expected sessions to run concurrently, but took %v", duration)

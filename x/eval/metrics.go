@@ -17,7 +17,10 @@ type ToolCallAccuracyScorer struct {
 
 func (s *ToolCallAccuracyScorer) Name() string { return "tool_call_accuracy" }
 
-func (s *ToolCallAccuracyScorer) Score(_ context.Context, turn session.TrajectoryTurn) (float64, error) {
+func (s *ToolCallAccuracyScorer) Score(
+	_ context.Context,
+	turn session.TrajectoryTurn,
+) (float64, error) {
 	if len(s.Expected) == 0 {
 		return 1.0, nil
 	}
@@ -40,7 +43,10 @@ type CostEfficiencyScorer struct{}
 
 func (s *CostEfficiencyScorer) Name() string { return "cost_efficiency" }
 
-func (s *CostEfficiencyScorer) Score(_ context.Context, turn session.TrajectoryTurn) (float64, error) {
+func (s *CostEfficiencyScorer) Score(
+	_ context.Context,
+	turn session.TrajectoryTurn,
+) (float64, error) {
 	return 1.0 / (1.0 + turn.Cost), nil
 }
 

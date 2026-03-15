@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/robfig/cron/v3"
 	"github.com/nijaru/canto/session"
+	"github.com/robfig/cron/v3"
 )
 
 // HeartbeatEntry defines a scheduled agent task.
@@ -53,7 +53,9 @@ func (h *Heartbeat) Add(e HeartbeatEntry) {
 func (h *Heartbeat) Schedule(spec, sessionID string) error {
 	// Validate spec eagerly so callers get an error at registration time, not at Start.
 	// Try the extended parser first (supports seconds field and descriptors like @every).
-	p := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+	p := cron.NewParser(
+		cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
+	)
 	if _, err := p.Parse(spec); err != nil {
 		return fmt.Errorf("invalid schedule %q: %w", spec, err)
 	}

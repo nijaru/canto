@@ -32,54 +32,62 @@ func (b *Builder) Build(ctx context.Context, sess *session.Session, req *llm.LLM
 
 // HistoryProcessor appends the session event log to the LLM request messages.
 func HistoryProcessor() ContextProcessor {
-	return ProcessorFunc(func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
-		// Extract all messages from the session
-		messages := sess.Messages()
-		req.Messages = append(req.Messages, messages...)
-		return nil
-	})
+	return ProcessorFunc(
+		func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+			// Extract all messages from the session
+			messages := sess.Messages()
+			req.Messages = append(req.Messages, messages...)
+			return nil
+		},
+	)
 }
 
 // ToolProcessor appends tool definitions to the LLM request.
 func ToolProcessor(reg *tool.Registry) ContextProcessor {
-	return ProcessorFunc(func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
-		if reg == nil {
+	return ProcessorFunc(
+		func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+			if reg == nil {
+				return nil
+			}
+			req.Tools = append(req.Tools, reg.Specs()...)
 			return nil
-		}
-		req.Tools = append(req.Tools, reg.Specs()...)
-		return nil
-	})
+		},
+	)
 }
 
 // InstructionProcessor prepends instructions as a system message.
 func InstructionProcessor(instructions string) ContextProcessor {
-	return ProcessorFunc(func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
-		if instructions == "" {
-			return nil
-		}
-		
-		// Prepend system instruction if not already there
-		// Find first system message or prepend new one
-		for i, m := range req.Messages {
-			if m.Role == llm.RoleSystem {
-				req.Messages[i].Content = instructions + "\n\n" + m.Content
+	return ProcessorFunc(
+		func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+			if instructions == "" {
 				return nil
 			}
-		}
-		
-		// Prepend new system message
-		sys := llm.Message{Role: llm.RoleSystem, Content: instructions}
-		req.Messages = append([]llm.Message{sys}, req.Messages...)
-		return nil
-	})
+
+			// Prepend system instruction if not already there
+			// Find first system message or prepend new one
+			for i, m := range req.Messages {
+				if m.Role == llm.RoleSystem {
+					req.Messages[i].Content = instructions + "\n\n" + m.Content
+					return nil
+				}
+			}
+
+			// Prepend new system message
+			sys := llm.Message{Role: llm.RoleSystem, Content: instructions}
+			req.Messages = append([]llm.Message{sys}, req.Messages...)
+			return nil
+		},
+	)
 }
 
 // WorkspaceProcessor prepends project-wide instructions and persona from the workspace.
 func WorkspaceProcessor(root string) ContextProcessor {
-	return ProcessorFunc(func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
-		// Use runtime's LoadWorkspace if needed, but we don't want to import runtime here
-		// because runtime depends on context.
-		// Instead, we should pass the prompts directly or have a generic interface.
-		return nil
-	})
+	return ProcessorFunc(
+		func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+			// Use runtime's LoadWorkspace if needed, but we don't want to import runtime here
+			// because runtime depends on context.
+			// Instead, we should pass the prompts directly or have a generic interface.
+			return nil
+		},
+	)
 }

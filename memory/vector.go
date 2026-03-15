@@ -17,7 +17,12 @@ type VectorStore interface {
 	// Search finds the k nearest vectors to the query.
 	// filter is an optional set of metadata key-value constraints; implementations
 	// may ignore filters they do not support (e.g. SQLite brute-force).
-	Search(ctx context.Context, vector []float32, k int, filter map[string]any) ([]SearchResult, error)
+	Search(
+		ctx context.Context,
+		vector []float32,
+		k int,
+		filter map[string]any,
+	) ([]SearchResult, error)
 	Delete(ctx context.Context, id string) error
 }
 
@@ -64,7 +69,12 @@ func (s *SQLiteVectorStore) init() error {
 }
 
 // Upsert adds or updates a vector in the store.
-func (s *SQLiteVectorStore) Upsert(ctx context.Context, id string, vector []float32, metadata map[string]any) error {
+func (s *SQLiteVectorStore) Upsert(
+	ctx context.Context,
+	id string,
+	vector []float32,
+	metadata map[string]any,
+) error {
 	vData := make([]byte, len(vector)*4)
 	for i, f := range vector {
 		binary.LittleEndian.PutUint32(vData[i*4:], math.Float32bits(f))
@@ -75,9 +85,12 @@ func (s *SQLiteVectorStore) Upsert(ctx context.Context, id string, vector []floa
 		return err
 	}
 
-	_, err = s.db.ExecContext(ctx,
+	_, err = s.db.ExecContext(
+		ctx,
 		"INSERT INTO vectors (id, vector, metadata) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET vector=excluded.vector, metadata=excluded.metadata",
-		id, vData, string(mData),
+		id,
+		vData,
+		string(mData),
 	)
 	return err
 }
@@ -85,7 +98,12 @@ func (s *SQLiteVectorStore) Upsert(ctx context.Context, id string, vector []floa
 // Search performs a brute-force cosine similarity search.
 // The filter parameter is accepted for interface compatibility but ignored;
 // the SQLite implementation scans all vectors regardless.
-func (s *SQLiteVectorStore) Search(ctx context.Context, queryVector []float32, k int, _ map[string]any) ([]SearchResult, error) {
+func (s *SQLiteVectorStore) Search(
+	ctx context.Context,
+	queryVector []float32,
+	k int,
+	_ map[string]any,
+) ([]SearchResult, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT id, vector, metadata FROM vectors")
 	if err != nil {
 		return nil, err
@@ -121,6 +139,9 @@ func (s *SQLiteVectorStore) Search(ctx context.Context, queryVector []float32, k
 			score: score,
 			data:  mData,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	// Sort results descending by score

@@ -136,7 +136,7 @@ func (a *HTTPAdapter) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	// This assumes the handler blocks and returns a single response for now.
 	// For true streaming, the ChannelHandler interface would need to support
-	// returning a channel or callback for incremental updates. 
+	// returning a channel or callback for incremental updates.
 	// As a basic implementation, we just send the final result as a single SSE event.
 	channelResp, err := a.handler.Handle(r.Context(), channelReq)
 	if err != nil {
@@ -154,4 +154,3 @@ func (a *HTTPAdapter) handleStream(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "event: done\ndata: {}\n\n")
 	flusher.Flush()
 }
-

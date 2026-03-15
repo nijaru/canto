@@ -28,7 +28,10 @@ type ChannelHandler interface {
 // as channel handlers.
 type ChannelHandlerFunc func(ctx context.Context, req ChannelRequest) (*ChannelResponse, error)
 
-func (f ChannelHandlerFunc) Handle(ctx context.Context, req ChannelRequest) (*ChannelResponse, error) {
+func (f ChannelHandlerFunc) Handle(
+	ctx context.Context,
+	req ChannelRequest,
+) (*ChannelResponse, error) {
 	return f(ctx, req)
 }
 

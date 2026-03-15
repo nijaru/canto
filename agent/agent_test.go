@@ -14,7 +14,11 @@ type mockProvider struct {
 }
 
 func (m *mockProvider) ID() string { return "mock" }
-func (m *mockProvider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMResponse, error) {
+
+func (m *mockProvider) Generate(
+	ctx context.Context,
+	req *llm.LLMRequest,
+) (*llm.LLMResponse, error) {
 	if len(m.responses) == 0 {
 		return &llm.LLMResponse{Content: "no more responses"}, nil
 	}

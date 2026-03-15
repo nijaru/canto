@@ -15,12 +15,12 @@ func TestWorkspace(t *testing.T) {
 	// Setup fake workspace
 	agentsContent := "# Project Instructions"
 	soulContent := "## Persona"
-	os.WriteFile(filepath.Join(tmp, AgentsFile), []byte(agentsContent), 0644)
-	os.WriteFile(filepath.Join(tmp, SoulFile), []byte(soulContent), 0644)
+	os.WriteFile(filepath.Join(tmp, AgentsFile), []byte(agentsContent), 0o644)
+	os.WriteFile(filepath.Join(tmp, SoulFile), []byte(soulContent), 0o644)
 
 	// Test FindRoot
 	subDir := filepath.Join(tmp, "sub", "dir")
-	os.MkdirAll(subDir, 0755)
+	os.MkdirAll(subDir, 0o755)
 	root, err := FindRoot(subDir)
 	if err != nil {
 		t.Fatal(err)

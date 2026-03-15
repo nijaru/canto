@@ -24,8 +24,8 @@ import (
 //	if err != nil { ... } // fails fast if socket is unreachable
 //	defer store.Close()
 type OmenDBStore struct {
-	socketPath string
-	idGen      atomic.Uint64
+	socketPath  string
+	idGen       atomic.Uint64
 	dialTimeout time.Duration
 }
 
@@ -49,7 +49,12 @@ func (s *OmenDBStore) Ping(ctx context.Context) error {
 }
 
 // Upsert inserts or updates a vector in OmenDB.
-func (s *OmenDBStore) Upsert(ctx context.Context, id string, vector []float32, metadata map[string]any) error {
+func (s *OmenDBStore) Upsert(
+	ctx context.Context,
+	id string,
+	vector []float32,
+	metadata map[string]any,
+) error {
 	_, err := s.call(ctx, "upsert", map[string]any{
 		"id":       id,
 		"vector":   vector,
@@ -61,7 +66,12 @@ func (s *OmenDBStore) Upsert(ctx context.Context, id string, vector []float32, m
 // Search returns the k nearest neighbours to vector with optional metadata filtering.
 // filter keys and values are passed directly to OmenDB's ACORN-1 filtered search.
 // Pass nil for unfiltered search.
-func (s *OmenDBStore) Search(ctx context.Context, vector []float32, k int, filter map[string]any) ([]SearchResult, error) {
+func (s *OmenDBStore) Search(
+	ctx context.Context,
+	vector []float32,
+	k int,
+	filter map[string]any,
+) ([]SearchResult, error) {
 	params := map[string]any{
 		"vector": vector,
 		"k":      k,
@@ -116,7 +126,11 @@ func (e *rpcError) Error() string {
 // call opens a new connection per request, sends one JSON-RPC call, and returns
 // the raw Result field. A new connection per request is simple and correct for
 // a Unix socket; connection pooling can be added when profiling shows it matters.
-func (s *OmenDBStore) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+func (s *OmenDBStore) call(
+	ctx context.Context,
+	method string,
+	params any,
+) (json.RawMessage, error) {
 	dialer := net.Dialer{Timeout: s.dialTimeout}
 	conn, err := dialer.DialContext(ctx, "unix", s.socketPath)
 	if err != nil {
@@ -126,7 +140,9 @@ func (s *OmenDBStore) call(ctx context.Context, method string, params any) (json
 
 	// Respect context deadline on the socket I/O.
 	if dl, ok := ctx.Deadline(); ok {
-		conn.SetDeadline(dl) //nolint:errcheck
+		if err := conn.SetDeadline(dl); err != nil {
+			return nil, fmt.Errorf("omendb: set deadline: %w", err)
+		}
 	}
 
 	id := s.idGen.Add(1)
@@ -149,3 +165,7 @@ func (s *OmenDBStore) call(ctx context.Context, method string, params any) (json
 	}
 	return resp.Result, nil
 }
+
+// Close is a no-op for OmenDBStore. Connections are per-call and closed
+// immediately after each RPC. Provided for API symmetry with SQLiteVectorStore.
+func (s *OmenDBStore) Close() error { return nil }

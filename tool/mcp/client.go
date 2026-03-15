@@ -14,27 +14,27 @@ import (
 
 // Client represents a connection to an MCP server via stdio.
 type Client struct {
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
-	stdout  io.ReadCloser
-	nextID  atomic.Uint64
-	tools   []tool.Tool
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout io.ReadCloser
+	nextID atomic.Uint64
+	tools  []tool.Tool
 }
 
 // NewStdioClient starts an MCP server process and connects via stdio.
 func NewStdioClient(ctx context.Context, command string, args ...string) (*Client, error) {
 	cmd := exec.CommandContext(ctx, command, args...)
-	
+
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -42,18 +42,18 @@ func NewStdioClient(ctx context.Context, command string, args ...string) (*Clien
 	go func() {
 		_ = cmd.Wait()
 	}()
-	
+
 	c := &Client{
 		cmd:    cmd,
 		stdin:  stdin,
 		stdout: stdout,
 	}
-	
+
 	if err := c.initialize(); err != nil {
 		c.Close()
 		return nil, err
 	}
-	
+
 	return c, nil
 }
 
@@ -82,7 +82,11 @@ func (c *Client) DiscoverTools() ([]tool.Tool, error) {
 }
 
 // CallTool executes a tool on the MCP server.
-func (c *Client) CallTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
+func (c *Client) CallTool(
+	ctx context.Context,
+	name string,
+	arguments map[string]any,
+) (string, error) {
 	// A complete implementation would send tools/call request and wait for the result.
 	return "", fmt.Errorf("not implemented")
 }

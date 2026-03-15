@@ -19,10 +19,10 @@ import (
 type CycleRunner struct {
 	Agent     *agent.Agent
 	Store     session.Store
-	PlanFile  string                             // path to the plan file (read by agent via tool)
-	MaxCycles int                                // hard limit on cycles
-	CheckFn   func(planPath string) (bool, error)    // returns true when the goal is achieved
-	SessionFn func(cycle int) *session.Session       // factory: creates the session for each cycle
+	PlanFile  string                              // path to the plan file (read by agent via tool)
+	MaxCycles int                                 // hard limit on cycles
+	CheckFn   func(planPath string) (bool, error) // returns true when the goal is achieved
+	SessionFn func(cycle int) *session.Session    // factory: creates the session for each cycle
 }
 
 // Run executes the cycle loop. Each iteration creates a fresh session,

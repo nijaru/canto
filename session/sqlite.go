@@ -75,16 +75,23 @@ func (s *SQLiteStore) init() error {
 
 // Save persists an event to the database.
 func (s *SQLiteStore) Save(ctx context.Context, e Event) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := s.db.ExecContext(
+		ctx,
 		"INSERT INTO events (id, session_id, type, timestamp, data, cost) VALUES (?, ?, ?, ?, ?, ?)",
-		e.ID.String(), e.SessionID, string(e.Type), e.Timestamp.Format(time.RFC3339), []byte(e.Data), e.Cost,
+		e.ID.String(),
+		e.SessionID,
+		string(e.Type),
+		e.Timestamp.Format(time.RFC3339),
+		[]byte(e.Data),
+		e.Cost,
 	)
 	return err
 }
 
 // Load reconstructs a session from the database.
 func (s *SQLiteStore) Load(ctx context.Context, sessionID string) (*Session, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.db.QueryContext(
+		ctx,
 		"SELECT id, session_id, type, timestamp, data, cost FROM events WHERE session_id = ? ORDER BY id ASC",
 		sessionID,
 	)
@@ -100,7 +107,7 @@ func (s *SQLiteStore) Load(ctx context.Context, sessionID string) (*Session, err
 		if err := rows.Scan(&idStr, &e.SessionID, &typeStr, &timeStr, &e.Data, &e.Cost); err != nil {
 			return nil, err
 		}
-		
+
 		id, err := ulid.Parse(idStr)
 		if err != nil {
 			return nil, err

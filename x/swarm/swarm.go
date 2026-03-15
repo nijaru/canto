@@ -131,8 +131,11 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 			}
 		}
 		result.Rounds++
-		result.TotalCost += sess.TotalCost()
 	}
+
+	// Set TotalCost once at the end — sess.TotalCost() is monotonically
+	// increasing so reading it per-round would double-count earlier rounds.
+	result.TotalCost = sess.TotalCost()
 
 	// Verify all tasks are actually done.
 	remaining, err := s.blackboard.ListUnclaimed(ctx)
@@ -140,7 +143,11 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 		return result, fmt.Errorf("swarm: final check: %w", err)
 	}
 	if len(remaining) > 0 && result.Rounds >= s.maxRounds {
-		return result, fmt.Errorf("swarm: reached MaxRounds (%d) with %d tasks unclaimed", s.maxRounds, len(remaining))
+		return result, fmt.Errorf(
+			"swarm: reached MaxRounds (%d) with %d tasks unclaimed",
+			s.maxRounds,
+			len(remaining),
+		)
 	}
 
 	return result, nil

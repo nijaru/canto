@@ -19,12 +19,16 @@ import (
 
 // MockProvider is a fake LLM provider for testing.
 type MockProvider struct {
-	Response *llm.LLMResponse
+	Response  *llm.LLMResponse
 	StepCount int
 }
 
 func (m *MockProvider) ID() string { return "mock" }
-func (m *MockProvider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMResponse, error) {
+
+func (m *MockProvider) Generate(
+	ctx context.Context,
+	req *llm.LLMRequest,
+) (*llm.LLMResponse, error) {
 	m.StepCount++
 	// On second call, return text only
 	if m.StepCount > 1 {
@@ -34,9 +38,11 @@ func (m *MockProvider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.
 	}
 	return m.Response, nil
 }
+
 func (m *MockProvider) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream, error) {
 	return nil, nil
 }
+
 func (m *MockProvider) Models(ctx context.Context) ([]catwalk.Model, error) {
 	return nil, nil
 }
@@ -76,7 +82,10 @@ func TestPhase1CoreLoop(t *testing.T) {
 
 	// 2. Add initial user message to store manually for now
 	userMsg := llm.Message{Role: llm.RoleUser, Content: "List files"}
-	store.Save(context.Background(), session.NewEvent(sessionID, session.EventTypeMessageAdded, userMsg))
+	store.Save(
+		context.Background(),
+		session.NewEvent(sessionID, session.EventTypeMessageAdded, userMsg),
+	)
 
 	// 3. Run agent via Runner
 	r := runtime.NewRunner(store, a)
@@ -88,13 +97,13 @@ func TestPhase1CoreLoop(t *testing.T) {
 	// 4. Verify session state from reloaded session
 	sess, _ := store.Load(context.Background(), sessionID)
 	messages := sess.Messages()
-	
+
 	// Expected:
 	// 1. User: "List files"
 	// 2. Assistant: "I will check..." + ToolCall
 	// 3. Tool: (output of ls)
 	// 4. Assistant: "I see some files."
-	
+
 	if len(messages) != 4 {
 		t.Errorf("expected 4 messages, got %d", len(messages))
 		for i, m := range messages {
@@ -169,7 +178,10 @@ func TestPhase3RuntimeFeatures(t *testing.T) {
 	a := agent.New("news-agent", "You summarize RSS feeds daily.", "mock", mock, registry)
 	sessionID := "sess_" + ulid.Make().String()
 	userMsg := llm.Message{Role: llm.RoleUser, Content: "Generate daily summary"}
-	store.Save(context.Background(), session.NewEvent(sessionID, session.EventTypeMessageAdded, userMsg))
+	store.Save(
+		context.Background(),
+		session.NewEvent(sessionID, session.EventTypeMessageAdded, userMsg),
+	)
 
 	r := runtime.NewRunner(store, a)
 
@@ -205,5 +217,3 @@ func TestPhase3RuntimeFeatures(t *testing.T) {
 		t.Errorf("expected at least 4 messages (agent ran), got %d", len(messages))
 	}
 }
-
-

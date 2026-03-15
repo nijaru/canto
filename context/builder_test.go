@@ -57,13 +57,13 @@ func TestOffloadProcessor(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	sess := session.New("test-session")
-	
+
 	// Large tool result
 	largeContent := ""
 	for i := 0; i < 2000; i++ {
 		largeContent += "large content "
 	}
-	
+
 	req := &llm.LLMRequest{
 		Messages: []llm.Message{
 			{Role: llm.RoleUser, Content: "request"},
@@ -74,7 +74,7 @@ func TestOffloadProcessor(t *testing.T) {
 		},
 	}
 
-	// Threshold is 60%, MaxTokens = 1000. 
+	// Threshold is 60%, MaxTokens = 1000.
 	// largeContent is ~3000 tokens (chars/4 heuristic).
 	offloader := NewOffloadProcessor(1000, tempDir)
 	offloader.MinKeepTurns = 2 // Keep last 2 messages
@@ -86,9 +86,12 @@ func TestOffloadProcessor(t *testing.T) {
 
 	// Message 2 (RoleTool) should be offloaded because it's older than last 2
 	if len(req.Messages[2].Content) > 1000 {
-		t.Errorf("expected message to be offloaded, but still have %d chars", len(req.Messages[2].Content))
+		t.Errorf(
+			"expected message to be offloaded, but still have %d chars",
+			len(req.Messages[2].Content),
+		)
 	}
-	
+
 	// Verify file exists
 	files, err := filepath.Glob(filepath.Join(tempDir, "*.json"))
 	if err != nil || len(files) == 0 {

@@ -17,6 +17,10 @@ type ContextProcessor interface {
 // ProcessorFunc is an adapter to allow the use of ordinary functions as context processors.
 type ProcessorFunc func(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error
 
-func (f ProcessorFunc) Process(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+func (f ProcessorFunc) Process(
+	ctx context.Context,
+	sess *session.Session,
+	req *llm.LLMRequest,
+) error {
 	return f(ctx, sess, req)
 }

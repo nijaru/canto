@@ -14,10 +14,10 @@ import (
 // OffloadProcessor offloads large or old messages to the filesystem.
 // It is the first step in the compaction hierarchy.
 type OffloadProcessor struct {
-	MaxTokens      int
-	ThresholdPct   float64
-	OffloadDir     string
-	MinKeepTurns   int
+	MaxTokens    int
+	ThresholdPct float64
+	OffloadDir   string
+	MinKeepTurns int
 }
 
 // NewOffloadProcessor creates a new offload processor.
@@ -30,7 +30,11 @@ func NewOffloadProcessor(maxTokens int, offloadDir string) *OffloadProcessor {
 	}
 }
 
-func (p *OffloadProcessor) Process(ctx context.Context, sess *session.Session, req *llm.LLMRequest) error {
+func (p *OffloadProcessor) Process(
+	ctx context.Context,
+	sess *session.Session,
+	req *llm.LLMRequest,
+) error {
 	if p.MaxTokens <= 0 || p.OffloadDir == "" {
 		return nil
 	}
@@ -49,9 +53,9 @@ func (p *OffloadProcessor) Process(ctx context.Context, sess *session.Session, r
 	// 3. Select messages to offload
 	// Strategy: Keep last 3 turns (Assistant + User/Tool)
 	// For messages older than that, if they are large tool results, offload them.
-	
+
 	// Ensure offload directory exists
-	if err := os.MkdirAll(p.OffloadDir, 0755); err != nil {
+	if err := os.MkdirAll(p.OffloadDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create offload dir: %w", err)
 	}
 
@@ -87,13 +91,16 @@ func (p *OffloadProcessor) Process(ctx context.Context, sess *session.Session, r
 				id = fmt.Sprintf("offload-%s-%d", sess.ID(), len(newMessages))
 			}
 			path := filepath.Join(p.OffloadDir, id+".json")
-			
-			if err := os.WriteFile(path, []byte(m.Content), 0644); err != nil {
+
+			if err := os.WriteFile(path, []byte(m.Content), 0o644); err != nil {
 				return fmt.Errorf("failed to write offload file: %w", err)
 			}
 
 			// Replace with placeholder
-			m.Content = fmt.Sprintf("[Content offloaded to %s. Use read_offload tool to retrieve.]", path)
+			m.Content = fmt.Sprintf(
+				"[Content offloaded to %s. Use read_offload tool to retrieve.]",
+				path,
+			)
 			// TODO: Add metadata/ref to allow retrieval
 		}
 		newMessages = append(newMessages, m)
@@ -101,9 +108,9 @@ func (p *OffloadProcessor) Process(ctx context.Context, sess *session.Session, r
 
 	// Add remaining messages (non-candidates)
 	newMessages = append(newMessages, req.Messages[numMessages-p.MinKeepTurns:]...)
-	
+
 	req.Messages = newMessages
-	
+
 	return nil
 }
 

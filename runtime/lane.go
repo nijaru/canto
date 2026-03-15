@@ -19,7 +19,7 @@ type Request struct {
 type LaneManager struct {
 	mu    sync.RWMutex
 	lanes map[string]*lane
-	
+
 	// Config
 	LaneBufferSize int
 	IdleTimeout    time.Duration
@@ -46,7 +46,11 @@ type lane struct {
 
 // Execute queues a function for execution in the specified session's lane.
 // It returns a channel that will receive the result of the execution.
-func (m *LaneManager) Execute(ctx context.Context, sessionID string, fn func(ctx context.Context) error) <-chan error {
+func (m *LaneManager) Execute(
+	ctx context.Context,
+	sessionID string,
+	fn func(ctx context.Context) error,
+) <-chan error {
 	result := make(chan error, 1)
 	req := Request{
 		Ctx:    ctx,

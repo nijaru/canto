@@ -30,6 +30,9 @@ type Blackboard interface {
 	// Read retrieves a value by key. Returns (nil, nil) if not found.
 	Read(ctx context.Context, key string) (any, error)
 
+	// ReadAgent retrieves a value by agent and key (matches Post namespace).
+	ReadAgent(ctx context.Context, agentID, key string) (any, error)
+
 	// ClaimTask atomically claims an unclaimed task for agentID.
 	// Returns true if the claim succeeded; false if already claimed.
 	ClaimTask(ctx context.Context, agentID, taskID string) (bool, error)
@@ -69,6 +72,10 @@ func (b *MemoryBlackboard) Read(_ context.Context, key string) (any, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.kv[key], nil
+}
+
+func (b *MemoryBlackboard) ReadAgent(ctx context.Context, agentID, key string) (any, error) {
+	return b.Read(ctx, agentID+"/"+key)
 }
 
 func (b *MemoryBlackboard) ClaimTask(_ context.Context, agentID, taskID string) (bool, error) {

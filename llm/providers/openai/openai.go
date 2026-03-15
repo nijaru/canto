@@ -166,7 +166,7 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 	chunk := &llm.Chunk{
 		Content: choice.Delta.Content,
 	}
-	
+
 	if len(choice.Delta.ToolCalls) > 0 {
 		chunk.Calls = make([]llm.ToolCall, len(choice.Delta.ToolCalls))
 		for i, call := range choice.Delta.ToolCalls {

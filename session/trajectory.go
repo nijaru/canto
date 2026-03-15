@@ -11,25 +11,25 @@ import (
 // It is used for evaluation, reinforcement learning (RL) fine-tuning,
 // and offline analysis.
 type Trajectory struct {
-	SessionID string          `json:"session_id"`
-	AgentID   string          `json:"agent_id"`
-	StartTime time.Time       `json:"start_time"`
-	EndTime   time.Time       `json:"end_time"`
+	SessionID string           `json:"session_id"`
+	AgentID   string           `json:"agent_id"`
+	StartTime time.Time        `json:"start_time"`
+	EndTime   time.Time        `json:"end_time"`
 	Turns     []TrajectoryTurn `json:"turns"`
-	TotalCost float64         `json:"total_cost"`
-	Metadata  map[string]any  `json:"metadata,omitempty"`
+	TotalCost float64          `json:"total_cost"`
+	Metadata  map[string]any   `json:"metadata,omitempty"`
 }
 
 // TrajectoryTurn represents a single perceive-decide-act-observe loop.
 type TrajectoryTurn struct {
-	TurnID      string           `json:"turn_id"`
-	Timestamp   time.Time        `json:"timestamp"`
-	Input       []llm.Message    `json:"input"`
-	Output      llm.Message      `json:"output"`
-	ToolCalls   []llm.ToolCall   `json:"tool_calls,omitempty"`
-	ToolResults []llm.Message    `json:"tool_results,omitempty"`
-	Cost        float64          `json:"cost"`
-	Metrics     map[string]any   `json:"metrics,omitempty"`
+	TurnID      string         `json:"turn_id"`
+	Timestamp   time.Time      `json:"timestamp"`
+	Input       []llm.Message  `json:"input"`
+	Output      llm.Message    `json:"output"`
+	ToolCalls   []llm.ToolCall `json:"tool_calls,omitempty"`
+	ToolResults []llm.Message  `json:"tool_results,omitempty"`
+	Cost        float64        `json:"cost"`
+	Metrics     map[string]any `json:"metrics,omitempty"`
 }
 
 // ExportTrajectory converts a session's event log into a structured Trajectory.
