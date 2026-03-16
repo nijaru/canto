@@ -77,18 +77,16 @@ func (p *OffloadProcessor) Process(
 		return nil
 	}
 
+	// Build content→eventID index once (O(N)) to avoid O(N²) scan per candidate.
 	events := sess.Events()
-	findEventID := func(content string) string {
-		for i := len(events) - 1; i >= 0; i-- {
-			e := events[i]
-			if e.Type == session.EventTypeMessageAdded {
-				var m llm.Message
-				if err := json.Unmarshal(e.Data, &m); err == nil && m.Content == content {
-					return e.ID.String()
-				}
+	contentToEventID := make(map[string]string, len(events))
+	for _, e := range events {
+		if e.Type == session.EventTypeMessageAdded {
+			var m llm.Message
+			if err := json.Unmarshal(e.Data, &m); err == nil && m.Content != "" {
+				contentToEventID[m.Content] = e.ID.String()
 			}
 		}
-		return ""
 	}
 
 	// Simple implementation: Offload Tool results that are not in the last N messages
@@ -98,7 +96,7 @@ func (p *OffloadProcessor) Process(
 	for _, m := range candidates {
 		if m.Role == llm.RoleTool && len(m.Content) > largeToolThreshold {
 			// Offload it
-			id := findEventID(m.Content)
+			id := contentToEventID[m.Content]
 			if id == "" {
 				id = fmt.Sprintf("offload-%s-%d", sess.ID(), len(newMessages))
 			}
