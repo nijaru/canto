@@ -48,6 +48,17 @@ func (r *Registry) Specs() []*llm.ToolSpec {
 	return res
 }
 
+// Names returns the names of all registered tools.
+func (r *Registry) Names() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	names := make([]string, 0, len(r.tools))
+	for name := range r.tools {
+		names = append(names, name)
+	}
+	return names
+}
+
 // Execute looks up and runs a tool.
 func (r *Registry) Execute(ctx context.Context, name, args string) (string, error) {
 	t, ok := r.Get(name)
