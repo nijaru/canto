@@ -41,12 +41,9 @@ func TestBashTool_Execute_InvalidJSON(t *testing.T) {
 
 func TestBashTool_Execute_CommandFailure(t *testing.T) {
 	b := &BashTool{}
-	// Non-zero exit: error is returned so the caller knows it failed.
-	out, err := b.Execute(context.Background(), `{"command": "exit 1"}`)
+	// Non-zero exit: error is returned; output contains only command stdout/stderr.
+	_, err := b.Execute(context.Background(), `{"command": "exit 1"}`)
 	if err == nil {
 		t.Fatal("expected error for failing command, got nil")
-	}
-	if !strings.Contains(out, "exit error") {
-		t.Errorf("expected 'exit error' in output, got: %q", out)
 	}
 }

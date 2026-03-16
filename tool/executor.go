@@ -50,12 +50,15 @@ func (e *Executor) Execute(ctx context.Context, name string, args ...string) (st
 
 	// 7. Handle timeout error
 	if tCtx.Err() == context.DeadlineExceeded {
-		return out + "\n\n[Execution timed out]", fmt.Errorf("command timed out after %v", e.Timeout)
+		return out + "\n\n[Execution timed out]", fmt.Errorf(
+			"command timed out after %v",
+			e.Timeout,
+		)
 	}
 
-	// 8. Handle execution error
+	// 8. Handle execution error — return raw output; caller appends error context.
 	if err != nil {
-		return fmt.Sprintf("exit error: %v\n%s", err, out), fmt.Errorf("command failed: %w", err)
+		return out, fmt.Errorf("command failed: %w", err)
 	}
 
 	return out, nil
