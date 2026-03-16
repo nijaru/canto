@@ -265,7 +265,7 @@ func (s *OpenAIStream) Next() (*llm.Chunk, bool) {
 					call.Function.Name = delta.Function.Name
 				}
 				if delta.Function.Arguments != "" {
-					call.Function.Arguments = delta.Function.Arguments
+					call.Function.Arguments += delta.Function.Arguments
 				}
 
 				s.activeCalls[*index] = call
