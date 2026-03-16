@@ -30,13 +30,15 @@ func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, e
 		return StepResult{}, err
 	}
 
-	// Record assistant response
+	// Record assistant response with cost from the provider.
 	msg := llm.Message{
 		Role:    llm.RoleAssistant,
 		Content: resp.Content,
 		Calls:   resp.Calls,
 	}
-	s.Append(session.NewEvent(s.ID(), session.EventTypeMessageAdded, msg))
+	e := session.NewEvent(s.ID(), session.EventTypeMessageAdded, msg)
+	e.Cost = resp.Usage.Cost
+	s.Append(e)
 
 	// Execute tools and append results.
 	// Collect the target agent IDs for any registered handoff tools

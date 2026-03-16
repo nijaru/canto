@@ -18,6 +18,12 @@ type Provider struct {
 	config catwalk.Provider
 }
 
+// New creates an Anthropic provider with the given API key.
+// Use NewProvider for full catwalk configuration control.
+func New(apiKey string) *Provider {
+	return NewProvider(catwalk.Provider{ID: "anthropic", APIKey: apiKey})
+}
+
 // NewProvider creates a new Anthropic provider from a catwalk configuration.
 func NewProvider(cfg catwalk.Provider) *Provider {
 	apiKey := cfg.APIKey

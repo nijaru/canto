@@ -45,11 +45,14 @@ Always verify your changes work before reporting success.`
 	a := agent.New("codeagent", instructions, "gpt-4o", provider, reg)
 	a.MaxSteps = 30
 
-	// Hooks: log tool calls and session lifecycle to stderr.
-	a.Hooks.Register(hook.CommandHook{
-		Event: hook.EventPreToolUse,
-		Args:  []string{"bash", "-c", `echo "[tool] $CANTO_TOOL_NAME: $CANTO_TOOL_ARGS" >&2`},
-	})
+	// Hooks: log tool calls to stderr.
+	a.Hooks.Register(hook.NewCommandHook(
+		"log-tool-use",
+		[]hook.HookEvent{hook.EventPreToolUse},
+		"bash",
+		[]string{"-c", `echo "[tool] $CANTO_TOOL_NAME: $CANTO_TOOL_ARGS" >&2`},
+		0,
+	))
 
 	store, err := session.NewJSONLStore("./data/codeagent")
 	if err != nil {

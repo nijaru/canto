@@ -14,6 +14,17 @@ type Provider struct {
 	Base
 }
 
+// New creates an OpenAI provider with the given API key.
+// Use NewProvider for full catwalk configuration control.
+func New(apiKey string) *Provider {
+	return &Provider{
+		Base: Base{
+			Client: openai.NewClient(apiKey),
+			Config: catwalk.Provider{ID: "openai", APIKey: apiKey},
+		},
+	}
+}
+
 // NewProvider creates a new OpenAI provider from a catwalk configuration.
 func NewProvider(cfg catwalk.Provider) *Provider {
 	apiKey := cfg.APIKey

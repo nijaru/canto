@@ -16,6 +16,12 @@ type Provider struct {
 	openai.Base
 }
 
+// New creates an Ollama provider pointing at the default local endpoint.
+// Use NewProvider for custom base URL or catwalk configuration.
+func New() *Provider {
+	return NewProvider(catwalk.Provider{ID: "ollama", APIEndpoint: "http://localhost:11434/v1"})
+}
+
 // NewProvider creates a new Ollama provider from a catwalk configuration.
 func NewProvider(cfg catwalk.Provider) *Provider {
 	apiKey := cfg.APIKey

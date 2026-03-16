@@ -71,6 +71,7 @@ func New(
 		ccontext.InstructionProcessor(instructions),
 		ccontext.ToolProcessor(t),
 		ccontext.HistoryProcessor(),
+		ccontext.CapabilitiesProcessor(), // must be last: adapts system/temp for reasoning models
 	)
 
 	for _, opt := range opts {

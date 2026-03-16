@@ -18,7 +18,8 @@ type mockProvider struct {
 	responses []*llm.LLMResponse
 }
 
-func (m *mockProvider) ID() string { return "mock" }
+func (m *mockProvider) ID() string                             { return "mock" }
+func (m *mockProvider) Capabilities(_ string) llm.Capabilities { return llm.DefaultCapabilities() }
 
 func (m *mockProvider) Generate(
 	ctx context.Context,
