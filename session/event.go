@@ -20,6 +20,7 @@ const (
 	EventTypeCompaction     EventType = "compaction"
 	EventTypeContextOffload EventType = "context_offload"
 	EventTypeHandoff        EventType = "handoff"
+	EventTypeExternalInput  EventType = "external_input"
 )
 
 // Event is a single append-only fact in a session.
