@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/nijaru/canto/llm"
@@ -10,9 +11,16 @@ import (
 	"github.com/nijaru/canto/tool"
 )
 
+// ErrMaxSteps is returned by Turn when the agent exhausts its step budget.
+// Use errors.Is(err, ErrMaxSteps) to distinguish from provider errors.
+var ErrMaxSteps = errors.New("maximum tool calling steps reached")
+
 // StepResult carries the outcome of a single Step or Turn execution.
-// Callers (graph, swarm) inspect this to detect and route handoffs.
 type StepResult struct {
+	// Content is the final assistant text from the last step.
+	// Populated by Turn so orchestrators don't re-parse the session.
+	Content string
+
 	// Handoff is non-nil when the agent's last action was a handoff to
 	// another agent. The caller must route to the target agent.
 	Handoff *Handoff

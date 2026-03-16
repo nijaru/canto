@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -419,9 +420,40 @@ func TestTurnMaxStepsReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected MaxSteps error, got nil")
 	}
-	expected := "maximum tool calling steps reached (3)"
-	if err.Error() != expected {
-		t.Errorf("expected error %q, got %q", expected, err.Error())
+	if !errors.Is(err, ErrMaxSteps) {
+		t.Errorf("expected errors.Is(err, ErrMaxSteps), got %v", err)
+	}
+}
+
+func TestTurnPopulatesContent(t *testing.T) {
+	p := &mockProvider{
+		responses: []*llm.LLMResponse{
+			{Content: "final answer"},
+		},
+	}
+	a := New("a", "sys", "m", p, nil)
+	s := userSession("sc", "question")
+
+	result, err := a.Turn(context.Background(), s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Content != "final answer" {
+		t.Fatalf("Content = %q, want %q", result.Content, "final answer")
+	}
+}
+
+func TestWithMaxSteps(t *testing.T) {
+	a := New("a", "", "m", &mockProvider{}, nil, WithMaxSteps(5))
+	if a.MaxSteps != 5 {
+		t.Fatalf("MaxSteps = %d, want 5", a.MaxSteps)
+	}
+}
+
+func TestWithModel(t *testing.T) {
+	a := New("a", "", "base", &mockProvider{}, nil, WithModel("gpt-4o"))
+	if a.Model != "gpt-4o" {
+		t.Fatalf("Model = %q, want gpt-4o", a.Model)
 	}
 }
 

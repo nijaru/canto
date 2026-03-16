@@ -34,13 +34,34 @@ type BaseAgent struct {
 // ID returns the agent's unique identifier.
 func (a *BaseAgent) ID() string { return a.agentID }
 
+// Option configures a BaseAgent after construction.
+type Option func(*BaseAgent)
+
+// WithMaxSteps sets the maximum number of tool-calling steps per turn.
+func WithMaxSteps(n int) Option { return func(a *BaseAgent) { a.MaxSteps = n } }
+
+// WithHooks replaces the agent's hook runner.
+func WithHooks(h *hook.Runner) Option { return func(a *BaseAgent) { a.Hooks = h } }
+
+// WithBuilder replaces the agent's context builder pipeline.
+func WithBuilder(b *ccontext.Builder) Option { return func(a *BaseAgent) { a.Builder = b } }
+
+// WithModel overrides the model used for LLM calls.
+func WithModel(m string) Option { return func(a *BaseAgent) { a.Model = m } }
+
 // New creates a BaseAgent with a default context builder chain.
-func New(id, instructions, model string, p llm.Provider, t *tool.Registry) *BaseAgent {
+// Optional opts are applied after defaults are set.
+func New(
+	id, instructions, model string,
+	p llm.Provider,
+	t *tool.Registry,
+	opts ...Option,
+) *BaseAgent {
 	a := &BaseAgent{
 		agentID:      id,
 		Instructions: instructions,
 		Model:        model,
-		MaxSteps:     10, // Default safety break
+		MaxSteps:     10,
 		Provider:     p,
 		Tools:        t,
 		Hooks:        hook.NewRunner(),
@@ -51,6 +72,10 @@ func New(id, instructions, model string, p llm.Provider, t *tool.Registry) *Base
 		ccontext.ToolProcessor(t),
 		ccontext.HistoryProcessor(),
 	)
+
+	for _, opt := range opts {
+		opt(a)
+	}
 
 	return a
 }

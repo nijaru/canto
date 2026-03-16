@@ -195,7 +195,16 @@ func (a *BaseAgent) Turn(ctx context.Context, s *session.Session) (StepResult, e
 	}
 
 	if steps >= a.MaxSteps {
-		return StepResult{}, fmt.Errorf("maximum tool calling steps reached (%d)", a.MaxSteps)
+		return StepResult{}, fmt.Errorf("%w (%d)", ErrMaxSteps, a.MaxSteps)
+	}
+
+	// Populate Content from the last assistant message without tool calls.
+	msgs := s.Messages()
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == llm.RoleAssistant && len(msgs[i].Calls) == 0 {
+			result.Content = msgs[i].Content
+			break
+		}
 	}
 
 	if a.Hooks != nil {
