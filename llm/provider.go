@@ -42,13 +42,37 @@ type ToolSpec struct {
 	Parameters  any    `json:"parameters"` // JSON Schema
 }
 
+// ResponseFormatType controls how the model formats its output.
+type ResponseFormatType string
+
+const (
+	// ResponseFormatText is the default unstructured text output.
+	ResponseFormatText ResponseFormatType = "text"
+	// ResponseFormatJSON constrains output to valid JSON (no schema enforced).
+	ResponseFormatJSON ResponseFormatType = "json_object"
+	// ResponseFormatJSONSchema constrains output to JSON matching a schema.
+	ResponseFormatJSONSchema ResponseFormatType = "json_schema"
+)
+
+// ResponseFormat constrains LLM output to structured JSON.
+// Providers that do not support structured outputs ignore this field.
+type ResponseFormat struct {
+	Type ResponseFormatType `json:"type"`
+	// Schema is the JSON Schema definition used when Type is ResponseFormatJSONSchema.
+	Schema map[string]any `json:"schema,omitempty"`
+	// Name identifies the schema for providers that require a name.
+	Name   string `json:"name,omitempty"`
+	Strict bool   `json:"strict,omitempty"`
+}
+
 // LLMRequest is the unified request sent to any provider.
 type LLMRequest struct {
-	Model       string      `json:"model"`
-	Messages    []Message   `json:"messages"`
-	Tools       []*ToolSpec `json:"tools,omitempty"`
-	Temperature float64     `json:"temperature"`
-	MaxTokens   int         `json:"max_tokens,omitempty"`
+	Model          string          `json:"model"`
+	Messages       []Message       `json:"messages"`
+	Tools          []*ToolSpec     `json:"tools,omitempty"`
+	Temperature    float64         `json:"temperature"`
+	MaxTokens      int             `json:"max_tokens,omitempty"`
+	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
 }
 
 // LLMResponse is the unified response from any provider.

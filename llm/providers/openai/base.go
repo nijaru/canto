@@ -2,6 +2,7 @@ package openai
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -136,13 +137,39 @@ func (b *Base) ConvertRequest(req *llm.LLMRequest) openai.ChatCompletionRequest 
 		}
 	}
 
-	return openai.ChatCompletionRequest{
+	cr := openai.ChatCompletionRequest{
 		Model:       req.Model,
 		Messages:    messages,
 		Tools:       tools,
 		Temperature: float32(req.Temperature),
 		MaxTokens:   req.MaxTokens,
 	}
+	if rf := req.ResponseFormat; rf != nil {
+		switch rf.Type {
+		case llm.ResponseFormatJSON:
+			cr.ResponseFormat = &openai.ChatCompletionResponseFormat{
+				Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+			}
+		case llm.ResponseFormatJSONSchema:
+			cr.ResponseFormat = &openai.ChatCompletionResponseFormat{
+				Type: openai.ChatCompletionResponseFormatTypeJSONSchema,
+				JSONSchema: &openai.ChatCompletionResponseFormatJSONSchema{
+					Name:   rf.Name,
+					Schema: schemaMarshaler(rf.Schema),
+					Strict: rf.Strict,
+				},
+			}
+		}
+	}
+	return cr
+}
+
+// schemaMarshaler wraps a map[string]any to implement json.Marshaler,
+// as required by the OpenAI SDK's JSONSchema field.
+type schemaMarshaler map[string]any
+
+func (s schemaMarshaler) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]any(s))
 }
 
 // ConvertToolCalls transforms OpenAI tool calls into the unified format.
