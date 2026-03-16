@@ -3,7 +3,6 @@ package llm
 import (
 	"context"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -49,35 +48,15 @@ func init() {
 	metricsOK = true
 }
 
-// CalculateCost computes the cost of an LLM call based on token counts and model pricing.
-func CalculateCost(model catwalk.Model, usage Usage) float64 {
-	inputCost := float64(usage.InputTokens) * (model.CostPer1MIn / 1_000_000)
-	outputCost := float64(usage.OutputTokens) * (model.CostPer1MOut / 1_000_000)
-	return inputCost + outputCost
-}
-
-// Budget tracks cost accumulation and enforces limits.
-type Budget struct {
-	TotalCost float64
-	Limit     float64
-}
-
-// IsExceeded returns true if the budget limit is reached.
-func (b *Budget) IsExceeded() bool {
-	return b.Limit > 0 && b.TotalCost >= b.Limit
-}
-
-// Add adds a usage record to the budget using model pricing.
-func (b *Budget) Add(ctx context.Context, model catwalk.Model, usage Usage) {
-	cost := CalculateCost(model, usage)
-	b.TotalCost += cost
-
-	if metricsOK {
-		attrs := metric.WithAttributes(
-			attribute.String("gen_ai.request.model", model.Name),
-		)
-		inputTokens.Add(ctx, int64(usage.InputTokens), attrs)
-		outputTokens.Add(ctx, int64(usage.OutputTokens), attrs)
-		totalCostUsage.Add(ctx, cost, attrs)
+// RecordUsage emits OTel metric counters for a completed LLM call.
+// modelID is the model identifier string (e.g. "gpt-4o").
+// Call this after every successful Generate to keep metrics up to date.
+func RecordUsage(ctx context.Context, modelID string, usage Usage) {
+	if !metricsOK {
+		return
 	}
+	attrs := metric.WithAttributes(attribute.String("gen_ai.request.model", modelID))
+	inputTokens.Add(ctx, int64(usage.InputTokens), attrs)
+	outputTokens.Add(ctx, int64(usage.OutputTokens), attrs)
+	totalCostUsage.Add(ctx, usage.Cost, attrs)
 }

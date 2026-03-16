@@ -39,6 +39,7 @@ func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, e
 	e := session.NewEvent(s.ID(), session.EventTypeMessageAdded, msg)
 	e.Cost = resp.Usage.Cost
 	s.Append(e)
+	llm.RecordUsage(ctx, req.Model, resp.Usage)
 
 	// Execute tools and append results.
 	// Collect the target agent IDs for any registered handoff tools

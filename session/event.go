@@ -12,15 +12,9 @@ import (
 type EventType string
 
 const (
-	EventTypeMessageAdded   EventType = "message_added"
-	EventTypeToolCalled     EventType = "tool_called"
-	EventTypeToolOutput     EventType = "tool_output"
-	EventTypeSessionCreated EventType = "session_created"
-	EventTypeMetaUpdated    EventType = "meta_updated"
-	EventTypeCompaction     EventType = "compaction"
-	EventTypeContextOffload EventType = "context_offload"
-	EventTypeHandoff        EventType = "handoff"
-	EventTypeExternalInput  EventType = "external_input"
+	EventTypeMessageAdded  EventType = "message_added"
+	EventTypeHandoff       EventType = "handoff"
+	EventTypeExternalInput EventType = "external_input"
 )
 
 // Event is a single append-only fact in a session.

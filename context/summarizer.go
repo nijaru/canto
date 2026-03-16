@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -18,7 +17,8 @@ type SummarizeProcessor struct {
 	MinKeepTurns int
 	Provider     llm.Provider
 	Model        string
-	Hooks        *hook.Runner
+	// OnPreCompact is called before summarization begins, if non-nil.
+	OnPreCompact func(ctx context.Context, sess *session.Session)
 }
 
 // NewSummarizeProcessor creates a new summarize processor.
@@ -51,8 +51,8 @@ func (p *SummarizeProcessor) Process(
 		return nil
 	}
 
-	if p.Hooks != nil {
-		p.Hooks.Run(ctx, hook.EventPreCompact, hook.SessionMeta{ID: sess.ID()}, nil)
+	if p.OnPreCompact != nil {
+		p.OnPreCompact(ctx, sess)
 	}
 
 	// 3. Identify candidates

@@ -35,7 +35,7 @@ func TestSubscribe_MultipleSubscribers(t *testing.T) {
 	ch1 := s.Subscribe(ctx)
 	ch2 := s.Subscribe(ctx)
 
-	e := NewEvent("sess-2", EventTypeToolCalled, nil)
+	e := NewEvent("sess-2", EventTypeMessageAdded, nil)
 	s.Append(e)
 
 	for _, ch := range []<-chan Event{ch1, ch2} {
@@ -104,7 +104,7 @@ func TestSubscribe_SlowSubscriberDoesNotBlock(t *testing.T) {
 func TestSubscribe_NoSubscribers(t *testing.T) {
 	s := New("sess-5")
 	// Append with no subscribers must not panic.
-	s.Append(NewEvent("sess-5", EventTypeSessionCreated, nil))
+	s.Append(NewEvent("sess-5", EventTypeHandoff, nil))
 }
 
 // TestSubscribe_ConcurrentAppendCancel exercises the race between Append and
@@ -150,7 +150,7 @@ func TestSubscribe_EventsBeforeSubscribeNotReceived(t *testing.T) {
 	ch := s.Subscribe(ctx)
 
 	// Append after subscribe.
-	e := NewEvent("sess-6", EventTypeToolCalled, nil)
+	e := NewEvent("sess-6", EventTypeMessageAdded, nil)
 	s.Append(e)
 
 	select {

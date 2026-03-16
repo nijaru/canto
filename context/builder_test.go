@@ -317,7 +317,7 @@ func TestBudgetGuard_PassingCase(t *testing.T) {
 	guard := NewBudgetGuard(10.0)
 	sess := session.New("sess-bg-pass")
 
-	e := session.NewEvent(sess.ID(), session.EventTypeToolCalled, nil)
+	e := session.NewEvent(sess.ID(), session.EventTypeMessageAdded, nil)
 	e.Cost = 0.50
 	sess.Append(e)
 
@@ -331,7 +331,7 @@ func TestBudgetGuard_Exceeded(t *testing.T) {
 	guard := NewBudgetGuard(1.0)
 	sess := session.New("sess-bg-exceed")
 
-	e := session.NewEvent(sess.ID(), session.EventTypeToolCalled, nil)
+	e := session.NewEvent(sess.ID(), session.EventTypeMessageAdded, nil)
 	e.Cost = 1.50
 	sess.Append(e)
 
@@ -349,7 +349,7 @@ func TestBudgetGuard_ZeroLimitSkips(t *testing.T) {
 	guard := NewBudgetGuard(0)
 	sess := session.New("sess-bg-zero")
 
-	e := session.NewEvent(sess.ID(), session.EventTypeToolCalled, nil)
+	e := session.NewEvent(sess.ID(), session.EventTypeMessageAdded, nil)
 	e.Cost = 999.99
 	sess.Append(e)
 
@@ -363,7 +363,7 @@ func TestBudgetGuard_ExactlyAtLimit(t *testing.T) {
 	guard := NewBudgetGuard(1.0)
 	sess := session.New("sess-bg-exact")
 
-	e := session.NewEvent(sess.ID(), session.EventTypeToolCalled, nil)
+	e := session.NewEvent(sess.ID(), session.EventTypeMessageAdded, nil)
 	e.Cost = 1.0
 	sess.Append(e)
 

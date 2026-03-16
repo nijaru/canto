@@ -40,7 +40,7 @@ func TestAttachWriteThrough_SavesEvents(t *testing.T) {
 	defer cancel()
 
 	sess.Append(NewEvent("wt-1", EventTypeMessageAdded, nil))
-	sess.Append(NewEvent("wt-1", EventTypeToolCalled, nil))
+	sess.Append(NewEvent("wt-1", EventTypeMessageAdded, nil))
 
 	// Give the goroutine time to save.
 	deadline := time.Now().Add(time.Second)
@@ -79,7 +79,7 @@ func TestAttachWriteThrough_EventsBeforeAttachNotSaved(t *testing.T) {
 	store := &memStore{}
 
 	// Append before attaching.
-	sess.Append(NewEvent("wt-3", EventTypeSessionCreated, nil))
+	sess.Append(NewEvent("wt-3", EventTypeHandoff, nil))
 
 	cancel := AttachWriteThrough(context.Background(), sess, store)
 	defer cancel()
