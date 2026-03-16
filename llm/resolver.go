@@ -343,3 +343,11 @@ func (p *FailoverProvider) Cost(ctx context.Context, model string, usage Usage) 
 	}
 	return 0
 }
+
+// Capabilities returns the first provider's view of the model's capabilities.
+func (p *FailoverProvider) Capabilities(model string) Capabilities {
+	if len(p.providers) == 0 {
+		return DefaultCapabilities()
+	}
+	return p.providers[0].Capabilities(model)
+}

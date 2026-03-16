@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/memory"
 	"github.com/nijaru/canto/session"
-	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/tool"
 )
 
@@ -384,13 +384,20 @@ type capProvider struct {
 	caps llm.Capabilities
 }
 
-func (p *capProvider) ID() string                                                               { return "cap" }
-func (p *capProvider) Generate(_ context.Context, _ *llm.LLMRequest) (*llm.LLMResponse, error) { return &llm.LLMResponse{}, nil }
-func (p *capProvider) Stream(_ context.Context, _ *llm.LLMRequest) (llm.Stream, error)         { return nil, nil }
-func (p *capProvider) Models(_ context.Context) ([]catwalk.Model, error)                        { return nil, nil }
-func (p *capProvider) CountTokens(_ context.Context, _ string, _ []llm.Message) (int, error)   { return 0, nil }
-func (p *capProvider) Cost(_ context.Context, _ string, _ llm.Usage) float64                   { return 0 }
-func (p *capProvider) Capabilities(_ string) llm.Capabilities                                   { return p.caps }
+func (p *capProvider) ID() string { return "cap" }
+func (p *capProvider) Generate(_ context.Context, _ *llm.LLMRequest) (*llm.LLMResponse, error) {
+	return &llm.LLMResponse{}, nil
+}
+
+func (p *capProvider) Stream(_ context.Context, _ *llm.LLMRequest) (llm.Stream, error) {
+	return nil, nil
+}
+func (p *capProvider) Models(_ context.Context) ([]catwalk.Model, error) { return nil, nil }
+func (p *capProvider) CountTokens(_ context.Context, _ string, _ []llm.Message) (int, error) {
+	return 0, nil
+}
+func (p *capProvider) Cost(_ context.Context, _ string, _ llm.Usage) float64 { return 0 }
+func (p *capProvider) Capabilities(_ string) llm.Capabilities                { return p.caps }
 
 func TestCapabilitiesProcessor_StandardModel(t *testing.T) {
 	proc := CapabilitiesProcessor()
@@ -414,9 +421,14 @@ func TestCapabilitiesProcessor_StandardModel(t *testing.T) {
 	}
 }
 
-func TestCapabilitiesProcessor_ReasoningModel_StripsSystem(t *testing.T) {
+func TestCapabilitiesProcessor_ReasoningModel_SystemToUser(t *testing.T) {
 	proc := CapabilitiesProcessor()
-	caps := llm.Capabilities{SystemPrompt: false, Temperature: false, Streaming: true, Tools: true}
+	caps := llm.Capabilities{
+		SystemRole:  llm.RoleUser,
+		Temperature: false,
+		Streaming:   true,
+		Tools:       true,
+	}
 	p := &capProvider{caps: caps}
 	sess := session.New("caps-2")
 	req := &llm.LLMRequest{
@@ -426,17 +438,51 @@ func TestCapabilitiesProcessor_ReasoningModel_StripsSystem(t *testing.T) {
 			{Role: llm.RoleUser, Content: "What is 2+2?"},
 		},
 	}
-	if err := proc.Process(context.Background(), p, "o3", sess, req); err != nil {
+	if err := proc.Process(context.Background(), p, "model", sess, req); err != nil {
 		t.Fatal(err)
 	}
 	if req.Temperature != 0 {
 		t.Errorf("reasoning model: temperature should be zeroed, got %v", req.Temperature)
 	}
 	if req.Messages[0].Role != llm.RoleUser {
-		t.Errorf("reasoning model: system message should be converted to user, got %s", req.Messages[0].Role)
+		t.Errorf(
+			"reasoning model: system message should be converted to user, got %s",
+			req.Messages[0].Role,
+		)
 	}
 	if !strings.HasPrefix(req.Messages[0].Content, "Instructions:") {
-		t.Errorf("reasoning model: converted message should start with Instructions:, got %q", req.Messages[0].Content)
+		t.Errorf(
+			"reasoning model: converted message should start with Instructions:, got %q",
+			req.Messages[0].Content,
+		)
+	}
+}
+
+func TestCapabilitiesProcessor_ReasoningModel_SystemToDeveloper(t *testing.T) {
+	proc := CapabilitiesProcessor()
+	caps := llm.Capabilities{
+		SystemRole:  llm.RoleDeveloper,
+		Temperature: false,
+		Streaming:   true,
+		Tools:       true,
+	}
+	p := &capProvider{caps: caps}
+	sess := session.New("caps-4")
+	req := &llm.LLMRequest{
+		Temperature: 1.0,
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "Be concise."},
+			{Role: llm.RoleUser, Content: "What is 2+2?"},
+		},
+	}
+	if err := proc.Process(context.Background(), p, "model", sess, req); err != nil {
+		t.Fatal(err)
+	}
+	if req.Messages[0].Role != llm.RoleDeveloper {
+		t.Errorf("expected developer role, got %s", req.Messages[0].Role)
+	}
+	if req.Messages[0].Content != "Be concise." {
+		t.Errorf("developer role should not add prefix, got %q", req.Messages[0].Content)
 	}
 }
 

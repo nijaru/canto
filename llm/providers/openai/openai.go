@@ -19,8 +19,9 @@ type Provider struct {
 func New(apiKey string) *Provider {
 	return &Provider{
 		Base: Base{
-			Client: openai.NewClient(apiKey),
-			Config: catwalk.Provider{ID: "openai", APIKey: apiKey},
+			Client:    openai.NewClient(apiKey),
+			Config:    catwalk.Provider{ID: "openai", APIKey: apiKey},
+			ModelCaps: DefaultModelCaps(),
 		},
 	}
 }
@@ -39,8 +40,9 @@ func NewProvider(cfg catwalk.Provider) *Provider {
 
 	return &Provider{
 		Base: Base{
-			Client: openai.NewClientWithConfig(config),
-			Config: cfg,
+			Client:    openai.NewClientWithConfig(config),
+			Config:    cfg,
+			ModelCaps: DefaultModelCaps(),
 		},
 	}
 }

@@ -17,6 +17,10 @@ import (
 type Base struct {
 	Client *openai.Client
 	Config catwalk.Provider
+	// ModelCaps holds per-model capability overrides. Capabilities(model) looks
+	// up this map before falling back to DefaultCapabilities. Populate with
+	// DefaultModelCaps() to get known reasoning model entries.
+	ModelCaps map[string]llm.Capabilities
 }
 
 // ID returns the unique identifier for this provider.
@@ -137,12 +141,22 @@ func (b *Base) ConvertRequest(req *llm.LLMRequest) openai.ChatCompletionRequest 
 		}
 	}
 
+	caps := b.Capabilities(req.Model)
 	cr := openai.ChatCompletionRequest{
-		Model:       req.Model,
-		Messages:    messages,
-		Tools:       tools,
-		Temperature: float32(req.Temperature),
-		MaxTokens:   req.MaxTokens,
+		Model:    req.Model,
+		Messages: messages,
+		Tools:    tools,
+	}
+	if caps.Temperature {
+		cr.Temperature = float32(req.Temperature)
+		cr.MaxTokens = req.MaxTokens
+	} else {
+		// Models without temperature control require max_completion_tokens,
+		// which counts both visible output and internal reasoning tokens.
+		cr.MaxCompletionTokens = req.MaxTokens
+	}
+	if caps.ReasoningEffort && req.ReasoningEffort != "" {
+		cr.ReasoningEffort = req.ReasoningEffort
 	}
 	if rf := req.ResponseFormat; rf != nil {
 		switch rf.Type {
@@ -165,28 +179,40 @@ func (b *Base) ConvertRequest(req *llm.LLMRequest) openai.ChatCompletionRequest 
 }
 
 // Capabilities returns the feature set for the given model.
-// Reasoning models (o1, o3) do not support system prompt or temperature.
+// It consults ModelCaps first; unknown models get DefaultCapabilities.
 func (b *Base) Capabilities(model string) llm.Capabilities {
-	caps := llm.DefaultCapabilities()
-	// o1 and o3 model families use fixed internal temperature and do not
-	// accept system-role messages. o1-mini and o3-mini share these limits.
-	if isReasoningModel(model) {
-		caps.SystemPrompt = false
-		caps.Temperature = false
-	}
-	return caps
-}
-
-// isReasoningModel returns true for OpenAI o1/o3 reasoning model variants.
-func isReasoningModel(model string) bool {
-	prefixes := []string{"o1", "o3"}
-	for _, p := range prefixes {
-		if len(model) >= len(p) && model[:len(p)] == p &&
-			(len(model) == len(p) || model[len(p)] == '-') {
-			return true
+	if b.ModelCaps != nil {
+		if caps, ok := b.ModelCaps[model]; ok {
+			return caps
 		}
 	}
-	return false
+	return llm.DefaultCapabilities()
+}
+
+// DefaultModelCaps returns capability entries for well-known OpenAI reasoning
+// models. Pass to Base.ModelCaps (or merge with your own overrides) when
+// constructing a provider that will use these models.
+func DefaultModelCaps() map[string]llm.Capabilities {
+	reasoning := func(systemRole llm.Role) llm.Capabilities {
+		return llm.Capabilities{
+			Streaming:       true,
+			Tools:           true,
+			SystemRole:      systemRole,
+			ReasoningEffort: true,
+			// Temperature is false (zero value) — reasoning models ignore it.
+		}
+	}
+	return map[string]llm.Capabilities{
+		// o1 family: no system role — instructions become user messages.
+		"o1":         reasoning(llm.RoleUser),
+		"o1-mini":    reasoning(llm.RoleUser),
+		"o1-preview": reasoning(llm.RoleUser),
+		// o3/o4 families: privileged instruction role.
+		"o3":      reasoning(llm.RoleDeveloper),
+		"o3-mini": reasoning(llm.RoleDeveloper),
+		"o3-pro":  reasoning(llm.RoleDeveloper),
+		"o4-mini": reasoning(llm.RoleDeveloper),
+	}
 }
 
 // schemaMarshaler wraps a map[string]any to implement json.Marshaler,

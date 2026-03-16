@@ -14,6 +14,10 @@ const (
 	RoleUser      Role = "user"
 	RoleAssistant Role = "assistant"
 	RoleTool      Role = "tool"
+	// RoleDeveloper is a privileged instruction channel accepted by some models.
+	// CapabilitiesProcessor converts system messages to this role when
+	// Capabilities.SystemRole is RoleDeveloper.
+	RoleDeveloper Role = "developer"
 )
 
 // Message represents a single message in the LLM conversation.
@@ -73,6 +77,12 @@ type LLMRequest struct {
 	Temperature    float64         `json:"temperature"`
 	MaxTokens      int             `json:"max_tokens,omitempty"`
 	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+	// ReasoningEffort controls the depth of internal reasoning for OpenAI o-series
+	// models. Accepted values: "low", "medium", "high". Empty means provider default.
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	// ThinkingBudget, when > 0, enables Anthropic extended thinking with the given
+	// token budget (minimum 1024, must be less than MaxTokens).
+	ThinkingBudget int `json:"thinking_budget,omitempty"`
 }
 
 // LLMResponse is the unified response from any provider.
@@ -91,28 +101,38 @@ type Usage struct {
 }
 
 // Capabilities describes what features a model supports.
-// The pipeline uses these to adapt requests (e.g., convert system messages
-// for reasoning models that do not accept the system role).
+// The pipeline uses these to adapt requests before they reach the provider.
 type Capabilities struct {
 	// Streaming indicates the model supports token-by-token streaming.
 	Streaming bool
 	// Tools indicates the model supports tool/function calling.
 	Tools bool
-	// SystemPrompt indicates the model accepts messages with role="system".
-	// Reasoning models (o1, o3, R1) do not; inject instructions as user messages.
-	SystemPrompt bool
 	// Temperature indicates the model accepts a temperature parameter.
-	// Reasoning models use a fixed internal temperature.
+	// Models with internal fixed-temperature reasoning should set this to false.
 	Temperature bool
+	// SystemRole is the role to use when passing system-level instructions.
+	// RoleSystem (default) passes them through unchanged.
+	// RoleUser means the model has no system role; CapabilitiesProcessor injects
+	// system content as user messages with an "Instructions:" prefix.
+	// RoleDeveloper means the model accepts a privileged instruction channel
+	// distinct from the assistant conversation.
+	SystemRole Role
+	// ReasoningEffort indicates the model accepts a hint for reasoning depth.
+	// When true, LLMRequest.ReasoningEffort is forwarded to the provider.
+	ReasoningEffort bool
+	// Thinking indicates the model supports extended chain-of-thought reasoning
+	// with an explicit token budget. When true, LLMRequest.ThinkingBudget is
+	// forwarded to the provider.
+	Thinking bool
 }
 
 // DefaultCapabilities returns full capabilities — suitable for most chat models.
 func DefaultCapabilities() Capabilities {
 	return Capabilities{
-		Streaming:    true,
-		Tools:        true,
-		SystemPrompt: true,
-		Temperature:  true,
+		Streaming:   true,
+		Tools:       true,
+		Temperature: true,
+		SystemRole:  RoleSystem,
 	}
 }
 

@@ -12,9 +12,10 @@ import (
 // capability constraints. It must run last in the processor chain, after
 // all other processors have populated the request.
 //
-// Currently handles:
-//   - SystemPrompt=false: converts system-role messages to user messages
-//     with an "Instructions: ..." prefix. Required for o1/o3 models.
+// Handles:
+//   - SystemRole != RoleSystem: rewrites system messages to the declared role.
+//     RoleUser: injects an "Instructions:" prefix (models with no system role).
+//     Any other role (e.g. RoleDeveloper): converts role directly, no prefix.
 //   - Temperature=false: zeroes the temperature field.
 func CapabilitiesProcessor() ContextProcessor {
 	return ProcessorFunc(
@@ -24,8 +25,8 @@ func CapabilitiesProcessor() ContextProcessor {
 			}
 			caps := p.Capabilities(model)
 
-			if !caps.SystemPrompt {
-				convertSystemMessages(req)
+			if caps.SystemRole != llm.RoleSystem {
+				rewriteSystemMessages(req, caps.SystemRole)
 			}
 			if !caps.Temperature {
 				req.Temperature = 0
@@ -35,16 +36,19 @@ func CapabilitiesProcessor() ContextProcessor {
 	)
 }
 
-// convertSystemMessages rewrites system-role messages as user messages with
-// an "Instructions: ..." prefix, preserving ordering. Used for models that
-// do not accept the system role (e.g., o1, o3).
-func convertSystemMessages(req *llm.LLMRequest) {
+// rewriteSystemMessages converts system-role messages to targetRole.
+// When targetRole is RoleUser, content is prefixed with "Instructions:\n" so
+// the model can distinguish instructions from conversational user turns.
+// For other target roles the content is passed through unchanged.
+func rewriteSystemMessages(req *llm.LLMRequest, targetRole llm.Role) {
 	for i, m := range req.Messages {
-		if m.Role == llm.RoleSystem {
-			req.Messages[i] = llm.Message{
-				Role:    llm.RoleUser,
-				Content: fmt.Sprintf("Instructions:\n%s", m.Content),
-			}
+		if m.Role != llm.RoleSystem {
+			continue
 		}
+		content := m.Content
+		if targetRole == llm.RoleUser {
+			content = fmt.Sprintf("Instructions:\n%s", content)
+		}
+		req.Messages[i] = llm.Message{Role: targetRole, Content: content}
 	}
 }

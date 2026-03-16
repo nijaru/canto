@@ -16,12 +16,32 @@ import (
 type Provider struct {
 	client sdk.Client
 	config catwalk.Provider
+	// modelCaps holds per-model capability overrides. Capabilities(model) looks
+	// up this map before falling back to DefaultCapabilities.
+	modelCaps map[string]llm.Capabilities
 }
 
 // New creates an Anthropic provider with the given API key.
 // Use NewProvider for full catwalk configuration control.
 func New(apiKey string) *Provider {
 	return NewProvider(catwalk.Provider{ID: "anthropic", APIKey: apiKey})
+}
+
+// DefaultModelCaps returns capability entries for Anthropic models that
+// support extended thinking. Merge with your own overrides as needed.
+func DefaultModelCaps() map[string]llm.Capabilities {
+	thinking := func() llm.Capabilities {
+		c := llm.DefaultCapabilities()
+		c.Thinking = true
+		return c
+	}
+	return map[string]llm.Capabilities{
+		"claude-3-7-sonnet-20250219": thinking(),
+		"claude-opus-4-5":            thinking(),
+		"claude-sonnet-4-5":          thinking(),
+		"claude-opus-4-20250514":     thinking(),
+		"claude-sonnet-4-20250514":   thinking(),
+	}
 }
 
 // NewProvider creates a new Anthropic provider from a catwalk configuration.
@@ -33,7 +53,7 @@ func NewProvider(cfg catwalk.Provider) *Provider {
 
 	opts := []option.RequestOption{
 		option.WithAPIKey(apiKey),
-		// Required for tool use in some versions of the API
+		// Required for tool use in some versions of the API.
 		option.WithHeader("anthropic-beta", "tools-2024-05-16"),
 	}
 	if cfg.APIEndpoint != "" {
@@ -41,8 +61,9 @@ func NewProvider(cfg catwalk.Provider) *Provider {
 	}
 
 	return &Provider{
-		client: sdk.NewClient(opts...),
-		config: cfg,
+		client:    sdk.NewClient(opts...),
+		config:    cfg,
+		modelCaps: DefaultModelCaps(),
 	}
 }
 
@@ -52,7 +73,11 @@ func (p *Provider) ID() string {
 
 func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMResponse, error) {
 	params := p.convertRequest(req)
-	resp, err := p.client.Messages.New(ctx, params)
+	var opts []option.RequestOption
+	if req.ThinkingBudget > 0 {
+		opts = append(opts, option.WithHeader("anthropic-beta", "interleaved-thinking-2025-05-14"))
+	}
+	resp, err := p.client.Messages.New(ctx, params, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -69,9 +94,10 @@ func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMR
 	}
 
 	for _, block := range resp.Content {
-		if block.Type == "text" {
+		switch block.Type {
+		case "text":
 			res.Content += block.Text
-		} else if block.Type == "tool_use" {
+		case "tool_use":
 			res.Calls = append(res.Calls, llm.ToolCall{
 				ID:   block.ID,
 				Type: "function",
@@ -83,6 +109,8 @@ func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMR
 					Arguments: string(block.Input),
 				},
 			})
+			// "thinking" and "redacted_thinking" are internal reasoning blocks.
+			// They are not exposed in LLMResponse to keep the API uniform.
 		}
 	}
 
@@ -91,7 +119,11 @@ func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMR
 
 func (p *Provider) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream, error) {
 	params := p.convertRequest(req)
-	stream := p.client.Messages.NewStreaming(ctx, params)
+	var opts []option.RequestOption
+	if req.ThinkingBudget > 0 {
+		opts = append(opts, option.WithHeader("anthropic-beta", "interleaved-thinking-2025-05-14"))
+	}
+	stream := p.client.Messages.NewStreaming(ctx, params, opts...)
 	return &Stream{stream: stream}, nil
 }
 
@@ -200,7 +232,11 @@ func (p *Provider) convertRequest(req *llm.LLMRequest) sdk.MessageNewParams {
 	if len(system) > 0 {
 		params.System = system
 	}
-	if req.Temperature > 0 {
+	if req.ThinkingBudget > 0 {
+		params.Thinking = sdk.ThinkingConfigParamOfEnabled(int64(req.ThinkingBudget))
+		// Extended thinking requires temperature=1.0.
+		params.Temperature = sdk.Float(1.0)
+	} else if req.Temperature > 0 {
 		params.Temperature = sdk.Float(req.Temperature)
 	}
 
@@ -277,11 +313,9 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 					Type: "function",
 				}
 				s.activeCall.Function.Name = start.ContentBlock.Name
-				// Emit the ID and Name immediately
-				return &llm.Chunk{
-					Calls: []llm.ToolCall{*s.activeCall},
-				}, true
+				return &llm.Chunk{Calls: []llm.ToolCall{*s.activeCall}}, true
 			}
+			// "thinking" and "redacted_thinking" blocks are skipped.
 		case "content_block_delta":
 			delta := event.AsContentBlockDelta()
 			switch delta.Delta.Type {
@@ -290,10 +324,9 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 			case "input_json_delta":
 				if s.activeCall != nil {
 					s.activeCall.Function.Arguments += delta.Delta.PartialJSON
-					return &llm.Chunk{
-						Calls: []llm.ToolCall{*s.activeCall},
-					}, true
+					return &llm.Chunk{Calls: []llm.ToolCall{*s.activeCall}}, true
 				}
+				// "thinking_delta" is internal reasoning; not emitted to callers.
 			}
 		case "content_block_stop":
 			s.activeCall = nil
@@ -316,8 +349,13 @@ func (s *Stream) Close() error {
 	return s.stream.Close()
 }
 
-// Capabilities returns full capabilities for all Anthropic models.
-// Claude models support streaming, tools, system prompt, and temperature.
-func (p *Provider) Capabilities(_ string) llm.Capabilities {
+// Capabilities returns the feature set for the given model.
+// It consults the model caps map first; unknown models get DefaultCapabilities.
+func (p *Provider) Capabilities(model string) llm.Capabilities {
+	if p.modelCaps != nil {
+		if caps, ok := p.modelCaps[model]; ok {
+			return caps
+		}
+	}
 	return llm.DefaultCapabilities()
 }
