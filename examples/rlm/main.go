@@ -62,7 +62,7 @@ When your solution is correct, explain the result clearly.`
 		},
 	))
 
-	if err := runner.Run(ctx, sessionID); err != nil {
+	if _, err := runner.Run(ctx, sessionID); err != nil {
 		log.Fatalf("run failed: %v", err)
 	}
 

@@ -101,7 +101,7 @@ func TestPhase1CoreLoop(t *testing.T) {
 
 	// 3. Run agent via Runner
 	r := runtime.NewRunner(store, a)
-	err = r.Run(context.Background(), sessionID)
+	_, err = r.Run(context.Background(), sessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

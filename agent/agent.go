@@ -46,6 +46,27 @@ func WithHooks(h *hook.Runner) Option { return func(a *BaseAgent) { a.Hooks = h 
 // WithBuilder replaces the agent's context builder pipeline.
 func WithBuilder(b *ccontext.Builder) Option { return func(a *BaseAgent) { a.Builder = b } }
 
+// WithProcessors inserts additional context processors into the default builder
+// chain, placed before CapabilitiesProcessor (which must run last).
+// Use this to add memory retrieval, custom compaction, or other middleware
+// without rebuilding the full default chain with WithBuilder.
+func WithProcessors(ps ...ccontext.ContextProcessor) Option {
+	return func(a *BaseAgent) {
+		b := a.Builder.Processors
+		if len(b) == 0 {
+			a.Builder.Processors = ps
+			return
+		}
+		// Insert before the last processor (CapabilitiesProcessor by convention).
+		tail := b[len(b)-1]
+		merged := make([]ccontext.ContextProcessor, 0, len(b)-1+len(ps)+1)
+		merged = append(merged, b[:len(b)-1]...)
+		merged = append(merged, ps...)
+		merged = append(merged, tail)
+		a.Builder.Processors = merged
+	}
+}
+
 // WithModel overrides the model used for LLM calls.
 func WithModel(m string) Option { return func(a *BaseAgent) { a.Model = m } }
 

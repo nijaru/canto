@@ -10,6 +10,17 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
+// Streamer is implemented by agents that support token-by-token streaming.
+// Runner and other orchestrators check for this interface via type assertion
+// and use StreamTurn when present; non-streaming Turn is the fallback.
+type Streamer interface {
+	StreamTurn(
+		ctx context.Context,
+		sess *session.Session,
+		chunkFn func(*llm.Chunk),
+	) (StepResult, error)
+}
+
 // StreamStep executes a single turn of the agentic loop using streaming.
 // chunkFn is called for each content chunk as it arrives; pass nil to ignore.
 // Tool calls are assembled from the stream and executed after completion.

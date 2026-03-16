@@ -60,7 +60,7 @@ research report on the given topic. On each run:
 	// Run up to 5 iterations; each builds on the previous session.
 	for i := range 5 {
 		fmt.Printf("--- iteration %d ---\n", i+1)
-		if err := runner.Run(ctx, sessionID); err != nil {
+		if _, err := runner.Run(ctx, sessionID); err != nil {
 			log.Fatalf("run failed: %v", err)
 		}
 

@@ -82,7 +82,7 @@ Always verify your changes work before reporting success.`
 		llm.Message{Role: llm.RoleUser, Content: input},
 	))
 
-	if err := runner.Run(ctx, sessionID); err != nil {
+	if _, err := runner.Run(ctx, sessionID); err != nil {
 		log.Fatalf("run failed: %v", err)
 	}
 
