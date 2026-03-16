@@ -25,27 +25,6 @@ func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, e
 		return StepResult{}, err
 	}
 
-	if a.Hooks != nil {
-		results, err := a.Hooks.Run(ctx, hook.EventUserPromptSubmit, s, map[string]any{
-			"model": a.Model,
-		})
-		if err != nil {
-			return StepResult{}, err
-		}
-
-		// Inject hook output into request context if provided
-		for _, res := range results {
-			if res.Output != "" {
-				// Prepend as a system message to provide context
-				msg := llm.Message{
-					Role:    llm.RoleSystem,
-					Content: fmt.Sprintf("<hook_context name=%q>\n%s\n</hook_context>", "UserPromptSubmit", res.Output),
-				}
-				req.Messages = append([]llm.Message{msg}, req.Messages...)
-			}
-		}
-	}
-
 	resp, err := a.Provider.Generate(ctx, req)
 	if err != nil {
 		return StepResult{}, err
