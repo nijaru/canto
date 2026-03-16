@@ -289,10 +289,9 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 				return &llm.Chunk{Content: delta.Delta.Text}, true
 			case "input_json_delta":
 				if s.activeCall != nil {
-					call := *s.activeCall
-					call.Function.Arguments = delta.Delta.PartialJSON
+					s.activeCall.Function.Arguments += delta.Delta.PartialJSON
 					return &llm.Chunk{
-						Calls: []llm.ToolCall{call},
+						Calls: []llm.ToolCall{*s.activeCall},
 					}, true
 				}
 			}
