@@ -39,6 +39,16 @@ func (b *Builder) Build(
 	return nil
 }
 
+// Prepend inserts p at the front of the processor chain.
+func (b *Builder) Prepend(p ContextProcessor) {
+	b.Processors = append([]ContextProcessor{p}, b.Processors...)
+}
+
+// Append adds p at the end of the processor chain.
+func (b *Builder) Append(p ContextProcessor) {
+	b.Processors = append(b.Processors, p)
+}
+
 // HistoryProcessor appends the session event log to the LLM request messages.
 func HistoryProcessor() ContextProcessor {
 	return ProcessorFunc(
