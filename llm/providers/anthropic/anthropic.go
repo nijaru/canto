@@ -92,14 +92,17 @@ func (p *Provider) Models(ctx context.Context) ([]catwalk.Model, error) {
 	return p.config.Models, nil
 }
 
-// CountTokens returns an estimate of the tokens in the given messages.
-func (p *Provider) CountTokens(ctx context.Context, model string, messages []llm.Message) (int, error) {
-	// For Phase 1, we use a simple heuristic.
-	total := 0
+// CountTokens estimates tokens using per-message overhead heuristic.
+// Accurate counting requires passing system + tools + messages to the
+// Anthropic count_tokens API — deferred until Provider Capabilities are added.
+func (p *Provider) CountTokens(_ context.Context, _ string, messages []llm.Message) (int, error) {
+	total := 3 // reply priming
 	for _, m := range messages {
-		total += len(m.Content) / 4
+		total += 4 // per-message overhead
+		total += (len(m.Content) + 3) / 4
 		for _, call := range m.Calls {
-			total += len(call.Function.Name)/4 + len(call.Function.Arguments)/4
+			total += (len(call.Function.Name) + 3) / 4
+			total += (len(call.Function.Arguments) + 3) / 4
 		}
 	}
 	return total, nil

@@ -28,15 +28,17 @@ func (b *Base) Models(ctx context.Context) ([]catwalk.Model, error) {
 	return b.Config.Models, nil
 }
 
-// CountTokens returns an estimate of the tokens in the given messages.
-func (b *Base) CountTokens(ctx context.Context, model string, messages []llm.Message) (int, error) {
-	// For Phase 1, we use a simple heuristic.
-	// In the future, this can use tiktoken or similar for specific models.
-	total := 0
+// CountTokens estimates tokens using per-message overhead documented by OpenAI:
+// 3 tokens for reply priming, 4 tokens per message for role/delimiter encoding.
+// Content is estimated at 1 token per 4 chars.
+func (b *Base) CountTokens(_ context.Context, _ string, messages []llm.Message) (int, error) {
+	total := 3 // reply priming
 	for _, m := range messages {
-		total += len(m.Content) / 4
+		total += 4 // per-message overhead
+		total += (len(m.Content) + 3) / 4
 		for _, call := range m.Calls {
-			total += len(call.Function.Name)/4 + len(call.Function.Arguments)/4
+			total += (len(call.Function.Name) + 3) / 4
+			total += (len(call.Function.Arguments) + 3) / 4
 		}
 	}
 	return total, nil
