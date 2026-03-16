@@ -90,6 +90,33 @@ type Usage struct {
 	Cost         float64 `json:"cost,omitempty"` // USD
 }
 
+
+// Capabilities describes what features a model supports.
+// The pipeline uses these to adapt requests (e.g., convert system messages
+// for reasoning models that do not accept the system role).
+type Capabilities struct {
+	// Streaming indicates the model supports token-by-token streaming.
+	Streaming bool
+	// Tools indicates the model supports tool/function calling.
+	Tools bool
+	// SystemPrompt indicates the model accepts messages with role="system".
+	// Reasoning models (o1, o3, R1) do not; inject instructions as user messages.
+	SystemPrompt bool
+	// Temperature indicates the model accepts a temperature parameter.
+	// Reasoning models use a fixed internal temperature.
+	Temperature bool
+}
+
+// DefaultCapabilities returns full capabilities — suitable for most chat models.
+func DefaultCapabilities() Capabilities {
+	return Capabilities{
+		Streaming:    true,
+		Tools:        true,
+		SystemPrompt: true,
+		Temperature:  true,
+	}
+}
+
 // Provider defines the interface for an LLM backend.
 type Provider interface {
 	// ID returns the unique identifier for this provider.
@@ -109,6 +136,10 @@ type Provider interface {
 
 	// Cost calculates the cost in USD for the given usage on a specific model.
 	Cost(ctx context.Context, model string, usage Usage) float64
+
+	// Capabilities returns the feature set supported by the given model.
+	// Use this to adapt requests for reasoning models that have constraints.
+	Capabilities(model string) Capabilities
 }
 
 // Stream defines the interface for a streaming LLM response.

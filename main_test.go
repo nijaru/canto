@@ -53,6 +53,7 @@ func (m *MockProvider) CountTokens(ctx context.Context, model string, messages [
 func (m *MockProvider) Cost(ctx context.Context, model string, usage llm.Usage) float64 {
 	return 0
 }
+func (m *MockProvider) Capabilities(_ string) llm.Capabilities { return llm.DefaultCapabilities() }
 
 func TestPhase1CoreLoop(t *testing.T) {
 	tmpDir := t.TempDir()

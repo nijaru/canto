@@ -307,3 +307,9 @@ func (s *Stream) Err() error {
 func (s *Stream) Close() error {
 	return s.stream.Close()
 }
+
+// Capabilities returns full capabilities for all Anthropic models.
+// Claude models support streaming, tools, system prompt, and temperature.
+func (p *Provider) Capabilities(_ string) llm.Capabilities {
+	return llm.DefaultCapabilities()
+}

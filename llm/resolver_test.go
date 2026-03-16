@@ -36,6 +36,7 @@ func (m *mockProvider) CountTokens(ctx context.Context, model string, messages [
 func (m *mockProvider) Cost(ctx context.Context, model string, usage Usage) float64 {
 	return 0
 }
+func (m *mockProvider) Capabilities(_ string) Capabilities { return DefaultCapabilities() }
 
 func TestFailoverProvider(t *testing.T) {
 	p1 := &mockProvider{

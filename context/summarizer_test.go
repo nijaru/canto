@@ -32,6 +32,7 @@ func (m *mockProvider) CountTokens(ctx context.Context, model string, messages [
 func (m *mockProvider) Cost(ctx context.Context, model string, usage llm.Usage) float64 {
 	return 0
 }
+func (m *mockProvider) Capabilities(_ string) llm.Capabilities { return llm.DefaultCapabilities() }
 
 func TestSummarizeProcessor(t *testing.T) {
 	sess := session.New("test-session")

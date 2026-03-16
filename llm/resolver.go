@@ -195,6 +195,17 @@ func (r *SmartResolver) Cost(ctx context.Context, model string, usage Usage) flo
 	return 0
 }
 
+
+// Capabilities returns the capabilities of the first healthy provider's
+// view of the given model. Falls back to DefaultCapabilities if no providers
+// are available.
+func (r *SmartResolver) Capabilities(model string) Capabilities {
+	providers := r.getHealthy()
+	if len(providers) == 0 {
+		return DefaultCapabilities()
+	}
+	return providers[0].provider.Capabilities(model)
+}
 func (r *SmartResolver) getHealthy() []*managedProvider {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
