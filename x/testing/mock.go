@@ -18,6 +18,9 @@ type Step struct {
 	Content string
 	Calls   []llm.ToolCall
 	Err     error
+	// Chunks, if set, causes Stream() to return these chunks instead of using
+	// Content/Calls. Use this to test streaming code paths.
+	Chunks []llm.Chunk
 }
 
 // MockProvider is a programmable llm.Provider for testing agent logic
@@ -60,10 +63,60 @@ func (m *MockProvider) Generate(_ context.Context, req *llm.LLMRequest) (*llm.LL
 	return &llm.LLMResponse{Content: s.Content, Calls: s.Calls}, nil
 }
 
-// Stream is not implemented; returns an error.
-func (m *MockProvider) Stream(_ context.Context, _ *llm.LLMRequest) (llm.Stream, error) {
-	return nil, fmt.Errorf("MockProvider: Stream not implemented")
+// Stream returns a MockStream built from the next step's Chunks.
+// If the step has no Chunks set, it synthesises a single content chunk from
+// the step's Content and Calls, so streaming and non-streaming tests can use
+// the same Step definitions when chunk granularity doesn't matter.
+func (m *MockProvider) Stream(_ context.Context, req *llm.LLMRequest) (llm.Stream, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, req)
+
+	if m.pos >= len(m.steps) {
+		return nil, fmt.Errorf(
+			"MockProvider: no more steps (called %d times, have %d)",
+			m.pos+1,
+			len(m.steps),
+		)
+	}
+	s := m.steps[m.pos]
+	m.pos++
+
+	if s.Err != nil {
+		return nil, s.Err
+	}
+	chunks := s.Chunks
+	if chunks == nil {
+		// Synthesise from Content/Calls for tests that don't need chunk granularity.
+		chunks = []llm.Chunk{{Content: s.Content, Calls: s.Calls}}
+	}
+	return &MockStream{chunks: chunks}, nil
 }
+
+// MockStream is a pre-programmed llm.Stream for testing streaming code paths.
+type MockStream struct {
+	chunks []llm.Chunk
+	pos    int
+	err    error
+}
+
+// NewMockStream creates a MockStream that emits the given chunks in order.
+func NewMockStream(chunks ...llm.Chunk) *MockStream {
+	return &MockStream{chunks: chunks}
+}
+
+func (s *MockStream) Next() (*llm.Chunk, bool) {
+	if s.pos >= len(s.chunks) {
+		return nil, false
+	}
+	c := s.chunks[s.pos]
+	s.pos++
+	return &c, true
+}
+
+func (s *MockStream) Err() error   { return s.err }
+func (s *MockStream) Close() error { return nil }
 
 // Models returns an empty list.
 func (m *MockProvider) Models(_ context.Context) ([]catwalk.Model, error) {

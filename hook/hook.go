@@ -19,7 +19,6 @@ const (
 	EventPreToolUse         HookEvent = "PreToolUse"
 	EventPostToolUse        HookEvent = "PostToolUse"
 	EventPostToolUseFailure HookEvent = "PostToolUseFailure"
-	EventPreCompact         HookEvent = "PreCompact"
 	EventSessionEnd         HookEvent = "SessionEnd"
 	EventStop               HookEvent = "Stop"
 )

@@ -10,6 +10,7 @@ import (
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/memory"
 	"github.com/nijaru/canto/session"
+	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/tool"
 )
 
@@ -372,5 +373,82 @@ func TestBudgetGuard_ExactlyAtLimit(t *testing.T) {
 	// >= limit triggers error
 	if err == nil {
 		t.Fatal("expected budget exceeded error at exact limit, got nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CapabilitiesProcessor
+// ---------------------------------------------------------------------------
+
+type capProvider struct {
+	caps llm.Capabilities
+}
+
+func (p *capProvider) ID() string                                                               { return "cap" }
+func (p *capProvider) Generate(_ context.Context, _ *llm.LLMRequest) (*llm.LLMResponse, error) { return &llm.LLMResponse{}, nil }
+func (p *capProvider) Stream(_ context.Context, _ *llm.LLMRequest) (llm.Stream, error)         { return nil, nil }
+func (p *capProvider) Models(_ context.Context) ([]catwalk.Model, error)                        { return nil, nil }
+func (p *capProvider) CountTokens(_ context.Context, _ string, _ []llm.Message) (int, error)   { return 0, nil }
+func (p *capProvider) Cost(_ context.Context, _ string, _ llm.Usage) float64                   { return 0 }
+func (p *capProvider) Capabilities(_ string) llm.Capabilities                                   { return p.caps }
+
+func TestCapabilitiesProcessor_StandardModel(t *testing.T) {
+	proc := CapabilitiesProcessor()
+	p := &capProvider{caps: llm.DefaultCapabilities()}
+	sess := session.New("caps-1")
+	req := &llm.LLMRequest{
+		Temperature: 0.7,
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "You are helpful."},
+			{Role: llm.RoleUser, Content: "Hello"},
+		},
+	}
+	if err := proc.Process(context.Background(), p, "gpt-4o", sess, req); err != nil {
+		t.Fatal(err)
+	}
+	if req.Temperature != 0.7 {
+		t.Errorf("standard model: temperature should be unchanged, got %v", req.Temperature)
+	}
+	if req.Messages[0].Role != llm.RoleSystem {
+		t.Errorf("standard model: system message should remain, got %s", req.Messages[0].Role)
+	}
+}
+
+func TestCapabilitiesProcessor_ReasoningModel_StripsSystem(t *testing.T) {
+	proc := CapabilitiesProcessor()
+	caps := llm.Capabilities{SystemPrompt: false, Temperature: false, Streaming: true, Tools: true}
+	p := &capProvider{caps: caps}
+	sess := session.New("caps-2")
+	req := &llm.LLMRequest{
+		Temperature: 1.0,
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "Be concise."},
+			{Role: llm.RoleUser, Content: "What is 2+2?"},
+		},
+	}
+	if err := proc.Process(context.Background(), p, "o3", sess, req); err != nil {
+		t.Fatal(err)
+	}
+	if req.Temperature != 0 {
+		t.Errorf("reasoning model: temperature should be zeroed, got %v", req.Temperature)
+	}
+	if req.Messages[0].Role != llm.RoleUser {
+		t.Errorf("reasoning model: system message should be converted to user, got %s", req.Messages[0].Role)
+	}
+	if !strings.HasPrefix(req.Messages[0].Content, "Instructions:") {
+		t.Errorf("reasoning model: converted message should start with Instructions:, got %q", req.Messages[0].Content)
+	}
+}
+
+func TestCapabilitiesProcessor_NilProvider(t *testing.T) {
+	proc := CapabilitiesProcessor()
+	req := &llm.LLMRequest{Temperature: 0.5}
+	err := proc.Process(context.Background(), nil, "any-model", session.New("caps-3"), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// nil provider: no-op, temperature unchanged
+	if req.Temperature != 0.5 {
+		t.Errorf("nil provider: temperature should be unchanged, got %v", req.Temperature)
 	}
 }
