@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 
 	"charm.land/catwalk/pkg/catwalk"
@@ -200,6 +201,10 @@ func (p *Provider) convertRequest(req *llm.LLMRequest) sdk.MessageNewParams {
 	return params
 }
 
+// convertSchema converts a ToolSpec.Parameters value (any JSON-serializable type)
+// into the Anthropic SDK's ToolInputSchemaParam. It normalizes the input via a
+// JSON round-trip so that map[string]any, json.RawMessage, typed schema structs,
+// and any other serializable type are all handled uniformly.
 func (p *Provider) convertSchema(params any) sdk.ToolInputSchemaParam {
 	schema := sdk.ToolInputSchemaParam{
 		Type: constant.Object("object"),
@@ -209,32 +214,30 @@ func (p *Provider) convertSchema(params any) sdk.ToolInputSchemaParam {
 		return schema
 	}
 
-	m, ok := params.(map[string]any)
-	if !ok {
-		// If it's not a map, we can't safely extract properties/required.
-		// Fallback to direct assignment if possible.
-		schema.Properties = params
+	// Normalize to map[string]any via JSON round-trip.
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return schema
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		// params is not a JSON object — not usable as a tool schema.
 		return schema
 	}
 
-	// Safely extract properties
 	if props, ok := m["properties"]; ok {
 		schema.Properties = props
 	} else {
 		schema.Properties = m
 	}
 
-	// Safely extract required
 	if req, ok := m["required"]; ok {
-		switch r := req.(type) {
-		case []any:
-			for _, item := range r {
+		if items, ok := req.([]any); ok {
+			for _, item := range items {
 				if s, ok := item.(string); ok {
 					schema.Required = append(schema.Required, s)
 				}
 			}
-		case []string:
-			schema.Required = r
 		}
 	}
 
