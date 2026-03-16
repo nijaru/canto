@@ -2,9 +2,11 @@ package session
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/nijaru/canto/llm"
+	"github.com/oklog/ulid/v2"
 )
 
 // Trajectory represents a structured trace of an agent's execution.
@@ -30,6 +32,84 @@ type TrajectoryTurn struct {
 	ToolResults []llm.Message  `json:"tool_results,omitempty"`
 	Cost        float64        `json:"cost"`
 	Metrics     map[string]any `json:"metrics,omitempty"`
+}
+
+// Episode is a compressed record of a completed agent run.
+// It captures only the signal — successful tool call pairs and the final conclusion —
+// discarding the raw conversation transcript. Orchestrators retrieve episodes from
+// archival memory rather than full session logs, keeping swarm coordination practical at scale.
+type Episode struct {
+	ID         string         `json:"id"`
+	SessionID  string         `json:"session_id"`
+	AgentID    string         `json:"agent_id"`
+	StartTime  time.Time      `json:"start_time"`
+	EndTime    time.Time      `json:"end_time"`
+	Conclusion string         `json:"conclusion"` // last assistant message without tool calls
+	Calls      []EpisodeCall  `json:"calls,omitempty"`
+	TotalCost  float64        `json:"total_cost"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
+}
+
+// EpisodeCall is a single successful tool invocation captured in an Episode.
+type EpisodeCall struct {
+	Tool   string `json:"tool"`
+	Args   string `json:"args"`
+	Result string `json:"result"`
+}
+
+// Text returns the searchable text for this Episode: conclusion followed by tool names.
+// Used as FTS5 content when storing in memory.
+func (ep *Episode) Text() string {
+	var sb strings.Builder
+	sb.WriteString(ep.Conclusion)
+	for _, c := range ep.Calls {
+		sb.WriteByte(' ')
+		sb.WriteString(c.Tool)
+	}
+	return sb.String()
+}
+
+// Distill compresses a Trajectory into an Episode by extracting only the signal:
+// successful tool call pairs (call + result) and the final textual conclusion.
+// The raw conversation transcript is discarded. The returned Episode is ready for
+// storage in an archival memory store so orchestrators can retrieve completed work
+// without loading full session logs.
+func Distill(traj *Trajectory) *Episode {
+	ep := &Episode{
+		ID:        ulid.Make().String(),
+		SessionID: traj.SessionID,
+		AgentID:   traj.AgentID,
+		StartTime: traj.StartTime,
+		EndTime:   traj.EndTime,
+		TotalCost: traj.TotalCost,
+	}
+
+	for _, turn := range traj.Turns {
+		// Map tool results by call ID for O(1) pairing.
+		resultsByID := make(map[string]string, len(turn.ToolResults))
+		for _, r := range turn.ToolResults {
+			resultsByID[r.ToolID] = r.Content
+		}
+
+		for _, call := range turn.ToolCalls {
+			result, ok := resultsByID[call.ID]
+			if !ok {
+				continue // skip calls with no matching result
+			}
+			ep.Calls = append(ep.Calls, EpisodeCall{
+				Tool:   call.Function.Name,
+				Args:   call.Function.Arguments,
+				Result: result,
+			})
+		}
+
+		// Track the final conclusion: last assistant message with no tool calls.
+		if len(turn.ToolCalls) == 0 && turn.Output.Content != "" {
+			ep.Conclusion = turn.Output.Content
+		}
+	}
+
+	return ep
 }
 
 // ExportTrajectory converts a session's event log into a structured Trajectory.
