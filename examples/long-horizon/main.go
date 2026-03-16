@@ -35,7 +35,13 @@ func main() {
 
 	// Seed the plan file if it doesn't exist.
 	if _, err := os.Stat(planFile); os.IsNotExist(err) {
-		os.WriteFile(planFile, []byte("# Plan\n\n## Status: IN_PROGRESS\n\n## Tasks\n- [ ] Step 1\n- [ ] Step 2\n- [ ] Step 3\n"), 0o644)
+		os.WriteFile(
+			planFile,
+			[]byte(
+				"# Plan\n\n## Status: IN_PROGRESS\n\n## Tasks\n- [ ] Step 1\n- [ ] Step 2\n- [ ] Step 3\n",
+			),
+			0o644,
+		)
 	}
 
 	reg := tool.NewRegistry()
@@ -63,8 +69,17 @@ When all tasks are done, write "## Status: COMPLETE" to the plan file.`, planFil
 		SessionFn: func(cycle int) *session.Session {
 			id := fmt.Sprintf("lh-cycle-%d", cycle)
 			sess := session.New(id)
-			sess.Append(session.NewEvent(id, session.EventTypeMessageAdded,
-				llm.Message{Role: llm.RoleUser, Content: fmt.Sprintf("Continue work. Cycle %d. Read %s and do the next task.", cycle+1, planFile)},
+			sess.Append(session.NewEvent(
+				id,
+				session.EventTypeMessageAdded,
+				llm.Message{
+					Role: llm.RoleUser,
+					Content: fmt.Sprintf(
+						"Continue work. Cycle %d. Read %s and do the next task.",
+						cycle+1,
+						planFile,
+					),
+				},
 			))
 			return sess
 		},

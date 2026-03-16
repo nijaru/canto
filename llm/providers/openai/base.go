@@ -164,7 +164,6 @@ func (b *Base) ConvertRequest(req *llm.LLMRequest) openai.ChatCompletionRequest 
 	return cr
 }
 
-
 // Capabilities returns the feature set for the given model.
 // Reasoning models (o1, o3) do not support system prompt or temperature.
 func (b *Base) Capabilities(model string) llm.Capabilities {
@@ -182,12 +181,14 @@ func (b *Base) Capabilities(model string) llm.Capabilities {
 func isReasoningModel(model string) bool {
 	prefixes := []string{"o1", "o3"}
 	for _, p := range prefixes {
-		if len(model) >= len(p) && model[:len(p)] == p && (len(model) == len(p) || model[len(p)] == '-') {
+		if len(model) >= len(p) && model[:len(p)] == p &&
+			(len(model) == len(p) || model[len(p)] == '-') {
 			return true
 		}
 	}
 	return false
 }
+
 // schemaMarshaler wraps a map[string]any to implement json.Marshaler,
 // as required by the OpenAI SDK's JSONSchema field.
 type schemaMarshaler map[string]any

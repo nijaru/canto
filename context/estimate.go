@@ -23,7 +23,12 @@ func EstimateTokens(text string) int {
 // This matches OpenAI's documented tokenization overhead and brings
 // pre-flight estimates to within ~5% of actual counts for typical
 // English conversations.
-func EstimateMessagesTokens(ctx context.Context, p llm.Provider, model string, messages []llm.Message) int {
+func EstimateMessagesTokens(
+	ctx context.Context,
+	p llm.Provider,
+	model string,
+	messages []llm.Message,
+) int {
 	if p != nil {
 		count, err := p.CountTokens(ctx, model, messages)
 		if err == nil {

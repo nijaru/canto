@@ -69,3 +69,18 @@ func (r *Registry) List() []*Skill {
 	}
 	return res
 }
+
+// Register adds or replaces a skill in the registry.
+func (r *Registry) Register(s *Skill) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.skills[s.Name] = s
+}
+
+// Deregister removes a skill from the registry by name.
+// It is a no-op if the skill does not exist.
+func (r *Registry) Deregister(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.skills, name)
+}

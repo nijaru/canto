@@ -46,7 +46,11 @@ func (m *MockProvider) Models(ctx context.Context) ([]catwalk.Model, error) {
 	return nil, nil
 }
 
-func (m *MockProvider) CountTokens(ctx context.Context, model string, messages []llm.Message) (int, error) {
+func (m *MockProvider) CountTokens(
+	ctx context.Context,
+	model string,
+	messages []llm.Message,
+) (int, error) {
 	return 0, nil
 }
 

@@ -90,7 +90,6 @@ type Usage struct {
 	Cost         float64 `json:"cost,omitempty"` // USD
 }
 
-
 // Capabilities describes what features a model supports.
 // The pipeline uses these to adapt requests (e.g., convert system messages
 // for reasoning models that do not accept the system role).

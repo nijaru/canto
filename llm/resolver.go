@@ -159,7 +159,11 @@ func (r *SmartResolver) Models(ctx context.Context) ([]catwalk.Model, error) {
 	return all, nil
 }
 
-func (r *SmartResolver) CountTokens(ctx context.Context, model string, messages []Message) (int, error) {
+func (r *SmartResolver) CountTokens(
+	ctx context.Context,
+	model string,
+	messages []Message,
+) (int, error) {
 	healthy := r.getHealthy()
 	if len(healthy) == 0 {
 		// Fallback to first provider if none are healthy for counting
@@ -195,7 +199,6 @@ func (r *SmartResolver) Cost(ctx context.Context, model string, usage Usage) flo
 	return 0
 }
 
-
 // Capabilities returns the capabilities of the first healthy provider's
 // view of the given model. Falls back to DefaultCapabilities if no providers
 // are available.
@@ -206,6 +209,7 @@ func (r *SmartResolver) Capabilities(model string) Capabilities {
 	}
 	return providers[0].provider.Capabilities(model)
 }
+
 func (r *SmartResolver) getHealthy() []*managedProvider {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -311,7 +315,11 @@ func (p *FailoverProvider) Models(ctx context.Context) ([]catwalk.Model, error) 
 	return all, nil
 }
 
-func (p *FailoverProvider) CountTokens(ctx context.Context, model string, messages []Message) (int, error) {
+func (p *FailoverProvider) CountTokens(
+	ctx context.Context,
+	model string,
+	messages []Message,
+) (int, error) {
 	if len(p.providers) == 0 {
 		return 0, fmt.Errorf("no providers configured")
 	}

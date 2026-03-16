@@ -29,8 +29,11 @@ func NewCodeExecutionTool(language string) *CodeExecutionTool {
 // Spec returns the tool specification.
 func (c *CodeExecutionTool) Spec() llm.ToolSpec {
 	return llm.ToolSpec{
-		Name:        "execute_code",
-		Description: fmt.Sprintf("Execute arbitrary %s code in a sandboxed environment and return its output. Only use with trusted inputs.", c.Language),
+		Name: "execute_code",
+		Description: fmt.Sprintf(
+			"Execute arbitrary %s code in a sandboxed environment and return its output. Only use with trusted inputs.",
+			c.Language,
+		),
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

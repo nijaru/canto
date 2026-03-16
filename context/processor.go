@@ -11,7 +11,13 @@ import (
 // It can add messages, tools, or modify parameters based on the session history
 // and the specific model/provider being used.
 type ContextProcessor interface {
-	Process(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error
+	Process(
+		ctx context.Context,
+		p llm.Provider,
+		model string,
+		sess *session.Session,
+		req *llm.LLMRequest,
+	) error
 }
 
 // ProcessorFunc is an adapter to allow the use of ordinary functions as context processors.

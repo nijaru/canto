@@ -53,8 +53,13 @@ When your solution is correct, explain the result clearly.`
 	sessionID := "rlm-session-1"
 
 	// Seed user message.
-	store.Save(ctx, session.NewEvent(sessionID, session.EventTypeMessageAdded,
-		llm.Message{Role: llm.RoleUser, Content: "Write a Python function to find all prime numbers up to N using the Sieve of Eratosthenes. Test it for N=50."},
+	store.Save(ctx, session.NewEvent(
+		sessionID,
+		session.EventTypeMessageAdded,
+		llm.Message{
+			Role:    llm.RoleUser,
+			Content: "Write a Python function to find all prime numbers up to N using the Sieve of Eratosthenes. Test it for N=50.",
+		},
 	))
 
 	if err := runner.Run(ctx, sessionID); err != nil {
