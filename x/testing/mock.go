@@ -1,0 +1,152 @@
+// Package testing provides test utilities for agents built with canto.
+package testing
+
+import (
+	"context"
+	"fmt"
+	"sync"
+	"testing"
+
+	"charm.land/catwalk/pkg/catwalk"
+
+	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/session"
+)
+
+// Step is a pre-programmed LLM response returned by MockProvider.
+type Step struct {
+	Content string
+	Calls   []llm.ToolCall
+	Err     error
+}
+
+// MockProvider is a programmable llm.Provider for testing agent logic
+// without making real API calls. Responses are consumed in order.
+type MockProvider struct {
+	mu    sync.Mutex
+	id    string
+	steps []Step
+	pos   int
+	calls []*llm.LLMRequest // record of all Generate calls
+}
+
+// NewMockProvider creates a MockProvider with the given step sequence.
+func NewMockProvider(id string, steps ...Step) *MockProvider {
+	return &MockProvider{id: id, steps: steps}
+}
+
+func (m *MockProvider) ID() string { return m.id }
+
+// Generate returns the next pre-programmed step. Fails the test if steps are exhausted.
+func (m *MockProvider) Generate(_ context.Context, req *llm.LLMRequest) (*llm.LLMResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, req)
+
+	if m.pos >= len(m.steps) {
+		return nil, fmt.Errorf(
+			"MockProvider: no more steps (called %d times, have %d)",
+			m.pos+1,
+			len(m.steps),
+		)
+	}
+	s := m.steps[m.pos]
+	m.pos++
+
+	if s.Err != nil {
+		return nil, s.Err
+	}
+	return &llm.LLMResponse{Content: s.Content, Calls: s.Calls}, nil
+}
+
+// Stream is not implemented; panics if called.
+func (m *MockProvider) Stream(_ context.Context, _ *llm.LLMRequest) (llm.Stream, error) {
+	panic("MockProvider.Stream not implemented")
+}
+
+// Models returns an empty list.
+func (m *MockProvider) Models(_ context.Context) ([]catwalk.Model, error) {
+	return nil, nil
+}
+
+// CountTokens returns 0.
+func (m *MockProvider) CountTokens(_ context.Context, _ string, _ []llm.Message) (int, error) {
+	return 0, nil
+}
+
+// Cost returns 0.
+func (m *MockProvider) Cost(_ context.Context, _ string, _ llm.Usage) float64 { return 0 }
+
+// Capabilities returns default capabilities.
+func (m *MockProvider) Capabilities(_ string) llm.Capabilities {
+	return llm.DefaultCapabilities()
+}
+
+// Calls returns all requests passed to Generate, in order.
+func (m *MockProvider) Calls() []*llm.LLMRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]*llm.LLMRequest, len(m.calls))
+	copy(out, m.calls)
+	return out
+}
+
+// Remaining returns the number of unconsumed steps.
+func (m *MockProvider) Remaining() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.steps) - m.pos
+}
+
+// AssertExhausted fails t if there are unconsumed steps.
+func (m *MockProvider) AssertExhausted(t *testing.T) {
+	t.Helper()
+	if r := m.Remaining(); r != 0 {
+		t.Errorf("MockProvider %q: %d step(s) not consumed", m.id, r)
+	}
+}
+
+// AssertToolCalled fails t if toolName was not called in the session event log.
+func AssertToolCalled(t *testing.T, sess *session.Session, toolName string) {
+	t.Helper()
+	for _, e := range sess.Events() {
+		if e.Type != session.EventTypeMessageAdded {
+			continue
+		}
+		var msg llm.Message
+		if err := unmarshalJSON(e.Data, &msg); err != nil {
+			continue
+		}
+		for _, call := range msg.Calls {
+			if call.Function.Name == toolName {
+				return
+			}
+		}
+	}
+	t.Errorf("tool %q was never called in session %q", toolName, sess.ID())
+}
+
+// AssertToolNotCalled fails t if toolName was called in the session event log.
+func AssertToolNotCalled(t *testing.T, sess *session.Session, toolName string) {
+	t.Helper()
+	for _, e := range sess.Events() {
+		if e.Type != session.EventTypeMessageAdded {
+			continue
+		}
+		var msg llm.Message
+		if err := unmarshalJSON(e.Data, &msg); err != nil {
+			continue
+		}
+		for _, call := range msg.Calls {
+			if call.Function.Name == toolName {
+				t.Errorf(
+					"tool %q was called but should not have been (session %q)",
+					toolName,
+					sess.ID(),
+				)
+				return
+			}
+		}
+	}
+}
