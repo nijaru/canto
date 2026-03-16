@@ -11,8 +11,36 @@ import (
 const subscriberBufSize = 64
 
 // subscriber is a single fan-out recipient.
+// The mu guards ch against concurrent trySend and close calls.
 type subscriber struct {
-	ch chan Event
+	mu     sync.Mutex
+	ch     chan Event
+	closed bool
+}
+
+// trySend delivers e to the subscriber without blocking.
+// Safe to call concurrently with close.
+func (sub *subscriber) trySend(e Event) {
+	sub.mu.Lock()
+	defer sub.mu.Unlock()
+	if sub.closed {
+		return
+	}
+	select {
+	case sub.ch <- e:
+	default: // slow subscriber; drop
+	}
+}
+
+// close marks the subscriber done and closes the channel.
+// Idempotent; safe to call concurrently with trySend.
+func (sub *subscriber) close() {
+	sub.mu.Lock()
+	defer sub.mu.Unlock()
+	if !sub.closed {
+		sub.closed = true
+		close(sub.ch)
+	}
 }
 
 // Session is a durable container for a conversation.
@@ -46,11 +74,7 @@ func (s *Session) Append(e Event) {
 	s.mu.Unlock()
 
 	for _, sub := range subs {
-		select {
-		case sub.ch <- e:
-		default:
-			// subscriber too slow; drop event rather than block
-		}
+		sub.trySend(e)
 	}
 }
 
@@ -75,7 +99,7 @@ func (s *Session) Subscribe(ctx context.Context) <-chan Event {
 			}
 		}
 		s.mu.Unlock()
-		close(ch)
+		sub.close() // safe: mu prevents race with concurrent trySend
 	}()
 
 	return ch

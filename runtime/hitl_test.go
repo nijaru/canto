@@ -23,9 +23,8 @@ func TestInputGate_RequestProvide(t *testing.T) {
 		done <- resp
 	}()
 
-	// Give goroutine time to block.
 	time.Sleep(10 * time.Millisecond)
-	gate.Provide("yes")
+	gate.Provide(context.Background(), "yes")
 
 	select {
 	case resp := <-done:
@@ -45,7 +44,7 @@ func TestInputGate_EventsRecorded(t *testing.T) {
 		gate.Request(context.Background(), sess, "approve?") //nolint
 	}()
 	time.Sleep(10 * time.Millisecond)
-	gate.Provide("approved")
+	gate.Provide(context.Background(), "approved")
 	time.Sleep(10 * time.Millisecond)
 
 	events := sess.Events()
@@ -100,6 +99,51 @@ func TestInputGate_ContextCancel(t *testing.T) {
 	}
 }
 
+func TestInputGate_CancelDrainsStaleValue(t *testing.T) {
+	// H1: verify that cancelling a Request drains g.ch so the next
+	// Provide/Request exchange is not contaminated by the stale value.
+	gate := NewInputGate()
+	sess := session.New("s3b")
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Start a Request, cancel it.
+	reqDone := make(chan error, 1)
+	go func() {
+		_, err := gate.Request(ctx, sess, "stale question")
+		reqDone <- err
+	}()
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+	<-reqDone // wait for cancellation
+
+	// A concurrent Provide races with cancel — its value might land in g.ch.
+	// After Request returns, g.ch must be empty (drained in ctx.Done arm).
+	// Verify the next Provide+Request sees the correct answer.
+	sess2 := session.New("s3c")
+	fresh := make(chan string, 1)
+	go func() {
+		resp, err := gate.Request(context.Background(), sess2, "fresh question")
+		if err != nil {
+			t.Errorf("fresh Request: %v", err)
+			return
+		}
+		fresh <- resp
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	gate.Provide(context.Background(), "correct answer")
+
+	select {
+	case resp := <-fresh:
+		if resp != "correct answer" {
+			t.Fatalf("resp = %q, want 'correct answer'", resp)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out on fresh Request")
+	}
+}
+
 func TestInputGate_Tool(t *testing.T) {
 	gate := NewInputGate()
 	sess := session.New("s4")
@@ -120,7 +164,7 @@ func TestInputGate_Tool(t *testing.T) {
 	}()
 
 	time.Sleep(10 * time.Millisecond)
-	gate.Provide("ok")
+	gate.Provide(context.Background(), "ok")
 
 	select {
 	case out := <-done:
@@ -129,5 +173,32 @@ func TestInputGate_Tool(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out")
+	}
+}
+
+func TestInputGate_ProvideContextCancel(t *testing.T) {
+	gate := NewInputGate()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Fill the buffer so the second Provide blocks.
+	gate.Provide(context.Background(), "buffer filler")
+
+	delivered := make(chan bool, 1)
+	go func() {
+		// Buffer is full — Provide should block until ctx is cancelled.
+		ok := gate.Provide(ctx, "never received")
+		delivered <- ok
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+
+	select {
+	case ok := <-delivered:
+		if ok {
+			t.Fatal("Provide returned true after context cancel")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Provide did not unblock on context cancel")
 	}
 }

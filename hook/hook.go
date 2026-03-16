@@ -240,11 +240,15 @@ func (r *Runner) Run(
 		results = append(results, res)
 
 		if res.Action == HookActionBlock {
+			if res.Error != nil {
+				return results, fmt.Errorf(
+					"hook %s blocked execution for event %s: %w",
+					h.Name(), event, res.Error,
+				)
+			}
 			return results, fmt.Errorf(
-				"hook %s blocked execution for event %s: %w",
-				h.Name(),
-				event,
-				res.Error,
+				"hook %s blocked execution for event %s",
+				h.Name(), event,
 			)
 		}
 	}

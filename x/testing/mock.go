@@ -60,9 +60,9 @@ func (m *MockProvider) Generate(_ context.Context, req *llm.LLMRequest) (*llm.LL
 	return &llm.LLMResponse{Content: s.Content, Calls: s.Calls}, nil
 }
 
-// Stream is not implemented; panics if called.
+// Stream is not implemented; returns an error.
 func (m *MockProvider) Stream(_ context.Context, _ *llm.LLMRequest) (llm.Stream, error) {
-	panic("MockProvider.Stream not implemented")
+	return nil, fmt.Errorf("MockProvider: Stream not implemented")
 }
 
 // Models returns an empty list.

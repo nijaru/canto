@@ -191,13 +191,13 @@ func NewGlobTool(root *os.Root) *GlobTool {
 func (t *GlobTool) Spec() llm.ToolSpec {
 	return llm.ToolSpec{
 		Name:        "glob",
-		Description: "Find files matching a glob pattern within the workspace. Use ** for recursive matching.",
+		Description: "Find files matching a glob pattern within the workspace. Uses filepath.Match syntax: * matches any sequence of non-separator characters, ? matches any single non-separator character. Single directory level only; use list_dir for recursive exploration.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"pattern": map[string]any{
 					"type":        "string",
-					"description": "Glob pattern, e.g. \"**/*.go\" or \"src/*.ts\".",
+					"description": "Glob pattern using filepath.Match syntax, e.g. \"*.go\" or \"src/*.ts\".",
 				},
 			},
 			"required": []string{"pattern"},
@@ -205,7 +205,7 @@ func (t *GlobTool) Spec() llm.ToolSpec {
 	}
 }
 
-func (t *GlobTool) Execute(_ context.Context, args string) (string, error) {
+func (t *GlobTool) Execute(ctx context.Context, args string) (string, error) {
 	var input struct {
 		Pattern string `json:"pattern"`
 	}
@@ -215,6 +215,9 @@ func (t *GlobTool) Execute(_ context.Context, args string) (string, error) {
 
 	var matches []string
 	err := fs.WalkDir(t.root.FS(), ".", func(path string, d fs.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err != nil {
 			return nil // skip unreadable entries
 		}

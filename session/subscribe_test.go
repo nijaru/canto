@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
@@ -104,6 +105,37 @@ func TestSubscribe_NoSubscribers(t *testing.T) {
 	s := New("sess-5")
 	// Append with no subscribers must not panic.
 	s.Append(NewEvent("sess-5", EventTypeSessionCreated, nil))
+}
+
+// TestSubscribe_ConcurrentAppendCancel exercises the race between Append and
+// context cancellation. Run with -race to verify no data race or panic.
+func TestSubscribe_ConcurrentAppendCancel(t *testing.T) {
+	const goroutines = 8
+	const eventsPerWriter = 200
+
+	s := New("sess-race")
+	ctx, cancel := context.WithCancel(context.Background())
+
+	_ = s.Subscribe(ctx)
+
+	var wg sync.WaitGroup
+	for range goroutines {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range eventsPerWriter {
+				s.Append(NewEvent("sess-race", EventTypeMessageAdded, nil))
+			}
+		}()
+	}
+
+	// Cancel mid-flight — should not panic.
+	go func() {
+		time.Sleep(2 * time.Millisecond)
+		cancel()
+	}()
+
+	wg.Wait()
 }
 
 func TestSubscribe_EventsBeforeSubscribeNotReceived(t *testing.T) {

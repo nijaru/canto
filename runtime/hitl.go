@@ -62,14 +62,26 @@ func (g *InputGate) Request(
 		}))
 		return input, nil
 	case <-ctx.Done():
+		// Drain g.ch so a value from a concurrent Provide call doesn't
+		// sit in the buffer and corrupt the next Request.
+		select {
+		case <-g.ch:
+		default:
+		}
 		return "", ctx.Err()
 	}
 }
 
 // Provide delivers human input to an active Request call.
-// Blocks if no Request is waiting yet.
-func (g *InputGate) Provide(input string) {
-	g.ch <- input
+// Blocks until a Request is waiting or ctx is cancelled.
+// Returns false if ctx was cancelled before the input was delivered.
+func (g *InputGate) Provide(ctx context.Context, input string) bool {
+	select {
+	case g.ch <- input:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // Tool returns a tool.Tool that the agent can call to request human input.
