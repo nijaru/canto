@@ -1,4 +1,4 @@
-package tool
+package tools
 
 import (
 	"context"
@@ -8,20 +8,21 @@ import (
 	"path/filepath"
 
 	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/tool"
 )
 
 // CodeExecutionTool executes arbitrary code in a sandboxed environment.
 // Currently supports Python.
 type CodeExecutionTool struct {
 	Language string
-	Executor *Executor
+	Executor *tool.Executor
 }
 
 // NewCodeExecutionTool creates a new tool for code execution.
 func NewCodeExecutionTool(language string) *CodeExecutionTool {
 	return &CodeExecutionTool{
 		Language: language,
-		Executor: DefaultExecutor,
+		Executor: tool.DefaultExecutor,
 	}
 }
 

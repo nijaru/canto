@@ -12,6 +12,7 @@ import (
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
+	tools "github.com/nijaru/canto/x/tools"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -61,7 +62,7 @@ func TestPhase1CoreLoop(t *testing.T) {
 	}
 
 	registry := tool.NewRegistry()
-	registry.Register(&tool.BashTool{})
+	registry.Register(&tools.BashTool{})
 
 	// 1. Initial agent response with a tool call
 	mock := &MockProvider{
