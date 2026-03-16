@@ -81,22 +81,22 @@ Commands that must pass before shipping:
 
 ## Code Standards
 
-| Aspect         | Standard                                                                   |
-| -------------- | -------------------------------------------------------------------------- |
-| Architecture   | Layers depend downward only; extensions depend on Layer 3, never reverse   |
-| State          | Session event log is append-only — never mutate or delete events           |
-| Interfaces     | Keep the 5 core interfaces small; compose from them                        |
-| Context        | `ContextProcessor` is a pure function — no side effects on session         |
-| Orchestration  | Always deterministic Go code; never LLM-decided flow control               |
-| Compaction     | Offload (reversible) before summarize (lossy); never skip to summarize     |
-| Tool loading   | Lazy when > 20 tools; present `search_tools` meta-tool first               |
-| KV cache       | System prompt always first message; never reorder or modify message prefix |
-| Error handling | Let errors propagate; catch only to recover                                |
-| Naming         | Proportional to scope; no V2/legacy/new markers                            |
+| Aspect         | Standard                                                                                     |
+| -------------- | -------------------------------------------------------------------------------------------- |
+| Architecture   | Layers depend downward only; extensions depend on Layer 3, never reverse                     |
+| State          | Session event log is append-only — never mutate or delete events                             |
+| Interfaces     | Keep the 5 core interfaces small; compose from them                                          |
+| Context        | `ContextProcessor` is a pure function — no side effects on session                           |
+| Orchestration  | Graph routing and coordination are Go functions; agent behavior within a turn is LLM-decided |
+| Compaction     | Offload (reversible) before summarize (lossy); never skip to summarize                       |
+| Tool loading   | Lazy when > 20 tools; present `search_tools` meta-tool first                                 |
+| KV cache       | System prompt always first message; never reorder or modify message prefix                   |
+| Error handling | Let errors propagate; catch only to recover                                                  |
+| Naming         | Proportional to scope; no V2/legacy/new markers                                              |
 
 ## Design Principles
 
-1. **Code over configuration** — orchestration is deterministic Go, not prompts
+1. **Explicit coordination** — graph routing and task assignment are Go code; agents decide their own behavior within a turn
 2. **Composable over complete** — small well-designed interfaces that compose cleanly
 3. **Append-only state** — session event log is never mutated, ever
 

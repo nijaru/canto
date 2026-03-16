@@ -7,9 +7,9 @@ Composable Go framework for building LLM agents and agent swarms.
 
 ## Design
 
-- Orchestration is deterministic Go code, not prompts
+- Graph routing and coordination are Go code. What agents do within a turn is LLM-decided.
 - Session state is an append-only event log — never mutated
-- Five small interfaces that compose into larger behaviors
+- Five small interfaces that compose
 
 ## Quick Start
 
@@ -18,38 +18,40 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 
 	"github.com/nijaru/canto/agent"
+	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/llm/providers/openai"
-	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/canto/x/tools"
 )
 
 func main() {
 	ctx := context.Background()
 
 	registry := tool.NewRegistry()
-	registry.Register(&tool.BashTool{})
+	registry.Register(&tools.BashTool{})
 
-	provider := openai.New(os.Getenv("OPENAI_API_KEY"))
+	provider := openai.NewProvider(openai.Config{APIKey: os.Getenv("OPENAI_API_KEY")})
 
-	a := agent.New(
-		"researcher",
-		"You are a helpful research assistant.",
-		"gpt-4o",
-		provider,
-		registry,
-	)
+	a := agent.New("assistant", "You are a helpful assistant.", "gpt-4o", provider, registry)
 
-	store, _ := session.NewJSONLStore("./data")
-	runner := runtime.NewRunner(store, a)
+	sess := session.New("session-1")
+	sess.Append(session.NewEvent(sess.ID(), session.EventTypeMessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "What Go version introduced range over functions?",
+	}))
 
-	if err := runner.Run(ctx, "session-123", "Who are you?"); err != nil {
+	if _, err := a.Turn(ctx, sess); err != nil {
 		log.Fatal(err)
 	}
+
+	msgs := sess.Messages()
+	fmt.Println(msgs[len(msgs)-1].Content)
 }
 ```
 
@@ -57,7 +59,7 @@ func main() {
 
 ```
 +-------------------------------------------------------------+
-|  Extensions  (graph, swarm, eval, channel, rl, obs...)      |
+|  Extensions  (graph, swarm, eval, rl, obs...)               |
 +-------------------------------------------------------------+
 |  Runtime     (session, context, tool, skill, memory)        |
 +-------------------------------------------------------------+
@@ -69,7 +71,7 @@ func main() {
 
 **Layer 1 — LLM**
 
-- `llm/` — Provider interface, streaming normalization, cost tracking
+- `llm/` — Provider interface, streaming normalization, cost tracking, token estimation
 - `llm/providers/` — OpenAI, Anthropic, Gemini, Ollama, OpenRouter
 
 **Layer 2 — Agent**
@@ -79,83 +81,77 @@ func main() {
 **Layer 3 — Runtime**
 
 - `session/` — Append-only event log, JSONL and SQLite backends, trajectory recording
-- `context/` — Context engineering pipeline: token guards, compaction, KV-cache preservation
+- `context/` — Context pipeline: token guards, compaction, KV-cache preservation
 - `tool/` — Registry, sandboxed executor, MCP client/server
 - `skill/` — Progressive disclosure skill packages (SKILL.md standard)
-- `runtime/` — Session runner, per-session lane queue, heartbeat scheduler
-- `memory/` — In-context working memory, SQLite long-term store, vector search
+- `runtime/` — Session runner with per-session lane queue
+- `memory/` — Episode store, SQLite long-term memory, HNSW vector search
 
 **Extensions (`x/`)**
 
-- `x/graph/` — DAG orchestration with conditional routing
-- `x/swarm/` — Blackboard-based decentralized multi-agent swarms
-- `x/eval/` — Evaluation harness for trajectory scoring
-- `x/channel/` — HTTP, CLI, and webhook adapters
+- `x/graph/` — DAG orchestration with conditional Go routing functions
+- `x/swarm/` — Blackboard-based multi-agent coordination
+- `x/eval/` — Trajectory scoring harness
+- `x/tools/` — Bash, code execution, memory search, lazy tool discovery
 
 ## Core Interfaces
 
 ```go
 type Provider interface {
-	Complete(ctx context.Context, req Request) (*Response, error)
-	Stream(ctx context.Context, req Request) (<-chan Delta, <-chan error)
-	CountTokens(messages []Message) (int, error)
-	ModelInfo() ModelInfo
+	ID() string
+	Generate(ctx context.Context, req *LLMRequest) (*LLMResponse, error)
+	Stream(ctx context.Context, req *LLMRequest) (Stream, error)
+	CountTokens(ctx context.Context, model string, messages []Message) (int, error)
+	Cost(ctx context.Context, model string, usage Usage) float64
+	Capabilities(model string) Capabilities
 }
 
 type Tool interface {
-	Name() string
-	Description() string
-	Schema() json.RawMessage
-	Execute(ctx context.Context, input json.RawMessage) (json.RawMessage, error)
+	Spec() llm.ToolSpec
+	Execute(ctx context.Context, args string) (string, error)
 }
 
 type Agent interface {
 	ID() string
-	Instructions(ctx context.Context, session *Session) string
-	Tools() []Tool
-	Step(ctx context.Context, session *Session) (StepResult, error)
+	Step(ctx context.Context, sess *session.Session) (StepResult, error)
+	Turn(ctx context.Context, sess *session.Session) (StepResult, error)
 }
 
 type ContextProcessor interface {
-	Name() string
-	Process(ctx context.Context, sess *Session, req *LLMRequest) error
+	Process(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error
 }
 
 type Store interface {
-	Get(ctx context.Context, sessionID string) (*Session, error)
-	Create(ctx context.Context, session *Session) error
-	AppendEvent(ctx context.Context, sessionID string, event Event) error
-	Search(ctx context.Context, query string, limit int) ([]Session, error)
+	Load(ctx context.Context, sessionID string) (*Session, error)
+	Save(ctx context.Context, e Event) error
 }
 ```
 
 ## Context Pipeline
 
-Processors build each LLM request from the session log. They are pure functions — read session state, never write it.
+Processors build each LLM request from the session log. Each is a pure function — reads session state, never writes it.
 
 ```go
-var DefaultProcessors = []ContextProcessor{
-	&WorkspaceProcessor{},                       // load AGENTS.md / SOUL.md
-	&HistoryProcessor{},                         // select and format events
-	&SkillListProcessor{},                       // inject skill names only, not full content
-	&ToolListProcessor{},                        // lazy-load schemas above 20 tools
-	&TokenGuardProcessor{RotThresholdPct: 0.60}, // compact at 60%, not 95%
-}
+builder := context.NewBuilder(
+	context.InstructionProcessor(instructions),
+	context.ToolProcessor(registry),
+	context.HistoryProcessor(),
+)
 ```
 
-Compaction runs offload before summarize. Offload writes tool results to disk and keeps a path reference in context — reversible. Summarization is lossy and final.
+Compaction runs offload before summarize. Offload writes tool results to external storage and keeps a reference in context — reversible. Summarization is lossy and runs only when offload isn't enough.
 
 ## Features
 
-- **Provider resilience** — key rotation on rate limits, fallback chains, budget enforcement
+- **Provider resilience** — key rotation on rate limits, fallback chains, budget caps
 - **Lane queue** — concurrent across sessions, serialized within each session
-- **Heartbeat** — cron-based scheduling (`@every 5m`, `0 9 * * 1-5`), missed-run recovery
-- **Workspace config** — agents load `SOUL.md` and `AGENTS.md` from the directory tree
-- **MCP** — connect to MCP servers as tool sources, or expose tools over MCP
+- **MCP** — connect to external MCP servers as tool sources, or expose a tool registry over MCP
+- **Reasoning model support** — `Capabilities()` detects o1/o3 and adapts requests automatically
+- **Structured outputs** — `ResponseFormat` in `LLMRequest` for JSON schema enforcement
 
 ## Status
 
-v0.0.1 — feature complete, production hardening in progress. Core interfaces are stable.
+Pre-release. Core interfaces are unstable.
 
 ## License
 
