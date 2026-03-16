@@ -26,7 +26,7 @@ type Edge struct {
 // are satisfied by each agent's StepResult. Stops at a terminal node
 // (no outgoing edge satisfied) or when the context is cancelled.
 type Graph struct {
-	nodes map[string]*agent.Agent
+	nodes map[string]agent.Agent
 	edges []Edge
 	entry string
 }
@@ -34,14 +34,14 @@ type Graph struct {
 // New creates an empty Graph rooted at the given entry agent ID.
 func New(entry string) *Graph {
 	return &Graph{
-		nodes: make(map[string]*agent.Agent),
+		nodes: make(map[string]agent.Agent),
 		entry: entry,
 	}
 }
 
 // AddNode registers an agent as a node in the graph.
-func (g *Graph) AddNode(a *agent.Agent) {
-	g.nodes[a.ID] = a
+func (g *Graph) AddNode(a agent.Agent) {
+	g.nodes[a.ID()] = a
 }
 
 // AddEdge adds a conditional edge between two nodes.

@@ -13,13 +13,13 @@ import (
 // while allowing concurrent execution across different sessions.
 type Runner struct {
 	Store session.Store
-	Agent *agent.Agent
+	Agent agent.Agent
 	lanes *LaneManager
 	Hooks *hook.Runner
 }
 
 // NewRunner creates a Runner with per-session lane serialization enabled.
-func NewRunner(s session.Store, a *agent.Agent) *Runner {
+func NewRunner(s session.Store, a agent.Agent) *Runner {
 	return &Runner{
 		Store: s,
 		Agent: a,

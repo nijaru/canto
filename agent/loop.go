@@ -15,7 +15,7 @@ import (
 // Step executes a single turn of the agentic loop and returns its result.
 // If any tool call produces a Handoff payload targeting a known peer agent,
 // the result's Handoff field is set so callers can route accordingly.
-func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error) {
+func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, error) {
 	req := &llm.LLMRequest{
 		Model: a.Model,
 	}
@@ -160,7 +160,7 @@ func (a *Agent) Step(ctx context.Context, s *session.Session) (StepResult, error
 // Turn executes one or more steps until the agent finishes (no pending tool
 // calls) or a handoff is requested, or MaxSteps is reached.
 // The returned StepResult reflects the final step's outcome.
-func (a *Agent) Turn(ctx context.Context, s *session.Session) (StepResult, error) {
+func (a *BaseAgent) Turn(ctx context.Context, s *session.Session) (StepResult, error) {
 	steps := 0
 	var result StepResult
 	for steps < a.MaxSteps {

@@ -17,7 +17,7 @@ import (
 // Each cycle creates a fresh session to force a clean context reset. The
 // agent reads progress files via tools to understand where to continue.
 type CycleRunner struct {
-	Agent     *agent.Agent
+	Agent     agent.Agent
 	Store     session.Store
 	PlanFile  string                              // path to the plan file (read by agent via tool)
 	MaxCycles int                                 // hard limit on cycles

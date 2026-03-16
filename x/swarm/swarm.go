@@ -24,14 +24,14 @@ type SwarmResult struct {
 // visible to each other through the event log. If isolation is needed,
 // callers should manage separate sessions and aggregate results manually.
 type Swarm struct {
-	agents     []*agent.Agent
+	agents     []agent.Agent
 	blackboard Blackboard
 	maxRounds  int
 }
 
 // New creates a Swarm with the given agents and blackboard.
 // maxRounds is a hard cap on coordination rounds (prevents infinite loops).
-func New(blackboard Blackboard, maxRounds int, agents ...*agent.Agent) *Swarm {
+func New(blackboard Blackboard, maxRounds int, agents ...agent.Agent) *Swarm {
 	return &Swarm{
 		agents:     agents,
 		blackboard: blackboard,
@@ -80,14 +80,14 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 		// stolen simply produces worked=false for this round.
 		for i, a := range s.agents {
 			wg.Add(1)
-			go func(idx int, ag *agent.Agent, tasks []Task) {
+			go func(idx int, ag agent.Agent, tasks []Task) {
 				defer wg.Done()
-				out := outcome{agentID: ag.ID}
+				out := outcome{agentID: ag.ID()}
 
 				// Try each task in order until one is successfully claimed.
 				var claimed *Task
 				for j := range tasks {
-					ok, claimErr := s.blackboard.ClaimTask(ctx, ag.ID, tasks[j].ID)
+					ok, claimErr := s.blackboard.ClaimTask(ctx, ag.ID(), tasks[j].ID)
 					if claimErr != nil {
 						out.err = fmt.Errorf("claim %q: %w", tasks[j].ID, claimErr)
 						outcomes[idx] = out
@@ -107,7 +107,7 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 
 				// Post the claimed task description to the blackboard so other
 				// agents can observe what this agent is working on.
-				_ = s.blackboard.Post(ctx, ag.ID, "current_task", claimed.Description)
+				_ = s.blackboard.Post(ctx, ag.ID(), "current_task", claimed.Description)
 
 				// Execute one agent turn on the shared session.
 				if _, turnErr := ag.Turn(ctx, sess); turnErr != nil {

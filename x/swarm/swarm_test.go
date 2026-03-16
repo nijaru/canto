@@ -38,7 +38,7 @@ func TestSwarmClaimsAllTasks(t *testing.T) {
 	}
 
 	// 3 agents, each with a simple mock that replies once.
-	agents := []*agent.Agent{
+	agents := []agent.Agent{
 		agent.New("writer-1", "You are writer 1.", "gpt-4", &mockProvider{msg: "part 1 done"}, nil),
 		agent.New("writer-2", "You are writer 2.", "gpt-4", &mockProvider{msg: "part 2 done"}, nil),
 		agent.New("writer-3", "You are writer 3.", "gpt-4", &mockProvider{msg: "part 3 done"}, nil),
@@ -73,7 +73,7 @@ func TestSwarmNoDoubleClaim(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	agents := []*agent.Agent{
+	agents := []agent.Agent{
 		agent.New("a1", "Agent 1", "gpt-4", &mockProvider{msg: "done"}, nil),
 		agent.New("a2", "Agent 2", "gpt-4", &mockProvider{msg: "done"}, nil),
 		agent.New("a3", "Agent 3", "gpt-4", &mockProvider{msg: "done"}, nil),
