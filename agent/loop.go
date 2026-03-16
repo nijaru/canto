@@ -67,41 +67,68 @@ func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, e
 			var output string
 
 			if a.Hooks != nil {
-				hookResults, err := a.Hooks.Run(ctx, hook.EventPreToolUse, s, map[string]any{
-					"tool": call.Function.Name,
-					"args": call.Function.Arguments,
-				})
+				hookResults, err := a.Hooks.Run(
+					ctx,
+					hook.EventPreToolUse,
+					hook.SessionMeta{ID: s.ID()},
+					map[string]any{
+						"tool": call.Function.Name,
+						"args": call.Function.Arguments,
+					},
+				)
 				if err != nil {
-					results[i] = toolResult{call: call, err: fmt.Errorf("hook blocked tool %q: %w", call.Function.Name, err)}
+					results[i] = toolResult{
+						call: call,
+						err:  fmt.Errorf("hook blocked tool %q: %w", call.Function.Name, err),
+					}
 					return
 				}
 
 				// Inject hook output into context as system hint for this tool call if provided
 				for _, res := range hookResults {
 					if res.Output != "" {
-						output += fmt.Sprintf("<hook_context name=%q>\n%s\n</hook_context>\n", "PreToolUse", res.Output)
+						output += fmt.Sprintf(
+							"<hook_context name=%q>\n%s\n</hook_context>\n",
+							"PreToolUse",
+							res.Output,
+						)
 					}
 				}
 			}
 
 			if a.Tools != nil {
 				var execErr error
-				toolOutput, execErr := a.Tools.Execute(ctx, call.Function.Name, call.Function.Arguments)
+				toolOutput, execErr := a.Tools.Execute(
+					ctx,
+					call.Function.Name,
+					call.Function.Arguments,
+				)
 				output += toolOutput
 				if execErr != nil {
 					output = fmt.Sprintf("%s\nError: %s", output, execErr)
 					if a.Hooks != nil {
-						_, hookErr := a.Hooks.Run(ctx, hook.EventPostToolUseFailure, s, map[string]any{
-							"tool":  call.Function.Name,
-							"error": execErr.Error(),
-						})
+						_, hookErr := a.Hooks.Run(
+							ctx,
+							hook.EventPostToolUseFailure,
+							hook.SessionMeta{ID: s.ID()},
+							map[string]any{
+								"tool":  call.Function.Name,
+								"error": execErr.Error(),
+							},
+						)
 						if hookErr != nil {
-							slog.Warn("PostToolUseFailure hook failed", "tool", call.Function.Name, "error", hookErr)
+							slog.Warn(
+								"PostToolUseFailure hook failed",
+								"tool",
+								call.Function.Name,
+								"error",
+								hookErr,
+							)
 						}
 					}
 				} else {
 					if a.Hooks != nil {
-						_, hookErr := a.Hooks.Run(ctx, hook.EventPostToolUse, s, map[string]any{
+						_, hookErr := a.Hooks.Run(ctx, hook.EventPostToolUse, hook.SessionMeta{ID: s.ID()}, map[string]any{
 							"tool":   call.Function.Name,
 							"output": toolOutput,
 						})
@@ -172,7 +199,7 @@ func (a *BaseAgent) Turn(ctx context.Context, s *session.Session) (StepResult, e
 	}
 
 	if a.Hooks != nil {
-		a.Hooks.Run(ctx, hook.EventStop, s, nil)
+		a.Hooks.Run(ctx, hook.EventStop, hook.SessionMeta{ID: s.ID()}, nil)
 	}
 
 	return result, nil

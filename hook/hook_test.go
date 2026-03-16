@@ -5,13 +5,11 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/nijaru/canto/session"
 )
 
 func TestHookRunner(t *testing.T) {
 	runner := NewRunner()
-	sess := session.New("test-session")
+	meta := SessionMeta{ID: "test-session"}
 
 	// 1. Success Hook
 	hookSuccess := NewCommandHook(
@@ -45,7 +43,7 @@ func TestHookRunner(t *testing.T) {
 	runner.Register(hookBlock)
 
 	// Test SessionStart: should run 2 hooks, none block
-	results, err := runner.Run(context.Background(), EventSessionStart, sess, nil)
+	results, err := runner.Run(context.Background(), EventSessionStart, meta, nil)
 	if err != nil {
 		t.Fatalf("did not expect error for SessionStart, got: %v", err)
 	}
@@ -69,7 +67,7 @@ func TestHookRunner(t *testing.T) {
 	}
 
 	// Test PreToolUse: should run 1 hook, block
-	results, err = runner.Run(context.Background(), EventPreToolUse, sess, nil)
+	results, err = runner.Run(context.Background(), EventPreToolUse, meta, nil)
 	if err == nil {
 		t.Fatalf("expected error for PreToolUse (block hook)")
 	}
@@ -80,5 +78,57 @@ func TestHookRunner(t *testing.T) {
 
 	if results[0].Action != HookActionBlock {
 		t.Errorf("expected block action, got %d", results[0].Action)
+	}
+}
+
+func TestFuncHook(t *testing.T) {
+	called := false
+	h := NewFuncHook(
+		"test-func",
+		[]HookEvent{EventSessionStart},
+		func(_ context.Context, p *HookPayload) *HookResult {
+			called = true
+			if p.Session.ID != "sess-1" {
+				t.Errorf("session ID = %q, want sess-1", p.Session.ID)
+			}
+			return &HookResult{Action: HookActionProceed, Output: "ok"}
+		},
+	)
+
+	runner := NewRunner()
+	runner.Register(h)
+
+	results, err := runner.Run(
+		context.Background(),
+		EventSessionStart,
+		SessionMeta{ID: "sess-1"},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("FuncHook fn not called")
+	}
+	if len(results) != 1 || results[0].Output != "ok" {
+		t.Fatalf("unexpected results: %+v", results)
+	}
+}
+
+func TestFuncHook_Block(t *testing.T) {
+	h := NewFuncHook(
+		"blocker",
+		[]HookEvent{EventPreToolUse},
+		func(_ context.Context, _ *HookPayload) *HookResult {
+			return &HookResult{Action: HookActionBlock, Error: context.Canceled}
+		},
+	)
+
+	runner := NewRunner()
+	runner.Register(h)
+
+	_, err := runner.Run(context.Background(), EventPreToolUse, SessionMeta{ID: "s"}, nil)
+	if err == nil {
+		t.Fatal("expected block error")
 	}
 }

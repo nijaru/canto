@@ -8,8 +8,6 @@ import (
 	"os/exec"
 	"sync"
 	"time"
-
-	"github.com/nijaru/canto/session"
 )
 
 // HookEvent defines the lifecycle events that triggers a hook.
@@ -35,11 +33,19 @@ const (
 	HookActionBlock   HookAction = 2 // Exit 2: Block execution
 )
 
+// SessionMeta carries the session identifiers sent to hooks.
+// It replaces *session.Session to avoid shipping the full event log
+// to every hook subprocess.
+type SessionMeta struct {
+	ID      string `json:"id"`
+	AgentID string `json:"agent_id,omitempty"`
+}
+
 // HookPayload is the JSON payload sent to the hook via stdin.
 type HookPayload struct {
-	Event   HookEvent        `json:"event"`
-	Session *session.Session `json:"session"`
-	Data    map[string]any   `json:"data,omitempty"`
+	Event   HookEvent      `json:"event"`
+	Session SessionMeta    `json:"session"`
+	Data    map[string]any `json:"data,omitempty"`
 }
 
 // HookResult is the result of executing a hook.
@@ -66,7 +72,13 @@ type CommandHook struct {
 }
 
 // NewCommandHook creates a new command hook.
-func NewCommandHook(name string, events []HookEvent, command string, args []string, timeout time.Duration) *CommandHook {
+func NewCommandHook(
+	name string,
+	events []HookEvent,
+	command string,
+	args []string,
+	timeout time.Duration,
+) *CommandHook {
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
@@ -89,7 +101,10 @@ func (h *CommandHook) Execute(ctx context.Context, payload *HookPayload) *HookRe
 
 	b, err := json.Marshal(payload)
 	if err != nil {
-		return &HookResult{Action: HookActionBlock, Error: fmt.Errorf("failed to marshal payload: %w", err)}
+		return &HookResult{
+			Action: HookActionBlock,
+			Error:  fmt.Errorf("failed to marshal payload: %w", err),
+		}
 	}
 
 	cmd := exec.CommandContext(hookCtx, h.command, h.args...)
@@ -117,16 +132,56 @@ func (h *CommandHook) Execute(ctx context.Context, payload *HookPayload) *HookRe
 			case 1:
 				return &HookResult{Action: HookActionLog, Output: output, Error: nil}
 			case 2:
-				return &HookResult{Action: HookActionBlock, Output: output, Error: fmt.Errorf("hook blocked execution: %s", stderr.String())}
+				return &HookResult{
+					Action: HookActionBlock,
+					Output: output,
+					Error:  fmt.Errorf("hook blocked execution: %s", stderr.String()),
+				}
 			default:
-				return &HookResult{Action: HookActionBlock, Output: output, Error: fmt.Errorf("hook failed with exit code %d: %s", exitCode, stderr.String())}
+				return &HookResult{
+					Action: HookActionBlock,
+					Output: output,
+					Error: fmt.Errorf(
+						"hook failed with exit code %d: %s",
+						exitCode,
+						stderr.String(),
+					),
+				}
 			}
 		}
 
-		return &HookResult{Action: HookActionBlock, Output: output, Error: fmt.Errorf("failed to run hook: %w", err)}
+		return &HookResult{
+			Action: HookActionBlock,
+			Output: output,
+			Error:  fmt.Errorf("failed to run hook: %w", err),
+		}
 	}
 
 	return &HookResult{Action: HookActionProceed, Output: output, Error: nil}
+}
+
+// FuncHook runs an in-process Go function, avoiding subprocess overhead.
+type FuncHook struct {
+	name   string
+	events []HookEvent
+	fn     func(ctx context.Context, payload *HookPayload) *HookResult
+}
+
+// NewFuncHook creates an in-process hook from a function.
+func NewFuncHook(
+	name string,
+	events []HookEvent,
+	fn func(ctx context.Context, payload *HookPayload) *HookResult,
+) *FuncHook {
+	return &FuncHook{name: name, events: events, fn: fn}
+}
+
+func (h *FuncHook) Name() string { return h.name }
+
+func (h *FuncHook) Events() []HookEvent { return h.events }
+
+func (h *FuncHook) Execute(ctx context.Context, payload *HookPayload) *HookResult {
+	return h.fn(ctx, payload)
 }
 
 // Runner manages and executes hooks.
@@ -149,10 +204,15 @@ func (r *Runner) Register(h Hook) {
 
 // Run executes all hooks registered for the given event.
 // It returns an error if any hook blocks execution (Exit Code 2).
-func (r *Runner) Run(ctx context.Context, event HookEvent, sess *session.Session, data map[string]any) ([]*HookResult, error) {
+func (r *Runner) Run(
+	ctx context.Context,
+	event HookEvent,
+	meta SessionMeta,
+	data map[string]any,
+) ([]*HookResult, error) {
 	payload := &HookPayload{
 		Event:   event,
-		Session: sess,
+		Session: meta,
 		Data:    data,
 	}
 
@@ -180,7 +240,12 @@ func (r *Runner) Run(ctx context.Context, event HookEvent, sess *session.Session
 		results = append(results, res)
 
 		if res.Action == HookActionBlock {
-			return results, fmt.Errorf("hook %s blocked execution for event %s: %w", h.Name(), event, res.Error)
+			return results, fmt.Errorf(
+				"hook %s blocked execution for event %s: %w",
+				h.Name(),
+				event,
+				res.Error,
+			)
 		}
 	}
 

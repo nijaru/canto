@@ -43,11 +43,12 @@ func (r *Runner) execute(ctx context.Context, sessionID string) error {
 		return err
 	}
 
-	if _, err := r.Hooks.Run(ctx, hook.EventSessionStart, sess, nil); err != nil {
+	meta := hook.SessionMeta{ID: sess.ID()}
+	if _, err := r.Hooks.Run(ctx, hook.EventSessionStart, meta, nil); err != nil {
 		return err
 	}
 	defer func() {
-		r.Hooks.Run(context.Background(), hook.EventSessionEnd, sess, nil)
+		r.Hooks.Run(context.Background(), hook.EventSessionEnd, meta, nil)
 	}()
 
 	// 2. Capture initial event count for durability

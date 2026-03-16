@@ -52,7 +52,7 @@ func (p *SummarizeProcessor) Process(
 	}
 
 	if p.Hooks != nil {
-		p.Hooks.Run(ctx, hook.EventPreCompact, sess, nil)
+		p.Hooks.Run(ctx, hook.EventPreCompact, hook.SessionMeta{ID: sess.ID()}, nil)
 	}
 
 	// 3. Identify candidates
@@ -97,7 +97,14 @@ func (p *SummarizeProcessor) Process(
 		if len(m.Calls) > 0 {
 			sb.WriteString("\nTOOL CALLS:")
 			for _, call := range m.Calls {
-				sb.WriteString(fmt.Sprintf("\n- %s(%s) [ID: %s]", call.Function.Name, call.Function.Arguments, call.ID))
+				sb.WriteString(
+					fmt.Sprintf(
+						"\n- %s(%s) [ID: %s]",
+						call.Function.Name,
+						call.Function.Arguments,
+						call.ID,
+					),
+				)
 			}
 		}
 
@@ -113,11 +120,11 @@ func (p *SummarizeProcessor) Process(
 		Model: p.Model,
 		Messages: []llm.Message{
 			{
-				Role: llm.RoleSystem,
+				Role:    llm.RoleSystem,
 				Content: "You are a helpful assistant that summarizes conversations. Summarize the following conversation history concisely but comprehensively, retaining key facts, decisions, and tool execution outcomes.",
 			},
 			{
-				Role: llm.RoleUser,
+				Role:    llm.RoleUser,
 				Content: sb.String(),
 			},
 		},
@@ -133,7 +140,7 @@ func (p *SummarizeProcessor) Process(
 	var newMessages []llm.Message
 	newMessages = append(newMessages, systemMsgs...)
 	newMessages = append(newMessages, llm.Message{
-		Role: llm.RoleSystem,
+		Role:    llm.RoleSystem,
 		Content: fmt.Sprintf("<conversation_summary>\n%s\n</conversation_summary>", resp.Content),
 	})
 	newMessages = append(newMessages, recentMsgs...)
