@@ -8,13 +8,21 @@ import (
 	"github.com/nijaru/canto/llm"
 )
 
+const subscriberBufSize = 64
+
+// subscriber is a single fan-out recipient.
+type subscriber struct {
+	ch chan Event
+}
+
 // Session is a durable container for a conversation.
 // All state is derived from an append-only event log.
 type Session struct {
-	mu     sync.RWMutex
-	id     string
-	events []Event
-	meta   map[string]any
+	mu          sync.RWMutex
+	id          string
+	events      []Event
+	meta        map[string]any
+	subscribers []*subscriber
 }
 
 // New creates a new session.
@@ -30,11 +38,47 @@ func (s *Session) ID() string {
 	return s.id
 }
 
-// Append adds a new event to the session.
+// Append adds a new event to the session and notifies all subscribers.
 func (s *Session) Append(e Event) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.events = append(s.events, e)
+	subs := s.subscribers // snapshot pointer slice under lock
+	s.mu.Unlock()
+
+	for _, sub := range subs {
+		select {
+		case sub.ch <- e:
+		default:
+			// subscriber too slow; drop event rather than block
+		}
+	}
+}
+
+// Subscribe returns a channel that receives every event appended after this call.
+// The channel is buffered and closed when ctx is done.
+// Slow subscribers drop events rather than blocking Append.
+func (s *Session) Subscribe(ctx context.Context) <-chan Event {
+	ch := make(chan Event, subscriberBufSize)
+	sub := &subscriber{ch: ch}
+
+	s.mu.Lock()
+	s.subscribers = append(s.subscribers, sub)
+	s.mu.Unlock()
+
+	go func() {
+		<-ctx.Done()
+		s.mu.Lock()
+		for i, ss := range s.subscribers {
+			if ss == sub {
+				s.subscribers = append(s.subscribers[:i], s.subscribers[i+1:]...)
+				break
+			}
+		}
+		s.mu.Unlock()
+		close(ch)
+	}()
+
+	return ch
 }
 
 // Events returns the full event log.
