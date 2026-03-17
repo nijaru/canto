@@ -53,120 +53,13 @@ func RunTools(
 	h *hook.Runner,
 	handoffTargets []string,
 ) (StepResult, error) {
-	// Dispatch all calls concurrently. Results land in a fixed-size slice so
-	// tool messages are appended to the session in deterministic call order.
 	results := make([]toolResult, len(calls))
 	var wg sync.WaitGroup
 	for i, call := range calls {
 		wg.Add(1)
 		go func(i int, call llm.ToolCall) {
 			defer wg.Done()
-			var output string
-
-			if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolExecutionStarted, map[string]any{
-				"tool": call.Function.Name,
-				"args": call.Function.Arguments,
-				"id":   call.ID,
-			})); err != nil {
-				results[i] = toolResult{err: err}
-				return
-			}
-
-			if h != nil {
-				hookResults, err := h.Run(
-					ctx,
-					hook.EventPreToolUse,
-					hook.SessionMeta{ID: s.ID()},
-					map[string]any{
-						"tool": call.Function.Name,
-						"args": call.Function.Arguments,
-					},
-				)
-				if err != nil {
-					results[i] = toolResult{
-						call: call,
-						err:  fmt.Errorf("hook blocked tool %q: %w", call.Function.Name, err),
-					}
-					return
-				}
-				for _, res := range hookResults {
-					if res.Output != "" {
-						output += fmt.Sprintf(
-							"<hook_context name=%q>\n%s\n</hook_context>\n",
-							"PreToolUse",
-							res.Output,
-						)
-					}
-				}
-			}
-
-			if r != nil {
-				t, ok := r.Get(call.Function.Name)
-				if !ok {
-					output = fmt.Sprintf("Error: tool %q not found", call.Function.Name)
-				} else {
-					var execErr error
-					if st, ok := t.(tool.StreamingTool); ok {
-						output, execErr = st.ExecuteStreaming(ctx, call.Function.Arguments, func(delta string) error {
-							return s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolOutputDelta, map[string]any{
-								"tool":  call.Function.Name,
-								"id":    call.ID,
-								"delta": delta,
-							}))
-						})
-					} else {
-						output, execErr = t.Execute(ctx, call.Function.Arguments)
-					}
-
-					if execErr != nil {
-						output = fmt.Sprintf("%s\nError: %s", output, execErr)
-						if h != nil {
-							_, hookErr := h.Run(
-								ctx,
-								hook.EventPostToolUseFailure,
-								hook.SessionMeta{ID: s.ID()},
-								map[string]any{
-									"tool":  call.Function.Name,
-									"error": execErr.Error(),
-								},
-							)
-							if hookErr != nil {
-								slog.Warn(
-									"PostToolUseFailure hook failed",
-									"tool", call.Function.Name,
-									"error", hookErr,
-								)
-							}
-						}
-					} else {
-						if h != nil {
-							_, hookErr := h.Run(
-								ctx,
-								hook.EventPostToolUse,
-								hook.SessionMeta{ID: s.ID()},
-								map[string]any{
-									"tool":   call.Function.Name,
-									"output": output,
-								},
-							)
-							if hookErr != nil {
-								slog.Warn("PostToolUse hook failed", "tool", call.Function.Name, "error", hookErr)
-							}
-						}
-					}
-				}
-			} else {
-				output = fmt.Sprintf("Error: no tool registry configured; cannot execute %q", call.Function.Name)
-			}
-			results[i] = toolResult{call: call, output: output}
-
-			if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolExecutionCompleted, map[string]any{
-				"tool":   call.Function.Name,
-				"id":     call.ID,
-				"output": output,
-			})); err != nil {
-				results[i].err = err
-			}
+			results[i] = executeToolWithHooks(ctx, s, call, r, h)
 		}(i, call)
 	}
 	wg.Wait()
@@ -193,4 +86,118 @@ func RunTools(
 		Handoff:     handoff,
 		ToolResults: toolMsgs,
 	}, nil
+}
+
+func executeToolWithHooks(
+	ctx context.Context,
+	s *session.Session,
+	call llm.ToolCall,
+	r *tool.Registry,
+	h *hook.Runner,
+) toolResult {
+	var output string
+
+	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolExecutionStarted, map[string]any{
+		"tool": call.Function.Name,
+		"args": call.Function.Arguments,
+		"id":   call.ID,
+	})); err != nil {
+		return toolResult{err: err}
+	}
+
+	if h != nil {
+		hookResults, err := h.Run(
+			ctx,
+			hook.EventPreToolUse,
+			hook.SessionMeta{ID: s.ID()},
+			map[string]any{
+				"tool": call.Function.Name,
+				"args": call.Function.Arguments,
+			},
+		)
+		if err != nil {
+			return toolResult{
+				call: call,
+				err:  fmt.Errorf("hook blocked tool %q: %w", call.Function.Name, err),
+			}
+		}
+		for _, res := range hookResults {
+			if res.Output != "" {
+				output += fmt.Sprintf(
+					"<hook_context name=%q>\n%s\n</hook_context>\n",
+					"PreToolUse",
+					res.Output,
+				)
+			}
+		}
+	}
+
+	if r != nil {
+		t, ok := r.Get(call.Function.Name)
+		if !ok {
+			output = fmt.Sprintf("Error: tool %q not found", call.Function.Name)
+		} else {
+			var execErr error
+			if st, ok := t.(tool.StreamingTool); ok {
+				output, execErr = st.ExecuteStreaming(ctx, call.Function.Arguments, func(delta string) error {
+					return s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolOutputDelta, map[string]any{
+						"tool":  call.Function.Name,
+						"id":    call.ID,
+						"delta": delta,
+					}))
+				})
+			} else {
+				output, execErr = t.Execute(ctx, call.Function.Arguments)
+			}
+
+			if execErr != nil {
+				output = fmt.Sprintf("%s\nError: %s", output, execErr)
+				if h != nil {
+					_, hookErr := h.Run(
+						ctx,
+						hook.EventPostToolUseFailure,
+						hook.SessionMeta{ID: s.ID()},
+						map[string]any{
+							"tool":  call.Function.Name,
+							"error": execErr.Error(),
+						},
+					)
+					if hookErr != nil {
+						slog.Warn(
+							"PostToolUseFailure hook failed",
+							"tool", call.Function.Name,
+							"error", hookErr,
+						)
+					}
+				}
+			} else {
+				if h != nil {
+					_, hookErr := h.Run(
+						ctx,
+						hook.EventPostToolUse,
+						hook.SessionMeta{ID: s.ID()},
+						map[string]any{
+							"tool":   call.Function.Name,
+							"output": output,
+						},
+					)
+					if hookErr != nil {
+						slog.Warn("PostToolUse hook failed", "tool", call.Function.Name, "error", hookErr)
+					}
+				}
+			}
+		}
+	} else {
+		output = fmt.Sprintf("Error: no tool registry configured; cannot execute %q", call.Function.Name)
+	}
+
+	res := toolResult{call: call, output: output}
+	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolExecutionCompleted, map[string]any{
+		"tool":   call.Function.Name,
+		"id":     call.ID,
+		"output": output,
+	})); err != nil {
+		res.err = err
+	}
+	return res
 }
