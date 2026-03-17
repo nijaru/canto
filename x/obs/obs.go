@@ -108,7 +108,57 @@ func (w *wrappedProvider) Generate(
 }
 
 func (w *wrappedProvider) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream, error) {
-	return w.inner.Stream(ctx, req)
+	ctx, span := Tracer().Start(ctx, "gen_ai.chat",
+		trace.WithAttributes(
+			attribute.String("gen_ai.request.model", req.Model),
+			attribute.Int("gen_ai.request.message_count", len(req.Messages)),
+			attribute.Bool("gen_ai.request.stream", true),
+		),
+	)
+
+	stream, err := w.inner.Stream(ctx, req)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.End()
+		return nil, err
+	}
+
+	return &wrappedStream{inner: stream, span: span}, nil
+}
+
+type wrappedStream struct {
+	inner llm.Stream
+	span  trace.Span
+	usage llm.Usage
+}
+
+func (w *wrappedStream) Next() (*llm.Chunk, bool) {
+	chunk, ok := w.inner.Next()
+	if ok && chunk.Usage != nil {
+		w.usage.InputTokens += chunk.Usage.InputTokens
+		w.usage.OutputTokens += chunk.Usage.OutputTokens
+		w.usage.TotalTokens += chunk.Usage.TotalTokens
+	}
+	return chunk, ok
+}
+
+func (w *wrappedStream) Err() error   { return w.inner.Err() }
+func (w *wrappedStream) Close() error {
+	err := w.inner.Close()
+	if err != nil {
+		w.span.RecordError(err)
+		w.span.SetStatus(codes.Error, err.Error())
+	} else if serr := w.inner.Err(); serr != nil {
+		w.span.RecordError(serr)
+		w.span.SetStatus(codes.Error, serr.Error())
+	}
+	w.span.SetAttributes(
+		attribute.Int("gen_ai.usage.input_tokens", w.usage.InputTokens),
+		attribute.Int("gen_ai.usage.output_tokens", w.usage.OutputTokens),
+	)
+	w.span.End()
+	return err
 }
 
 func (w *wrappedProvider) Models(ctx context.Context) ([]catwalk.Model, error) {
@@ -141,9 +191,14 @@ type wrappedTool struct {
 }
 
 // WrapTool returns a Tool that records a "canto.tool.{name}" child span on
-// every Execute call.
+// every Execute call. If the tool is a StreamingTool, the returned tool
+// will also implement StreamingTool and instrument ExecuteStreaming.
 func WrapTool(t tool.Tool) tool.Tool {
-	return &wrappedTool{inner: t}
+	w := wrappedTool{inner: t}
+	if st, ok := t.(tool.StreamingTool); ok {
+		return &wrappedStreamingTool{wrappedTool: w, innerStreaming: st}
+	}
+	return &w
 }
 
 func (w *wrappedTool) Spec() llm.ToolSpec { return w.inner.Spec() }
@@ -156,6 +211,33 @@ func (w *wrappedTool) Execute(ctx context.Context, args string) (string, error) 
 	defer span.End()
 
 	out, err := w.inner.Execute(ctx, args)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	return out, err
+}
+
+type wrappedStreamingTool struct {
+	wrappedTool
+	innerStreaming tool.StreamingTool
+}
+
+func (w *wrappedStreamingTool) ExecuteStreaming(
+	ctx context.Context,
+	args string,
+	emit func(string) error,
+) (string, error) {
+	name := w.inner.Spec().Name
+	ctx, span := Tracer().Start(ctx, "canto.tool."+name,
+		trace.WithAttributes(
+			attribute.String("canto.tool.name", name),
+			attribute.Bool("canto.tool.streaming", true),
+		),
+	)
+	defer span.End()
+
+	out, err := w.innerStreaming.ExecuteStreaming(ctx, args, emit)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
