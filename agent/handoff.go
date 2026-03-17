@@ -138,6 +138,6 @@ func extractHandoff(s *session.Session, targetIDs []string) *Handoff {
 
 // RecordHandoff appends an EventTypeHandoff event to the session log.
 // Called by graph/swarm after a handoff is detected and before routing.
-func RecordHandoff(s *session.Session, h *Handoff) {
-	s.Append(session.NewEvent(s.ID(), session.EventTypeHandoff, h))
+func RecordHandoff(ctx context.Context, s *session.Session, h *Handoff) error {
+	return s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeHandoff, h))
 }

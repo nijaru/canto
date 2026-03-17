@@ -70,7 +70,7 @@ func TestLazyToolProcessor_UnlocksFromHistory(t *testing.T) {
 	sess := session.New("s3")
 	specs := []llm.ToolSpec{{Name: "tool_1", Description: "desc of tool_1"}}
 	data, _ := json.Marshal(specs)
-	sess.Append(session.NewEvent("s3", session.EventTypeMessageAdded, llm.Message{
+	_ = sess.Append(context.Background(), session.NewEvent("s3", session.EventTypeMessageAdded, llm.Message{
 		Role:    llm.RoleTool,
 		Name:    "search_tools",
 		Content: string(data),

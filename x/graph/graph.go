@@ -143,7 +143,9 @@ func (g *Graph) Run(ctx context.Context, sess *session.Session) (agent.StepResul
 
 		// If the agent issued a handoff, record it in the session log.
 		if result.Handoff != nil {
-			agent.RecordHandoff(sess, result.Handoff)
+			if err := agent.RecordHandoff(ctx, sess, result.Handoff); err != nil {
+				return lastResult, err
+			}
 		}
 
 		// Find the first outgoing edge whose condition is satisfied.

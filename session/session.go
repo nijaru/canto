@@ -44,22 +44,64 @@ func (sub *subscriber) close() {
 	}
 }
 
+// Writer persists events to a durable store.
+type Writer interface {
+	Save(ctx context.Context, e Event) error
+}
+
+// Reducer computes a state snapshot from a sequence of events.
+type Reducer func(state map[string]any, e Event) map[string]any
+
 // Session is a durable container for a conversation.
 // All state is derived from an append-only event log.
 type Session struct {
 	mu          sync.RWMutex
 	id          string
 	events      []Event
-	meta        map[string]any
+	state       map[string]any
 	subscribers []*subscriber
+	writer      Writer
+	reducer     Reducer
 }
 
 // New creates a new session.
 func New(id string) *Session {
 	return &Session{
-		id:   id,
-		meta: make(map[string]any),
+		id:    id,
+		state: make(map[string]any),
 	}
+}
+
+// WithReducer attaches a reducer to the session for state management.
+func (s *Session) WithReducer(r Reducer) *Session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reducer = r
+	// Recompute state from existing events
+	s.state = make(map[string]any)
+	for _, e := range s.events {
+		s.state = r(s.state, e)
+	}
+	return s
+}
+
+// State returns a snapshot of the current session state.
+func (s *Session) State() map[string]any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	res := make(map[string]any, len(s.state))
+	for k, v := range s.state {
+		res[k] = v
+	}
+	return res
+}
+
+// WithWriter attaches a writer to the session for write-through persistence.
+func (s *Session) WithWriter(w Writer) *Session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.writer = w
+	return s
 }
 
 // Fork creates a new session with a new ID, copying all existing events from
@@ -74,11 +116,17 @@ func (s *Session) Fork(newID string) *Session {
 		events[i] = e
 	}
 
-	return &Session{
-		id:     newID,
-		events: events,
-		meta:   make(map[string]any), // Reset metadata for the fork
+	res := &Session{
+		id:      newID,
+		events:  events,
+		state:   make(map[string]any, len(s.state)),
+		writer:  s.writer,
+		reducer: s.reducer,
 	}
+	for k, v := range s.state {
+		res.state[k] = v
+	}
+	return res
 }
 
 // ID returns the session identifier.
@@ -87,15 +135,27 @@ func (s *Session) ID() string {
 }
 
 // Append adds a new event to the session and notifies all subscribers.
-func (s *Session) Append(e Event) {
+// If a writer is attached, the event is persisted to the store immediately.
+func (s *Session) Append(ctx context.Context, e Event) error {
 	s.mu.Lock()
 	s.events = append(s.events, e)
+	if s.reducer != nil {
+		s.state = s.reducer(s.state, e)
+	}
 	subs := s.subscribers // snapshot pointer slice under lock
+	writer := s.writer
 	s.mu.Unlock()
+
+	if writer != nil {
+		if err := writer.Save(ctx, e); err != nil {
+			return err
+		}
+	}
 
 	for _, sub := range subs {
 		sub.trySend(e)
 	}
+	return nil
 }
 
 // Subscribe returns a channel that receives every event appended after this call.

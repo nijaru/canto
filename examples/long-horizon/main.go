@@ -69,7 +69,7 @@ When all tasks are done, write "## Status: COMPLETE" to the plan file.`, planFil
 		SessionFn: func(cycle int) *session.Session {
 			id := fmt.Sprintf("lh-cycle-%d", cycle)
 			sess := session.New(id)
-			sess.Append(session.NewEvent(
+			sess.Append(context.Background(), session.NewEvent(
 				id,
 				session.EventTypeMessageAdded,
 				llm.Message{

@@ -16,7 +16,7 @@ import (
 
 func TestBuilder_Build(t *testing.T) {
 	sess := session.New("test-session")
-	sess.Append(session.NewEvent(sess.ID(), session.EventTypeMessageAdded, llm.Message{
+	_ = sess.Append(context.Background(), session.NewEvent(sess.ID(), session.EventTypeMessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: "Hello world",
 	}))
@@ -320,7 +320,7 @@ func TestBudgetGuard_PassingCase(t *testing.T) {
 
 	e := session.NewEvent(sess.ID(), session.EventTypeMessageAdded, nil)
 	e.Cost = 0.50
-	sess.Append(e)
+	_ = sess.Append(context.Background(), e)
 
 	req := &llm.LLMRequest{}
 	if err := guard.Process(context.Background(), nil, "", sess, req); err != nil {
@@ -334,7 +334,7 @@ func TestBudgetGuard_Exceeded(t *testing.T) {
 
 	e := session.NewEvent(sess.ID(), session.EventTypeMessageAdded, nil)
 	e.Cost = 1.50
-	sess.Append(e)
+	_ = sess.Append(context.Background(), e)
 
 	req := &llm.LLMRequest{}
 	err := guard.Process(context.Background(), nil, "", sess, req)
@@ -352,7 +352,7 @@ func TestBudgetGuard_ZeroLimitSkips(t *testing.T) {
 
 	e := session.NewEvent(sess.ID(), session.EventTypeMessageAdded, nil)
 	e.Cost = 999.99
-	sess.Append(e)
+	_ = sess.Append(context.Background(), e)
 
 	req := &llm.LLMRequest{}
 	if err := guard.Process(context.Background(), nil, "", sess, req); err != nil {
@@ -366,7 +366,7 @@ func TestBudgetGuard_ExactlyAtLimit(t *testing.T) {
 
 	e := session.NewEvent(sess.ID(), session.EventTypeMessageAdded, nil)
 	e.Cost = 1.0
-	sess.Append(e)
+	_ = sess.Append(context.Background(), e)
 
 	req := &llm.LLMRequest{}
 	err := guard.Process(context.Background(), nil, "", sess, req)

@@ -27,7 +27,7 @@ type Runner struct {
 	// ExecutionTimeout is the maximum time to spend running the agent turn.
 	ExecutionTimeout time.Duration
 
-	lanes *LaneManager
+	Lanes *LaneManager
 	Hooks *hook.Runner
 }
 
@@ -38,14 +38,16 @@ func NewRunner(s session.Store, a agent.Agent) *Runner {
 		Agent:            a,
 		WaitTimeout:      defaultWaitTimeout,
 		ExecutionTimeout: defaultExecutionTimeout,
-		lanes:            NewLaneManager(),
+		Lanes:            NewLaneManager(),
 		Hooks:            hook.NewRunner(),
 	}
 }
 
 // Close gracefully stops the internal lane manager and any active goroutines.
 func (r *Runner) Close() {
-	r.lanes.Stop()
+	if r.Lanes != nil {
+		r.Lanes.Stop()
+	}
 }
 
 // Subscribe returns a channel that receives all events for the given session.
@@ -63,15 +65,20 @@ func (r *Runner) Search(ctx context.Context, sessionID, query string) ([]session
 	return r.Store.Search(ctx, sessionID, query)
 }
 
-// Send appends a user message to the session store and runs the agent.
+// Send appends a user message to the session and runs the agent.
 // It returns the final StepResult so callers can read the assistant reply
 // without a separate store load.
 func (r *Runner) Send(ctx context.Context, sessionID, message string) (agent.StepResult, error) {
+	sess, err := r.Store.Load(ctx, sessionID)
+	if err != nil {
+		return agent.StepResult{}, err
+	}
+
 	e := session.NewEvent(sessionID, session.EventTypeMessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: message,
 	})
-	if err := r.Store.Save(ctx, e); err != nil {
+	if err := sess.Append(ctx, e); err != nil {
 		return agent.StepResult{}, err
 	}
 	return r.Run(ctx, sessionID)
@@ -85,18 +92,28 @@ func (r *Runner) SendStream(
 	sessionID, message string,
 	chunkFn func(*llm.Chunk),
 ) (agent.StepResult, error) {
+	sess, err := r.Store.Load(ctx, sessionID)
+	if err != nil {
+		return agent.StepResult{}, err
+	}
+
 	e := session.NewEvent(sessionID, session.EventTypeMessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: message,
 	})
-	if err := r.Store.Save(ctx, e); err != nil {
+	if err := sess.Append(ctx, e); err != nil {
 		return agent.StepResult{}, err
 	}
 	return r.RunStream(ctx, sessionID, chunkFn)
 }
 
-// Run executes the agent on the given session, serialized within the session lane.
+// Run executes the agent on the given session. If a LaneManager is configured,
+// execution is serialized within the session lane.
 func (r *Runner) Run(ctx context.Context, sessionID string) (agent.StepResult, error) {
+	if r.Lanes == nil {
+		return r.execute(ctx, sessionID, nil)
+	}
+
 	waitCtx := ctx
 	if r.WaitTimeout > 0 {
 		var cancel context.CancelFunc
@@ -105,7 +122,7 @@ func (r *Runner) Run(ctx context.Context, sessionID string) (agent.StepResult, e
 	}
 
 	var result agent.StepResult
-	errCh := r.lanes.Execute(waitCtx, sessionID, func(laneCtx context.Context) error {
+	errCh := r.Lanes.Execute(waitCtx, sessionID, func(laneCtx context.Context) error {
 		execCtx := laneCtx
 		if r.ExecutionTimeout > 0 {
 			var cancel context.CancelFunc
@@ -120,13 +137,17 @@ func (r *Runner) Run(ctx context.Context, sessionID string) (agent.StepResult, e
 	return result, <-errCh
 }
 
-// RunStream executes the agent with streaming, serialized within the session lane.
-// If the agent implements agent.Streamer, chunkFn receives tokens as they arrive.
+// RunStream executes the agent with streaming. If a LaneManager is configured,
+// execution is serialized within the session lane.
 func (r *Runner) RunStream(
 	ctx context.Context,
 	sessionID string,
 	chunkFn func(*llm.Chunk),
 ) (agent.StepResult, error) {
+	if r.Lanes == nil {
+		return r.execute(ctx, sessionID, chunkFn)
+	}
+
 	waitCtx := ctx
 	if r.WaitTimeout > 0 {
 		var cancel context.CancelFunc
@@ -135,7 +156,7 @@ func (r *Runner) RunStream(
 	}
 
 	var result agent.StepResult
-	errCh := r.lanes.Execute(waitCtx, sessionID, func(laneCtx context.Context) error {
+	errCh := r.Lanes.Execute(waitCtx, sessionID, func(laneCtx context.Context) error {
 		execCtx := laneCtx
 		if r.ExecutionTimeout > 0 {
 			var cancel context.CancelFunc
@@ -169,20 +190,7 @@ func (r *Runner) execute(
 		r.Hooks.Run(context.Background(), hook.EventSessionEnd, meta, nil)
 	}()
 
-	// 2. Capture initial event count for durability
-	initialCount := len(sess.Events())
-
-	// 3. Fire UserPromptSubmit if the last message is from the user.
-	msgs := sess.Messages()
-	if len(msgs) > 0 && msgs[len(msgs)-1].Role == llm.RoleUser {
-		if _, err := r.Hooks.Run(ctx, hook.EventUserPromptSubmit, meta, map[string]any{
-			"content": msgs[len(msgs)-1].Content,
-		}); err != nil {
-			return agent.StepResult{}, err
-		}
-	}
-
-	// 4. Execute agent turn.
+	// 2. Execute agent turn.
 	// Use streaming if chunkFn is set and the agent supports it.
 	var result agent.StepResult
 	if chunkFn != nil {
@@ -196,13 +204,6 @@ func (r *Runner) execute(
 	}
 	if err != nil {
 		return agent.StepResult{}, err
-	}
-
-	// 5. Save new events only.
-	for _, e := range sess.Events()[initialCount:] {
-		if err := r.Store.Save(ctx, e); err != nil {
-			return agent.StepResult{}, err
-		}
 	}
 
 	return result, nil

@@ -20,7 +20,7 @@ func buildSession(id string, turns []struct {
 },
 ) *session.Session {
 	sess := session.New(id)
-	sess.Append(session.NewEvent(id, session.EventTypeMessageAdded, llm.Message{
+	_ = sess.Append(context.Background(), session.NewEvent(id, session.EventTypeMessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: "Do the task",
 	}))
@@ -42,7 +42,7 @@ func buildSession(id string, turns []struct {
 			Calls:   calls,
 		})
 		e.Cost = t.cost
-		sess.Append(e)
+		_ = sess.Append(context.Background(), e)
 	}
 	return sess
 }

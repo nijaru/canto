@@ -94,7 +94,9 @@ func (a *BaseAgent) StreamStep(
 	}
 	e := session.NewEvent(s.ID(), session.EventTypeMessageAdded, msg)
 	e.Cost = usage.Cost
-	s.Append(e)
+	if err := s.Append(ctx, e); err != nil {
+		return StepResult{}, err
+	}
 	llm.RecordUsage(ctx, req.Model, usage)
 
 	// Execute tool calls in parallel and append results to the session.

@@ -10,6 +10,7 @@ import (
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
+	"github.com/nijaru/canto/tool"
 )
 
 type toolResult struct {
@@ -26,16 +27,32 @@ func (a *BaseAgent) runTools(
 	s *session.Session,
 	calls []llm.ToolCall,
 ) (StepResult, error) {
-	// Collect handoff targets from registered tools.
-	var handoffTargets []string
-	if a.Tools != nil {
-		for _, spec := range a.Tools.Specs() {
-			if after, ok := strings.CutPrefix(spec.Name, "transfer_to_"); ok {
-				handoffTargets = append(handoffTargets, after)
-			}
+	handoffTargets := getHandoffTargets(a.Tools)
+	return RunTools(ctx, s, calls, a.Tools, a.Hooks, handoffTargets)
+}
+
+func getHandoffTargets(r *tool.Registry) []string {
+	if r == nil {
+		return nil
+	}
+	var targets []string
+	for _, spec := range r.Specs() {
+		if after, ok := strings.CutPrefix(spec.Name, "transfer_to_"); ok {
+			targets = append(targets, after)
 		}
 	}
+	return targets
+}
 
+// RunTools executes tool calls in parallel and persists results to the session.
+func RunTools(
+	ctx context.Context,
+	s *session.Session,
+	calls []llm.ToolCall,
+	r *tool.Registry,
+	h *hook.Runner,
+	handoffTargets []string,
+) (StepResult, error) {
 	// Dispatch all calls concurrently. Results land in a fixed-size slice so
 	// tool messages are appended to the session in deterministic call order.
 	results := make([]toolResult, len(calls))
@@ -46,14 +63,17 @@ func (a *BaseAgent) runTools(
 			defer wg.Done()
 			var output string
 
-			s.Append(session.NewEvent(s.ID(), session.EventTypeToolExecutionStarted, map[string]any{
+			if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolExecutionStarted, map[string]any{
 				"tool": call.Function.Name,
 				"args": call.Function.Arguments,
 				"id":   call.ID,
-			}))
+			})); err != nil {
+				results[i] = toolResult{err: err}
+				return
+			}
 
-			if a.Hooks != nil {
-				hookResults, err := a.Hooks.Run(
+			if h != nil {
+				hookResults, err := h.Run(
 					ctx,
 					hook.EventPreToolUse,
 					hook.SessionMeta{ID: s.ID()},
@@ -80,8 +100,8 @@ func (a *BaseAgent) runTools(
 				}
 			}
 
-			if a.Tools != nil {
-				toolOutput, execErr := a.Tools.Execute(
+			if r != nil {
+				toolOutput, execErr := r.Execute(
 					ctx,
 					call.Function.Name,
 					call.Function.Arguments,
@@ -89,8 +109,8 @@ func (a *BaseAgent) runTools(
 				output += toolOutput
 				if execErr != nil {
 					output = fmt.Sprintf("%s\nError: %s", output, execErr)
-					if a.Hooks != nil {
-						_, hookErr := a.Hooks.Run(
+					if h != nil {
+						_, hookErr := h.Run(
 							ctx,
 							hook.EventPostToolUseFailure,
 							hook.SessionMeta{ID: s.ID()},
@@ -108,8 +128,8 @@ func (a *BaseAgent) runTools(
 						}
 					}
 				} else {
-					if a.Hooks != nil {
-						_, hookErr := a.Hooks.Run(
+					if h != nil {
+						_, hookErr := h.Run(
 							ctx,
 							hook.EventPostToolUse,
 							hook.SessionMeta{ID: s.ID()},
@@ -128,11 +148,13 @@ func (a *BaseAgent) runTools(
 			}
 			results[i] = toolResult{call: call, output: output}
 
-			s.Append(session.NewEvent(s.ID(), session.EventTypeToolExecutionCompleted, map[string]any{
+			if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolExecutionCompleted, map[string]any{
 				"tool":   call.Function.Name,
 				"id":     call.ID,
 				"output": output,
-			}))
+			})); err != nil {
+				results[i].err = err
+			}
 		}(i, call)
 	}
 	wg.Wait()
@@ -149,12 +171,14 @@ func (a *BaseAgent) runTools(
 			Name:    r.call.Function.Name,
 		}
 		toolMsgs = append(toolMsgs, toolMsg)
-		s.Append(session.NewEvent(s.ID(), session.EventTypeMessageAdded, toolMsg))
+		if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeMessageAdded, toolMsg)); err != nil {
+			return StepResult{}, err
+		}
 	}
 
-	h := extractHandoff(s, handoffTargets)
+	handoff := extractHandoff(s, handoffTargets)
 	return StepResult{
-		Handoff:     h,
+		Handoff:     handoff,
 		ToolResults: toolMsgs,
 	}, nil
 }

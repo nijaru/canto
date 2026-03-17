@@ -119,7 +119,7 @@ func (s *SQLiteStore) LoadUntil(ctx context.Context, sessionID string, eventID u
 	}
 	defer rows.Close()
 
-	sess := New(sessionID)
+	sess := New(sessionID).WithWriter(s)
 	for rows.Next() {
 		var e Event
 		var idStr, typeStr, timeStr string
@@ -138,7 +138,10 @@ func (s *SQLiteStore) LoadUntil(ctx context.Context, sessionID string, eventID u
 		e.ID = id
 		e.Type = EventType(typeStr)
 		e.Timestamp = t
-		sess.Append(e)
+		// Internal load doesn't need write-through back to itself.
+		sess.mu.Lock()
+		sess.events = append(sess.events, e)
+		sess.mu.Unlock()
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

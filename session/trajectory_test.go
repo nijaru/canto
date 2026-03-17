@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ func TestExportTrajectory(t *testing.T) {
 	})
 	e1.Timestamp = now
 	e1.Cost = 0.01
-	sess.Append(e1)
+	_ = sess.Append(context.Background(), e1)
 
 	// Assistant response with tool call
 	e2 := NewEvent(sess.ID(), EventTypeMessageAdded, llm.Message{
@@ -35,7 +36,7 @@ func TestExportTrajectory(t *testing.T) {
 	})
 	e2.Timestamp = now.Add(time.Second)
 	e2.Cost = 0.05
-	sess.Append(e2)
+	sess.Append(context.Background(), e2)
 
 	// Tool result
 	e3 := NewEvent(sess.ID(), EventTypeMessageAdded, llm.Message{
@@ -45,7 +46,7 @@ func TestExportTrajectory(t *testing.T) {
 		Name:    "search",
 	})
 	e3.Timestamp = now.Add(2 * time.Second)
-	sess.Append(e3)
+	sess.Append(context.Background(), e3)
 
 	// Second assistant response
 	e4 := NewEvent(sess.ID(), EventTypeMessageAdded, llm.Message{
@@ -54,7 +55,7 @@ func TestExportTrajectory(t *testing.T) {
 	})
 	e4.Timestamp = now.Add(3 * time.Second)
 	e4.Cost = 0.02
-	sess.Append(e4)
+	sess.Append(context.Background(), e4)
 
 	traj, err := ExportTrajectory(sess)
 	if err != nil {

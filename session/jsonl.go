@@ -64,14 +64,17 @@ func (s *JSONLStore) Load(ctx context.Context, sessionID string) (*Session, erro
 	}
 	defer f.Close()
 
-	sess := New(sessionID)
+	sess := New(sessionID).WithWriter(s)
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		var e Event
 		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
 			return nil, err
 		}
-		sess.Append(e)
+		// Internal load doesn't need write-through back to itself.
+		sess.mu.Lock()
+		sess.events = append(sess.events, e)
+		sess.mu.Unlock()
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -93,14 +96,17 @@ func (s *JSONLStore) LoadUntil(ctx context.Context, sessionID string, eventID ul
 	}
 	defer f.Close()
 
-	sess := New(sessionID)
+	sess := New(sessionID).WithWriter(s)
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		var e Event
 		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
 			return nil, err
 		}
-		sess.Append(e)
+		// Internal load doesn't need write-through back to itself.
+		sess.mu.Lock()
+		sess.events = append(sess.events, e)
+		sess.mu.Unlock()
 		if e.ID == eventID {
 			break
 		}

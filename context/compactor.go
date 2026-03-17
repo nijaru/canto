@@ -58,12 +58,14 @@ func (p *OffloadProcessor) Process(
 		return nil
 	}
 
-	sess.Append(session.NewEvent(sess.ID(), session.EventTypeCompactionTriggered, map[string]any{
-		"strategy":      "offload",
-		"max_tokens":    p.MaxTokens,
-		"threshold_pct": p.ThresholdPct,
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.EventTypeCompactionTriggered, map[string]any{
+		"strategy":       "offload",
+		"max_tokens":     p.MaxTokens,
+		"threshold_pct":  p.ThresholdPct,
 		"current_tokens": currentTokens,
-	}))
+	})); err != nil {
+		return err
+	}
 
 	if p.OnPreCompact != nil {
 		p.OnPreCompact(ctx, sess)

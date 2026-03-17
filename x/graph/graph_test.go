@@ -41,7 +41,7 @@ func TestGraphConditionalRouting(t *testing.T) {
 	})
 
 	sess := session.New("graph-test")
-	sess.Append(session.NewEvent("graph-test", session.EventTypeMessageAdded, llm.Message{
+	_ = sess.Append(context.Background(), session.NewEvent("graph-test", session.EventTypeMessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: "Write a report on Go.",
 	}))
@@ -77,7 +77,7 @@ func TestGraphTerminatesAtTerminalNode(t *testing.T) {
 	// No edges — solo is a terminal node.
 
 	sess := session.New("terminal-test")
-	sess.Append(session.NewEvent("terminal-test", session.EventTypeMessageAdded, llm.Message{
+	_ = sess.Append(context.Background(), session.NewEvent("terminal-test", session.EventTypeMessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: "Do it.",
 	}))
@@ -182,7 +182,7 @@ func TestAddEdge_NilConditionIsUnconditional(t *testing.T) {
 	g.AddEdge("a", "b", nil)
 
 	sess := session.New("nil-cond-test")
-	sess.Append(session.NewEvent("nil-cond-test", session.EventTypeMessageAdded, llm.Message{
+	_ = sess.Append(context.Background(), session.NewEvent("nil-cond-test", session.EventTypeMessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: "Go.",
 	}))
@@ -211,7 +211,7 @@ func TestRun_ContextCancelled(t *testing.T) {
 	g.AddNode(a)
 
 	sess := session.New("cancel-test")
-	sess.Append(session.NewEvent("cancel-test", session.EventTypeMessageAdded, llm.Message{
+	_ = sess.Append(context.Background(), session.NewEvent("cancel-test", session.EventTypeMessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: "Go.",
 	}))
@@ -234,7 +234,7 @@ func TestRun_EntryNodeNotRegistered(t *testing.T) {
 	// No nodes added.
 
 	sess := session.New("no-entry-test")
-	sess.Append(session.NewEvent("no-entry-test", session.EventTypeMessageAdded, llm.Message{
+	_ = sess.Append(context.Background(), session.NewEvent("no-entry-test", session.EventTypeMessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: "Go.",
 	}))

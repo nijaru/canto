@@ -55,7 +55,7 @@ func (t *simpleTool) Execute(_ context.Context, _ string) (string, error) {
 // userSession returns a session with a single user message appended.
 func userSession(id, content string) *session.Session {
 	s := session.New(id)
-	s.Append(session.NewEvent(id, session.EventTypeMessageAdded, llm.Message{
+	_ = s.Append(context.Background(), session.NewEvent(id, session.EventTypeMessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: content,
 	}))
@@ -163,7 +163,7 @@ func TestExtractHandoffMatchesKnownTarget(t *testing.T) {
 			}{Name: "transfer_to_writer", Arguments: `{"reason":"done"}`},
 		}},
 	}
-	s.Append(session.NewEvent("s2", session.EventTypeMessageAdded, assistantMsg))
+	_ = s.Append(context.Background(), session.NewEvent("s2", session.EventTypeMessageAdded, assistantMsg))
 
 	// Append the tool result containing a Handoff payload.
 	h := Handoff{TargetAgentID: "writer", Reason: "done"}
@@ -174,7 +174,7 @@ func TestExtractHandoffMatchesKnownTarget(t *testing.T) {
 		ToolID:  "c1",
 		Name:    "transfer_to_writer",
 	}
-	s.Append(session.NewEvent("s2", session.EventTypeMessageAdded, toolMsg))
+	_ = s.Append(context.Background(), session.NewEvent("s2", session.EventTypeMessageAdded, toolMsg))
 
 	got := extractHandoff(s, []string{"writer"})
 	if got == nil {
@@ -197,7 +197,7 @@ func TestExtractHandoffSkipsUnknownTarget(t *testing.T) {
 		ToolID:  "c2",
 		Name:    "transfer_to_unknown-agent",
 	}
-	s.Append(session.NewEvent("s3", session.EventTypeMessageAdded, toolMsg))
+	_ = s.Append(context.Background(), session.NewEvent("s3", session.EventTypeMessageAdded, toolMsg))
 
 	got := extractHandoff(s, []string{"writer"})
 	if got != nil {
@@ -210,7 +210,7 @@ func TestExtractHandoffStopsAtNonToolRole(t *testing.T) {
 
 	// Append an assistant message (non-tool role).
 	assistantMsg := llm.Message{Role: llm.RoleAssistant, Content: "hello"}
-	s.Append(session.NewEvent("s4", session.EventTypeMessageAdded, assistantMsg))
+	_ = s.Append(context.Background(), session.NewEvent("s4", session.EventTypeMessageAdded, assistantMsg))
 
 	// A tool result that would match, but placed before the scan starts
 	// (the scanner walks backward and stops at non-tool roles).
@@ -228,7 +228,7 @@ func TestExtractHandoffStopsAtNonToolRole(t *testing.T) {
 func TestRecordHandoff(t *testing.T) {
 	s := session.New("s5")
 	h := &Handoff{TargetAgentID: "writer", Reason: "done"}
-	RecordHandoff(s, h)
+	_ = RecordHandoff(context.Background(), s, h)
 
 	events := s.Events()
 	if len(events) != 1 {

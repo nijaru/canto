@@ -15,7 +15,7 @@ func TestSubscribe_ReceivesEvents(t *testing.T) {
 	ch := s.Subscribe(ctx)
 
 	e := NewEvent("sess-1", EventTypeMessageAdded, map[string]string{"role": "user"})
-	s.Append(e)
+	_ = s.Append(context.Background(), e)
 
 	select {
 	case got := <-ch:
@@ -36,7 +36,7 @@ func TestSubscribe_MultipleSubscribers(t *testing.T) {
 	ch2 := s.Subscribe(ctx)
 
 	e := NewEvent("sess-2", EventTypeMessageAdded, nil)
-	s.Append(e)
+	_ = s.Append(context.Background(), e)
 
 	for _, ch := range []<-chan Event{ch1, ch2} {
 		select {
@@ -89,7 +89,7 @@ func TestSubscribe_SlowSubscriberDoesNotBlock(t *testing.T) {
 		// Fill beyond buffer — Append must not block.
 		for i := range subscriberBufSize + 10 {
 			_ = i
-			s.Append(NewEvent("sess-4", EventTypeMessageAdded, nil))
+			_ = s.Append(context.Background(), NewEvent("sess-4", EventTypeMessageAdded, nil))
 		}
 		close(done)
 	}()
@@ -104,7 +104,7 @@ func TestSubscribe_SlowSubscriberDoesNotBlock(t *testing.T) {
 func TestSubscribe_NoSubscribers(t *testing.T) {
 	s := New("sess-5")
 	// Append with no subscribers must not panic.
-	s.Append(NewEvent("sess-5", EventTypeHandoff, nil))
+	_ = s.Append(context.Background(), NewEvent("sess-5", EventTypeHandoff, nil))
 }
 
 // TestSubscribe_ConcurrentAppendCancel exercises the race between Append and
@@ -124,7 +124,7 @@ func TestSubscribe_ConcurrentAppendCancel(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range eventsPerWriter {
-				s.Append(NewEvent("sess-race", EventTypeMessageAdded, nil))
+				_ = s.Append(context.Background(), NewEvent("sess-race", EventTypeMessageAdded, nil))
 			}
 		}()
 	}
@@ -142,7 +142,7 @@ func TestSubscribe_EventsBeforeSubscribeNotReceived(t *testing.T) {
 	s := New("sess-6")
 
 	// Append before subscribe.
-	s.Append(NewEvent("sess-6", EventTypeMessageAdded, nil))
+	_ = s.Append(context.Background(), NewEvent("sess-6", EventTypeMessageAdded, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -151,7 +151,7 @@ func TestSubscribe_EventsBeforeSubscribeNotReceived(t *testing.T) {
 
 	// Append after subscribe.
 	e := NewEvent("sess-6", EventTypeMessageAdded, nil)
-	s.Append(e)
+	_ = s.Append(context.Background(), e)
 
 	select {
 	case got := <-ch:

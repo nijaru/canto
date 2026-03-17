@@ -48,18 +48,22 @@ func (g *InputGate) Request(
 	}
 	defer func() { <-g.pending }()
 
-	sess.Append(session.NewEvent(sess.ID(), session.EventTypeExternalInput, map[string]any{
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.EventTypeExternalInput, map[string]any{
 		"prompt": prompt,
 		"status": "pending",
-	}))
+	})); err != nil {
+		return "", err
+	}
 
 	select {
 	case input := <-g.ch:
-		sess.Append(session.NewEvent(sess.ID(), session.EventTypeExternalInput, map[string]any{
+		if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.EventTypeExternalInput, map[string]any{
 			"prompt": prompt,
 			"input":  input,
 			"status": "received",
-		}))
+		})); err != nil {
+			return "", err
+		}
 		return input, nil
 	case <-ctx.Done():
 		// Drain g.ch so a value from a concurrent Provide call doesn't

@@ -136,6 +136,44 @@ func DefaultCapabilities() Capabilities {
 		SystemRole:  RoleSystem,
 	}
 }
+// GenerateFromStream collects chunks from a stream and assembles an LLMResponse.
+// It is intended for use by Provider implementations to avoid duplicating
+// the complex logic of assembling streaming chunks.
+func GenerateFromStream(s Stream) (*LLMResponse, error) {
+	defer s.Close()
+	var resp LLMResponse
+	// toolCallIndices tracks tool calls by their ID to handle deltas correctly.
+	toolCallIndices := make(map[string]int)
+
+	for {
+		chunk, ok := s.Next()
+		if !ok {
+			break
+		}
+		resp.Content += chunk.Content
+		for _, call := range chunk.Calls {
+			if idx, ok := toolCallIndices[call.ID]; ok {
+				// Update existing call. If the chunk contains the full state,
+				// we overwrite; if it's a delta, we should append.
+				// For now, we assume the provider normalization layer (like
+				// OpenAIStream) handles the delta-to-full-state conversion
+				// and we just take the latest state.
+				resp.Calls[idx] = call
+			} else {
+				// New call
+				toolCallIndices[call.ID] = len(resp.Calls)
+				resp.Calls = append(resp.Calls, call)
+			}
+		}
+		if chunk.Usage != nil {
+			resp.Usage = *chunk.Usage
+		}
+	}
+	if err := s.Err(); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
 
 // Provider defines the interface for an LLM backend.
 type Provider interface {
