@@ -100,7 +100,7 @@ func (r *SmartResolver) Generate(ctx context.Context, req *LLMRequest) (*LLMResp
 			return resp, nil
 		}
 
-		if IsRateLimit(err) {
+		if p.provider.IsTransient(err) {
 			r.markCooling(p)
 			continue
 		}
@@ -127,7 +127,7 @@ func (r *SmartResolver) Stream(ctx context.Context, req *LLMRequest) (Stream, er
 			return s, nil
 		}
 
-		if IsRateLimit(err) {
+		if p.provider.IsTransient(err) {
 			r.markCooling(p)
 			continue
 		}
@@ -344,10 +344,33 @@ func (p *FailoverProvider) Cost(ctx context.Context, model string, usage Usage) 
 	return 0
 }
 
-// Capabilities returns the first provider's view of the model's capabilities.
 func (p *FailoverProvider) Capabilities(model string) Capabilities {
 	if len(p.providers) == 0 {
 		return DefaultCapabilities()
 	}
 	return p.providers[0].Capabilities(model)
+}
+
+// IsTransient returns true if any underlying provider reports a transient error.
+func (r *SmartResolver) IsTransient(err error) bool {
+	if err == nil {
+		return false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if len(r.providers) > 0 {
+		return r.providers[0].provider.IsTransient(err)
+	}
+	return false
+}
+
+// IsTransient returns true if any underlying provider reports a transient error.
+func (p *FailoverProvider) IsTransient(err error) bool {
+	if err == nil {
+		return false
+	}
+	if len(p.providers) > 0 {
+		return p.providers[0].IsTransient(err)
+	}
+	return false
 }

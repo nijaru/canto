@@ -18,6 +18,7 @@ type mockProvider struct {
 
 func (m *mockProvider) ID() string                             { return "mock" }
 func (m *mockProvider) Capabilities(_ string) llm.Capabilities { return llm.DefaultCapabilities() }
+func (m *mockProvider) IsTransient(_ error) bool               { return false }
 func (m *mockProvider) Generate(_ context.Context, _ *llm.LLMRequest) (*llm.LLMResponse, error) {
 	return &llm.LLMResponse{Content: m.msg}, nil
 }

@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"time"
 
 	"charm.land/catwalk/pkg/catwalk"
 )
@@ -159,6 +160,27 @@ type Provider interface {
 	// Capabilities returns the feature set supported by the given model.
 	// Use this to adapt requests for reasoning models that have constraints.
 	Capabilities(model string) Capabilities
+
+	// IsTransient returns true if the given error is retryable (e.g. 429, 503).
+	IsTransient(err error) bool
+}
+
+// RetryConfig controls the backoff behavior for a RetryProvider.
+type RetryConfig struct {
+	MaxAttempts int
+	MinInterval time.Duration
+	MaxInterval time.Duration
+	Multiplier  float64
+}
+
+// DefaultRetryConfig returns a safe default for production LLM usage.
+func DefaultRetryConfig() RetryConfig {
+	return RetryConfig{
+		MaxAttempts: 3,
+		MinInterval: 1 * time.Second,
+		MaxInterval: 10 * time.Second,
+		Multiplier:  2.0,
+	}
 }
 
 // Stream defines the interface for a streaming LLM response.
@@ -176,4 +198,75 @@ type Stream interface {
 type Chunk struct {
 	Content string     `json:"content"`
 	Calls   []ToolCall `json:"tool_calls,omitempty"`
+}
+
+// RetryProvider wraps an LLM provider and automatically retries transient errors
+// (rate limits, service unavailable) with exponential backoff.
+type RetryProvider struct {
+	Provider
+	Config RetryConfig
+}
+
+// NewRetryProvider creates a new provider with the default retry policy.
+func NewRetryProvider(p Provider) *RetryProvider {
+	return &RetryProvider{
+		Provider: p,
+		Config:   DefaultRetryConfig(),
+	}
+}
+
+func (r *RetryProvider) Generate(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+	var resp *LLMResponse
+	var err error
+	interval := r.Config.MinInterval
+
+	for i := 0; i < r.Config.MaxAttempts; i++ {
+		resp, err = r.Provider.Generate(ctx, req)
+		if err == nil {
+			return resp, nil
+		}
+
+		if !r.Provider.IsTransient(err) || i == r.Config.MaxAttempts-1 {
+			return nil, err
+		}
+
+		select {
+		case <-time.After(interval):
+			interval = time.Duration(float64(interval) * r.Config.Multiplier)
+			if interval > r.Config.MaxInterval {
+				interval = r.Config.MaxInterval
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return nil, err
+}
+
+func (r *RetryProvider) Stream(ctx context.Context, req *LLMRequest) (Stream, error) {
+	var s Stream
+	var err error
+	interval := r.Config.MinInterval
+
+	for i := 0; i < r.Config.MaxAttempts; i++ {
+		s, err = r.Provider.Stream(ctx, req)
+		if err == nil {
+			return s, nil
+		}
+
+		if !r.Provider.IsTransient(err) || i == r.Config.MaxAttempts-1 {
+			return nil, err
+		}
+
+		select {
+		case <-time.After(interval):
+			interval = time.Duration(float64(interval) * r.Config.Multiplier)
+			if interval > r.Config.MaxInterval {
+				interval = r.Config.MaxInterval
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return nil, err
 }

@@ -43,8 +43,9 @@ func (m *mockProvider) Cost(ctx context.Context, model string, usage llm.Usage) 
 	return 0
 }
 func (m *mockProvider) Capabilities(_ string) llm.Capabilities { return llm.DefaultCapabilities() }
+func (m *mockProvider) IsTransient(_ error) bool               { return false }
 
-func TestSummarizeProcessor(t *testing.T) {
+func TestSummarizer(t *testing.T) {
 	sess := session.New("test-session")
 
 	req := &llm.LLMRequest{

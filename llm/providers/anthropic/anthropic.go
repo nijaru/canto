@@ -3,6 +3,7 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 
 	"charm.land/catwalk/pkg/catwalk"
@@ -98,7 +99,7 @@ func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMR
 		case "text":
 			res.Content += block.Text
 		case "tool_use":
-			res.Calls = append(res.Calls, llm.ToolCall{
+			call := llm.ToolCall{
 				ID:   block.ID,
 				Type: "function",
 				Function: struct {
@@ -108,7 +109,19 @@ func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMR
 					Name:      block.Name,
 					Arguments: string(block.Input),
 				},
-			})
+			}
+			res.Calls = append(res.Calls, call)
+
+			// If this was a forced structured output, promote its input to Content.
+			if rf := req.ResponseFormat; rf != nil && rf.Type == llm.ResponseFormatJSONSchema {
+				name := rf.Name
+				if name == "" {
+					name = "json_response"
+				}
+				if block.Name == name {
+					res.Content = string(block.Input)
+				}
+			}
 			// "thinking" and "redacted_thinking" are internal reasoning blocks.
 			// They are not exposed in LLMResponse to keep the API uniform.
 		}
@@ -124,7 +137,16 @@ func (p *Provider) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream,
 		opts = append(opts, option.WithHeader("anthropic-beta", "interleaved-thinking-2025-05-14"))
 	}
 	stream := p.client.Messages.NewStreaming(ctx, params, opts...)
-	return &Stream{stream: stream}, nil
+
+	targetName := ""
+	if rf := req.ResponseFormat; rf != nil && rf.Type == llm.ResponseFormatJSONSchema {
+		targetName = rf.Name
+		if targetName == "" {
+			targetName = "json_response"
+		}
+	}
+
+	return &Stream{stream: stream, targetName: targetName}, nil
 }
 
 func (p *Provider) Models(ctx context.Context) ([]catwalk.Model, error) {
@@ -223,6 +245,18 @@ func (p *Provider) convertRequest(req *llm.LLMRequest) sdk.MessageNewParams {
 		Messages: messages,
 		Tools:    tools,
 	}
+
+	// Handle ResponseFormat via tool_choice for JSON Schema
+	if rf := req.ResponseFormat; rf != nil && rf.Type == llm.ResponseFormatJSONSchema && rf.Schema != nil {
+		name := rf.Name
+		if name == "" {
+			name = "json_response"
+		}
+		schema := p.convertSchema(rf.Schema)
+		params.Tools = append(params.Tools, sdk.ToolUnionParamOfTool(schema, name))
+		params.ToolChoice = sdk.ToolChoiceParamOfTool(name)
+	}
+
 	if req.MaxTokens > 0 {
 		params.MaxTokens = int64(req.MaxTokens)
 	} else {
@@ -298,6 +332,7 @@ type Stream struct {
 	}
 	err        error
 	activeCall *llm.ToolCall
+	targetName string // Name of the tool used for ResponseFormatJSONSchema
 }
 
 func (s *Stream) Next() (*llm.Chunk, bool) {
@@ -324,7 +359,12 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 			case "input_json_delta":
 				if s.activeCall != nil {
 					s.activeCall.Function.Arguments += delta.Delta.PartialJSON
-					return &llm.Chunk{Calls: []llm.ToolCall{*s.activeCall}}, true
+					chunk := &llm.Chunk{Calls: []llm.ToolCall{*s.activeCall}}
+					// Promote tool input to Content if it's the target response tool.
+					if s.activeCall.Function.Name == s.targetName {
+						chunk.Content = delta.Delta.PartialJSON
+					}
+					return chunk, true
 				}
 				// "thinking_delta" is internal reasoning; not emitted to callers.
 			}
@@ -358,4 +398,19 @@ func (p *Provider) Capabilities(model string) llm.Capabilities {
 		}
 	}
 	return llm.DefaultCapabilities()
+}
+
+// IsTransient returns true if the error is a rate limit or server error.
+func (p *Provider) IsTransient(err error) bool {
+	if err == nil {
+		return false
+	}
+	var sdkErr *sdk.Error
+	if errors.As(err, &sdkErr) {
+		switch sdkErr.StatusCode {
+		case 429, 500, 502, 503, 504:
+			return true
+		}
+	}
+	return false
 }

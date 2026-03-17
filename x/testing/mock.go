@@ -136,7 +136,9 @@ func (m *MockProvider) Capabilities(_ string) llm.Capabilities {
 	return llm.DefaultCapabilities()
 }
 
-// Calls returns all requests passed to Generate, in order.
+func (m *MockProvider) IsTransient(_ error) bool { return false }
+
+// Calls returns all requests processed by the provider.
 func (m *MockProvider) Calls() []*llm.LLMRequest {
 	m.mu.Lock()
 	defer m.mu.Unlock()

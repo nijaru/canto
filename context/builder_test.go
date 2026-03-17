@@ -398,6 +398,7 @@ func (p *capProvider) CountTokens(_ context.Context, _ string, _ []llm.Message) 
 }
 func (p *capProvider) Cost(_ context.Context, _ string, _ llm.Usage) float64 { return 0 }
 func (p *capProvider) Capabilities(_ string) llm.Capabilities                { return p.caps }
+func (p *capProvider) IsTransient(err error) bool                            { return false }
 
 func TestCapabilitiesProcessor_StandardModel(t *testing.T) {
 	proc := CapabilitiesProcessor()

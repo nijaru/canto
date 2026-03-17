@@ -41,6 +41,7 @@ func (m *mockProvider) Cost(ctx context.Context, model string, usage Usage) floa
 	return 0
 }
 func (m *mockProvider) Capabilities(_ string) Capabilities { return DefaultCapabilities() }
+func (m *mockProvider) IsTransient(err error) bool         { return IsRateLimit(err) }
 
 func TestFailoverProvider(t *testing.T) {
 	p1 := &mockProvider{

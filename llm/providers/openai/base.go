@@ -189,6 +189,21 @@ func (b *Base) Capabilities(model string) llm.Capabilities {
 	return llm.DefaultCapabilities()
 }
 
+// IsTransient returns true if the error is a rate limit or server error.
+func (b *Base) IsTransient(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr *openai.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.HTTPStatusCode {
+		case 429, 500, 502, 503, 504:
+			return true
+		}
+	}
+	return false
+}
+
 // DefaultModelCaps returns capability entries for well-known OpenAI reasoning
 // models. Pass to Base.ModelCaps (or merge with your own overrides) when
 // constructing a provider that will use these models.

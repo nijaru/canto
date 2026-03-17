@@ -131,6 +131,10 @@ func (w *wrappedProvider) Capabilities(model string) llm.Capabilities {
 	return w.inner.Capabilities(model)
 }
 
+func (w *wrappedProvider) IsTransient(err error) bool {
+	return w.inner.IsTransient(err)
+}
+
 // wrappedTool adds a "canto.tool.{name}" child span to a tool's Execute call.
 type wrappedTool struct {
 	inner tool.Tool
