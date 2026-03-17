@@ -1,9 +1,9 @@
 # Canto
 
-Canto is a layered Go framework for building durable LLM agents and multi-agent systems.
-
 > [!WARNING]
 > **Status: Pre-release.** Core interfaces are currently unstable and subject to change.
+
+Canto is a layered Go framework for building durable LLM agents and multi-agent systems.
 
 The framework organizes agentic behavior into discrete, swappable layers. At its core, Canto uses an append-only event log to track session history, providing a deterministic foundation for state recovery, observability, and regression testing. It is designed for developers building production agents that require auditability and reliability beyond simple prompt loops.
 
@@ -91,4 +91,4 @@ func main() {
 
 ## License
 
-MIT
+[MIT](LICENSE)
