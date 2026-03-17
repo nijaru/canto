@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/nijaru/canto/llm"
 )
@@ -15,7 +16,11 @@ type funcTool struct {
 func (f *funcTool) Spec() llm.ToolSpec { return f.spec }
 
 func (f *funcTool) Execute(ctx context.Context, args string) (string, error) {
-	return f.fn(ctx, args)
+	res, err := f.fn(ctx, args)
+	if err != nil {
+		return "", fmt.Errorf("tool %s: %w", f.spec.Name, err)
+	}
+	return res, nil
 }
 
 // Func constructs a Tool from a function, eliminating struct boilerplate

@@ -105,6 +105,9 @@ func (s *SQLiteVectorStore) Upsert(
 }
 
 // Search performs a brute-force cosine similarity search with optional metadata filtering.
+// NOTE: This implementation performs an O(n) scan of the entire collection in memory
+// and is intended for small collections (< 10k vectors). For larger datasets,
+// consider using HNSWStore which provides sub-linear approximate search.
 func (s *SQLiteVectorStore) Search(
 	ctx context.Context,
 	queryVector []float32,

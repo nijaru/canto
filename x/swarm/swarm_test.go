@@ -1,102 +1,155 @@
-package swarm_test
+package swarm
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sync/atomic"
 	"testing"
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/x/swarm"
 )
 
-// mockProvider returns canned responses and never fails.
-type mockProvider struct {
-	llm.Provider
-	msg string
-}
-
-func (m *mockProvider) ID() string                             { return "mock" }
-func (m *mockProvider) Capabilities(_ string) llm.Capabilities { return llm.DefaultCapabilities() }
-func (m *mockProvider) IsTransient(_ error) bool               { return false }
-func (m *mockProvider) Generate(_ context.Context, _ *llm.LLMRequest) (*llm.LLMResponse, error) {
-	return &llm.LLMResponse{Content: m.msg}, nil
-}
-
-func TestSwarmClaimsAllTasks(t *testing.T) {
+func TestMemoryBlackboard(t *testing.T) {
 	ctx := context.Background()
-	board := swarm.NewMemoryBlackboard()
+	b := NewMemoryBlackboard()
 
-	// Add 3 tasks.
-	tasks := []swarm.Task{
-		{ID: "task-1", Description: "Write introduction"},
-		{ID: "task-2", Description: "Write body"},
-		{ID: "task-3", Description: "Write conclusion"},
+	// Test AddTask and ListUnclaimed
+	task1 := Task{ID: "t1", Description: "task 1"}
+	if err := b.AddTask(ctx, task1); err != nil {
+		t.Fatalf("AddTask failed: %v", err)
 	}
-	for _, task := range tasks {
-		if err := board.AddTask(ctx, task); err != nil {
-			t.Fatal(err)
-		}
+	if err := b.AddTask(ctx, task1); err == nil {
+		t.Error("expected error adding duplicate task")
 	}
 
-	// 3 agents, each with a simple mock that replies once.
-	agents := []agent.Agent{
-		agent.New("writer-1", "You are writer 1.", "gpt-4", &mockProvider{msg: "part 1 done"}, nil),
-		agent.New("writer-2", "You are writer 2.", "gpt-4", &mockProvider{msg: "part 2 done"}, nil),
-		agent.New("writer-3", "You are writer 3.", "gpt-4", &mockProvider{msg: "part 3 done"}, nil),
+	unclaimed, _ := b.ListUnclaimed(ctx)
+	if len(unclaimed) != 1 || unclaimed[0].ID != "t1" {
+		t.Errorf("unexpected unclaimed list: %+v", unclaimed)
 	}
 
-	s := swarm.New(board, 5, agents...)
-	sess := session.New("test-swarm-session")
-
-	result, err := s.Run(ctx, sess)
-	if err != nil {
-		t.Fatalf("swarm.Run: %v", err)
+	// Test Post and ReadAgent
+	if err := b.Post(ctx, "a1", "status", "working"); err != nil {
+		t.Fatalf("Post failed: %v", err)
+	}
+	val, _ := b.ReadAgent(ctx, "a1", "status")
+	if val != "working" {
+		t.Errorf("expected working, got %v", val)
 	}
 
-	// All 3 tasks should have been claimed and executed.
-	if result.TasksDone != 3 {
-		t.Errorf("expected 3 tasks done, got %d", result.TasksDone)
+	// Test ClaimTask
+	ok, err := b.ClaimTask(ctx, "a1", "t1")
+	if !ok || err != nil {
+		t.Fatalf("ClaimTask failed: ok=%v, err=%v", ok, err)
+	}
+	ok, _ = b.ClaimTask(ctx, "a2", "t1")
+	if ok {
+		t.Error("expected second claim to fail")
 	}
 
-	// No tasks should remain unclaimed.
-	remaining, _ := board.ListUnclaimed(ctx)
-	if len(remaining) != 0 {
-		t.Errorf("expected 0 unclaimed tasks, got %d", len(remaining))
+	unclaimed, _ = b.ListUnclaimed(ctx)
+	if len(unclaimed) != 0 {
+		t.Errorf("expected 0 unclaimed, got %d", len(unclaimed))
 	}
 }
 
-func TestSwarmNoDoubleClaim(t *testing.T) {
+type mockAgent struct {
+	id      string
+	turns   int32
+	turnErr error
+}
+
+func (m *mockAgent) ID() string { return m.id }
+func (m *mockAgent) Step(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+	return agent.StepResult{}, nil
+}
+func (m *mockAgent) Turn(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+	atomic.AddInt32(&m.turns, 1)
+	if m.turnErr != nil {
+		return agent.StepResult{}, m.turnErr
+	}
+	return agent.StepResult{
+		Usage: llm.Usage{TotalTokens: 10, Cost: 0.01},
+	}, nil
+}
+
+func TestSwarm(t *testing.T) {
 	ctx := context.Background()
-	board := swarm.NewMemoryBlackboard()
+	sess := session.New("test-session")
+	bb := NewMemoryBlackboard()
 
-	// Only 1 task, 3 competing agents.
-	if err := board.AddTask(ctx, swarm.Task{ID: "solo", Description: "Only task"}); err != nil {
-		t.Fatal(err)
+	// Add tasks
+	for i := 1; i <= 5; i++ {
+		bb.AddTask(ctx, Task{ID: fmt.Sprintf("t%d", i), Description: "desc"})
 	}
 
-	agents := []agent.Agent{
-		agent.New("a1", "Agent 1", "gpt-4", &mockProvider{msg: "done"}, nil),
-		agent.New("a2", "Agent 2", "gpt-4", &mockProvider{msg: "done"}, nil),
-		agent.New("a3", "Agent 3", "gpt-4", &mockProvider{msg: "done"}, nil),
-	}
+	// Create agents
+	a1 := &mockAgent{id: "agent1"}
+	a2 := &mockAgent{id: "agent2"}
 
-	s := swarm.New(board, 3, agents...)
-	sess := session.New("no-double-claim")
-
-	result, err := s.Run(ctx, sess)
+	s := New(bb, 10, a1, a2)
+	res, err := s.Run(ctx, sess)
 	if err != nil {
-		t.Fatalf("swarm.Run: %v", err)
+		t.Fatalf("Swarm.Run failed: %v", err)
 	}
 
-	// Exactly 1 task should have been worked on.
-	if result.TasksDone != 1 {
-		t.Errorf("expected exactly 1 task done, got %d", result.TasksDone)
+	if res.TasksDone != 5 {
+		t.Errorf("expected 5 tasks done, got %d", res.TasksDone)
 	}
+	if atomic.LoadInt32(&a1.turns)+atomic.LoadInt32(&a2.turns) != 5 {
+		t.Errorf("total turns mismatch: a1=%d, a2=%d", a1.turns, a2.turns)
+	}
+}
 
-	// The task must be claimed by exactly one agent.
-	remaining, _ := board.ListUnclaimed(ctx)
-	if len(remaining) != 0 {
-		t.Errorf("expected 0 unclaimed tasks remaining, got %d", len(remaining))
+func TestSwarmMaxRounds(t *testing.T) {
+	ctx := context.Background()
+	sess := session.New("test-session")
+	bb := NewMemoryBlackboard()
+
+	bb.AddTask(ctx, Task{ID: "t1", Description: "desc"})
+	bb.AddTask(ctx, Task{ID: "t2", Description: "desc"})
+
+	a1 := &mockAgent{id: "agent1"}
+	// MaxRounds = 1, but 2 tasks exist. This should fail final check.
+	s := New(bb, 1, a1)
+	_, err := s.Run(ctx, sess)
+	if err == nil {
+		t.Error("expected error due to max rounds")
+	} else {
+		t.Logf("Got expected error: %v", err)
+	}
+}
+
+func TestSwarmAgentFailure(t *testing.T) {
+	ctx := context.Background()
+	sess := session.New("test-session")
+	bb := NewMemoryBlackboard()
+
+	bb.AddTask(ctx, Task{ID: "t1", Description: "desc"})
+
+	a1 := &mockAgent{id: "agent1", turnErr: errors.New("boom")}
+	s := New(bb, 5, a1)
+	_, err := s.Run(ctx, sess)
+	if err == nil {
+		t.Fatal("expected error from agent")
+	}
+	t.Logf("Got expected error: %v", err)
+}
+
+func TestSwarmContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	sess := session.New("test-session")
+	bb := NewMemoryBlackboard()
+	bb.AddTask(ctx, Task{ID: "t1", Description: "desc"})
+
+	a1 := &mockAgent{id: "agent1"}
+	cancel() // cancel immediately
+
+	s := New(bb, 5, a1)
+	_, err := s.Run(ctx, sess)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("expected context.Canceled, got %v", err)
 	}
 }
