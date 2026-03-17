@@ -2,7 +2,7 @@ package context
 
 import (
 	"context"
-	"encoding/json"
+	"github.com/go-json-experiment/json"
 	"fmt"
 	"testing"
 

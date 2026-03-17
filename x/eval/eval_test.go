@@ -2,7 +2,7 @@ package eval_test
 
 import (
 	"context"
-	"encoding/json"
+	"github.com/go-json-experiment/json"
 	"os"
 	"path/filepath"
 	"testing"

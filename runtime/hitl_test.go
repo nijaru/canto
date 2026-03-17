@@ -2,7 +2,7 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
+	"github.com/go-json-experiment/json"
 	"testing"
 	"time"
 

@@ -3,7 +3,7 @@ package memory
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"github.com/go-json-experiment/json"
 	"errors"
 	"fmt"
 	"strings"

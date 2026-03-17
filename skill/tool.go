@@ -2,7 +2,7 @@ package skill
 
 import (
 	"context"
-	"encoding/json"
+	"github.com/go-json-experiment/json"
 	"fmt"
 	"os"
 	"path/filepath"

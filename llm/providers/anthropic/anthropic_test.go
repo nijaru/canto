@@ -1,7 +1,7 @@
 package anthropic
 
 import (
-	"encoding/json"
+	"github.com/go-json-experiment/json/jsontext"
 	"testing"
 )
 
@@ -49,14 +49,14 @@ func TestConvertSchema_MapWithoutProperties(t *testing.T) {
 }
 
 func TestConvertSchema_JSONRawMessage(t *testing.T) {
-	raw := json.RawMessage(`{
+	raw := jsontext.Value(`{
 		"type": "object",
 		"properties": {"path": {"type": "string"}},
 		"required": ["path"]
 	}`)
 	schema := provider().convertSchema(raw)
 	if schema.Properties == nil {
-		t.Fatal("Properties must not be nil for json.RawMessage input")
+		t.Fatal("Properties must not be nil for jsontext.Value input")
 	}
 	if len(schema.Required) != 1 || schema.Required[0] != "path" {
 		t.Errorf("Required: got %v, want [path]", schema.Required)

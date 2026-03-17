@@ -19,18 +19,18 @@ var ErrMaxSteps = errors.New("maximum tool calling steps reached")
 type StepResult struct {
 	// Content is the final assistant text from the last step.
 	// Populated by Turn so orchestrators don't re-parse the session.
-	Content string
+	Content string `json:"content,omitzero"`
 
 	// Handoff is non-nil when the agent's last action was a handoff to
 	// another agent. The caller must route to the target agent.
-	Handoff *Handoff
+	Handoff *Handoff `json:"handoff,omitzero"`
 
 	// ToolResults contains the results of any tools executed in the last step.
 	// Useful for graph routing based on tool output without session re-parsing.
-	ToolResults []llm.Message
+	ToolResults []llm.Message `json:"tool_results,omitzero"`
 
 	// Usage reports the token consumption for the turn (sum of all steps).
-	Usage llm.Usage
+	Usage llm.Usage `json:"usage,omitzero"`
 }
 
 // Handoff describes a control transfer from one agent to another.

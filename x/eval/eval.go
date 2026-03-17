@@ -8,7 +8,7 @@ package eval
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	"github.com/go-json-experiment/json"
 	"fmt"
 	"os"
 	"time"
@@ -31,7 +31,7 @@ type EvalResult struct {
 	TurnCount    int                `json:"turn_count"`
 	TotalCost    float64            `json:"total_cost"`
 	Scores       map[string]float64 `json:"scores"` // scorer name → mean score across turns
-	Metadata     map[string]any     `json:"metadata,omitempty"`
+	Metadata     map[string]any     `json:"metadata,omitzero"`
 }
 
 // RunEval exports a Trajectory from each session, scores every turn with each
@@ -54,7 +54,6 @@ func RunEval(
 	defer f.Close()
 
 	w := bufio.NewWriter(f)
-	enc := json.NewEncoder(w)
 
 	var results []EvalResult
 
@@ -98,8 +97,11 @@ func RunEval(
 		}
 
 		results = append(results, result)
-		if err := enc.Encode(result); err != nil {
+		if err := json.MarshalWrite(w, result); err != nil {
 			return results, fmt.Errorf("eval: write result: %w", err)
+		}
+		if _, err := w.Write([]byte("\n")); err != nil {
+			return results, fmt.Errorf("eval: write newline: %w", err)
 		}
 	}
 

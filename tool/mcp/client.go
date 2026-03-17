@@ -3,7 +3,7 @@ package mcp
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	"github.com/go-json-experiment/json"
 	"fmt"
 	"io"
 	"os/exec"

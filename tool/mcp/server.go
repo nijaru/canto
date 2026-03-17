@@ -3,7 +3,8 @@ package mcp
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	"github.com/go-json-experiment/json"
+	"github.com/go-json-experiment/json/jsontext"
 	"fmt"
 	"io"
 	"sync"
@@ -178,16 +179,16 @@ func normalizeSchema(params any) map[string]any {
 
 type jsonrpcRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"` // number, string, or null
+	ID      jsontext.Value `json:"id,omitzero"` // number, string, or null
 	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
+	Params  jsontext.Value `json:"params,omitzero"`
 }
 
 type jsonrpcResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id"`
-	Result  any             `json:"result,omitempty"`
-	Error   *jsonrpcError   `json:"error,omitempty"`
+	ID      jsontext.Value `json:"id"`
+	Result  any             `json:"result,omitzero"`
+	Error   *jsonrpcError   `json:"error,omitzero"`
 }
 
 type jsonrpcError struct {
@@ -210,11 +211,11 @@ const (
 	codeInternalError  = -32603
 )
 
-func okResponse(id json.RawMessage, result any) *jsonrpcResponse {
+func okResponse(id jsontext.Value, result any) *jsonrpcResponse {
 	return &jsonrpcResponse{JSONRPC: "2.0", ID: id, Result: result}
 }
 
-func errResponse(id json.RawMessage, code int, msg string) *jsonrpcResponse {
+func errResponse(id jsontext.Value, code int, msg string) *jsonrpcResponse {
 	return &jsonrpcResponse{
 		JSONRPC: "2.0",
 		ID:      id,

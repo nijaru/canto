@@ -1,7 +1,7 @@
 package session
 
 import (
-	"encoding/json"
+	"github.com/go-json-experiment/json"
 	"strings"
 	"time"
 
@@ -19,7 +19,7 @@ type Trajectory struct {
 	EndTime   time.Time        `json:"end_time"`
 	Turns     []TrajectoryTurn `json:"turns"`
 	TotalCost float64          `json:"total_cost"`
-	Metadata  map[string]any   `json:"metadata,omitempty"`
+	Metadata  map[string]any   `json:"metadata,omitzero"`
 }
 
 // TrajectoryTurn represents a single perceive-decide-act-observe loop.
@@ -28,10 +28,10 @@ type TrajectoryTurn struct {
 	Timestamp   time.Time      `json:"timestamp"`
 	Input       []llm.Message  `json:"input"`
 	Output      llm.Message    `json:"output"`
-	ToolCalls   []llm.ToolCall `json:"tool_calls,omitempty"`
-	ToolResults []llm.Message  `json:"tool_results,omitempty"`
+	ToolCalls   []llm.ToolCall `json:"tool_calls,omitzero"`
+	ToolResults []llm.Message  `json:"tool_results,omitzero"`
 	Cost        float64        `json:"cost"`
-	Metrics     map[string]any `json:"metrics,omitempty"`
+	Metrics     map[string]any `json:"metrics,omitzero"`
 }
 
 // Episode is a compressed record of a completed agent run.
@@ -45,9 +45,9 @@ type Episode struct {
 	StartTime  time.Time      `json:"start_time"`
 	EndTime    time.Time      `json:"end_time"`
 	Conclusion string         `json:"conclusion"` // last assistant message without tool calls
-	Calls      []EpisodeCall  `json:"calls,omitempty"`
+	Calls      []EpisodeCall  `json:"calls,omitzero"`
 	TotalCost  float64        `json:"total_cost"`
-	Metadata   map[string]any `json:"metadata,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitzero"`
 }
 
 // EpisodeCall is a single successful tool invocation captured in an Episode.

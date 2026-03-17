@@ -3,7 +3,7 @@ package hook
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"github.com/go-json-experiment/json"
 	"fmt"
 	"os/exec"
 	"sync"
@@ -37,14 +37,14 @@ const (
 // to every hook subprocess.
 type SessionMeta struct {
 	ID      string `json:"id"`
-	AgentID string `json:"agent_id,omitempty"`
+	AgentID string `json:"agent_id,omitzero"`
 }
 
 // HookPayload is the JSON payload sent to the hook via stdin.
 type HookPayload struct {
 	Event   HookEvent      `json:"event"`
 	Session SessionMeta    `json:"session"`
-	Data    map[string]any `json:"data,omitempty"`
+	Data    map[string]any `json:"data,omitzero"`
 }
 
 // HookResult is the result of executing a hook.

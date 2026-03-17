@@ -2,7 +2,7 @@ package session
 
 import (
 	"context"
-	"encoding/json"
+	"github.com/go-json-experiment/json"
 	"sync"
 
 	"github.com/nijaru/canto/llm"

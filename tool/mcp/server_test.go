@@ -2,7 +2,7 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
+	"github.com/go-json-experiment/json"
 	"strings"
 	"testing"
 

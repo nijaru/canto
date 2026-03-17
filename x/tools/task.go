@@ -3,7 +3,8 @@ package tools
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
+	"github.com/go-json-experiment/json"
+	"github.com/go-json-experiment/json/jsontext"
 	"fmt"
 	"math/big"
 	"os"
@@ -25,7 +26,7 @@ type taskRecord struct {
 	Project     string         `json:"project"`
 	Ref         string         `json:"ref"`
 	Title       string         `json:"title"`
-	Description string         `json:"description,omitempty"`
+	Description string         `json:"description,omitzero"`
 	Status      string         `json:"status"`
 	Priority    int            `json:"priority"`
 	Labels      []string       `json:"labels"`
@@ -253,7 +254,7 @@ func (t *TaskTool) readTask(filename string) (*taskRecord, error) {
 }
 
 func (t *TaskTool) writeTask(filename string, rec *taskRecord) error {
-	b, err := json.MarshalIndent(rec, "", "  ")
+	b, err := json.Marshal(rec, jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}

@@ -4,7 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"github.com/go-json-experiment/json"
+	"github.com/go-json-experiment/json/jsontext"
 	"fmt"
 
 	"github.com/nijaru/canto/llm"
@@ -133,7 +134,7 @@ func (t *ArchivalMemorySearchTool) Execute(ctx context.Context, args string) (st
 	// Prepare results for LLM consumption
 	type hit struct {
 		Content string  `json:"content"`
-		Source  string  `json:"source,omitempty"`
+		Source  string  `json:"source,omitzero"`
 		Score   float32 `json:"relevance_score"`
 	}
 
@@ -158,7 +159,7 @@ func (t *ArchivalMemorySearchTool) Execute(ctx context.Context, args string) (st
 		})
 	}
 
-	out, err := json.MarshalIndent(hits, "", "  ")
+	out, err := json.Marshal(hits, jsontext.WithIndent("  "))
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal search results: %w", err)
 	}
