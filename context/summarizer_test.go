@@ -11,19 +11,19 @@ import (
 
 type mockProvider struct {
 	id    string
-	genFn func(ctx context.Context, req *llm.LLMRequest) (*llm.LLMResponse, error)
+	genFn func(ctx context.Context, req *llm.Request) (*llm.Response, error)
 }
 
 func (m *mockProvider) ID() string { return m.id }
 
 func (m *mockProvider) Generate(
 	ctx context.Context,
-	req *llm.LLMRequest,
-) (*llm.LLMResponse, error) {
+	req *llm.Request,
+) (*llm.Response, error) {
 	return m.genFn(ctx, req)
 }
 
-func (m *mockProvider) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream, error) {
+func (m *mockProvider) Stream(ctx context.Context, req *llm.Request) (llm.Stream, error) {
 	return nil, nil
 }
 
@@ -48,7 +48,7 @@ func (m *mockProvider) IsTransient(_ error) bool               { return false }
 func TestSummarizer(t *testing.T) {
 	sess := session.New("test-session")
 
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: "System prompt"},
 			{Role: llm.RoleUser, Content: "Hello 1"},   // candidate
@@ -72,12 +72,12 @@ func TestSummarizer(t *testing.T) {
 
 	provider := &mockProvider{
 		id: "mock",
-		genFn: func(ctx context.Context, req *llm.LLMRequest) (*llm.LLMResponse, error) {
-			return &llm.LLMResponse{Content: "Summarized conversation"}, nil
+		genFn: func(ctx context.Context, req *llm.Request) (*llm.Response, error) {
+			return &llm.Response{Content: "Summarized conversation"}, nil
 		},
 	}
 
-	processor := NewSummarizeProcessor(100, provider, "mock-model")
+	processor := NewSummarizer(100, provider, "mock-model")
 	err := processor.Process(context.Background(), nil, "", sess, req)
 	if err != nil {
 		t.Fatalf("processor failed: %v", err)

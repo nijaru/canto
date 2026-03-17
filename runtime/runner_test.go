@@ -17,7 +17,7 @@ func (e *echoAgent) ID() string { return "echo" }
 
 func (e *echoAgent) Step(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
 	msg := llm.Message{Role: llm.RoleAssistant, Content: "pong"}
-	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.EventTypeMessageAdded, msg)); err != nil {
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.MessageAdded, msg)); err != nil {
 		return agent.StepResult{}, err
 	}
 	return agent.StepResult{Content: "pong"}, nil
@@ -85,7 +85,7 @@ collect:
 	// Confirm we saw the user message and the assistant reply.
 	var sawUser, sawAssistant bool
 	for _, e := range events {
-		if e.Type != session.EventTypeMessageAdded {
+		if e.Type != session.MessageAdded {
 			continue
 		}
 		var m llm.Message

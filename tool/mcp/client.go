@@ -172,7 +172,7 @@ func (c *Client) DiscoverTools() ([]tool.Tool, error) {
 	for _, t := range result.Tools {
 		tools = append(tools, &wrapper{
 			client: c,
-			spec: llm.ToolSpec{
+			spec: llm.Spec{
 				Name:        t.Name,
 				Description: t.Description,
 				Parameters:  t.InputSchema,
@@ -231,10 +231,10 @@ func (c *Client) CallTool(
 // wrapper implements the tool.Tool interface for an MCP tool.
 type wrapper struct {
 	client *Client
-	spec   llm.ToolSpec
+	spec   llm.Spec
 }
 
-func (w *wrapper) Spec() llm.ToolSpec {
+func (w *wrapper) Spec() llm.Spec {
 	return w.spec
 }
 

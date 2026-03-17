@@ -18,7 +18,7 @@ type streamMockProvider struct {
 	spos   int
 }
 
-func (m *streamMockProvider) Stream(_ context.Context, _ *llm.LLMRequest) (llm.Stream, error) {
+func (m *streamMockProvider) Stream(_ context.Context, _ *llm.Request) (llm.Stream, error) {
 	if m.spos >= len(m.chunks) {
 		return &fixedStream{chunks: []llm.Chunk{{Content: "no more streams"}}}, nil
 	}
@@ -103,7 +103,7 @@ func TestStreamStepNilChunkFn(t *testing.T) {
 }
 
 func TestStreamStepWithToolCall(t *testing.T) {
-	call := llm.ToolCall{ID: "c1", Type: "function"}
+	call := llm.Call{ID: "c1", Type: "function"}
 	call.Function.Name = "greet"
 	call.Function.Arguments = `{"name":"world"}`
 
@@ -111,14 +111,14 @@ func TestStreamStepWithToolCall(t *testing.T) {
 		chunks: [][]llm.Chunk{
 			// First stream: tool call across two chunks
 			{
-				{Calls: []llm.ToolCall{{ID: "c1", Type: "function"}}},
-				{Calls: []llm.ToolCall{call}}, // accumulated final state
+				{Calls: []llm.Call{{ID: "c1", Type: "function"}}},
+				{Calls: []llm.Call{call}}, // accumulated final state
 			},
 			// Second stream: final assistant reply after tool result
 			{{Content: "done"}},
 		},
 		mockProvider: mockProvider{
-			responses: []*llm.LLMResponse{},
+			responses: []*llm.Response{},
 		},
 	}
 	reg := tool.NewRegistry()
@@ -172,11 +172,11 @@ func TestStreamTurnPopulatesContent(t *testing.T) {
 
 func TestStreamTurnMaxSteps(t *testing.T) {
 	// All streams return a tool call, causing infinite loop — MaxSteps cuts it.
-	call := llm.ToolCall{ID: "c1", Type: "function"}
+	call := llm.Call{ID: "c1", Type: "function"}
 	call.Function.Name = "loop"
 	call.Function.Arguments = `{}`
 
-	chunks := []llm.Chunk{{Calls: []llm.ToolCall{call}}}
+	chunks := []llm.Chunk{{Calls: []llm.Call{call}}}
 	var allChunks [][]llm.Chunk
 	for i := 0; i < 15; i++ { // more than MaxSteps
 		allChunks = append(allChunks, chunks)
@@ -226,12 +226,12 @@ func TestWithProcessorsInsertsBeforeCapabilities(t *testing.T) {
 	if got := len(a2.Builder.Processors()); got != origLen+2 {
 		t.Errorf("expected %d processors, got %d", origLen+2, got)
 	}
-	// Last processor must still be CapabilitiesProcessor (not our sentinels).
-	// CapabilitiesProcessor is a ProcessorFunc — we can check the sentinels
+	// Last processor must still be Capabilities (not our sentinels).
+	// Capabilities is a ProcessorFunc — we can check the sentinels
 	// are NOT at position len-1 by verifying they are at len-3 and len-2.
 	ps := a2.Builder.Processors()
 	n := len(ps)
-	_ = ps[n-1] // CapabilitiesProcessor: just confirm no panic
+	_ = ps[n-1] // Capabilities: just confirm no panic
 	_ = ps[n-2] // second sentinel
 	_ = ps[n-3] // first sentinel
 }
@@ -241,7 +241,7 @@ func noopProcessor(
 	_ llm.Provider,
 	_ string,
 	_ *session.Session,
-	_ *llm.LLMRequest,
+	_ *llm.Request,
 ) error {
 	return nil
 }

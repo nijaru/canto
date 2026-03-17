@@ -20,14 +20,14 @@ func TestDistill(t *testing.T) {
 				Output: llm.Message{
 					Role:    llm.RoleAssistant,
 					Content: "Let me search for that.",
-					Calls: []llm.ToolCall{
+					Calls: []llm.Call{
 						{ID: "c1", Function: struct {
 							Name      string `json:"name"`
 							Arguments string `json:"arguments"`
 						}{Name: "search", Arguments: `{"q":"golang"}`}},
 					},
 				},
-				ToolCalls: []llm.ToolCall{
+				ToolCalls: []llm.Call{
 					{ID: "c1", Function: struct {
 						Name      string `json:"name"`
 						Arguments string `json:"arguments"`
@@ -43,7 +43,7 @@ func TestDistill(t *testing.T) {
 			},
 			{
 				// Turn with an unpaired tool call (no result) — must be skipped
-				ToolCalls: []llm.ToolCall{
+				ToolCalls: []llm.Call{
 					{ID: "c2", Function: struct {
 						Name      string `json:"name"`
 						Arguments string `json:"arguments"`

@@ -8,27 +8,27 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-// TokenGuardProcessor ensures the LLM request doesn't exceed the token budget.
+// TokenGuard ensures the LLM request doesn't exceed the token budget.
 // It also detects if the context is nearing the "rot threshold" (default 60%).
-type TokenGuardProcessor struct {
+type TokenGuard struct {
 	MaxTokens       int
 	RotThresholdPct float64
 }
 
 // NewTokenGuard creates a new token guard processor.
-func NewTokenGuard(maxTokens int) *TokenGuardProcessor {
-	return &TokenGuardProcessor{
+func NewTokenGuard(maxTokens int) *TokenGuard {
+	return &TokenGuard{
 		MaxTokens:       maxTokens,
 		RotThresholdPct: 0.60,
 	}
 }
 
-func (p *TokenGuardProcessor) Process(
+func (p *TokenGuard) Process(
 	ctx context.Context,
 	pr llm.Provider,
 	model string,
 	sess *session.Session,
-	req *llm.LLMRequest,
+	req *llm.Request,
 ) error {
 	// 1. Calculate current token usage
 	currentTokens := EstimateMessagesTokens(ctx, pr, model, req.Messages)
@@ -56,7 +56,7 @@ func (p *BudgetGuard) Process(
 	pr llm.Provider,
 	model string,
 	sess *session.Session,
-	req *llm.LLMRequest,
+	req *llm.Request,
 ) error {
 	if p.Limit <= 0 {
 		return nil

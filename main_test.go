@@ -18,7 +18,7 @@ import (
 
 // MockProvider is a fake LLM provider for testing.
 type MockProvider struct {
-	Response  *llm.LLMResponse
+	Response  *llm.Response
 	StepCount int
 }
 
@@ -26,19 +26,19 @@ func (m *MockProvider) ID() string { return "mock" }
 
 func (m *MockProvider) Generate(
 	ctx context.Context,
-	req *llm.LLMRequest,
-) (*llm.LLMResponse, error) {
+	req *llm.Request,
+) (*llm.Response, error) {
 	m.StepCount++
 	// On second call, return text only
 	if m.StepCount > 1 {
-		return &llm.LLMResponse{
+		return &llm.Response{
 			Content: "I see some files.",
 		}, nil
 	}
 	return m.Response, nil
 }
 
-func (m *MockProvider) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream, error) {
+func (m *MockProvider) Stream(ctx context.Context, req *llm.Request) (llm.Stream, error) {
 	return nil, nil
 }
 
@@ -72,9 +72,9 @@ func TestMain(t *testing.T) {
 
 	// 1. Initial agent response with a tool call
 	mock := &MockProvider{
-		Response: &llm.LLMResponse{
+		Response: &llm.Response{
 			Content: "I will check the current directory.",
-			Calls: []llm.ToolCall{
+			Calls: []llm.Call{
 				{
 					ID:   "call_123",
 					Type: "function",
@@ -97,7 +97,7 @@ func TestMain(t *testing.T) {
 	userMsg := llm.Message{Role: llm.RoleUser, Content: "List files"}
 	store.Save(
 		context.Background(),
-		session.NewEvent(sessionID, session.EventTypeMessageAdded, userMsg),
+		session.NewEvent(sessionID, session.MessageAdded, userMsg),
 	)
 
 	// 3. Run agent via Runner
@@ -116,7 +116,7 @@ func TestMain(t *testing.T) {
 
 	// Expected:
 	// 1. User: "List files"
-	// 2. Assistant: "I will check..." + ToolCall
+	// 2. Assistant: "I will check..." + Call
 	// 3. Tool: (output of ls)
 	// 4. Assistant: "I see some files."
 
@@ -136,8 +136,8 @@ func TestMain(t *testing.T) {
 
 type RSSTool struct{}
 
-func (t *RSSTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (t *RSSTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        "rss",
 		Description: "Fetches an RSS feed",
 		Parameters: map[string]any{

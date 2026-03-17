@@ -86,7 +86,7 @@ Commands that must pass before shipping:
 | Architecture   | Layers depend downward only; extensions depend on Layer 3, never reverse                     |
 | State          | Session event log is append-only — never mutate or delete events                             |
 | Interfaces     | Keep the 5 core interfaces small; compose from them                                          |
-| Context        | `ContextProcessor` is a pure function — no side effects on session                           |
+| Context        | `Processor` is a pure function — no side effects on session                           |
 | Orchestration  | Graph routing and coordination are Go functions; agent behavior within a turn is LLM-decided |
 | Compaction     | Offload (reversible) before summarize (lossy); never skip to summarize                       |
 | Tool loading   | Lazy when > 20 tools; present `search_tools` meta-tool first                                 |

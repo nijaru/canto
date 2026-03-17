@@ -9,9 +9,9 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-// SummarizeProcessor summarizes old messages to reduce context size.
+// Summarizer summarizes old messages to reduce context size.
 // It is the second step in the compaction hierarchy (after Offload).
-type SummarizeProcessor struct {
+type Summarizer struct {
 	MaxTokens    int
 	ThresholdPct float64
 	MinKeepTurns int
@@ -21,9 +21,9 @@ type SummarizeProcessor struct {
 	OnPreCompact func(ctx context.Context, sess *session.Session)
 }
 
-// NewSummarizeProcessor creates a new summarize processor.
-func NewSummarizeProcessor(maxTokens int, provider llm.Provider, model string) *SummarizeProcessor {
-	return &SummarizeProcessor{
+// NewSummarizer creates a new summarize processor.
+func NewSummarizer(maxTokens int, provider llm.Provider, model string) *Summarizer {
+	return &Summarizer{
 		MaxTokens:    maxTokens,
 		ThresholdPct: 0.60,
 		MinKeepTurns: 3,
@@ -32,12 +32,12 @@ func NewSummarizeProcessor(maxTokens int, provider llm.Provider, model string) *
 	}
 }
 
-func (p *SummarizeProcessor) Process(
+func (p *Summarizer) Process(
 	ctx context.Context,
 	pr llm.Provider,
 	model string,
 	sess *session.Session,
-	req *llm.LLMRequest,
+	req *llm.Request,
 ) error {
 	if p.MaxTokens <= 0 || p.Provider == nil {
 		return nil
@@ -51,7 +51,7 @@ func (p *SummarizeProcessor) Process(
 		return nil
 	}
 
-	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.EventTypeCompactionTriggered, map[string]any{
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.CompactionTriggered, map[string]any{
 		"strategy":       "summarize",
 		"max_tokens":     p.MaxTokens,
 		"threshold_pct":  p.ThresholdPct,
@@ -125,7 +125,7 @@ func (p *SummarizeProcessor) Process(
 	}
 
 	// Generate summary
-	summarizeReq := &llm.LLMRequest{
+	summarizeReq := &llm.Request{
 		Model: p.Model,
 		Messages: []llm.Message{
 			{

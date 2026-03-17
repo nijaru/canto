@@ -9,11 +9,11 @@ import (
 
 // funcTool adapts a plain function to the Tool interface.
 type funcTool struct {
-	spec llm.ToolSpec
+	spec llm.Spec
 	fn   func(ctx context.Context, args string) (string, error)
 }
 
-func (f *funcTool) Spec() llm.ToolSpec { return f.spec }
+func (f *funcTool) Spec() llm.Spec { return f.spec }
 
 func (f *funcTool) Execute(ctx context.Context, args string) (string, error) {
 	res, err := f.fn(ctx, args)
@@ -31,7 +31,7 @@ func Func(
 	fn func(ctx context.Context, args string) (string, error),
 ) Tool {
 	return &funcTool{
-		spec: llm.ToolSpec{Name: name, Description: desc, Parameters: schema},
+		spec: llm.Spec{Name: name, Description: desc, Parameters: schema},
 		fn:   fn,
 	}
 }

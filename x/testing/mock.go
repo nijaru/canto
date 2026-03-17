@@ -18,7 +18,7 @@ type Step struct {
 	Content        string
 	Reasoning      string
 	ThinkingBlocks []llm.ThinkingBlock
-	Calls          []llm.ToolCall
+	Calls          []llm.Call
 	Err            error
 	// Chunks, if set, causes Stream() to return these chunks instead of using
 	// Content/Calls. Use this to test streaming code paths.
@@ -32,7 +32,7 @@ type MockProvider struct {
 	id    string
 	steps []Step
 	pos   int
-	calls []*llm.LLMRequest // record of all Generate calls
+	calls []*llm.Request // record of all Generate calls
 }
 
 // NewMockProvider creates a MockProvider with the given step sequence.
@@ -43,7 +43,7 @@ func NewMockProvider(id string, steps ...Step) *MockProvider {
 func (m *MockProvider) ID() string { return m.id }
 
 // Generate returns the next pre-programmed step. Fails the test if steps are exhausted.
-func (m *MockProvider) Generate(_ context.Context, req *llm.LLMRequest) (*llm.LLMResponse, error) {
+func (m *MockProvider) Generate(_ context.Context, req *llm.Request) (*llm.Response, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -62,7 +62,7 @@ func (m *MockProvider) Generate(_ context.Context, req *llm.LLMRequest) (*llm.LL
 	if s.Err != nil {
 		return nil, s.Err
 	}
-	return &llm.LLMResponse{
+	return &llm.Response{
 		Content:        s.Content,
 		Reasoning:      s.Reasoning,
 		ThinkingBlocks: s.ThinkingBlocks,
@@ -74,7 +74,7 @@ func (m *MockProvider) Generate(_ context.Context, req *llm.LLMRequest) (*llm.LL
 // If the step has no Chunks set, it synthesises a single content chunk from
 // the step's Content and Calls, so streaming and non-streaming tests can use
 // the same Step definitions when chunk granularity doesn't matter.
-func (m *MockProvider) Stream(_ context.Context, req *llm.LLMRequest) (llm.Stream, error) {
+func (m *MockProvider) Stream(_ context.Context, req *llm.Request) (llm.Stream, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -146,10 +146,10 @@ func (m *MockProvider) Capabilities(_ string) llm.Capabilities {
 func (m *MockProvider) IsTransient(_ error) bool { return false }
 
 // Calls returns all requests processed by the provider.
-func (m *MockProvider) Calls() []*llm.LLMRequest {
+func (m *MockProvider) Calls() []*llm.Request {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]*llm.LLMRequest, len(m.calls))
+	out := make([]*llm.Request, len(m.calls))
 	copy(out, m.calls)
 	return out
 }
@@ -173,7 +173,7 @@ func (m *MockProvider) AssertExhausted(t *testing.T) {
 func AssertToolCalled(t *testing.T, sess *session.Session, toolName string) {
 	t.Helper()
 	for _, e := range sess.Events() {
-		if e.Type != session.EventTypeMessageAdded {
+		if e.Type != session.MessageAdded {
 			continue
 		}
 		var msg llm.Message
@@ -193,7 +193,7 @@ func AssertToolCalled(t *testing.T, sess *session.Session, toolName string) {
 func AssertToolNotCalled(t *testing.T, sess *session.Session, toolName string) {
 	t.Helper()
 	for _, e := range sess.Events() {
-		if e.Type != session.EventTypeMessageAdded {
+		if e.Type != session.MessageAdded {
 			continue
 		}
 		var msg llm.Message

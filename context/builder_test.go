@@ -18,7 +18,7 @@ func TestBuilder_Build(t *testing.T) {
 	sess := session.New("test-session")
 	_ = sess.Append(
 		context.Background(),
-		session.NewEvent(sess.ID(), session.EventTypeMessageAdded, llm.Message{
+		session.NewEvent(sess.ID(), session.MessageAdded, llm.Message{
 			Role:    llm.RoleUser,
 			Content: "Hello world",
 		}),
@@ -29,12 +29,12 @@ func TestBuilder_Build(t *testing.T) {
 	// ... (assuming registry works)
 
 	builder := NewBuilder(
-		InstructionProcessor("You are a helpful assistant."),
-		HistoryProcessor(),
-		ToolProcessor(reg),
+		Instructions("You are a helpful assistant."),
+		History(),
+		Tools(reg),
 	)
 
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Model: "gpt-4o",
 	}
 
@@ -70,7 +70,7 @@ func TestOffloadProcessor(t *testing.T) {
 		largeContent += "large content "
 	}
 
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Messages: []llm.Message{
 			{Role: llm.RoleUser, Content: "request"},
 			{Role: llm.RoleAssistant, Content: "calling tool..."},
@@ -82,7 +82,7 @@ func TestOffloadProcessor(t *testing.T) {
 
 	// Threshold is 60%, MaxTokens = 1000.
 	// largeContent is ~3000 tokens (chars/4 heuristic).
-	offloader := NewOffloadProcessor(1000, tempDir)
+	offloader := NewOffloader(1000, tempDir)
 	offloader.MinKeepTurns = 2 // Keep last 2 messages
 
 	err = offloader.Process(context.Background(), nil, "", sess, req)
@@ -121,7 +121,7 @@ func newTestCoreStore(t *testing.T) *memory.CoreStore {
 func TestCoreMemoryProcessor_NoPersona(t *testing.T) {
 	store := newTestCoreStore(t)
 	sess := session.New("sess-no-persona")
-	req := &llm.LLMRequest{}
+	req := &llm.Request{}
 
 	proc := CoreMemoryProcessor(store)
 	if err := proc.Process(context.Background(), nil, "", sess, req); err != nil {
@@ -147,7 +147,7 @@ func TestCoreMemoryProcessor_InjectsBlock(t *testing.T) {
 	}
 
 	sess := session.New(sessID)
-	req := &llm.LLMRequest{}
+	req := &llm.Request{}
 
 	proc := CoreMemoryProcessor(store)
 	if err := proc.Process(ctx, nil, "", sess, req); err != nil {
@@ -183,7 +183,7 @@ func TestCoreMemoryProcessor_PrependToExistingSystemMessage(t *testing.T) {
 	}
 
 	sess := session.New(sessID)
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: "You are a coding assistant."},
 		},
@@ -227,7 +227,7 @@ func TestCoreMemoryProcessor_ReplacesExistingBlock(t *testing.T) {
 
 	existing := "<core_memory>\nAgent Name: Old\nPersona Context: Old desc\nDirectives: Old\n</core_memory>"
 	sess := session.New(sessID)
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: existing + "\n\nOriginal system text."},
 		},
@@ -255,7 +255,7 @@ func TestCoreMemoryProcessor_ReplacesExistingBlock(t *testing.T) {
 
 func TestCoreMemoryProcessor_NilStore(t *testing.T) {
 	sess := session.New("sess-nil-store")
-	req := &llm.LLMRequest{}
+	req := &llm.Request{}
 	proc := CoreMemoryProcessor(nil)
 	if err := proc.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error with nil store: %v", err)
@@ -265,12 +265,12 @@ func TestCoreMemoryProcessor_NilStore(t *testing.T) {
 	}
 }
 
-// --- TokenGuardProcessor ---
+// --- TokenGuard ---
 
 func TestTokenGuard_PassingCase(t *testing.T) {
 	guard := NewTokenGuard(10000)
 	sess := session.New("sess-tg-pass")
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Messages: []llm.Message{
 			{Role: llm.RoleUser, Content: "hello"},
 		},
@@ -283,7 +283,7 @@ func TestTokenGuard_PassingCase(t *testing.T) {
 func TestTokenGuard_Exceeded(t *testing.T) {
 	guard := NewTokenGuard(1) // 1 token max — trivially exceeded
 	sess := session.New("sess-tg-exceed")
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Messages: []llm.Message{
 			{
 				Role:    llm.RoleUser,
@@ -305,7 +305,7 @@ func TestTokenGuard_ZeroMaxTokensSkips(t *testing.T) {
 	sess := session.New("sess-tg-zero")
 	// Even enormous content should pass when MaxTokens == 0.
 	big := strings.Repeat("x", 100_000)
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Messages: []llm.Message{
 			{Role: llm.RoleUser, Content: big},
 		},
@@ -321,11 +321,11 @@ func TestBudgetGuard_PassingCase(t *testing.T) {
 	guard := NewBudgetGuard(10.0)
 	sess := session.New("sess-bg-pass")
 
-	e := session.NewEvent(sess.ID(), session.EventTypeMessageAdded, nil)
+	e := session.NewEvent(sess.ID(), session.MessageAdded, nil)
 	e.Cost = 0.50
 	_ = sess.Append(context.Background(), e)
 
-	req := &llm.LLMRequest{}
+	req := &llm.Request{}
 	if err := guard.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -335,11 +335,11 @@ func TestBudgetGuard_Exceeded(t *testing.T) {
 	guard := NewBudgetGuard(1.0)
 	sess := session.New("sess-bg-exceed")
 
-	e := session.NewEvent(sess.ID(), session.EventTypeMessageAdded, nil)
+	e := session.NewEvent(sess.ID(), session.MessageAdded, nil)
 	e.Cost = 1.50
 	_ = sess.Append(context.Background(), e)
 
-	req := &llm.LLMRequest{}
+	req := &llm.Request{}
 	err := guard.Process(context.Background(), nil, "", sess, req)
 	if err == nil {
 		t.Fatal("expected budget exceeded error, got nil")
@@ -353,11 +353,11 @@ func TestBudgetGuard_ZeroLimitSkips(t *testing.T) {
 	guard := NewBudgetGuard(0)
 	sess := session.New("sess-bg-zero")
 
-	e := session.NewEvent(sess.ID(), session.EventTypeMessageAdded, nil)
+	e := session.NewEvent(sess.ID(), session.MessageAdded, nil)
 	e.Cost = 999.99
 	_ = sess.Append(context.Background(), e)
 
-	req := &llm.LLMRequest{}
+	req := &llm.Request{}
 	if err := guard.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("expected no error with zero limit, got: %v", err)
 	}
@@ -367,11 +367,11 @@ func TestBudgetGuard_ExactlyAtLimit(t *testing.T) {
 	guard := NewBudgetGuard(1.0)
 	sess := session.New("sess-bg-exact")
 
-	e := session.NewEvent(sess.ID(), session.EventTypeMessageAdded, nil)
+	e := session.NewEvent(sess.ID(), session.MessageAdded, nil)
 	e.Cost = 1.0
 	_ = sess.Append(context.Background(), e)
 
-	req := &llm.LLMRequest{}
+	req := &llm.Request{}
 	err := guard.Process(context.Background(), nil, "", sess, req)
 	// >= limit triggers error
 	if err == nil {
@@ -380,7 +380,7 @@ func TestBudgetGuard_ExactlyAtLimit(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// CapabilitiesProcessor
+// Capabilities
 // ---------------------------------------------------------------------------
 
 type capProvider struct {
@@ -388,11 +388,11 @@ type capProvider struct {
 }
 
 func (p *capProvider) ID() string { return "cap" }
-func (p *capProvider) Generate(_ context.Context, _ *llm.LLMRequest) (*llm.LLMResponse, error) {
-	return &llm.LLMResponse{}, nil
+func (p *capProvider) Generate(_ context.Context, _ *llm.Request) (*llm.Response, error) {
+	return &llm.Response{}, nil
 }
 
-func (p *capProvider) Stream(_ context.Context, _ *llm.LLMRequest) (llm.Stream, error) {
+func (p *capProvider) Stream(_ context.Context, _ *llm.Request) (llm.Stream, error) {
 	return nil, nil
 }
 func (p *capProvider) Models(_ context.Context) ([]catwalk.Model, error) { return nil, nil }
@@ -404,10 +404,10 @@ func (p *capProvider) Capabilities(_ string) llm.Capabilities                { r
 func (p *capProvider) IsTransient(err error) bool                            { return false }
 
 func TestCapabilitiesProcessor_StandardModel(t *testing.T) {
-	proc := CapabilitiesProcessor()
+	proc := Capabilities()
 	p := &capProvider{caps: llm.DefaultCapabilities()}
 	sess := session.New("caps-1")
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Temperature: 0.7,
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: "You are helpful."},
@@ -426,7 +426,7 @@ func TestCapabilitiesProcessor_StandardModel(t *testing.T) {
 }
 
 func TestCapabilitiesProcessor_ReasoningModel_SystemToUser(t *testing.T) {
-	proc := CapabilitiesProcessor()
+	proc := Capabilities()
 	caps := llm.Capabilities{
 		SystemRole:  llm.RoleUser,
 		Temperature: false,
@@ -435,7 +435,7 @@ func TestCapabilitiesProcessor_ReasoningModel_SystemToUser(t *testing.T) {
 	}
 	p := &capProvider{caps: caps}
 	sess := session.New("caps-2")
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Temperature: 1.0,
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: "Be concise."},
@@ -463,7 +463,7 @@ func TestCapabilitiesProcessor_ReasoningModel_SystemToUser(t *testing.T) {
 }
 
 func TestCapabilitiesProcessor_ReasoningModel_SystemToDeveloper(t *testing.T) {
-	proc := CapabilitiesProcessor()
+	proc := Capabilities()
 	caps := llm.Capabilities{
 		SystemRole:  llm.RoleDeveloper,
 		Temperature: false,
@@ -472,7 +472,7 @@ func TestCapabilitiesProcessor_ReasoningModel_SystemToDeveloper(t *testing.T) {
 	}
 	p := &capProvider{caps: caps}
 	sess := session.New("caps-4")
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Temperature: 1.0,
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: "Be concise."},
@@ -491,8 +491,8 @@ func TestCapabilitiesProcessor_ReasoningModel_SystemToDeveloper(t *testing.T) {
 }
 
 func TestCapabilitiesProcessor_NilProvider(t *testing.T) {
-	proc := CapabilitiesProcessor()
-	req := &llm.LLMRequest{Temperature: 0.5}
+	proc := Capabilities()
+	req := &llm.Request{Temperature: 0.5}
 	err := proc.Process(context.Background(), nil, "any-model", session.New("caps-3"), req)
 	if err != nil {
 		t.Fatal(err)

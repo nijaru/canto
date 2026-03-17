@@ -51,7 +51,7 @@ func TestInputGate_EventsRecorded(t *testing.T) {
 	events := sess.Events()
 	var externalEvents []session.Event
 	for _, e := range events {
-		if e.Type == session.EventTypeExternalInput {
+		if e.Type == session.ExternalInput {
 			externalEvents = append(externalEvents, e)
 		}
 	}

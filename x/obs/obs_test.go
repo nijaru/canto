@@ -49,7 +49,7 @@ func TestWrapProvider_RecordsGenAIChatSpan(t *testing.T) {
 
 	ctx, turnSpan := obs.StartTurn(context.Background(), "a", "s", "m")
 
-	_, err := p.Generate(ctx, &llm.LLMRequest{Model: "m"})
+	_, err := p.Generate(ctx, &llm.Request{Model: "m"})
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}

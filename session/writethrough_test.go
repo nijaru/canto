@@ -49,8 +49,8 @@ func TestAttachWriteThrough_SavesEvents(t *testing.T) {
 	cancel := AttachWriteThrough(context.Background(), sess, store)
 	defer cancel()
 
-	_ = sess.Append(context.Background(), NewEvent("wt-1", EventTypeMessageAdded, nil))
-	_ = sess.Append(context.Background(), NewEvent("wt-1", EventTypeMessageAdded, nil))
+	_ = sess.Append(context.Background(), NewEvent("wt-1", MessageAdded, nil))
+	_ = sess.Append(context.Background(), NewEvent("wt-1", MessageAdded, nil))
 
 	// Give the goroutine time to save.
 	deadline := time.Now().Add(time.Second)
@@ -76,7 +76,7 @@ func TestAttachWriteThrough_CancelStops(t *testing.T) {
 
 	// Append after cancel — should NOT be saved.
 	time.Sleep(20 * time.Millisecond)
-	_ = sess.Append(context.Background(), NewEvent("wt-2", EventTypeMessageAdded, nil))
+	_ = sess.Append(context.Background(), NewEvent("wt-2", MessageAdded, nil))
 	time.Sleep(20 * time.Millisecond)
 
 	if n := len(store.saved()); n != 0 {
@@ -89,13 +89,13 @@ func TestAttachWriteThrough_EventsBeforeAttachNotSaved(t *testing.T) {
 	store := &memStore{}
 
 	// Append before attaching.
-	_ = sess.Append(context.Background(), NewEvent("wt-3", EventTypeHandoff, nil))
+	_ = sess.Append(context.Background(), NewEvent("wt-3", Handoff, nil))
 
 	cancel := AttachWriteThrough(context.Background(), sess, store)
 	defer cancel()
 
 	// Append after attaching.
-	_ = sess.Append(context.Background(), NewEvent("wt-3", EventTypeMessageAdded, nil))
+	_ = sess.Append(context.Background(), NewEvent("wt-3", MessageAdded, nil))
 
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
@@ -109,7 +109,7 @@ func TestAttachWriteThrough_EventsBeforeAttachNotSaved(t *testing.T) {
 	if len(saved) != 1 {
 		t.Fatalf("saved %d events, want 1 (only post-attach)", len(saved))
 	}
-	if saved[0].Type != EventTypeMessageAdded {
+	if saved[0].Type != MessageAdded {
 		t.Fatalf("saved event type = %q, want message_added", saved[0].Type)
 	}
 }

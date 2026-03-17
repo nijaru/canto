@@ -37,10 +37,10 @@ func (r *Registry) Get(name string) (Tool, bool) {
 }
 
 // Specs returns all tool specifications.
-func (r *Registry) Specs() []*llm.ToolSpec {
+func (r *Registry) Specs() []*llm.Spec {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	res := make([]*llm.ToolSpec, 0, len(r.tools))
+	res := make([]*llm.Spec, 0, len(r.tools))
 	for _, t := range r.tools {
 		spec := t.Spec()
 		res = append(res, &spec)

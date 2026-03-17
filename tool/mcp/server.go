@@ -155,7 +155,7 @@ func (s *Server) handleToolsCall(ctx context.Context, req *jsonrpcRequest) (any,
 	return okResponse(req.ID, result), nil
 }
 
-// normalizeSchema converts a ToolSpec.Parameters (any JSON-serializable value)
+// normalizeSchema converts a Spec.Parameters (any JSON-serializable value)
 // to a map[string]any suitable for the MCP inputSchema field.
 func normalizeSchema(params any) map[string]any {
 	base := map[string]any{"type": "object"}

@@ -14,8 +14,8 @@ type staticTool struct {
 	result string
 }
 
-func (s *staticTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (s *staticTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        s.name,
 		Description: "A static test tool.",
 		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},

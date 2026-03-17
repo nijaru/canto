@@ -19,8 +19,8 @@ type ArchivalMemoryInsertTool struct {
 	Embedder llm.Embedder
 }
 
-func (t *ArchivalMemoryInsertTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (t *ArchivalMemoryInsertTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        "archival_memory_insert",
 		Description: "Store important information, facts, or document excerpts into long-term archival memory. Use this to remember crucial context that extends beyond your current active window.",
 		Parameters: map[string]any{
@@ -82,8 +82,8 @@ type ArchivalMemorySearchTool struct {
 	TopK     int
 }
 
-func (t *ArchivalMemorySearchTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (t *ArchivalMemorySearchTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        "archival_memory_search",
 		Description: "Search your unbounded long-term archival memory for previously stored information using semantic similarity. Returns the most relevant stored memories.",
 		Parameters: map[string]any{

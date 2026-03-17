@@ -20,9 +20,9 @@ const (
 	largeToolThreshold  = 1000
 )
 
-// OffloadProcessor offloads large or old messages to the filesystem.
+// Offloader offloads large or old messages to the filesystem.
 // It is the first step in the compaction hierarchy.
-type OffloadProcessor struct {
+type Offloader struct {
 	MaxTokens    int
 	ThresholdPct float64
 	OffloadDir   string
@@ -30,9 +30,9 @@ type OffloadProcessor struct {
 	OnPreCompact func(ctx context.Context, sess *session.Session)
 }
 
-// NewOffloadProcessor creates a new offload processor.
-func NewOffloadProcessor(maxTokens int, offloadDir string) *OffloadProcessor {
-	return &OffloadProcessor{
+// NewOffloader creates a new offload processor.
+func NewOffloader(maxTokens int, offloadDir string) *Offloader {
+	return &Offloader{
 		MaxTokens:    maxTokens,
 		ThresholdPct: defaultThresholdPct,
 		OffloadDir:   offloadDir,
@@ -40,12 +40,12 @@ func NewOffloadProcessor(maxTokens int, offloadDir string) *OffloadProcessor {
 	}
 }
 
-func (p *OffloadProcessor) Process(
+func (p *Offloader) Process(
 	ctx context.Context,
 	pr llm.Provider,
 	model string,
 	sess *session.Session,
-	req *llm.LLMRequest,
+	req *llm.Request,
 ) error {
 	if p.MaxTokens <= 0 || p.OffloadDir == "" {
 		return nil
@@ -59,7 +59,7 @@ func (p *OffloadProcessor) Process(
 		return nil
 	}
 
-	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.EventTypeCompactionTriggered, map[string]any{
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.CompactionTriggered, map[string]any{
 		"strategy":       "offload",
 		"max_tokens":     p.MaxTokens,
 		"threshold_pct":  p.ThresholdPct,
@@ -91,7 +91,7 @@ func (p *OffloadProcessor) Process(
 	events := sess.Events()
 	contentToEventID := make(map[string]string, len(events))
 	for _, e := range events {
-		if e.Type == session.EventTypeMessageAdded {
+		if e.Type == session.MessageAdded {
 			var m llm.Message
 			if err := json.Unmarshal(e.Data, &m); err == nil && m.Content != "" {
 				contentToEventID[m.Content] = e.ID.String()

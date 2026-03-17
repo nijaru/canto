@@ -29,7 +29,7 @@ func (a *BaseAgent) StreamStep(
 	s *session.Session,
 	chunkFn func(*llm.Chunk),
 ) (res StepResult, err error) {
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeStepStarted, map[string]any{
+	if err := s.Append(ctx, session.NewEvent(s.ID(), session.StepStarted, map[string]any{
 		"agent_id": a.ID(),
 		"model":    a.Model,
 	})); err != nil {
@@ -44,10 +44,10 @@ func (a *BaseAgent) StreamStep(
 		if err != nil {
 			data["error"] = err.Error()
 		}
-		_ = s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeStepCompleted, data))
+		_ = s.Append(ctx, session.NewEvent(s.ID(), session.StepCompleted, data))
 	}()
 
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Model: a.Model,
 	}
 
@@ -67,7 +67,7 @@ func (a *BaseAgent) StreamStep(
 	var reasoningBuilder strings.Builder
 	var usage llm.Usage
 	var thinkingBlocks []llm.ThinkingBlock
-	assembledCalls := make(map[string]llm.ToolCall) // keyed by call ID
+	assembledCalls := make(map[string]llm.Call) // keyed by call ID
 	callOrder := make([]string, 0)                  // preserve insertion order
 
 	for {
@@ -113,7 +113,7 @@ func (a *BaseAgent) StreamStep(
 	}
 
 	// Reconstruct ordered calls slice.
-	calls := make([]llm.ToolCall, 0, len(callOrder))
+	calls := make([]llm.Call, 0, len(callOrder))
 	for _, id := range callOrder {
 		calls = append(calls, assembledCalls[id])
 	}
@@ -126,7 +126,7 @@ func (a *BaseAgent) StreamStep(
 		ThinkingBlocks: thinkingBlocks,
 		Calls:          calls,
 	}
-	e := session.NewEvent(s.ID(), session.EventTypeMessageAdded, msg)
+	e := session.NewEvent(s.ID(), session.MessageAdded, msg)
 	e.Cost = usage.Cost
 	if err = s.Append(ctx, e); err != nil {
 		return
@@ -148,7 +148,7 @@ func (a *BaseAgent) StreamTurn(
 	s *session.Session,
 	chunkFn func(*llm.Chunk),
 ) (res StepResult, err error) {
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeTurnStarted, map[string]any{
+	if err := s.Append(ctx, session.NewEvent(s.ID(), session.TurnStarted, map[string]any{
 		"agent_id": a.ID(),
 	})); err != nil {
 		return StepResult{}, err
@@ -165,7 +165,7 @@ func (a *BaseAgent) StreamTurn(
 		if err != nil {
 			data["error"] = err.Error()
 		}
-		_ = s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeTurnCompleted, data))
+		_ = s.Append(ctx, session.NewEvent(s.ID(), session.TurnCompleted, data))
 	}()
 
 	for steps < a.MaxSteps {

@@ -43,7 +43,7 @@ Provide your evaluation and end with a score strictly formatted as "Score: X.X/1
 		len(turn.ToolCalls),
 	)
 
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Model: j.Model,
 		Messages: []llm.Message{
 			{Role: llm.RoleUser, Content: prompt},

@@ -34,7 +34,7 @@ type StepResult struct {
 }
 
 // Handoff describes a control transfer from one agent to another.
-// It is emitted as an EventTypeHandoff in the session log and surfaced
+// It is emitted as an Handoff in the session log and surfaced
 // in StepResult so graph/swarm can route without re-parsing events.
 type Handoff struct {
 	TargetAgentID string `json:"target_agent_id"`
@@ -56,8 +56,8 @@ func HandoffTool(targetAgentID string) tool.Tool {
 	return &handoffTool{targetID: targetAgentID}
 }
 
-func (h *handoffTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (h *handoffTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name: fmt.Sprintf("transfer_to_%s", h.targetID),
 		Description: fmt.Sprintf(
 			"Transfer control to agent %q. Use when this agent has completed its role "+
@@ -115,7 +115,7 @@ func extractHandoff(s *session.Session, targetIDs []string) *Handoff {
 	// Walk backward — handoff tool results are the most recent events.
 	for i := len(events) - 1; i >= 0; i-- {
 		e := events[i]
-		if e.Type != session.EventTypeMessageAdded {
+		if e.Type != session.MessageAdded {
 			continue
 		}
 		var msg llm.Message
@@ -136,8 +136,8 @@ func extractHandoff(s *session.Session, targetIDs []string) *Handoff {
 	return nil
 }
 
-// RecordHandoff appends an EventTypeHandoff event to the session log.
+// RecordHandoff appends an Handoff event to the session log.
 // Called by graph/swarm after a handoff is detected and before routing.
 func RecordHandoff(ctx context.Context, s *session.Session, h *Handoff) error {
-	return s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeHandoff, h))
+	return s.Append(ctx, session.NewEvent(s.ID(), session.Handoff, h))
 }

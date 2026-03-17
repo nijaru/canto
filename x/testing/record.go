@@ -12,8 +12,8 @@ import (
 
 // RecordedStep captures a single execution step (request and its result).
 type RecordedStep struct {
-	Request  *llm.LLMRequest  `json:"request"`
-	Response *llm.LLMResponse `json:"response,omitempty"`
+	Request  *llm.Request  `json:"request"`
+	Response *llm.Response `json:"response,omitempty"`
 	Chunks   []llm.Chunk      `json:"chunks,omitempty"`
 }
 
@@ -38,8 +38,8 @@ func NewRecordProvider(p llm.Provider, path string) *RecordProvider {
 // Generate executes the request through the underlying provider and records the response.
 func (r *RecordProvider) Generate(
 	ctx context.Context,
-	req *llm.LLMRequest,
-) (*llm.LLMResponse, error) {
+	req *llm.Request,
+) (*llm.Response, error) {
 	resp, err := r.Provider.Generate(ctx, req)
 	if err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func (r *RecordProvider) Generate(
 
 // Stream executes the request through the underlying provider and returns a
 // stream that records all chunks as they are consumed.
-func (r *RecordProvider) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream, error) {
+func (r *RecordProvider) Stream(ctx context.Context, req *llm.Request) (llm.Stream, error) {
 	stream, err := r.Provider.Stream(ctx, req)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func (r *RecordProvider) Stream(ctx context.Context, req *llm.LLMRequest) (llm.S
 
 type recordingStream struct {
 	llm.Stream
-	req    *llm.LLMRequest
+	req    *llm.Request
 	chunks []llm.Chunk
 	parent *RecordProvider
 }

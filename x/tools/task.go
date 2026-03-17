@@ -57,8 +57,8 @@ type TaskTool struct {
 	Project string
 }
 
-func (t *TaskTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (t *TaskTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name: "task",
 		Description: "Manage tasks in the project task tracker. " +
 			"Actions: list (show tasks), add (create task), done (mark complete), log (append note).",

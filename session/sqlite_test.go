@@ -23,7 +23,7 @@ func TestSQLiteStore(t *testing.T) {
 
 	// 1. Save an event
 	msg := llm.Message{Role: llm.RoleUser, Content: "find me a sandwich"}
-	event := NewEvent(sessionID, EventTypeMessageAdded, msg)
+	event := NewEvent(sessionID, MessageAdded, msg)
 	if err := store.Save(ctx, event); err != nil {
 		t.Fatalf("failed to save event: %v", err)
 	}

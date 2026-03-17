@@ -10,12 +10,12 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-// RealtimeIndexer monitors sessions and automatically indexes new text messages
+// Indexer monitors sessions and automatically indexes new text messages
 // into a vector store. It ensures that semantic search always has the latest
 // conversation context available.
 //
 // The caller must defer Stop to release background goroutines.
-type RealtimeIndexer struct {
+type Indexer struct {
 	store    VectorStore
 	embedder llm.Embedder
 	onError  func(error)
@@ -25,15 +25,15 @@ type RealtimeIndexer struct {
 	wg       sync.WaitGroup
 }
 
-// NewRealtimeIndexer creates a new indexer that writes to store using embedder.
+// NewIndexer creates a new indexer that writes to store using embedder.
 // onError is called for non-fatal background errors (embedding failures, upsert
 // failures). Pass nil to ignore errors.
-func NewRealtimeIndexer(
+func NewIndexer(
 	store VectorStore,
 	embedder llm.Embedder,
 	onError func(error),
-) *RealtimeIndexer {
-	return &RealtimeIndexer{
+) *Indexer {
+	return &Indexer{
 		store:    store,
 		embedder: embedder,
 		onError:  onError,
@@ -44,7 +44,7 @@ func NewRealtimeIndexer(
 // Watch starts monitoring a session for new messages. It returns immediately;
 // indexing happens in a background goroutine. If the session is already being
 // watched, this is a no-op.
-func (i *RealtimeIndexer) Watch(ctx context.Context, sess *session.Session) {
+func (i *Indexer) Watch(ctx context.Context, sess *session.Session) {
 	i.mu.Lock()
 	if _, ok := i.watching[sess.ID()]; ok {
 		i.mu.Unlock()
@@ -70,7 +70,7 @@ func (i *RealtimeIndexer) Watch(ctx context.Context, sess *session.Session) {
 				if !ok {
 					return
 				}
-				if e.Type == session.EventTypeMessageAdded {
+				if e.Type == session.MessageAdded {
 					i.indexMessage(watchCtx, sess.ID(), e)
 				}
 			}
@@ -78,7 +78,7 @@ func (i *RealtimeIndexer) Watch(ctx context.Context, sess *session.Session) {
 	})
 }
 
-func (i *RealtimeIndexer) indexMessage(ctx context.Context, sessionID string, e session.Event) {
+func (i *Indexer) indexMessage(ctx context.Context, sessionID string, e session.Event) {
 	var msg llm.Message
 	if err := json.Unmarshal(e.Data, &msg); err != nil {
 		i.handleError(fmt.Errorf("indexer: unmarshal message: %w", err))
@@ -111,14 +111,14 @@ func (i *RealtimeIndexer) indexMessage(ctx context.Context, sessionID string, e 
 	}
 }
 
-func (i *RealtimeIndexer) handleError(err error) {
+func (i *Indexer) handleError(err error) {
 	if i.onError != nil {
 		i.onError(err)
 	}
 }
 
 // Stop cancels all active watchers and waits for background goroutines to exit.
-func (i *RealtimeIndexer) Stop() {
+func (i *Indexer) Stop() {
 	i.mu.Lock()
 	for _, cancel := range i.watching {
 		cancel()

@@ -15,8 +15,8 @@ import (
 // mockTool is a minimal Tool implementation for tests.
 type mockTool struct{ name string }
 
-func (m *mockTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{Name: m.name, Description: "desc of " + m.name}
+func (m *mockTool) Spec() llm.Spec {
+	return llm.Spec{Name: m.name, Description: "desc of " + m.name}
 }
 func (m *mockTool) Execute(_ context.Context, _ string) (string, error) { return "", nil }
 
@@ -30,11 +30,11 @@ func makeRegistry(n int) *tool.Registry {
 
 func TestLazyToolProcessor_BelowThreshold(t *testing.T) {
 	reg := makeRegistry(5)
-	p := NewLazyToolProcessor(reg)
+	p := NewLazyTools(reg)
 	p.Threshold = 10
 
 	sess := session.New("s1")
-	req := &llm.LLMRequest{}
+	req := &llm.Request{}
 	if err := p.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatal(err)
 	}
@@ -47,11 +47,11 @@ func TestLazyToolProcessor_AboveThreshold_OnlySearchTool(t *testing.T) {
 	reg := makeRegistry(25)
 	// Register a fake search_tools tool.
 	reg.Register(&mockTool{name: "search_tools"})
-	p := NewLazyToolProcessor(reg)
+	p := NewLazyTools(reg)
 	p.Threshold = 10
 
 	sess := session.New("s2")
-	req := &llm.LLMRequest{}
+	req := &llm.Request{}
 	if err := p.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatal(err)
 	}
@@ -64,23 +64,23 @@ func TestLazyToolProcessor_AboveThreshold_OnlySearchTool(t *testing.T) {
 func TestLazyToolProcessor_UnlocksFromHistory(t *testing.T) {
 	reg := makeRegistry(3) // tool_0, tool_1, tool_2
 	reg.Register(&mockTool{name: "search_tools"})
-	p := NewLazyToolProcessor(reg)
+	p := NewLazyTools(reg)
 	p.Threshold = 2 // 4 total > 2 → lazy mode
 
 	// Seed session with a prior search_tools result that unlocked tool_1.
 	sess := session.New("s3")
-	specs := []llm.ToolSpec{{Name: "tool_1", Description: "desc of tool_1"}}
+	specs := []llm.Spec{{Name: "tool_1", Description: "desc of tool_1"}}
 	data, _ := json.Marshal(specs)
 	_ = sess.Append(
 		context.Background(),
-		session.NewEvent("s3", session.EventTypeMessageAdded, llm.Message{
+		session.NewEvent("s3", session.MessageAdded, llm.Message{
 			Role:    llm.RoleTool,
 			Name:    "search_tools",
 			Content: string(data),
 		}),
 	)
 
-	req := &llm.LLMRequest{}
+	req := &llm.Request{}
 	if err := p.Process(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatal(err)
 	}

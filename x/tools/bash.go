@@ -12,8 +12,8 @@ import (
 type BashTool struct{}
 
 // Spec returns the tool specification.
-func (b *BashTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (b *BashTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        "bash",
 		Description: "Execute a bash command and return its output. WARNING: This tool executes arbitrary shell commands with no sandboxing. Only use with trusted inputs.",
 		Parameters: map[string]any{

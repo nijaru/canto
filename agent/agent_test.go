@@ -15,7 +15,7 @@ import (
 // mockProvider queues responses and returns them in order.
 type mockProvider struct {
 	llm.Provider
-	responses []*llm.LLMResponse
+	responses []*llm.Response
 }
 
 func (m *mockProvider) ID() string                             { return "mock" }
@@ -24,10 +24,10 @@ func (m *mockProvider) IsTransient(_ error) bool               { return false }
 
 func (m *mockProvider) Generate(
 	ctx context.Context,
-	req *llm.LLMRequest,
-) (*llm.LLMResponse, error) {
+	req *llm.Request,
+) (*llm.Response, error) {
 	if len(m.responses) == 0 {
-		return &llm.LLMResponse{Content: "no more responses"}, nil
+		return &llm.Response{Content: "no more responses"}, nil
 	}
 	resp := m.responses[0]
 	m.responses = m.responses[1:]
@@ -40,8 +40,8 @@ type simpleTool struct {
 	output string
 }
 
-func (t *simpleTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (t *simpleTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        t.name,
 		Description: "A simple test tool",
 		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
@@ -57,7 +57,7 @@ func userSession(id, content string) *session.Session {
 	s := session.New(id)
 	_ = s.Append(
 		context.Background(),
-		session.NewEvent(id, session.EventTypeMessageAdded, llm.Message{
+		session.NewEvent(id, session.MessageAdded, llm.Message{
 			Role:    llm.RoleUser,
 			Content: content,
 		}),
@@ -158,7 +158,7 @@ func TestExtractHandoffMatchesKnownTarget(t *testing.T) {
 	assistantMsg := llm.Message{
 		Role:    llm.RoleAssistant,
 		Content: "",
-		Calls: []llm.ToolCall{{
+		Calls: []llm.Call{{
 			ID: "c1",
 			Function: struct {
 				Name      string `json:"name"`
@@ -168,7 +168,7 @@ func TestExtractHandoffMatchesKnownTarget(t *testing.T) {
 	}
 	_ = s.Append(
 		context.Background(),
-		session.NewEvent("s2", session.EventTypeMessageAdded, assistantMsg),
+		session.NewEvent("s2", session.MessageAdded, assistantMsg),
 	)
 
 	// Append the tool result containing a Handoff payload.
@@ -182,7 +182,7 @@ func TestExtractHandoffMatchesKnownTarget(t *testing.T) {
 	}
 	_ = s.Append(
 		context.Background(),
-		session.NewEvent("s2", session.EventTypeMessageAdded, toolMsg),
+		session.NewEvent("s2", session.MessageAdded, toolMsg),
 	)
 
 	got := extractHandoff(s, []string{"writer"})
@@ -208,7 +208,7 @@ func TestExtractHandoffSkipsUnknownTarget(t *testing.T) {
 	}
 	_ = s.Append(
 		context.Background(),
-		session.NewEvent("s3", session.EventTypeMessageAdded, toolMsg),
+		session.NewEvent("s3", session.MessageAdded, toolMsg),
 	)
 
 	got := extractHandoff(s, []string{"writer"})
@@ -224,7 +224,7 @@ func TestExtractHandoffStopsAtNonToolRole(t *testing.T) {
 	assistantMsg := llm.Message{Role: llm.RoleAssistant, Content: "hello"}
 	_ = s.Append(
 		context.Background(),
-		session.NewEvent("s4", session.EventTypeMessageAdded, assistantMsg),
+		session.NewEvent("s4", session.MessageAdded, assistantMsg),
 	)
 
 	// A tool result that would match, but placed before the scan starts
@@ -249,7 +249,7 @@ func TestRecordHandoff(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
-	if events[0].Type != session.EventTypeHandoff {
+	if events[0].Type != session.Handoff {
 		t.Errorf("expected event type 'handoff', got '%s'", events[0].Type)
 	}
 
@@ -268,7 +268,7 @@ func TestRecordHandoff(t *testing.T) {
 
 func TestStepNoToolCalls(t *testing.T) {
 	p := &mockProvider{
-		responses: []*llm.LLMResponse{
+		responses: []*llm.Response{
 			{Content: "Hello! How can I help?"},
 		},
 	}
@@ -297,10 +297,10 @@ func TestStepWithToolCallAndRegistry(t *testing.T) {
 	reg.Register(&simpleTool{name: "echo", output: "pong"})
 
 	p := &mockProvider{
-		responses: []*llm.LLMResponse{
+		responses: []*llm.Response{
 			{
 				Content: "",
-				Calls: []llm.ToolCall{{
+				Calls: []llm.Call{{
 					ID:   "c1",
 					Type: "function",
 					Function: struct {
@@ -338,10 +338,10 @@ func TestStepWithToolCallAndRegistry(t *testing.T) {
 
 func TestStepNoRegistryReturnsErrorString(t *testing.T) {
 	p := &mockProvider{
-		responses: []*llm.LLMResponse{
+		responses: []*llm.Response{
 			{
 				Content: "",
-				Calls: []llm.ToolCall{{
+				Calls: []llm.Call{{
 					ID:   "c1",
 					Type: "function",
 					Function: struct {
@@ -380,7 +380,7 @@ func TestStepNoRegistryReturnsErrorString(t *testing.T) {
 
 func TestAgentTurn(t *testing.T) {
 	p := &mockProvider{
-		responses: []*llm.LLMResponse{
+		responses: []*llm.Response{
 			{Content: "Hello! How can I help?"},
 		},
 	}
@@ -404,10 +404,10 @@ func TestAgentTurn(t *testing.T) {
 
 func TestTurnMaxStepsReturnsError(t *testing.T) {
 	// Provider always returns a tool call so the loop never terminates naturally.
-	makeToolResponse := func() *llm.LLMResponse {
-		return &llm.LLMResponse{
+	makeToolResponse := func() *llm.Response {
+		return &llm.Response{
 			Content: "",
-			Calls: []llm.ToolCall{{
+			Calls: []llm.Call{{
 				ID:   "c1",
 				Type: "function",
 				Function: struct {
@@ -423,7 +423,7 @@ func TestTurnMaxStepsReturnsError(t *testing.T) {
 
 	// Queue enough responses to exhaust MaxSteps.
 	maxSteps := 3
-	responses := make([]*llm.LLMResponse, maxSteps)
+	responses := make([]*llm.Response, maxSteps)
 	for i := range responses {
 		responses[i] = makeToolResponse()
 	}
@@ -444,7 +444,7 @@ func TestTurnMaxStepsReturnsError(t *testing.T) {
 
 func TestTurnPopulatesContent(t *testing.T) {
 	p := &mockProvider{
-		responses: []*llm.LLMResponse{
+		responses: []*llm.Response{
 			{Content: "final answer"},
 		},
 	}
@@ -480,10 +480,10 @@ func TestTurnHandoffStopsEarly(t *testing.T) {
 
 	// First response: LLM calls the handoff tool.
 	p := &mockProvider{
-		responses: []*llm.LLMResponse{
+		responses: []*llm.Response{
 			{
 				Content: "",
-				Calls: []llm.ToolCall{{
+				Calls: []llm.Call{{
 					ID:   "c1",
 					Type: "function",
 					Function: struct {
@@ -522,10 +522,10 @@ func TestAgentToolTurn(t *testing.T) {
 	reg.Register(&simpleTool{name: "echo", output: "world"})
 
 	p := &mockProvider{
-		responses: []*llm.LLMResponse{
+		responses: []*llm.Response{
 			{
 				Content: "",
-				Calls: []llm.ToolCall{{
+				Calls: []llm.Call{{
 					ID:   "c1",
 					Type: "function",
 					Function: struct {

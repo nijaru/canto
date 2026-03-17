@@ -47,10 +47,10 @@ func WithHooks(h *hook.Runner) Option { return func(a *BaseAgent) { a.Hooks = h 
 func WithBuilder(b *ccontext.Builder) Option { return func(a *BaseAgent) { a.Builder = b } }
 
 // WithProcessors inserts additional context processors into the default builder
-// chain, placed before CapabilitiesProcessor (which must run last).
+// chain, placed before Capabilities (which must run last).
 // Use this to add memory retrieval, custom compaction, or other middleware
 // without rebuilding the full default chain with WithBuilder.
-func WithProcessors(ps ...ccontext.ContextProcessor) Option {
+func WithProcessors(ps ...ccontext.Processor) Option {
 	return func(a *BaseAgent) {
 		a.Builder.InsertBeforeLast(ps...)
 	}
@@ -78,10 +78,10 @@ func New(
 	}
 
 	a.Builder = ccontext.NewBuilder(
-		ccontext.InstructionProcessor(instructions),
-		ccontext.ToolProcessor(t),
-		ccontext.HistoryProcessor(),
-		ccontext.CapabilitiesProcessor(), // must be last: adapts system/temp for reasoning models
+		ccontext.Instructions(instructions),
+		ccontext.Tools(t),
+		ccontext.History(),
+		ccontext.Capabilities(), // must be last: adapts system/temp for reasoning models
 	)
 
 	for _, opt := range opts {

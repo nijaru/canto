@@ -21,11 +21,11 @@ type mockProvider struct {
 func (m *mockProvider) ID() string                             { return "mock" }
 func (m *mockProvider) Capabilities(_ string) llm.Capabilities { return llm.DefaultCapabilities() }
 func (m *mockProvider) IsTransient(_ error) bool               { return false }
-func (m *mockProvider) Generate(_ context.Context, _ *llm.LLMRequest) (*llm.LLMResponse, error) {
-	return &llm.LLMResponse{Content: m.msg}, nil
+func (m *mockProvider) Generate(_ context.Context, _ *llm.Request) (*llm.Response, error) {
+	return &llm.Response{Content: m.msg}, nil
 }
 
-func (m *mockProvider) Stream(_ context.Context, _ *llm.LLMRequest) (llm.Stream, error) {
+func (m *mockProvider) Stream(_ context.Context, _ *llm.Request) (llm.Stream, error) {
 	return ctesting.NewMockStream(llm.Chunk{Content: m.msg}), nil
 }
 
@@ -55,7 +55,7 @@ func TestGraphConditionalRouting(t *testing.T) {
 	sess := session.New("graph-test")
 	_ = sess.Append(
 		context.Background(),
-		session.NewEvent("graph-test", session.EventTypeMessageAdded, llm.Message{
+		session.NewEvent("graph-test", session.MessageAdded, llm.Message{
 			Role:    llm.RoleUser,
 			Content: "Write a report on Go.",
 		}),
@@ -94,7 +94,7 @@ func TestGraphTerminatesAtTerminalNode(t *testing.T) {
 	sess := session.New("terminal-test")
 	_ = sess.Append(
 		context.Background(),
-		session.NewEvent("terminal-test", session.EventTypeMessageAdded, llm.Message{
+		session.NewEvent("terminal-test", session.MessageAdded, llm.Message{
 			Role:    llm.RoleUser,
 			Content: "Do it.",
 		}),
@@ -202,7 +202,7 @@ func TestAddEdge_NilConditionIsUnconditional(t *testing.T) {
 	sess := session.New("nil-cond-test")
 	_ = sess.Append(
 		context.Background(),
-		session.NewEvent("nil-cond-test", session.EventTypeMessageAdded, llm.Message{
+		session.NewEvent("nil-cond-test", session.MessageAdded, llm.Message{
 			Role:    llm.RoleUser,
 			Content: "Go.",
 		}),
@@ -234,7 +234,7 @@ func TestRun_ContextCancelled(t *testing.T) {
 	sess := session.New("cancel-test")
 	_ = sess.Append(
 		context.Background(),
-		session.NewEvent("cancel-test", session.EventTypeMessageAdded, llm.Message{
+		session.NewEvent("cancel-test", session.MessageAdded, llm.Message{
 			Role:    llm.RoleUser,
 			Content: "Go.",
 		}),
@@ -260,7 +260,7 @@ func TestRun_EntryNodeNotRegistered(t *testing.T) {
 	sess := session.New("no-entry-test")
 	_ = sess.Append(
 		context.Background(),
-		session.NewEvent("no-entry-test", session.EventTypeMessageAdded, llm.Message{
+		session.NewEvent("no-entry-test", session.MessageAdded, llm.Message{
 			Role:    llm.RoleUser,
 			Content: "Go.",
 		}),
@@ -291,7 +291,7 @@ func TestNestedGraphs(t *testing.T) {
 	parent.AddEdge("child", "c", nil)
 
 	sess := session.New("nest-test")
-	_ = sess.Append(ctx, session.NewEvent("nest-test", session.EventTypeMessageAdded, llm.Message{
+	_ = sess.Append(ctx, session.NewEvent("nest-test", session.MessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: "Go.",
 	}))
@@ -317,7 +317,7 @@ type streamingMockProvider struct {
 	chunks []llm.Chunk
 }
 
-func (m *streamingMockProvider) Stream(_ context.Context, _ *llm.LLMRequest) (llm.Stream, error) {
+func (m *streamingMockProvider) Stream(_ context.Context, _ *llm.Request) (llm.Stream, error) {
 	return ctesting.NewMockStream(m.chunks...), nil
 }
 
@@ -337,7 +337,7 @@ func TestGraph_StreamTurn(t *testing.T) {
 	g.AddEdge("a", "b", nil)
 
 	sess := session.New("stream-test")
-	_ = sess.Append(ctx, session.NewEvent("stream-test", session.EventTypeMessageAdded, llm.Message{
+	_ = sess.Append(ctx, session.NewEvent("stream-test", session.MessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: "Greet me.",
 	}))

@@ -33,7 +33,7 @@ func NewInputGate() *InputGate {
 }
 
 // Request blocks until Provide is called with the human's response, or ctx
-// is cancelled. It records the exchange as EventTypeExternalInput events.
+// is cancelled. It records the exchange as ExternalInput events.
 //
 // Only one Request may be active at a time; a second concurrent Request
 // blocks until the first is resolved.
@@ -49,7 +49,7 @@ func (g *InputGate) Request(
 	}
 	defer func() { <-g.pending }()
 
-	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.EventTypeExternalInput, map[string]any{
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.ExternalInput, map[string]any{
 		"prompt": prompt,
 		"status": "pending",
 	})); err != nil {
@@ -58,7 +58,7 @@ func (g *InputGate) Request(
 
 	select {
 	case input := <-g.ch:
-		if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.EventTypeExternalInput, map[string]any{
+		if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.ExternalInput, map[string]any{
 			"prompt": prompt,
 			"input":  input,
 			"status": "received",

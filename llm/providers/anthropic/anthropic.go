@@ -72,7 +72,7 @@ func (p *Provider) ID() string {
 	return string(p.config.ID)
 }
 
-func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMResponse, error) {
+func (p *Provider) Generate(ctx context.Context, req *llm.Request) (*llm.Response, error) {
 	params := p.convertRequest(req)
 	var opts []option.RequestOption
 	if req.ThinkingBudget > 0 {
@@ -90,7 +90,7 @@ func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMR
 	}
 	usage.Cost = p.Cost(ctx, req.Model, usage)
 
-	res := &llm.LLMResponse{
+	res := &llm.Response{
 		Usage: usage,
 	}
 
@@ -112,7 +112,7 @@ func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMR
 				Signature: block.Signature,
 			})
 		case "tool_use":
-			call := llm.ToolCall{
+			call := llm.Call{
 				ID:   block.ID,
 				Type: "function",
 				Function: struct {
@@ -136,14 +136,14 @@ func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMR
 				}
 			}
 			// "thinking" and "redacted_thinking" are internal reasoning blocks.
-			// They are not exposed in LLMResponse to keep the API uniform.
+			// They are not exposed in Response to keep the API uniform.
 		}
 	}
 
 	return res, nil
 }
 
-func (p *Provider) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream, error) {
+func (p *Provider) Stream(ctx context.Context, req *llm.Request) (llm.Stream, error) {
 	params := p.convertRequest(req)
 	var opts []option.RequestOption
 	if req.ThinkingBudget > 0 {
@@ -198,7 +198,7 @@ func (p *Provider) Cost(ctx context.Context, model string, usage llm.Usage) floa
 	return 0.0
 }
 
-func (p *Provider) convertRequest(req *llm.LLMRequest) sdk.MessageNewParams {
+func (p *Provider) convertRequest(req *llm.Request) sdk.MessageNewParams {
 	var system []sdk.TextBlockParam
 	var messages []sdk.MessageParam
 
@@ -304,7 +304,7 @@ func (p *Provider) convertRequest(req *llm.LLMRequest) sdk.MessageNewParams {
 	return params
 }
 
-// convertSchema converts a ToolSpec.Parameters value (any JSON-serializable type)
+// convertSchema converts a Spec.Parameters value (any JSON-serializable type)
 // into the Anthropic SDK's ToolInputSchemaParam. It normalizes the input via a
 // JSON round-trip so that map[string]any, json.RawMessage, typed schema structs,
 // and any other serializable type are all handled uniformly.
@@ -358,7 +358,7 @@ type Stream struct {
 		Close() error
 	}
 	err        error
-	activeCall *llm.ToolCall
+	activeCall *llm.Call
 	targetName string // Name of the tool used for ResponseFormatJSONSchema
 	model      string
 	p          *Provider
@@ -379,12 +379,12 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 		case "content_block_start":
 			start := event.AsContentBlockStart()
 			if start.ContentBlock.Type == "tool_use" {
-				s.activeCall = &llm.ToolCall{
+				s.activeCall = &llm.Call{
 					ID:   start.ContentBlock.ID,
 					Type: "function",
 				}
 				s.activeCall.Function.Name = start.ContentBlock.Name
-				return &llm.Chunk{Calls: []llm.ToolCall{*s.activeCall}}, true
+				return &llm.Chunk{Calls: []llm.Call{*s.activeCall}}, true
 			}
 			if start.ContentBlock.Type == "thinking" {
 				chunk := &llm.Chunk{
@@ -423,7 +423,7 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 			case "input_json_delta":
 				if s.activeCall != nil {
 					s.activeCall.Function.Arguments += delta.Delta.PartialJSON
-					chunk := &llm.Chunk{Calls: []llm.ToolCall{*s.activeCall}}
+					chunk := &llm.Chunk{Calls: []llm.Call{*s.activeCall}}
 					// Promote tool input to Content if it's the target response tool.
 					if s.activeCall.Function.Name == s.targetName {
 						chunk.Content = delta.Delta.PartialJSON

@@ -71,7 +71,7 @@ When all tasks are done, write "## Status: COMPLETE" to the plan file.`, planFil
 			sess := session.New(id)
 			sess.Append(context.Background(), session.NewEvent(
 				id,
-				session.EventTypeMessageAdded,
+				session.MessageAdded,
 				llm.Message{
 					Role: llm.RoleUser,
 					Content: fmt.Sprintf(

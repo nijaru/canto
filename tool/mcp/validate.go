@@ -17,7 +17,7 @@ import (
 //   - Name shadowing: name collides with a reserved internal tool name.
 //   - Implicit irreversible ops: description references destructive operations
 //     without making them explicit (e.g. "permanently deletes all data").
-func Validate(spec llm.ToolSpec) error {
+func Validate(spec llm.Spec) error {
 	if err := checkName(spec.Name); err != nil {
 		return err
 	}
@@ -32,7 +32,7 @@ func Validate(spec llm.ToolSpec) error {
 
 // reservedNames are internal tool names that external servers must not shadow.
 var reservedNames = map[string]bool{
-	"search_tools": true, // LazyToolProcessor meta-tool
+	"search_tools": true, // LazyTools meta-tool
 	"read_skill":   true, // skill progressive disclosure
 }
 

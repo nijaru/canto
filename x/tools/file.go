@@ -26,8 +26,8 @@ func NewReadFileTool(root *os.Root) *ReadFileTool {
 	return &ReadFileTool{root: root}
 }
 
-func (t *ReadFileTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (t *ReadFileTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        "read_file",
 		Description: "Read the contents of a file. Paths are relative to the workspace root.",
 		Parameters: map[string]any{
@@ -72,8 +72,8 @@ func NewWriteFileTool(root *os.Root) *WriteFileTool {
 	return &WriteFileTool{root: root}
 }
 
-func (t *WriteFileTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (t *WriteFileTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        "write_file",
 		Description: "Write content to a file. Creates parent directories if needed. Overwrites existing content.",
 		Parameters: map[string]any{
@@ -132,8 +132,8 @@ func NewListDirTool(root *os.Root) *ListDirTool {
 	return &ListDirTool{root: root}
 }
 
-func (t *ListDirTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (t *ListDirTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        "list_dir",
 		Description: "List the contents of a directory. Returns names and types (file/dir).",
 		Parameters: map[string]any{
@@ -189,8 +189,8 @@ func NewGlobTool(root *os.Root) *GlobTool {
 	return &GlobTool{root: root}
 }
 
-func (t *GlobTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (t *GlobTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        "glob",
 		Description: "Find files matching a glob pattern within the workspace. Uses filepath.Match syntax: * matches any sequence of non-separator characters, ? matches any single non-separator character. Single directory level only; use list_dir for recursive exploration.",
 		Parameters: map[string]any{

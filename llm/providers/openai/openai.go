@@ -47,10 +47,10 @@ func NewProvider(cfg catwalk.Provider) *Provider {
 	}
 }
 
-func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMResponse, error) {
+func (p *Provider) Generate(ctx context.Context, req *llm.Request) (*llm.Response, error) {
 	return p.Base.Generate(ctx, req)
 }
 
-func (p *Provider) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream, error) {
+func (p *Provider) Stream(ctx context.Context, req *llm.Request) (llm.Stream, error) {
 	return p.Base.Stream(ctx, req)
 }

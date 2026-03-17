@@ -20,8 +20,8 @@ type ReadSkillTool struct {
 	Registry *Registry
 }
 
-func (t *ReadSkillTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (t *ReadSkillTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        "read_skill",
 		Description: "Read the full instructions and methodology of a specific skill.",
 		Parameters: map[string]any{
@@ -62,8 +62,8 @@ type ManageSkillTool struct {
 	Path string
 }
 
-func (t *ManageSkillTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (t *ManageSkillTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        "manage_skill",
 		Description: "Create, update, or delete a skill definition (SKILL.md). Use action=create or action=update to write skill content, action=delete to remove it.",
 		Parameters: map[string]any{

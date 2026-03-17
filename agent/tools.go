@@ -14,7 +14,7 @@ import (
 )
 
 type toolResult struct {
-	call   llm.ToolCall
+	call   llm.Call
 	output string
 	err    error
 }
@@ -25,7 +25,7 @@ type toolResult struct {
 func (a *BaseAgent) runTools(
 	ctx context.Context,
 	s *session.Session,
-	calls []llm.ToolCall,
+	calls []llm.Call,
 ) (StepResult, error) {
 	handoffTargets := getHandoffTargets(a.Tools)
 	return RunTools(ctx, s, calls, a.Tools, a.Hooks, handoffTargets)
@@ -48,7 +48,7 @@ func getHandoffTargets(r *tool.Registry) []string {
 func RunTools(
 	ctx context.Context,
 	s *session.Session,
-	calls []llm.ToolCall,
+	calls []llm.Call,
 	r *tool.Registry,
 	h *hook.Runner,
 	handoffTargets []string,
@@ -57,7 +57,7 @@ func RunTools(
 	var wg sync.WaitGroup
 	for i, call := range calls {
 		wg.Add(1)
-		go func(i int, call llm.ToolCall) {
+		go func(i int, call llm.Call) {
 			defer wg.Done()
 			results[i] = executeToolWithHooks(ctx, s, call, r, h)
 		}(i, call)
@@ -76,7 +76,7 @@ func RunTools(
 			Name:    r.call.Function.Name,
 		}
 		toolMsgs = append(toolMsgs, toolMsg)
-		if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeMessageAdded, toolMsg)); err != nil {
+		if err := s.Append(ctx, session.NewEvent(s.ID(), session.MessageAdded, toolMsg)); err != nil {
 			return StepResult{}, err
 		}
 	}
@@ -91,13 +91,13 @@ func RunTools(
 func executeToolWithHooks(
 	ctx context.Context,
 	s *session.Session,
-	call llm.ToolCall,
+	call llm.Call,
 	r *tool.Registry,
 	h *hook.Runner,
 ) toolResult {
 	var output string
 
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolExecutionStarted, map[string]any{
+	if err := s.Append(ctx, session.NewEvent(s.ID(), session.ToolStarted, map[string]any{
 		"tool": call.Function.Name,
 		"args": call.Function.Arguments,
 		"id":   call.ID,
@@ -140,7 +140,7 @@ func executeToolWithHooks(
 			var execErr error
 			if st, ok := t.(tool.StreamingTool); ok {
 				output, execErr = st.ExecuteStreaming(ctx, call.Function.Arguments, func(delta string) error {
-					return s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolOutputDelta, map[string]any{
+					return s.Append(ctx, session.NewEvent(s.ID(), session.ToolOutputDelta, map[string]any{
 						"tool":  call.Function.Name,
 						"id":    call.ID,
 						"delta": delta,
@@ -192,7 +192,7 @@ func executeToolWithHooks(
 	}
 
 	res := toolResult{call: call, output: output}
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolExecutionCompleted, map[string]any{
+	if err := s.Append(ctx, session.NewEvent(s.ID(), session.ToolCompleted, map[string]any{
 		"tool":   call.Function.Name,
 		"id":     call.ID,
 		"output": output,

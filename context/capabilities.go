@@ -8,7 +8,7 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-// CapabilitiesProcessor adapts LLMRequest fields to match the model's
+// Capabilities adapts Request fields to match the model's
 // capability constraints. It must run last in the processor chain, after
 // all other processors have populated the request.
 //
@@ -17,9 +17,9 @@ import (
 //     RoleUser: injects an "Instructions:" prefix (models with no system role).
 //     Any other role (e.g. RoleDeveloper): converts role directly, no prefix.
 //   - Temperature=false: zeroes the temperature field.
-func CapabilitiesProcessor() ContextProcessor {
+func Capabilities() Processor {
 	return ProcessorFunc(
-		func(ctx context.Context, p llm.Provider, model string, _ *session.Session, req *llm.LLMRequest) error {
+		func(ctx context.Context, p llm.Provider, model string, _ *session.Session, req *llm.Request) error {
 			if p == nil {
 				return nil
 			}
@@ -49,7 +49,7 @@ func CapabilitiesProcessor() ContextProcessor {
 // When targetRole is RoleUser, content is prefixed with "Instructions:\n" so
 // the model can distinguish instructions from conversational user turns.
 // For other target roles the content is passed through unchanged.
-func rewriteSystemMessages(req *llm.LLMRequest, targetRole llm.Role) {
+func rewriteSystemMessages(req *llm.Request, targetRole llm.Role) {
 	for i, m := range req.Messages {
 		if m.Role != llm.RoleSystem {
 			continue

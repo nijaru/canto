@@ -52,7 +52,7 @@ research report on the given topic. On each run:
 	// Seed the first message.
 	sess, _ := store.Load(ctx, sessionID)
 	if len(sess.Messages()) == 0 {
-		store.Save(ctx, session.NewEvent(sessionID, session.EventTypeMessageAdded,
+		store.Save(ctx, session.NewEvent(sessionID, session.MessageAdded,
 			map[string]string{"role": "user", "content": fmt.Sprintf("Research topic: %s", topic)},
 		))
 	}

@@ -12,14 +12,14 @@ import (
 
 // SearchTool implements the search_tools meta-tool. It lets agents discover
 // and unlock specific tools from a large registry without loading all specs
-// into every LLM request. Use with LazyToolProcessor.
+// into every LLM request. Use with LazyTools.
 type SearchTool struct {
 	Registry *tool.Registry
 }
 
 // Spec returns the search_tools tool specification.
-func (s *SearchTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (s *SearchTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        "search_tools",
 		Description: "Search for available tools by name or description keyword. Returns matching tool specifications so you can use them in subsequent calls.",
 		Parameters: map[string]any{
@@ -46,7 +46,7 @@ func (s *SearchTool) Execute(_ context.Context, args string) (string, error) {
 	}
 
 	query := strings.ToLower(input.Query)
-	var matches []llm.ToolSpec
+	var matches []llm.Spec
 
 	for _, spec := range s.Registry.Specs() {
 		name := strings.ToLower(spec.Name)

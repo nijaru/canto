@@ -202,7 +202,7 @@ func (s *Session) Messages() []llm.Message {
 
 	var res []llm.Message
 	for _, e := range s.events {
-		if e.Type == EventTypeMessageAdded {
+		if e.Type == MessageAdded {
 			var m llm.Message
 			if err := json.Unmarshal(e.Data, &m); err == nil {
 				res = append(res, m)

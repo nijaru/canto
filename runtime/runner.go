@@ -121,7 +121,7 @@ func (r *Runner) Send(ctx context.Context, sessionID, message string) (agent.Ste
 		return agent.StepResult{}, err
 	}
 
-	e := session.NewEvent(sessionID, session.EventTypeMessageAdded, llm.Message{
+	e := session.NewEvent(sessionID, session.MessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: message,
 	})
@@ -144,7 +144,7 @@ func (r *Runner) SendStream(
 		return agent.StepResult{}, err
 	}
 
-	e := session.NewEvent(sessionID, session.EventTypeMessageAdded, llm.Message{
+	e := session.NewEvent(sessionID, session.MessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: message,
 	})

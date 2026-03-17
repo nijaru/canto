@@ -15,7 +15,7 @@ func TestMockProvider_ConsumeSteps(t *testing.T) {
 		Step{Content: "step 2"},
 	)
 
-	resp, err := mock.Generate(context.Background(), &llm.LLMRequest{})
+	resp, err := mock.Generate(context.Background(), &llm.Request{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestMockProvider_ConsumeSteps(t *testing.T) {
 		t.Fatalf("content = %q, want step 1", resp.Content)
 	}
 
-	resp, err = mock.Generate(context.Background(), &llm.LLMRequest{})
+	resp, err = mock.Generate(context.Background(), &llm.Request{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,9 +38,9 @@ func TestMockProvider_ConsumeSteps(t *testing.T) {
 
 func TestMockProvider_Exhausted(t *testing.T) {
 	mock := NewMockProvider("test", Step{Content: "only"})
-	mock.Generate(context.Background(), &llm.LLMRequest{}) //nolint
+	mock.Generate(context.Background(), &llm.Request{}) //nolint
 
-	_, err := mock.Generate(context.Background(), &llm.LLMRequest{})
+	_, err := mock.Generate(context.Background(), &llm.Request{})
 	if err == nil {
 		t.Fatal("expected error when steps exhausted")
 	}
@@ -50,7 +50,7 @@ func TestMockProvider_StepError(t *testing.T) {
 	want := errors.New("provider down")
 	mock := NewMockProvider("test", Step{Err: want})
 
-	_, err := mock.Generate(context.Background(), &llm.LLMRequest{})
+	_, err := mock.Generate(context.Background(), &llm.Request{})
 	if !errors.Is(err, want) {
 		t.Fatalf("err = %v, want %v", err, want)
 	}
@@ -59,7 +59,7 @@ func TestMockProvider_StepError(t *testing.T) {
 func TestMockProvider_RecordsCalls(t *testing.T) {
 	mock := NewMockProvider("test", Step{Content: "ok"})
 
-	req := &llm.LLMRequest{Model: "gpt-4o"}
+	req := &llm.Request{Model: "gpt-4o"}
 	mock.Generate(context.Background(), req) //nolint
 
 	calls := mock.Calls()
@@ -85,7 +85,7 @@ func TestAssertToolCalled(t *testing.T) {
 	sess := session.New("s1")
 	msg := llm.Message{
 		Role: llm.RoleAssistant,
-		Calls: []llm.ToolCall{
+		Calls: []llm.Call{
 			{ID: "1", Function: struct {
 				Name      string `json:"name"`
 				Arguments string `json:"arguments"`
@@ -94,7 +94,7 @@ func TestAssertToolCalled(t *testing.T) {
 	}
 	_ = sess.Append(
 		context.Background(),
-		session.NewEvent("s1", session.EventTypeMessageAdded, msg),
+		session.NewEvent("s1", session.MessageAdded, msg),
 	)
 
 	inner := &testing.T{}

@@ -86,7 +86,7 @@ func (r *SmartResolver) ID() string {
 	return fmt.Sprintf("smart(%s)", r.providers[0].provider.ID())
 }
 
-func (r *SmartResolver) Generate(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+func (r *SmartResolver) Generate(ctx context.Context, req *Request) (*Response, error) {
 	healthy := r.getHealthy()
 	if len(healthy) == 0 {
 		return nil, fmt.Errorf("all providers are cooling down")
@@ -113,7 +113,7 @@ func (r *SmartResolver) Generate(ctx context.Context, req *LLMRequest) (*LLMResp
 	return nil, fmt.Errorf("all healthy providers exhausted or rate limited")
 }
 
-func (r *SmartResolver) Stream(ctx context.Context, req *LLMRequest) (Stream, error) {
+func (r *SmartResolver) Stream(ctx context.Context, req *Request) (Stream, error) {
 	healthy := r.getHealthy()
 	if len(healthy) == 0 {
 		return nil, fmt.Errorf("all providers are cooling down")
@@ -273,7 +273,7 @@ func (p *FailoverProvider) ID() string {
 	return fmt.Sprintf("failover(%s)", p.providers[0].ID())
 }
 
-func (p *FailoverProvider) Generate(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+func (p *FailoverProvider) Generate(ctx context.Context, req *Request) (*Response, error) {
 	var lastErr error
 	for _, sub := range p.providers {
 		resp, err := sub.Generate(ctx, req)
@@ -285,7 +285,7 @@ func (p *FailoverProvider) Generate(ctx context.Context, req *LLMRequest) (*LLMR
 	return nil, fmt.Errorf("failover failed: %w", lastErr)
 }
 
-func (p *FailoverProvider) Stream(ctx context.Context, req *LLMRequest) (Stream, error) {
+func (p *FailoverProvider) Stream(ctx context.Context, req *Request) (Stream, error) {
 	var lastErr error
 	for _, sub := range p.providers {
 		s, err := sub.Stream(ctx, req)

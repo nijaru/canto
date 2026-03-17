@@ -75,7 +75,7 @@ canto/
 │
 ├── context/                # Layer 3b: Context engineering pipeline
 │   ├── builder.go          # Processor chain: select -> transform -> inject
-│   ├── processor.go        # ContextProcessor interface
+│   ├── processor.go        # Processor interface
 │   ├── guard.go            # Token budget tracking, rot-threshold detection
 │   ├── compactor.go        # Reversible compaction (offload tool results to filesystem)
 │   ├── summarizer.go       # Lossy LLM summarization (triggered by rot threshold)
@@ -147,12 +147,12 @@ type Agent interface {
     Step(ctx context.Context, session *Session) (StepResult, error)
 }
 
-// ContextProcessor builds the LLM request from the session state.
+// Processor builds the LLM request from the session state.
 // Processors are composed in order; each mutates the request.
 // Convention: return early if nothing to do. Never mutate session state.
-type ContextProcessor interface {
+type Processor interface {
     Name() string
-    Process(ctx context.Context, sess *Session, req *LLMRequest) error
+    Process(ctx context.Context, sess *Session, req *Request) error
 }
 
 // Store persists and retrieves sessions.
@@ -178,7 +178,7 @@ type EventType string
 const (
     EventUserMessage    EventType = "user_message"
     EventAssistantText  EventType = "assistant_text"
-    EventToolCall       EventType = "tool_call"
+    EventCall       EventType = "tool_call"
     EventToolResult     EventType = "tool_result"
     EventHandoff        EventType = "handoff"
     EventCompaction     EventType = "compaction"      // marks where summarization occurred
@@ -230,7 +230,7 @@ Each processor is a pure function: `(session, request) -> error`. No side effect
 ```go
 // DefaultProcessors is the out-of-the-box pipeline.
 // Replace or reorder any processor by modifying this slice on your Runner.
-var DefaultProcessors = []ContextProcessor{
+var DefaultProcessors = []Processor{
     &WorkspaceProcessor{},   // inject AGENTS.md / SOUL.md instructions
     &HistoryProcessor{},     // select + transform events -> messages
     &SkillListProcessor{},   // inject skill names/descriptions (not full content)
@@ -251,9 +251,9 @@ type TokenGuardProcessor struct {
     CompactStrategy CompactStrategy
 }
 
-// LLMRequest is assembled by the processor pipeline and sent to the provider.
+// Request is assembled by the processor pipeline and sent to the provider.
 // It is ephemeral -- built fresh every turn, never persisted.
-type LLMRequest struct {
+type Request struct {
     Messages    []Message
     Tools       []Tool
     TokenBudget int
@@ -580,7 +580,7 @@ type TrajectoryEntry struct {
     Turn       int             `json:"turn"`
     Input      string          `json:"input"`       // context sent to model
     Output     string          `json:"output"`      // model response
-    ToolCalls  []ToolCallTrace `json:"tool_calls"`
+    Calls  []CallTrace `json:"tool_calls"`
     Tokens     int             `json:"tokens"`
     Cost       float64         `json:"cost_usd"`
     DurationMs int64           `json:"duration_ms"`
@@ -743,7 +743,7 @@ func (e *ExperimentRunner) Run(ctx context.Context) (*ExperimentReport, error)
 ```go
 // ProcessorChain is a slice of processors applied in order.
 // Idiomatic Go: small interfaces + composition, no ceremony.
-type ProcessorChain []ContextProcessor
+type ProcessorChain []Processor
 
 // DefaultChain works out of the box. Override any processor by
 // replacing it in the slice.

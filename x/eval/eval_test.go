@@ -23,15 +23,15 @@ func buildSession(id string, turns []struct {
 	sess := session.New(id)
 	_ = sess.Append(
 		context.Background(),
-		session.NewEvent(id, session.EventTypeMessageAdded, llm.Message{
+		session.NewEvent(id, session.MessageAdded, llm.Message{
 			Role:    llm.RoleUser,
 			Content: "Do the task",
 		}),
 	)
 	for _, t := range turns {
-		calls := []llm.ToolCall{}
+		calls := []llm.Call{}
 		if t.toolName != "" {
-			calls = append(calls, llm.ToolCall{
+			calls = append(calls, llm.Call{
 				ID:   "call-1",
 				Type: "function",
 				Function: struct {
@@ -40,7 +40,7 @@ func buildSession(id string, turns []struct {
 				}{Name: t.toolName, Arguments: "{}"},
 			})
 		}
-		e := session.NewEvent(id, session.EventTypeMessageAdded, llm.Message{
+		e := session.NewEvent(id, session.MessageAdded, llm.Message{
 			Role:    llm.RoleAssistant,
 			Content: t.assistantMsg,
 			Calls:   calls,

@@ -17,31 +17,31 @@ const (
 	searchToolName       = "search_tools"
 )
 
-// LazyToolProcessor conditionally loads tool specs.
+// LazyTools conditionally loads tool specs.
 //
 // If the registry has <= Threshold tools, all specs are included (same as
-// ToolProcessor). Above the threshold, only the search_tools meta-tool is
+// Tools). Above the threshold, only the search_tools meta-tool is
 // exposed, along with a system hint listing all available tool names.
 // Previously searched tools are re-included by scanning session history for
 // search_tools results — ensuring the agent can call tools it has discovered.
 //
 // Wire a SearchTool (from x/tools) into the registry before using this.
-type LazyToolProcessor struct {
+type LazyTools struct {
 	Registry  *tool.Registry
 	Threshold int // default: DefaultLazyThreshold
 }
 
-// NewLazyToolProcessor creates a LazyToolProcessor with the given registry.
-func NewLazyToolProcessor(reg *tool.Registry) *LazyToolProcessor {
-	return &LazyToolProcessor{Registry: reg, Threshold: DefaultLazyThreshold}
+// NewLazyTools creates a LazyTools with the given registry.
+func NewLazyTools(reg *tool.Registry) *LazyTools {
+	return &LazyTools{Registry: reg, Threshold: DefaultLazyThreshold}
 }
 
-func (p *LazyToolProcessor) Process(
+func (p *LazyTools) Process(
 	ctx context.Context,
 	pr llm.Provider,
 	model string,
 	sess *session.Session,
-	req *llm.LLMRequest,
+	req *llm.Request,
 ) error {
 	if p.Registry == nil {
 		return nil
@@ -85,14 +85,14 @@ func (p *LazyToolProcessor) Process(
 // unlockedFromHistory scans the session for search_tools results and
 // extracts the tool names that were returned. Those tools are "unlocked"
 // and should be included in the next request.
-func (p *LazyToolProcessor) unlockedFromHistory(sess *session.Session) map[string]struct{} {
+func (p *LazyTools) unlockedFromHistory(sess *session.Session) map[string]struct{} {
 	unlocked := make(map[string]struct{})
 	for _, m := range sess.Messages() {
 		if m.Role != llm.RoleTool || m.Name != searchToolName {
 			continue
 		}
-		// Try to parse as a JSON array of ToolSpec.
-		var specs []llm.ToolSpec
+		// Try to parse as a JSON array of Spec.
+		var specs []llm.Spec
 		if err := json.Unmarshal([]byte(m.Content), &specs); err != nil {
 			continue
 		}
@@ -106,7 +106,7 @@ func (p *LazyToolProcessor) unlockedFromHistory(sess *session.Session) map[strin
 }
 
 // injectSystemHint prepends a system message with the hint text.
-func injectSystemHint(req *llm.LLMRequest, hint string) {
+func injectSystemHint(req *llm.Request, hint string) {
 	for i, m := range req.Messages {
 		if m.Role == llm.RoleSystem {
 			req.Messages[i].Content += "\n\n" + hint

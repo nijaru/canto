@@ -13,19 +13,19 @@ import (
 
 // Builder implements the context engineering pipeline.
 type Builder struct {
-	processors []ContextProcessor
+	processors []Processor
 }
 
 // NewBuilder creates a new builder with the default processor chain.
-func NewBuilder(processors ...ContextProcessor) *Builder {
+func NewBuilder(processors ...Processor) *Builder {
 	return &Builder{
 		processors: processors,
 	}
 }
 
 // Processors returns a copy of the current processor chain.
-func (b *Builder) Processors() []ContextProcessor {
-	res := make([]ContextProcessor, len(b.processors))
+func (b *Builder) Processors() []Processor {
+	res := make([]Processor, len(b.processors))
 	copy(res, b.processors)
 	return res
 }
@@ -36,7 +36,7 @@ func (b *Builder) Build(
 	p llm.Provider,
 	model string,
 	sess *session.Session,
-	req *llm.LLMRequest,
+	req *llm.Request,
 ) error {
 	for _, cp := range b.processors {
 		if err := cp.Process(ctx, p, model, sess, req); err != nil {
@@ -47,36 +47,36 @@ func (b *Builder) Build(
 }
 
 // Prepend inserts p at the front of the processor chain.
-func (b *Builder) Prepend(p ContextProcessor) {
-	b.processors = append([]ContextProcessor{p}, b.processors...)
+func (b *Builder) Prepend(p Processor) {
+	b.processors = append([]Processor{p}, b.processors...)
 }
 
 // Append adds p at the end of the processor chain.
-func (b *Builder) Append(p ContextProcessor) {
+func (b *Builder) Append(p Processor) {
 	b.processors = append(b.processors, p)
 }
 
 // InsertBeforeLast inserts processors into the chain immediately before the
 // last processor. If the chain is empty, it appends them.
-func (b *Builder) InsertBeforeLast(ps ...ContextProcessor) {
+func (b *Builder) InsertBeforeLast(ps ...Processor) {
 	if len(b.processors) == 0 {
 		b.processors = append(b.processors, ps...)
 		return
 	}
-	// Insert before the last processor (e.g. CapabilitiesProcessor).
+	// Insert before the last processor (e.g. Capabilities).
 	n := len(b.processors)
 	tail := b.processors[n-1]
-	merged := make([]ContextProcessor, 0, n-1+len(ps)+1)
+	merged := make([]Processor, 0, n-1+len(ps)+1)
 	merged = append(merged, b.processors[:n-1]...)
 	merged = append(merged, ps...)
 	merged = append(merged, tail)
 	b.processors = merged
 }
 
-// HistoryProcessor appends the session event log to the LLM request messages.
-func HistoryProcessor() ContextProcessor {
+// History appends the session event log to the LLM request messages.
+func History() Processor {
 	return ProcessorFunc(
-		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error {
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			// Extract all messages from the session
 			messages := sess.Messages()
 			req.Messages = append(req.Messages, messages...)
@@ -85,10 +85,10 @@ func HistoryProcessor() ContextProcessor {
 	)
 }
 
-// ToolProcessor appends tool definitions to the LLM request.
-func ToolProcessor(reg *tool.Registry) ContextProcessor {
+// Tools appends tool definitions to the LLM request.
+func Tools(reg *tool.Registry) Processor {
 	return ProcessorFunc(
-		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error {
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			if reg == nil {
 				return nil
 			}
@@ -98,10 +98,10 @@ func ToolProcessor(reg *tool.Registry) ContextProcessor {
 	)
 }
 
-// InstructionProcessor prepends instructions as a system message.
-func InstructionProcessor(instructions string) ContextProcessor {
+// Instructions prepends instructions as a system message.
+func Instructions(instructions string) Processor {
 	return ProcessorFunc(
-		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error {
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			if instructions == "" {
 				return nil
 			}
@@ -127,9 +127,9 @@ func InstructionProcessor(instructions string) ContextProcessor {
 var coreMemoryRegex = regexp.MustCompile(`(?s)<core_memory>.*?</core_memory>\n*`)
 
 // CoreMemoryProcessor retrieves the core memory persona and injects it.
-func CoreMemoryProcessor(store *memory.CoreStore) ContextProcessor {
+func CoreMemoryProcessor(store *memory.CoreStore) Processor {
 	return ProcessorFunc(
-		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error {
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			if store == nil {
 				return nil
 			}

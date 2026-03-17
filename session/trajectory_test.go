@@ -15,7 +15,7 @@ func TestExportRun(t *testing.T) {
 	now := time.Now()
 
 	// User message
-	e1 := NewEvent(sess.ID(), EventTypeMessageAdded, llm.Message{
+	e1 := NewEvent(sess.ID(), MessageAdded, llm.Message{
 		Role:    llm.RoleUser,
 		Content: "Hello",
 	})
@@ -24,10 +24,10 @@ func TestExportRun(t *testing.T) {
 	_ = sess.Append(context.Background(), e1)
 
 	// Assistant response with tool call
-	e2 := NewEvent(sess.ID(), EventTypeMessageAdded, llm.Message{
+	e2 := NewEvent(sess.ID(), MessageAdded, llm.Message{
 		Role:    llm.RoleAssistant,
 		Content: "Let me check",
-		Calls: []llm.ToolCall{
+		Calls: []llm.Call{
 			{ID: "call_1", Type: "function", Function: struct {
 				Name      string "json:\"name\""
 				Arguments string "json:\"arguments\""
@@ -39,7 +39,7 @@ func TestExportRun(t *testing.T) {
 	sess.Append(context.Background(), e2)
 
 	// Tool result
-	e3 := NewEvent(sess.ID(), EventTypeMessageAdded, llm.Message{
+	e3 := NewEvent(sess.ID(), MessageAdded, llm.Message{
 		Role:    llm.RoleTool,
 		Content: "Result data",
 		ToolID:  "call_1",
@@ -49,7 +49,7 @@ func TestExportRun(t *testing.T) {
 	sess.Append(context.Background(), e3)
 
 	// Second assistant response
-	e4 := NewEvent(sess.ID(), EventTypeMessageAdded, llm.Message{
+	e4 := NewEvent(sess.ID(), MessageAdded, llm.Message{
 		Role:    llm.RoleAssistant,
 		Content: "The result is data",
 	})

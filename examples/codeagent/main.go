@@ -46,9 +46,9 @@ Always verify your changes work before reporting success.`
 	a.MaxSteps = 30
 
 	// Hooks: log tool calls to stderr.
-	a.Hooks.Register(hook.NewCommandHook(
+	a.Hooks.Register(hook.NewCommand(
 		"log-tool-use",
-		[]hook.HookEvent{hook.EventPreToolUse},
+		[]hook.Event{hook.EventPreToolUse},
 		"bash",
 		[]string{"-c", `echo "[tool] $CANTO_TOOL_NAME: $CANTO_TOOL_ARGS" >&2`},
 		0,
@@ -78,7 +78,7 @@ Always verify your changes work before reporting success.`
 	}
 
 	// Append the user message and run.
-	store.Save(ctx, session.NewEvent(sessionID, session.EventTypeMessageAdded,
+	store.Save(ctx, session.NewEvent(sessionID, session.MessageAdded,
 		llm.Message{Role: llm.RoleUser, Content: input},
 	))
 

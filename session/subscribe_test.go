@@ -14,7 +14,7 @@ func TestSubscribe_ReceivesEvents(t *testing.T) {
 
 	ch := s.Subscribe(ctx)
 
-	e := NewEvent("sess-1", EventTypeMessageAdded, map[string]string{"role": "user"})
+	e := NewEvent("sess-1", MessageAdded, map[string]string{"role": "user"})
 	_ = s.Append(context.Background(), e)
 
 	select {
@@ -35,7 +35,7 @@ func TestSubscribe_MultipleSubscribers(t *testing.T) {
 	ch1 := s.Subscribe(ctx)
 	ch2 := s.Subscribe(ctx)
 
-	e := NewEvent("sess-2", EventTypeMessageAdded, nil)
+	e := NewEvent("sess-2", MessageAdded, nil)
 	_ = s.Append(context.Background(), e)
 
 	for _, ch := range []<-chan Event{ch1, ch2} {
@@ -89,7 +89,7 @@ func TestSubscribe_SlowSubscriberDoesNotBlock(t *testing.T) {
 		// Fill beyond buffer — Append must not block.
 		for i := range subscriberBufSize + 10 {
 			_ = i
-			_ = s.Append(context.Background(), NewEvent("sess-4", EventTypeMessageAdded, nil))
+			_ = s.Append(context.Background(), NewEvent("sess-4", MessageAdded, nil))
 		}
 		close(done)
 	}()
@@ -104,7 +104,7 @@ func TestSubscribe_SlowSubscriberDoesNotBlock(t *testing.T) {
 func TestSubscribe_NoSubscribers(t *testing.T) {
 	s := New("sess-5")
 	// Append with no subscribers must not panic.
-	_ = s.Append(context.Background(), NewEvent("sess-5", EventTypeHandoff, nil))
+	_ = s.Append(context.Background(), NewEvent("sess-5", Handoff, nil))
 }
 
 // TestSubscribe_ConcurrentAppendCancel exercises the race between Append and
@@ -126,7 +126,7 @@ func TestSubscribe_ConcurrentAppendCancel(t *testing.T) {
 			for range eventsPerWriter {
 				_ = s.Append(
 					context.Background(),
-					NewEvent("sess-race", EventTypeMessageAdded, nil),
+					NewEvent("sess-race", MessageAdded, nil),
 				)
 			}
 		}()
@@ -145,7 +145,7 @@ func TestSubscribe_EventsBeforeSubscribeNotReceived(t *testing.T) {
 	s := New("sess-6")
 
 	// Append before subscribe.
-	_ = s.Append(context.Background(), NewEvent("sess-6", EventTypeMessageAdded, nil))
+	_ = s.Append(context.Background(), NewEvent("sess-6", MessageAdded, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -153,7 +153,7 @@ func TestSubscribe_EventsBeforeSubscribeNotReceived(t *testing.T) {
 	ch := s.Subscribe(ctx)
 
 	// Append after subscribe.
-	e := NewEvent("sess-6", EventTypeMessageAdded, nil)
+	e := NewEvent("sess-6", MessageAdded, nil)
 	_ = s.Append(context.Background(), e)
 
 	select {

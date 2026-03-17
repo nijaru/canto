@@ -29,7 +29,7 @@ type RunTurn struct {
 	Timestamp   time.Time      `json:"timestamp"`
 	Input       []llm.Message  `json:"input"`
 	Output      llm.Message    `json:"output"`
-	ToolCalls   []llm.ToolCall `json:"tool_calls,omitzero"`
+	ToolCalls   []llm.Call `json:"tool_calls,omitzero"`
 	ToolResults []llm.Message  `json:"tool_results,omitzero"`
 	Cost        float64        `json:"cost"`
 	Metrics     map[string]any `json:"metrics,omitzero"`
@@ -137,7 +137,7 @@ func ExportRun(sess *Session) (*RunLog, error) {
 		traj.TotalCost += e.Cost
 
 		switch e.Type {
-		case EventTypeMessageAdded:
+		case MessageAdded:
 			var msg llm.Message
 			if err := json.Unmarshal(e.Data, &msg); err != nil {
 				continue

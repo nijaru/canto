@@ -16,7 +16,7 @@ const (
 	RoleAssistant Role = "assistant"
 	RoleTool      Role = "tool"
 	// RoleDeveloper is a privileged instruction channel accepted by some models.
-	// CapabilitiesProcessor converts system messages to this role when
+	// Capabilities converts system messages to this role when
 	// Capabilities.SystemRole is RoleDeveloper.
 	RoleDeveloper Role = "developer"
 )
@@ -36,11 +36,11 @@ type Message struct {
 	ThinkingBlocks []ThinkingBlock `json:"thinking_blocks,omitzero"`
 	Name           string          `json:"name,omitzero"` // For tool output or identifying the assistant
 	ToolID         string          `json:"tool_id,omitzero"`
-	Calls          []ToolCall      `json:"tool_calls,omitzero"`
+	Calls          []Call          `json:"tool_calls,omitzero"`
 }
 
-// ToolCall represents a request from the LLM to call a tool.
-type ToolCall struct {
+// Call represents a request from the LLM to call a tool.
+type Call struct {
 	ID       string `json:"id"`
 	Type     string `json:"type"` // e.g., "function"
 	Function struct {
@@ -49,8 +49,8 @@ type ToolCall struct {
 	} `json:"function"`
 }
 
-// ToolSpec represents a tool that can be called by the LLM.
-type ToolSpec struct {
+// Spec represents a tool that can be called by the LLM.
+type Spec struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Parameters  any    `json:"parameters"` // JSON Schema
@@ -79,11 +79,11 @@ type ResponseFormat struct {
 	Strict bool   `json:"strict,omitzero"`
 }
 
-// LLMRequest is the unified request sent to any provider.
-type LLMRequest struct {
+// Request is the unified request sent to any provider.
+type Request struct {
 	Model          string          `json:"model"`
 	Messages       []Message       `json:"messages"`
-	Tools          []*ToolSpec     `json:"tools,omitzero"`
+	Tools          []*Spec         `json:"tools,omitzero"`
 	Temperature    float64         `json:"temperature"`
 	MaxTokens      int             `json:"max_tokens,omitzero"`
 	ResponseFormat *ResponseFormat `json:"response_format,omitzero"`
@@ -95,12 +95,12 @@ type LLMRequest struct {
 	ThinkingBudget int `json:"thinking_budget,omitzero"`
 }
 
-// LLMResponse is the unified response from any provider.
-type LLMResponse struct {
+// Response is the unified response from any provider.
+type Response struct {
 	Content        string          `json:"content"`
 	Reasoning      string          `json:"reasoning,omitzero"`
 	ThinkingBlocks []ThinkingBlock `json:"thinking_blocks,omitzero"`
-	Calls          []ToolCall      `json:"tool_calls,omitzero"`
+	Calls          []Call          `json:"tool_calls,omitzero"`
 	Usage          Usage           `json:"usage"`
 }
 
@@ -124,16 +124,16 @@ type Capabilities struct {
 	Temperature bool
 	// SystemRole is the role to use when passing system-level instructions.
 	// RoleSystem (default) passes them through unchanged.
-	// RoleUser means the model has no system role; CapabilitiesProcessor injects
+	// RoleUser means the model has no system role; Capabilities injects
 	// system content as user messages with an "Instructions:" prefix.
 	// RoleDeveloper means the model accepts a privileged instruction channel
 	// distinct from the assistant conversation.
 	SystemRole Role
 	// ReasoningEffort indicates the model accepts a hint for reasoning depth.
-	// When true, LLMRequest.ReasoningEffort is forwarded to the provider.
+	// When true, Request.ReasoningEffort is forwarded to the provider.
 	ReasoningEffort bool
 	// Thinking indicates the model supports extended chain-of-thought reasoning
-	// with an explicit token budget. When true, LLMRequest.ThinkingBudget is
+	// with an explicit token budget. When true, Request.ThinkingBudget is
 	// forwarded to the provider.
 	Thinking bool
 }
@@ -148,12 +148,12 @@ func DefaultCapabilities() Capabilities {
 	}
 }
 
-// GenerateFromStream collects chunks from a stream and assembles an LLMResponse.
+// GenerateFromStream collects chunks from a stream and assembles an Response.
 // It is intended for use by Provider implementations to avoid duplicating
 // the complex logic of assembling streaming chunks.
-func GenerateFromStream(s Stream) (*LLMResponse, error) {
+func GenerateFromStream(s Stream) (*Response, error) {
 	defer s.Close()
-	var resp LLMResponse
+	var resp Response
 	// toolCallIndices tracks tool calls by their ID to handle deltas correctly.
 	toolCallIndices := make(map[string]int)
 	// thinkingBlockIndices tracks thinking blocks by their index to handle deltas if needed.
@@ -206,10 +206,10 @@ type Provider interface {
 	ID() string
 
 	// Generate executes a non-streaming completion request.
-	Generate(ctx context.Context, req *LLMRequest) (*LLMResponse, error)
+	Generate(ctx context.Context, req *Request) (*Response, error)
 
 	// Stream executes a streaming completion request.
-	Stream(ctx context.Context, req *LLMRequest) (Stream, error)
+	Stream(ctx context.Context, req *Request) (Stream, error)
 
 	// Models returns the list of models supported by this provider.
 	Models(ctx context.Context) ([]catwalk.Model, error)
@@ -262,7 +262,7 @@ type Chunk struct {
 	Content        string          `json:"content"`
 	Reasoning      string          `json:"reasoning,omitempty"`
 	ThinkingBlocks []ThinkingBlock `json:"thinking_blocks,omitempty"`
-	Calls          []ToolCall      `json:"tool_calls,omitempty"`
+	Calls          []Call          `json:"tool_calls,omitempty"`
 	// Usage is populated in the final chunk(s) if supported by the provider.
 	Usage *Usage `json:"usage,omitempty"`
 }
@@ -282,8 +282,8 @@ func NewRetryProvider(p Provider) *RetryProvider {
 	}
 }
 
-func (r *RetryProvider) Generate(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
-	var resp *LLMResponse
+func (r *RetryProvider) Generate(ctx context.Context, req *Request) (*Response, error) {
+	var resp *Response
 	var err error
 	interval := r.Config.MinInterval
 
@@ -310,7 +310,7 @@ func (r *RetryProvider) Generate(ctx context.Context, req *LLMRequest) (*LLMResp
 	return nil, err
 }
 
-func (r *RetryProvider) Stream(ctx context.Context, req *LLMRequest) (Stream, error) {
+func (r *RetryProvider) Stream(ctx context.Context, req *Request) (Stream, error) {
 	var s Stream
 	var err error
 	interval := r.Config.MinInterval

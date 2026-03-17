@@ -12,16 +12,16 @@ import (
 
 type mockProvider struct {
 	id     string
-	genFn  func(ctx context.Context, req *LLMRequest) (*LLMResponse, error)
+	genFn  func(ctx context.Context, req *Request) (*Response, error)
 	models []catwalk.Model
 }
 
 func (m *mockProvider) ID() string { return m.id }
-func (m *mockProvider) Generate(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+func (m *mockProvider) Generate(ctx context.Context, req *Request) (*Response, error) {
 	return m.genFn(ctx, req)
 }
 
-func (m *mockProvider) Stream(ctx context.Context, req *LLMRequest) (Stream, error) {
+func (m *mockProvider) Stream(ctx context.Context, req *Request) (Stream, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -46,19 +46,19 @@ func (m *mockProvider) IsTransient(err error) bool         { return IsRateLimit(
 func TestFailoverProvider(t *testing.T) {
 	p1 := &mockProvider{
 		id: "p1",
-		genFn: func(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+		genFn: func(ctx context.Context, req *Request) (*Response, error) {
 			return nil, errors.New("p1 failed")
 		},
 	}
 	p2 := &mockProvider{
 		id: "p2",
-		genFn: func(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
-			return &LLMResponse{Content: "p2 success"}, nil
+		genFn: func(ctx context.Context, req *Request) (*Response, error) {
+			return &Response{Content: "p2 success"}, nil
 		},
 	}
 
 	failover := NewFailoverProvider(p1, p2)
-	resp, err := failover.Generate(context.Background(), &LLMRequest{})
+	resp, err := failover.Generate(context.Background(), &Request{})
 	if err != nil {
 		t.Fatalf("failover failed: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestSmartResolver_RateLimit(t *testing.T) {
 	p1Calls := 0
 	p1 := &mockProvider{
 		id: "p1",
-		genFn: func(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+		genFn: func(ctx context.Context, req *Request) (*Response, error) {
 			p1Calls++
 			return nil, &openai.APIError{
 				HTTPStatusCode: http.StatusTooManyRequests,
@@ -82,16 +82,16 @@ func TestSmartResolver_RateLimit(t *testing.T) {
 	p2Calls := 0
 	p2 := &mockProvider{
 		id: "p2",
-		genFn: func(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+		genFn: func(ctx context.Context, req *Request) (*Response, error) {
 			p2Calls++
-			return &LLMResponse{Content: "p2 success"}, nil
+			return &Response{Content: "p2 success"}, nil
 		},
 	}
 
 	smart := NewSmartResolver(StrategyPriority, p1, p2)
 
 	// First call: p1 should fail with rate limit, p2 should succeed
-	resp, err := smart.Generate(context.Background(), &LLMRequest{})
+	resp, err := smart.Generate(context.Background(), &Request{})
 	if err != nil {
 		t.Fatalf("smart resolver failed: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestSmartResolver_RateLimit(t *testing.T) {
 	}
 
 	// Second call: p1 should be cooling, p2 should be called directly
-	resp, err = smart.Generate(context.Background(), &LLMRequest{})
+	resp, err = smart.Generate(context.Background(), &Request{})
 	if err != nil {
 		t.Fatalf("smart resolver failed on second call: %v", err)
 	}
@@ -120,17 +120,17 @@ func TestSmartResolver_RoundRobin(t *testing.T) {
 	p1Calls := 0
 	p1 := &mockProvider{
 		id: "p1",
-		genFn: func(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+		genFn: func(ctx context.Context, req *Request) (*Response, error) {
 			p1Calls++
-			return &LLMResponse{Content: "p1 success"}, nil
+			return &Response{Content: "p1 success"}, nil
 		},
 	}
 	p2Calls := 0
 	p2 := &mockProvider{
 		id: "p2",
-		genFn: func(ctx context.Context, req *LLMRequest) (*LLMResponse, error) {
+		genFn: func(ctx context.Context, req *Request) (*Response, error) {
 			p2Calls++
-			return &LLMResponse{Content: "p2 success"}, nil
+			return &Response{Content: "p2 success"}, nil
 		},
 	}
 
@@ -140,8 +140,8 @@ func TestSmartResolver_RoundRobin(t *testing.T) {
 	// Note: current implementation uses atomic.AddUint32 which starts at 0, so 1%2=1, 2%2=0
 	// So it might call p2 then p1 or vice-versa depending on the first Add.
 
-	smart.Generate(context.Background(), &LLMRequest{})
-	smart.Generate(context.Background(), &LLMRequest{})
+	smart.Generate(context.Background(), &Request{})
+	smart.Generate(context.Background(), &Request{})
 
 	if p1Calls != 1 || p2Calls != 1 {
 		t.Errorf("expected 1 call each to p1 and p2, got p1=%d, p2=%d", p1Calls, p2Calls)

@@ -14,8 +14,8 @@ import (
 // echoTool is a minimal tool.Tool for testing.
 type echoTool struct{ name string }
 
-func (e *echoTool) Spec() llm.ToolSpec {
-	return llm.ToolSpec{
+func (e *echoTool) Spec() llm.Spec {
+	return llm.Spec{
 		Name:        e.name,
 		Description: "Echoes the input.",
 		Parameters: map[string]any{

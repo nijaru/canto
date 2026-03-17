@@ -12,27 +12,27 @@ func TestHookRunner(t *testing.T) {
 	meta := SessionMeta{ID: "test-session"}
 
 	// 1. Success Hook
-	hookSuccess := NewCommandHook(
+	hookSuccess := NewCommand(
 		"success-hook",
-		[]HookEvent{EventSessionStart},
+		[]Event{EventSessionStart},
 		"sh",
 		[]string{"-c", "echo 'success'"},
 		2*time.Second,
 	)
 
 	// 2. Log Hook (Exit 1)
-	hookLog := NewCommandHook(
+	hookLog := NewCommand(
 		"log-hook",
-		[]HookEvent{EventSessionStart},
+		[]Event{EventSessionStart},
 		"sh",
 		[]string{"-c", "echo 'log this'; exit 1"},
 		2*time.Second,
 	)
 
 	// 3. Block Hook (Exit 2)
-	hookBlock := NewCommandHook(
+	hookBlock := NewCommand(
 		"block-hook",
-		[]HookEvent{EventPreToolUse},
+		[]Event{EventPreToolUse},
 		"sh",
 		[]string{"-c", "echo 'stop right there' >&2; exit 2"},
 		2*time.Second,
@@ -52,14 +52,14 @@ func TestHookRunner(t *testing.T) {
 		t.Fatalf("expected 2 results, got %d", len(results))
 	}
 
-	if results[0].Action != HookActionProceed {
+	if results[0].Action != ActionProceed {
 		t.Errorf("expected proceed action for first hook, got %d", results[0].Action)
 	}
 	if !strings.Contains(results[0].Output, "success") {
 		t.Errorf("expected 'success' in output, got '%s'", results[0].Output)
 	}
 
-	if results[1].Action != HookActionLog {
+	if results[1].Action != ActionLog {
 		t.Errorf("expected log action for second hook, got %d", results[1].Action)
 	}
 	if !strings.Contains(results[1].Output, "log this") {
@@ -76,22 +76,22 @@ func TestHookRunner(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
 
-	if results[0].Action != HookActionBlock {
+	if results[0].Action != ActionBlock {
 		t.Errorf("expected block action, got %d", results[0].Action)
 	}
 }
 
 func TestFuncHook(t *testing.T) {
 	called := false
-	h := NewFuncHook(
+	h := NewFunc(
 		"test-func",
-		[]HookEvent{EventSessionStart},
-		func(_ context.Context, p *HookPayload) *HookResult {
+		[]Event{EventSessionStart},
+		func(_ context.Context, p *Payload) *Result {
 			called = true
 			if p.Session.ID != "sess-1" {
 				t.Errorf("session ID = %q, want sess-1", p.Session.ID)
 			}
-			return &HookResult{Action: HookActionProceed, Output: "ok"}
+			return &Result{Action: ActionProceed, Output: "ok"}
 		},
 	)
 
@@ -108,7 +108,7 @@ func TestFuncHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !called {
-		t.Fatal("FuncHook fn not called")
+		t.Fatal("Func fn not called")
 	}
 	if len(results) != 1 || results[0].Output != "ok" {
 		t.Fatalf("unexpected results: %+v", results)
@@ -116,11 +116,11 @@ func TestFuncHook(t *testing.T) {
 }
 
 func TestFuncHook_Block(t *testing.T) {
-	h := NewFuncHook(
+	h := NewFunc(
 		"blocker",
-		[]HookEvent{EventPreToolUse},
-		func(_ context.Context, _ *HookPayload) *HookResult {
-			return &HookResult{Action: HookActionBlock, Error: context.Canceled}
+		[]Event{EventPreToolUse},
+		func(_ context.Context, _ *Payload) *Result {
+			return &Result{Action: ActionBlock, Error: context.Canceled}
 		},
 	)
 

@@ -55,7 +55,7 @@ When your solution is correct, explain the result clearly.`
 	// Seed user message.
 	store.Save(ctx, session.NewEvent(
 		sessionID,
-		session.EventTypeMessageAdded,
+		session.MessageAdded,
 		llm.Message{
 			Role:    llm.RoleUser,
 			Content: "Write a Python function to find all prime numbers up to N using the Sieve of Eratosthenes. Test it for N=50.",

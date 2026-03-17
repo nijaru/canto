@@ -14,21 +14,21 @@ import (
 type EventType string
 
 const (
-	EventTypeMessageAdded  EventType = "message_added"
-	EventTypeHandoff       EventType = "handoff"
-	EventTypeExternalInput EventType = "external_input"
+	MessageAdded  EventType = "message_added"
+	Handoff       EventType = "handoff"
+	ExternalInput EventType = "external_input"
 
 	// Observability / Lifecycle
-	EventTypeTurnStarted            EventType = "turn_started"
-	EventTypeTurnCompleted          EventType = "turn_completed"
-	EventTypeStepStarted            EventType = "step_started"
-	EventTypeStepCompleted          EventType = "step_completed"
-	EventTypeToolExecutionStarted   EventType = "tool_execution_started"
-	EventTypeToolExecutionCompleted EventType = "tool_execution_completed"
-	EventTypeCompactionTriggered    EventType = "compaction_triggered"
+	TurnStarted         EventType = "turn_started"
+	TurnCompleted       EventType = "turn_completed"
+	StepStarted         EventType = "step_started"
+	StepCompleted       EventType = "step_completed"
+	ToolStarted         EventType = "tool_started"
+	ToolCompleted       EventType = "tool_completed"
+	CompactionTriggered EventType = "compaction_triggered"
 
 	// Framework Extensions
-	EventTypeToolOutputDelta EventType = "tool_output_delta"
+	ToolOutputDelta EventType = "tool_output_delta"
 )
 
 // Event is a single append-only fact in a session.
@@ -65,7 +65,7 @@ func NewEvent(sessionID string, eventType EventType, data any) Event {
 	}
 }
 
-// NewMessageEvent creates a new message event.
-func NewMessageEvent(sessionID string, msg llm.Message) Event {
-	return NewEvent(sessionID, EventTypeMessageAdded, msg)
+// NewMessage creates a new message event.
+func NewMessage(sessionID string, msg llm.Message) Event {
+	return NewEvent(sessionID, MessageAdded, msg)
 }

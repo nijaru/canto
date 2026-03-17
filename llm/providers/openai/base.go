@@ -60,7 +60,7 @@ func (b *Base) Cost(ctx context.Context, model string, usage llm.Usage) float64 
 }
 
 // Generate handles the OpenAI-compatible chat completion.
-func (b *Base) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMResponse, error) {
+func (b *Base) Generate(ctx context.Context, req *llm.Request) (*llm.Response, error) {
 	resp, err := b.Client.CreateChatCompletion(ctx, b.ConvertRequest(req))
 	if err != nil {
 		return nil, err
@@ -78,7 +78,7 @@ func (b *Base) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMRespo
 	}
 	usage.Cost = b.Cost(ctx, req.Model, usage)
 
-	return &llm.LLMResponse{
+	return &llm.Response{
 		Content: choice.Message.Content,
 		Calls:   b.ConvertToolCalls(choice.Message.ToolCalls),
 		Usage:   usage,
@@ -86,7 +86,7 @@ func (b *Base) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMRespo
 }
 
 // Stream handles the OpenAI-compatible streaming chat completion.
-func (b *Base) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream, error) {
+func (b *Base) Stream(ctx context.Context, req *llm.Request) (llm.Stream, error) {
 	stream, err := b.Client.CreateChatCompletionStream(ctx, b.ConvertRequest(req))
 	if err != nil {
 		return nil, err
@@ -94,12 +94,12 @@ func (b *Base) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream, err
 
 	return &OpenAIStream{
 		stream:      stream,
-		activeCalls: make(map[int]llm.ToolCall),
+		activeCalls: make(map[int]llm.Call),
 	}, nil
 }
 
-// ConvertRequest transforms the unified LLMRequest into OpenAI's format.
-func (b *Base) ConvertRequest(req *llm.LLMRequest) openai.ChatCompletionRequest {
+// ConvertRequest transforms the unified Request into OpenAI's format.
+func (b *Base) ConvertRequest(req *llm.Request) openai.ChatCompletionRequest {
 	messages := make([]openai.ChatCompletionMessage, len(req.Messages))
 	for i, m := range req.Messages {
 		msg := openai.ChatCompletionMessage{
@@ -240,13 +240,13 @@ func (s schemaMarshaler) MarshalJSON() ([]byte, error) {
 }
 
 // ConvertToolCalls transforms OpenAI tool calls into the unified format.
-func (b *Base) ConvertToolCalls(calls []openai.ToolCall) []llm.ToolCall {
+func (b *Base) ConvertToolCalls(calls []openai.ToolCall) []llm.Call {
 	if len(calls) == 0 {
 		return nil
 	}
-	res := make([]llm.ToolCall, len(calls))
+	res := make([]llm.Call, len(calls))
 	for i, call := range calls {
-		res[i] = llm.ToolCall{
+		res[i] = llm.Call{
 			ID:   call.ID,
 			Type: string(call.Type),
 		}
@@ -260,7 +260,7 @@ func (b *Base) ConvertToolCalls(calls []openai.ToolCall) []llm.ToolCall {
 type OpenAIStream struct {
 	stream      *openai.ChatCompletionStream
 	err         error
-	activeCalls map[int]llm.ToolCall // Track partial calls by their index in the response
+	activeCalls map[int]llm.Call // Track partial calls by their index in the response
 }
 
 func (s *OpenAIStream) Next() (*llm.Chunk, bool) {
@@ -295,7 +295,7 @@ func (s *OpenAIStream) Next() (*llm.Chunk, bool) {
 		}
 
 		if len(choice.Delta.ToolCalls) > 0 {
-			chunk.Calls = make([]llm.ToolCall, len(choice.Delta.ToolCalls))
+			chunk.Calls = make([]llm.Call, len(choice.Delta.ToolCalls))
 			for i, delta := range choice.Delta.ToolCalls {
 				index := delta.Index
 				if index == nil {
@@ -306,7 +306,7 @@ func (s *OpenAIStream) Next() (*llm.Chunk, bool) {
 
 				call, ok := s.activeCalls[*index]
 				if !ok {
-					call = llm.ToolCall{
+					call = llm.Call{
 						Type: string(delta.Type),
 					}
 				}

@@ -120,8 +120,8 @@ func (w *wrappedProvider) ID() string { return w.inner.ID() }
 
 func (w *wrappedProvider) Generate(
 	ctx context.Context,
-	req *llm.LLMRequest,
-) (*llm.LLMResponse, error) {
+	req *llm.Request,
+) (*llm.Response, error) {
 	ctx, span := Tracer().Start(ctx, "gen_ai.chat",
 		trace.WithAttributes(
 			attribute.String("gen_ai.request.model", req.Model),
@@ -145,7 +145,7 @@ func (w *wrappedProvider) Generate(
 	return resp, nil
 }
 
-func (w *wrappedProvider) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream, error) {
+func (w *wrappedProvider) Stream(ctx context.Context, req *llm.Request) (llm.Stream, error) {
 	ctx, span := Tracer().Start(ctx, "gen_ai.chat",
 		trace.WithAttributes(
 			attribute.String("gen_ai.request.model", req.Model),
@@ -239,7 +239,7 @@ func WrapTool(t tool.Tool) tool.Tool {
 	return &w
 }
 
-func (w *wrappedTool) Spec() llm.ToolSpec { return w.inner.Spec() }
+func (w *wrappedTool) Spec() llm.Spec { return w.inner.Spec() }
 
 func (w *wrappedTool) Execute(ctx context.Context, args string) (string, error) {
 	name := w.inner.Spec().Name

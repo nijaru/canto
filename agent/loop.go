@@ -36,7 +36,7 @@ func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, e
 // RunStep executes a single step of the agentic loop using the provided config.
 // It builds the context, generates a response, and executes any requested tools.
 func RunStep(ctx context.Context, s *session.Session, cfg StepConfig) (res StepResult, err error) {
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeStepStarted, map[string]any{
+	if err := s.Append(ctx, session.NewEvent(s.ID(), session.StepStarted, map[string]any{
 		"agent_id": cfg.ID,
 		"model":    cfg.Model,
 	})); err != nil {
@@ -51,10 +51,10 @@ func RunStep(ctx context.Context, s *session.Session, cfg StepConfig) (res StepR
 		if err != nil {
 			data["error"] = err.Error()
 		}
-		_ = s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeStepCompleted, data))
+		_ = s.Append(ctx, session.NewEvent(s.ID(), session.StepCompleted, data))
 	}()
 
-	req := &llm.LLMRequest{
+	req := &llm.Request{
 		Model: cfg.Model,
 	}
 
@@ -76,7 +76,7 @@ func RunStep(ctx context.Context, s *session.Session, cfg StepConfig) (res StepR
 		Reasoning: resp.Reasoning,
 		Calls:     resp.Calls,
 	}
-	e := session.NewEvent(s.ID(), session.EventTypeMessageAdded, msg)
+	e := session.NewEvent(s.ID(), session.MessageAdded, msg)
 	e.Cost = resp.Usage.Cost
 	if err = s.Append(ctx, e); err != nil {
 		return
@@ -105,7 +105,7 @@ func RunTurn(
 	s *session.Session,
 	maxSteps int,
 ) (res StepResult, err error) {
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeTurnStarted, map[string]any{
+	if err := s.Append(ctx, session.NewEvent(s.ID(), session.TurnStarted, map[string]any{
 		"agent_id": a.ID(),
 	})); err != nil {
 		return StepResult{}, err
@@ -122,7 +122,7 @@ func RunTurn(
 		if err != nil {
 			data["error"] = err.Error()
 		}
-		_ = s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeTurnCompleted, data))
+		_ = s.Append(ctx, session.NewEvent(s.ID(), session.TurnCompleted, data))
 	}()
 
 	for steps < maxSteps {
