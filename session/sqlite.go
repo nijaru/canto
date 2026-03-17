@@ -82,7 +82,13 @@ func (s *SQLiteStore) init() error {
 
 // Save persists an event to the database.
 func (s *SQLiteStore) Save(ctx context.Context, e Event) error {
-	_, err := s.db.ExecContext(
+	return s.saveTx(ctx, s.db, e)
+}
+
+func (s *SQLiteStore) saveTx(ctx context.Context, exec interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, e Event) error {
+	_, err := exec.ExecContext(
 		ctx,
 		"INSERT INTO events (id, session_id, type, timestamp, data, cost) VALUES (?, ?, ?, ?, ?, ?)",
 		e.ID.String(),
@@ -97,10 +103,16 @@ func (s *SQLiteStore) Save(ctx context.Context, e Event) error {
 
 // Load reconstructs a session from the database.
 func (s *SQLiteStore) Load(ctx context.Context, sessionID string) (*Session, error) {
+	return s.LoadUntil(ctx, sessionID, ulid.Make()) // Load all events (Make() is max ULID effectively for current time)
+}
+
+// LoadUntil loads a session up to (and including) the given event ID.
+func (s *SQLiteStore) LoadUntil(ctx context.Context, sessionID string, eventID ulid.ULID) (*Session, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		"SELECT id, session_id, type, timestamp, data, cost FROM events WHERE session_id = ? ORDER BY id ASC",
+		"SELECT id, session_id, type, timestamp, data, cost FROM events WHERE session_id = ? AND id <= ? ORDER BY id ASC",
 		sessionID,
+		eventID.String(),
 	)
 	if err != nil {
 		return nil, err
@@ -133,6 +145,34 @@ func (s *SQLiteStore) Load(ctx context.Context, sessionID string) (*Session, err
 	}
 
 	return sess, nil
+}
+
+// Fork creates a new session by copying all events from an existing session.
+func (s *SQLiteStore) Fork(ctx context.Context, originalID, newID string) (*Session, error) {
+	sess, err := s.Load(ctx, originalID)
+	if err != nil {
+		return nil, err
+	}
+
+	forked := sess.Fork(newID)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	for _, e := range forked.Events() {
+		if err := s.saveTx(ctx, tx, e); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return forked, nil
 }
 
 // Search searches the event log using FTS5.

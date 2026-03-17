@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/oklog/ulid/v2"
 )
 
 // memStore is an in-memory Store for testing.
@@ -21,6 +23,14 @@ func (m *memStore) Save(_ context.Context, e Event) error {
 }
 
 func (m *memStore) Load(_ context.Context, _ string) (*Session, error) { return nil, nil }
+
+func (m *memStore) LoadUntil(_ context.Context, _ string, _ ulid.ULID) (*Session, error) {
+	return nil, nil
+}
+
+func (m *memStore) Fork(_ context.Context, _, _ string) (*Session, error) {
+	return nil, nil
+}
 
 func (m *memStore) Search(_ context.Context, _, _ string) ([]Event, error) { return nil, nil }
 

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/nijaru/canto/llm"
+	"github.com/oklog/ulid/v2"
 )
 
 const subscriberBufSize = 64
@@ -58,6 +59,25 @@ func New(id string) *Session {
 	return &Session{
 		id:   id,
 		meta: make(map[string]any),
+	}
+}
+
+// Fork creates a new session with a new ID, copying all existing events from
+// this session. The subscribers are not copied.
+func (s *Session) Fork(newID string) *Session {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	events := make([]Event, len(s.events))
+	for i, e := range s.events {
+		e.SessionID = newID
+		events[i] = e
+	}
+
+	return &Session{
+		id:     newID,
+		events: events,
+		meta:   make(map[string]any), // Reset metadata for the fork
 	}
 }
 
@@ -146,5 +166,9 @@ func (s *Session) TotalCost() float64 {
 type Store interface {
 	Save(ctx context.Context, e Event) error
 	Load(ctx context.Context, sessionID string) (*Session, error)
+	// LoadUntil loads a session up to (and including) the given event ID.
+	LoadUntil(ctx context.Context, sessionID string, eventID ulid.ULID) (*Session, error)
+	// Fork creates a new session by copying all events from an existing session.
+	Fork(ctx context.Context, originalSessionID, newSessionID string) (*Session, error)
 	Search(ctx context.Context, sessionID string, query string) ([]Event, error)
 }
