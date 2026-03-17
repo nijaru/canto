@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"time"
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/hook"
@@ -9,24 +10,48 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
+const defaultRunnerTimeout = 2 * time.Minute
+
 // Runner orchestrates the execution of an agent within a session.
 // It always uses a LaneManager to serialize execution within a session
 // while allowing concurrent execution across different sessions.
 type Runner struct {
-	Store session.Store
-	Agent agent.Agent
-	lanes *LaneManager
-	Hooks *hook.Runner
+	Store   session.Store
+	Agent   agent.Agent
+	Timeout time.Duration
+	lanes   *LaneManager
+	Hooks   *hook.Runner
 }
 
 // NewRunner creates a Runner with per-session lane serialization enabled.
 func NewRunner(s session.Store, a agent.Agent) *Runner {
 	return &Runner{
-		Store: s,
-		Agent: a,
-		lanes: NewLaneManager(),
-		Hooks: hook.NewRunner(),
+		Store:   s,
+		Agent:   a,
+		Timeout: defaultRunnerTimeout,
+		lanes:   NewLaneManager(),
+		Hooks:   hook.NewRunner(),
 	}
+}
+
+// Close gracefully stops the internal lane manager and any active goroutines.
+func (r *Runner) Close() {
+	r.lanes.Stop()
+}
+
+// Subscribe returns a channel that receives all events for the given session.
+// It loads the current session to attach the subscriber.
+func (r *Runner) Subscribe(ctx context.Context, sessionID string) (<-chan session.Event, error) {
+	sess, err := r.Store.Load(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return sess.Subscribe(ctx), nil
+}
+
+// Search searches the session history for the given query.
+func (r *Runner) Search(ctx context.Context, sessionID, query string) ([]session.Event, error) {
+	return r.Store.Search(ctx, sessionID, query)
 }
 
 // Send appends a user message to the session store and runs the agent.
@@ -63,6 +88,12 @@ func (r *Runner) SendStream(
 
 // Run executes the agent on the given session, serialized within the session lane.
 func (r *Runner) Run(ctx context.Context, sessionID string) (agent.StepResult, error) {
+	if r.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.Timeout)
+		defer cancel()
+	}
+
 	var result agent.StepResult
 	errCh := r.lanes.Execute(ctx, sessionID, func(ctx context.Context) error {
 		var err error
@@ -79,6 +110,12 @@ func (r *Runner) RunStream(
 	sessionID string,
 	chunkFn func(*llm.Chunk),
 ) (agent.StepResult, error) {
+	if r.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.Timeout)
+		defer cancel()
+	}
+
 	var result agent.StepResult
 	errCh := r.lanes.Execute(ctx, sessionID, func(ctx context.Context) error {
 		var err error
