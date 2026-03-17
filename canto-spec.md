@@ -84,7 +84,6 @@ canto/
 ├── tool/                   # Layer 3c: Tool execution
 │   ├── tool.go             # Tool interface + typed Schema helpers
 │   ├── registry.go         # Lazy-loading tool registry
-│   ├── executor.go         # Sandboxed execution with timeout + error normalization
 │   └── mcp/
 │       ├── client.go       # MCP client (stdio + streamable HTTP)
 │       ├── server.go       # MCP server primitives
@@ -94,30 +93,24 @@ canto/
 │   ├── skill.go            # Skill interface (SKILL.md standard)
 │   ├── registry.go         # Discovery, on-demand loading, eligibility filtering
 │   ├── loader.go           # SKILL.md parser + YAML frontmatter
-│   └── hub.go              # Remote skill registry client (agentskills.io compatible)
+│   └── tool.go             # read_skill and manage_skill tools
 │
 ├── runtime/                # Layer 3e: Session execution
 │   ├── runner.go           # Runs an agent + session, manages the agentic loop
 │   ├── lane.go             # Per-session serialization queue (the OpenClaw lesson)
-│   ├── heartbeat.go        # Scheduled/autonomous execution (cron + event-driven)
-│   ├── workspace.go        # Workspace-first config loading (AGENTS.md / SOUL.md)
-│   └── channel.go          # Channel adapter interface (normalizes all inputs)
+│   └── hitl.go             # Human-in-the-loop primitives
 │
 └── memory/                 # Layer 3f: Start simple, grow intentionally
-    ├── memory.go           # Memory interface
-    ├── buffer.go           # In-context working memory (sliding window)
-    ├── store.go            # External store interface
-    ├── sqlite_store.go     # SQLite-backed long-term memory (default)
-    └── vector_store.go     # VectorStore interface (OmenDB adapter when ready)
+    ├── core.go             # Core Memory (Persona/State)
+    ├── vector.go           # VectorStore interface + SQLite brute-force
+    └── hnsw.go             # HNSW vector search (pure Go)
 
 canto/x/                  # Extension packages (built on core)
 ├── graph/                  # DAG orchestration + conditional routing
 ├── swarm/                  # Decentralized multi-agent mesh coordination
 ├── eval/                   # Evaluation harness + trajectory scoring
-├── channel/                # Multi-channel adapters (Telegram, Slack, HTTP, CLI, Discord)
-├── rl/                     # RL training pipeline on trajectory store
 ├── obs/                    # OpenTelemetry, structured logging, dashboards
-└── guardrail/              # Input/output validation + policy-as-code enforcement
+└── tools/                  # Standard tools: bash, code executor, search, etc.
 ```
 
 ---
@@ -920,22 +913,21 @@ Before finalizing implementation, review these:
 
 **Test gate**: multi-turn agent with context management; rate limit simulation
 
-### Phase 3: Runtime Features (1-2 weeks)
-1. `runtime/workspace.go` -- AGENTS.md loading
-2. `skill/skill.go` + `skill/registry.go` -- progressive disclosure
-3. `runtime/heartbeat.go` -- scheduled execution (robfig/cron)
-4. `runtime/channel.go` + `x/channel/http.go` -- HTTP channel adapter
-5. `tool/mcp/client.go` -- MCP client
-6. `session/trajectory.go` -- trajectory recording
+### Phase 3: Runtime Features (Done)
+1. `skill/` -- SKILL.md progressive disclosure + management tools
+2. `runtime/hitl.go` -- InputGate and human-in-the-loop primitives
+3. `runtime/runner.go` -- Subscribe() and real-time event streaming
+4. `tool/mcp/` -- Full JSON-RPC 2.0 client/server support
+5. `session/trajectory.go` -- Trajectory recording for eval/RL
 
-**Test gate**: scheduled agent that checks RSS feed and sends daily summary
+**Test gate**: agent that uses a skill to learn a new tool, executes it, and streams progress to a subscriber.
 
-### Phase 4: Multi-Agent (2+ weeks)
-1. `agent/handoff.go`
-2. `x/graph/` -- deterministic graph orchestration
-3. `x/swarm/` -- blackboard-based swarm
-4. `memory/vector_store.go` + OmenDB sidecar adapter
-5. `x/eval/` -- evaluation harness over trajectory store
+### Phase 4: Multi-Agent & Memory (Done)
+1. `agent/handoff.go` -- Structural control transfer
+2. `x/graph/` -- Deterministic DAG orchestration
+3. `x/swarm/` -- Blackboard mesh coordination
+4. `memory/hnsw.go` -- Pure Go vector search with WAL durability
+5. `x/eval/` -- Trajectory scoring harness over event logs
 
 ---
 
@@ -944,14 +936,13 @@ Before finalizing implementation, review these:
 ```
 module github.com/nijaru/canto
 
-go 1.23
+go 1.26
 
 require (
-    github.com/robfig/cron/v3 v3.0.1     // cross-platform scheduling; uses time.AfterFunc
-    modernc.org/sqlite v1.x               // pure Go SQLite with FTS5; no CGo required
+    github.com/robfig/cron/v3 v3.0.1     // cross-platform scheduling
+    modernc.org/sqlite v1.x               // pure Go SQLite with FTS5
     github.com/oklog/ulid/v2 v2.x         // sortable IDs for events
     go.opentelemetry.io/otel v1.x
-    go.opentelemetry.io/otel/trace v1.x
     github.com/invopop/jsonschema v0.x    // JSON schema generation from Go types
 )
 ```

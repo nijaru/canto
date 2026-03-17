@@ -82,7 +82,7 @@ func main() {
 
 - `session/` — Append-only event log, JSONL and SQLite backends, trajectory recording
 - `context/` — Context pipeline: token guards, compaction, KV-cache preservation
-- `tool/` — Registry, sandboxed executor, MCP client/server
+- `tool/` — Registry, MCP client/server
 - `skill/` — Progressive disclosure skill packages (SKILL.md standard)
 - `runtime/` — Session runner with per-session lane queue
 - `memory/` — Episode store, SQLite long-term memory, HNSW vector search
@@ -92,7 +92,7 @@ func main() {
 - `x/graph/` — DAG orchestration with conditional Go routing functions
 - `x/swarm/` — Blackboard-based multi-agent coordination
 - `x/eval/` — Trajectory scoring harness
-- `x/tools/` — Bash, code execution, memory search, lazy tool discovery
+- `x/tools/` — Bash, code execution, sandboxed executor, memory search, lazy tool discovery
 
 ## Core Interfaces
 
