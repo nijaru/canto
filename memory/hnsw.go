@@ -164,16 +164,32 @@ func (s *HNSWStore) Search(
 		return nil, nil
 	}
 
-	// Retrieve durable metadata for the matched subset
+	// Batch retrieve metadata for the matched subset
+	ids := make([]string, len(nodes))
+	nodeMap := make(map[string]hnsw.Node[string])
+	for i, node := range nodes {
+		ids[i] = node.Key
+		nodeMap[node.Key] = node
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	q := fmt.Sprintf("SELECT id, metadata FROM vectors WHERE id IN (%s)", strings.Join(placeholders, ","))
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("hnsw: metadata query: %w", err)
+	}
+	defer rows.Close()
+
 	var results []SearchResult
-	for _, node := range nodes {
-		var mData string
-		err := s.db.QueryRowContext(ctx, "SELECT metadata FROM vectors WHERE id = ?", node.Key).
-			Scan(&mData)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				continue
-			}
+	for rows.Next() {
+		var id, mData string
+		if err := rows.Scan(&id, &mData); err != nil {
 			return nil, err
 		}
 
@@ -196,15 +212,16 @@ func (s *HNSWStore) Search(
 			}
 		}
 
+		node := nodeMap[id]
 		results = append(results, SearchResult{
-			ID:       node.Key,
+			ID:       id,
 			Score:    1.0 - hnsw.CosineDistance(queryVector, node.Value),
 			Metadata: metadata,
 		})
+	}
 
-		if len(results) >= k {
-			break
-		}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	slices.SortFunc(results, func(a, b SearchResult) int {
