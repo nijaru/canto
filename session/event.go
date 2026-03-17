@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-json-experiment/json"
 	"github.com/go-json-experiment/json/jsontext"
+	"github.com/nijaru/canto/llm"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -62,4 +63,9 @@ func NewEvent(sessionID string, eventType EventType, data any) Event {
 		Timestamp: time.Now().UTC(),
 		Data:      raw,
 	}
+}
+
+// NewMessageEvent creates a new message event.
+func NewMessageEvent(sessionID string, msg llm.Message) Event {
+	return NewEvent(sessionID, EventTypeMessageAdded, msg)
 }

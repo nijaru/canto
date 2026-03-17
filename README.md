@@ -1,15 +1,50 @@
 # Canto
 
-Composable Go framework for building LLM agents and agent swarms.
+Canto is a layered Go framework for building durable LLM agents and multi-agent systems.
+
+The framework organizes agentic behavior into discrete, swappable layers. At its core, Canto uses an append-only event log to track session history, providing a deterministic foundation for state recovery, observability, and regression testing. It is designed for developers building production agents that require auditability and reliability beyond simple prompt loops.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/nijaru/canto.svg)](https://pkg.go.dev/github.com/nijaru/canto)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Design
+## Features
 
-- Graph routing and coordination are Go code. What agents do within a turn is LLM-decided.
-- Session state is an append-only event log — never mutated
-- Five small interfaces that compose
+- **Durable Sessions**: Append-only event log (JSONL/SQLite) for state recovery and auditability.
+- **Layered Decoupling**: Separate layers for LLM providers, agent loops, context management, and tools.
+- **Advanced Orchestration**: Support for graph routing, multi-agent swarms, and parallel tool dispatch.
+- **Context Pipeline**: Middleware-style request builder with budget guards and auto-compaction.
+- **Observability**: Integrated OpenTelemetry tracing and a transcript evaluation suite (`x/eval`).
+- **Memory**: Support for HNSW vector stores and SQLite-backed long-term memory.
+- **Resilience**: Provider-level key rotation, fallback chains, and budget caps.
+
+## Installation
+
+```bash
+go get github.com/nijaru/canto
+```
+
+## Architecture
+
+Canto's architecture depends downward only. Extensions depend on the runtime, which depends on the agent loop and LLM layer.
+
+```
++-------------------------------------------------------------+
+|  Extensions  (graph, swarm, eval, obs, tools)               |
++-------------------------------------------------------------+
+|  Runtime     (session, context, tool, skill, memory)        |
++-------------------------------------------------------------+
+|  Agent Loop  (perceive → decide → act → observe)            |
++-------------------------------------------------------------+
+|  LLM Layer   (provider, streaming, cost, tokens)            |
++-------------------------------------------------------------+
+```
+
+### Layered Breakdown
+
+- **LLM Layer**: Normalizes interactions across providers (OpenAI, Anthropic, Gemini, etc.) and handles cost/token tracking.
+- **Agent Loop**: Orchestrates the atomic turn-based execution cycle.
+- **Runtime**: Manages the persistent session log, request construction (context), and long-term memory.
+- **Extensions (x/)**: High-level patterns like DAG orchestration (Graph), Blackboard coordination (Swarm), and Judge-based evaluation.
 
 ## Quick Start
 
@@ -19,135 +54,37 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/llm/providers/openai"
 	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
-	"github.com/nijaru/canto/x/tools"
 )
 
 func main() {
 	ctx := context.Background()
-
-	registry := tool.NewRegistry()
-	registry.Register(&tools.BashTool{})
-
 	provider := openai.NewProvider(openai.Config{APIKey: os.Getenv("OPENAI_API_KEY")})
-
-	a := agent.New("assistant", "You are a helpful assistant.", "gpt-4o", provider, registry)
-
-	sess := session.New("session-1")
-	sess.Append(session.NewEvent(sess.ID(), session.EventTypeMessageAdded, llm.Message{
-		Role:    llm.RoleUser,
-		Content: "What Go version introduced range over functions?",
-	}))
-
-	if _, err := a.Turn(ctx, sess); err != nil {
-		log.Fatal(err)
+	
+	// 1. Initialize an agent
+	a := agent.New("assistant", "You're a helpful assistant.", "gpt-4o", provider, nil)
+	
+	// 2. Start a durable session
+	sess := session.New("user-123")
+	msg := llm.Message{Role: llm.RoleUser, Content: "How does Canto handle state?"}
+	if err := sess.Append(ctx, session.NewMessageEvent(sess.ID(), msg)); err != nil {
+		panic(err)
 	}
 
-	msgs := sess.Messages()
-	fmt.Println(msgs[len(msgs)-1].Content)
+	// 3. Run a turn
+	if _, err := a.Turn(ctx, sess); err != nil {
+		panic(err)
+	}
+
+	// 4. View results
+	fmt.Println(sess.Messages()[len(sess.Messages())-1].Content)
 }
 ```
-
-## Architecture
-
-```
-+-------------------------------------------------------------+
-|  Extensions  (graph, swarm, eval, rl, obs...)               |
-+-------------------------------------------------------------+
-|  Runtime     (session, context, tool, skill, memory)        |
-+-------------------------------------------------------------+
-|  Agent Loop  (perceive → decide → act → observe)            |
-+-------------------------------------------------------------+
-|  LLM         (provider, resolver, streaming, cost)          |
-+-------------------------------------------------------------+
-```
-
-**Layer 1 — LLM**
-
-- `llm/` — Provider interface, streaming normalization, cost tracking, token estimation
-- `llm/providers/` — OpenAI, Anthropic, Gemini, Ollama, OpenRouter
-
-**Layer 2 — Agent**
-
-- `agent/` — Core loop: perceive → decide → act → observe; parallel tool dispatch; handoffs
-
-**Layer 3 — Runtime**
-
-- `session/` — Append-only event log, JSONL and SQLite backends, transcripts
-- `context/` — Context pipeline: token guards, compaction, KV-cache preservation
-- `tool/` — Registry, MCP client/server
-- `skill/` — Progressive disclosure skill packages (SKILL.md standard)
-- `runtime/` — Session runner with per-session lane queue
-- `memory/` — Episode store, SQLite long-term memory, HNSW vector search
-
-**Extensions (`x/`)**
-
-- `x/graph/` — DAG orchestration with conditional Go routing functions
-- `x/swarm/` — Blackboard-based multi-agent coordination
-- `x/eval/` — Run transcript evaluation harness
-- `x/tools/` — Bash, code execution, sandboxed executor, memory search, lazy tool discovery
-
-## Core Interfaces
-
-```go
-type Provider interface {
-	ID() string
-	Generate(ctx context.Context, req *LLMRequest) (*LLMResponse, error)
-	Stream(ctx context.Context, req *LLMRequest) (Stream, error)
-	CountTokens(ctx context.Context, model string, messages []Message) (int, error)
-	Cost(ctx context.Context, model string, usage Usage) float64
-	Capabilities(model string) Capabilities
-}
-
-type Tool interface {
-	Spec() llm.ToolSpec
-	Execute(ctx context.Context, args string) (string, error)
-}
-
-type Agent interface {
-	ID() string
-	Step(ctx context.Context, sess *session.Session) (StepResult, error)
-	Turn(ctx context.Context, sess *session.Session) (StepResult, error)
-}
-
-type ContextProcessor interface {
-	Process(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.LLMRequest) error
-}
-
-type Store interface {
-	Load(ctx context.Context, sessionID string) (*Session, error)
-	Save(ctx context.Context, e Event) error
-}
-```
-
-## Context Pipeline
-
-Processors build each LLM request from the session log. Each is a pure function — reads session state, never writes it.
-
-```go
-builder := context.NewBuilder(
-	context.InstructionProcessor(instructions),
-	context.ToolProcessor(registry),
-	context.HistoryProcessor(),
-)
-```
-
-Compaction runs offload before summarize. Offload writes tool results to external storage and keeps a reference in context — reversible. Summarization is lossy and runs only when offload isn't enough.
-
-## Features
-
-- **Provider resilience** — key rotation on rate limits, fallback chains, budget caps
-- **Lane queue** — concurrent across sessions, serialized within each session
-- **MCP** — connect to external MCP servers as tool sources, or expose a tool registry over MCP
-- **Reasoning model support** — `Capabilities()` detects o1/o3 and adapts requests automatically
-- **Structured outputs** — `ResponseFormat` in `LLMRequest` for JSON schema enforcement
 
 ## Status
 
