@@ -4,11 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
-	"encoding/json"
 	"math"
 	"slices"
 	"strings"
 
+	"github.com/go-json-experiment/json"
 	_ "modernc.org/sqlite"
 )
 

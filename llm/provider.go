@@ -25,9 +25,9 @@ const (
 type Message struct {
 	Role    Role       `json:"role"`
 	Content string     `json:"content"`
-	Name    string     `json:"name,omitempty"` // For tool output or identifying the assistant
-	ToolID  string     `json:"tool_id,omitempty"`
-	Calls   []ToolCall `json:"tool_calls,omitempty"`
+	Name    string     `json:"name,omitzero"` // For tool output or identifying the assistant
+	ToolID  string     `json:"tool_id,omitzero"`
+	Calls   []ToolCall `json:"tool_calls,omitzero"`
 }
 
 // ToolCall represents a request from the LLM to call a tool.
@@ -64,32 +64,32 @@ const (
 type ResponseFormat struct {
 	Type ResponseFormatType `json:"type"`
 	// Schema is the JSON Schema definition used when Type is ResponseFormatJSONSchema.
-	Schema map[string]any `json:"schema,omitempty"`
+	Schema map[string]any `json:"schema,omitzero"`
 	// Name identifies the schema for providers that require a name.
-	Name   string `json:"name,omitempty"`
-	Strict bool   `json:"strict,omitempty"`
+	Name   string `json:"name,omitzero"`
+	Strict bool   `json:"strict,omitzero"`
 }
 
 // LLMRequest is the unified request sent to any provider.
 type LLMRequest struct {
 	Model          string          `json:"model"`
 	Messages       []Message       `json:"messages"`
-	Tools          []*ToolSpec     `json:"tools,omitempty"`
+	Tools          []*ToolSpec     `json:"tools,omitzero"`
 	Temperature    float64         `json:"temperature"`
-	MaxTokens      int             `json:"max_tokens,omitempty"`
-	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+	MaxTokens      int             `json:"max_tokens,omitzero"`
+	ResponseFormat *ResponseFormat `json:"response_format,omitzero"`
 	// ReasoningEffort controls the depth of internal reasoning for OpenAI o-series
 	// models. Accepted values: "low", "medium", "high". Empty means provider default.
-	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitzero"`
 	// ThinkingBudget, when > 0, enables Anthropic extended thinking with the given
 	// token budget (minimum 1024, must be less than MaxTokens).
-	ThinkingBudget int `json:"thinking_budget,omitempty"`
+	ThinkingBudget int `json:"thinking_budget,omitzero"`
 }
 
 // LLMResponse is the unified response from any provider.
 type LLMResponse struct {
 	Content string     `json:"content"`
-	Calls   []ToolCall `json:"tool_calls,omitempty"`
+	Calls   []ToolCall `json:"tool_calls,omitzero"`
 	Usage   Usage      `json:"usage"`
 }
 
@@ -98,7 +98,7 @@ type Usage struct {
 	InputTokens  int     `json:"input_tokens"`
 	OutputTokens int     `json:"output_tokens"`
 	TotalTokens  int     `json:"total_tokens"`
-	Cost         float64 `json:"cost,omitempty"` // USD
+	Cost         float64 `json:"cost,omitzero"` // USD
 }
 
 // Capabilities describes what features a model supports.

@@ -1,10 +1,11 @@
 package session
 
 import (
-	"encoding/json"
 	"log/slog"
 	"time"
 
+	"github.com/go-json-experiment/json"
+	"github.com/go-json-experiment/json/jsontext"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -28,13 +29,14 @@ const (
 
 // Event is a single append-only fact in a session.
 type Event struct {
-	ID        ulid.ULID       `json:"id"`
-	SessionID string          `json:"session_id"`
-	Type      EventType       `json:"type"`
-	Timestamp time.Time       `json:"timestamp"`
-	Data      json.RawMessage `json:"data"`
-	Cost      float64         `json:"cost,omitempty"`
+	ID        ulid.ULID      `json:"id"`
+	SessionID string         `json:"session_id"`
+	Type      EventType      `json:"type"`
+	Timestamp time.Time      `json:"timestamp"`
+	Data      jsontext.Value `json:"data"`
+	Cost      float64        `json:"cost,omitzero"`
 }
+
 
 // NewEvent creates a new event with a unique ID and current timestamp.
 func NewEvent(sessionID string, eventType EventType, data any) Event {

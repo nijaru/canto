@@ -3,12 +3,12 @@ package session
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/go-json-experiment/json"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -42,7 +42,11 @@ func (s *JSONLStore) saveLocked(e Event) error {
 	}
 	defer f.Close()
 
-	return json.NewEncoder(f).Encode(e)
+	if err := json.MarshalWrite(f, e); err != nil {
+		return err
+	}
+	_, err = f.Write([]byte("\n"))
+	return err
 }
 
 // Load reads all events for a session and reconstructs it.

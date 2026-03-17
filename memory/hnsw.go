@@ -3,13 +3,13 @@ package memory
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
 	"sync"
 
 	"github.com/coder/hnsw"
+	"github.com/go-json-experiment/json"
 	_ "modernc.org/sqlite"
 )
 

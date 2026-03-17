@@ -2,12 +2,12 @@ package openai
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 
 	"charm.land/catwalk/pkg/catwalk"
+	"github.com/go-json-experiment/json"
 	"github.com/nijaru/canto/llm"
 	"github.com/sashabaranov/go-openai"
 )

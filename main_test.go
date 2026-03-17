@@ -108,7 +108,10 @@ func TestMain(t *testing.T) {
 	}
 
 	// 4. Verify session state from reloaded session
-	sess, _ := store.Load(context.Background(), sessionID)
+	sess, err := store.Load(context.Background(), sessionID)
+	if err != nil {
+		t.Fatalf("failed to load session: %v", err)
+	}
 	messages := sess.Messages()
 
 	// Expected:
