@@ -29,6 +29,13 @@ func (a *BaseAgent) StreamStep(
 	s *session.Session,
 	chunkFn func(*llm.Chunk),
 ) (StepResult, error) {
+	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeStepStarted, map[string]any{
+		"agent_id": a.ID(),
+		"model":    a.Model,
+	})); err != nil {
+		return StepResult{}, err
+	}
+
 	req := &llm.LLMRequest{
 		Model: a.Model,
 	}
@@ -110,6 +117,14 @@ func (a *BaseAgent) StreamStep(
 		return res, err
 	}
 	res.Usage = usage
+
+	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeStepCompleted, map[string]any{
+		"agent_id": a.ID(),
+		"usage":    usage,
+	})); err != nil {
+		return res, err
+	}
+
 	return res, nil
 }
 
@@ -121,6 +136,12 @@ func (a *BaseAgent) StreamTurn(
 	s *session.Session,
 	chunkFn func(*llm.Chunk),
 ) (StepResult, error) {
+	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeTurnStarted, map[string]any{
+		"agent_id": a.ID(),
+	})); err != nil {
+		return StepResult{}, err
+	}
+
 	steps := 0
 	var result StepResult
 	var totalUsage llm.Usage
@@ -137,8 +158,7 @@ func (a *BaseAgent) StreamTurn(
 		totalUsage.Cost += result.Usage.Cost
 
 		if result.Handoff != nil {
-			result.Usage = totalUsage
-			return result, nil
+			break
 		}
 
 		messages := s.Messages()
@@ -166,6 +186,13 @@ func (a *BaseAgent) StreamTurn(
 
 	if a.Hooks != nil {
 		a.Hooks.Run(ctx, hook.EventStop, hook.SessionMeta{ID: s.ID()}, nil)
+	}
+
+	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeTurnCompleted, map[string]any{
+		"agent_id": a.ID(),
+		"steps":    steps,
+	})); err != nil {
+		return result, err
 	}
 
 	return result, nil
