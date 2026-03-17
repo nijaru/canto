@@ -37,6 +37,7 @@ func CapabilitiesProcessor() ContextProcessor {
 			if !caps.Thinking {
 				for i := range req.Messages {
 					req.Messages[i].Reasoning = ""
+					req.Messages[i].ThinkingBlocks = nil
 				}
 			}
 			return nil

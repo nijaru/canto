@@ -21,14 +21,22 @@ const (
 	RoleDeveloper Role = "developer"
 )
 
+// ThinkingBlock represents a reasoning block from a provider like Anthropic.
+type ThinkingBlock struct {
+	Type      string `json:"type"` // "thinking" or "redacted_thinking"
+	Thinking  string `json:"thinking,omitzero"`
+	Signature string `json:"signature,omitzero"`
+}
+
 // Message represents a single message in the LLM conversation.
 type Message struct {
-	Role      Role       `json:"role"`
-	Content   string     `json:"content"`
-	Reasoning string     `json:"reasoning,omitzero"`
-	Name      string     `json:"name,omitzero"` // For tool output or identifying the assistant
-	ToolID    string     `json:"tool_id,omitzero"`
-	Calls     []ToolCall `json:"tool_calls,omitzero"`
+	Role           Role            `json:"role"`
+	Content        string          `json:"content"`
+	Reasoning      string          `json:"reasoning,omitzero"`
+	ThinkingBlocks []ThinkingBlock `json:"thinking_blocks,omitzero"`
+	Name           string          `json:"name,omitzero"` // For tool output or identifying the assistant
+	ToolID         string          `json:"tool_id,omitzero"`
+	Calls          []ToolCall      `json:"tool_calls,omitzero"`
 }
 
 // ToolCall represents a request from the LLM to call a tool.
@@ -89,10 +97,11 @@ type LLMRequest struct {
 
 // LLMResponse is the unified response from any provider.
 type LLMResponse struct {
-	Content   string     `json:"content"`
-	Reasoning string     `json:"reasoning,omitzero"`
-	Calls     []ToolCall `json:"tool_calls,omitzero"`
-	Usage     Usage      `json:"usage"`
+	Content        string          `json:"content"`
+	Reasoning      string          `json:"reasoning,omitzero"`
+	ThinkingBlocks []ThinkingBlock `json:"thinking_blocks,omitzero"`
+	Calls          []ToolCall      `json:"tool_calls,omitzero"`
+	Usage          Usage           `json:"usage"`
 }
 
 // Usage tracks token consumption and cost.
@@ -147,6 +156,10 @@ func GenerateFromStream(s Stream) (*LLMResponse, error) {
 	var resp LLMResponse
 	// toolCallIndices tracks tool calls by their ID to handle deltas correctly.
 	toolCallIndices := make(map[string]int)
+	// thinkingBlockIndices tracks thinking blocks by their index to handle deltas if needed.
+	// For now, most streaming thinking blocks don't have a unique ID, but Anthropic
+	// may emit multiple blocks.
+	thinkingBlockIndices := make(map[int]int)
 
 	for {
 		chunk, ok := s.Next()
@@ -155,6 +168,14 @@ func GenerateFromStream(s Stream) (*LLMResponse, error) {
 		}
 		resp.Content += chunk.Content
 		resp.Reasoning += chunk.Reasoning
+		for i, block := range chunk.ThinkingBlocks {
+			if idx, ok := thinkingBlockIndices[i]; ok {
+				resp.ThinkingBlocks[idx] = block
+			} else {
+				thinkingBlockIndices[i] = len(resp.ThinkingBlocks)
+				resp.ThinkingBlocks = append(resp.ThinkingBlocks, block)
+			}
+		}
 		for _, call := range chunk.Calls {
 			if idx, ok := toolCallIndices[call.ID]; ok {
 				// Update existing call. If the chunk contains the full state,
@@ -238,9 +259,10 @@ type Stream interface {
 
 // Chunk represents a single piece of a streaming response.
 type Chunk struct {
-	Content   string     `json:"content"`
-	Reasoning string     `json:"reasoning,omitempty"`
-	Calls     []ToolCall `json:"tool_calls,omitempty"`
+	Content        string          `json:"content"`
+	Reasoning      string          `json:"reasoning,omitempty"`
+	ThinkingBlocks []ThinkingBlock `json:"thinking_blocks,omitempty"`
+	Calls          []ToolCall      `json:"tool_calls,omitempty"`
 	// Usage is populated in the final chunk(s) if supported by the provider.
 	Usage *Usage `json:"usage,omitempty"`
 }

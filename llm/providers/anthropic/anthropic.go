@@ -99,9 +99,18 @@ func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMR
 		case "text":
 			res.Content += block.Text
 		case "thinking":
-			res.Reasoning += block.Text
+			res.Reasoning += block.Thinking
+			res.ThinkingBlocks = append(res.ThinkingBlocks, llm.ThinkingBlock{
+				Type:      "thinking",
+				Thinking:  block.Thinking,
+				Signature: block.Signature,
+			})
 		case "redacted_thinking":
 			res.Reasoning += "<redacted_thinking />"
+			res.ThinkingBlocks = append(res.ThinkingBlocks, llm.ThinkingBlock{
+				Type:      "redacted_thinking",
+				Signature: block.Signature,
+			})
 		case "tool_use":
 			call := llm.ToolCall{
 				ID:   block.ID,
@@ -221,8 +230,15 @@ func (p *Provider) convertRequest(req *llm.LLMRequest) sdk.MessageNewParams {
 			continue
 		}
 
-		// Handle normal messages and assistant tool calls
+		// Handle normal messages and assistant thinking/content/tool calls
 		var blocks []sdk.ContentBlockParamUnion
+		for _, tb := range m.ThinkingBlocks {
+			if tb.Type == "thinking" {
+				blocks = append(blocks, sdk.NewThinkingBlock(tb.Thinking, tb.Signature))
+			} else if tb.Type == "redacted_thinking" {
+				blocks = append(blocks, sdk.NewRedactedThinkingBlock(tb.Signature))
+			}
+		}
 		if m.Content != "" {
 			blocks = append(blocks, sdk.NewTextBlock(m.Content))
 		}
@@ -371,7 +387,25 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 				return &llm.Chunk{Calls: []llm.ToolCall{*s.activeCall}}, true
 			}
 			if start.ContentBlock.Type == "thinking" {
-				return &llm.Chunk{Reasoning: start.ContentBlock.Text}, true
+				chunk := &llm.Chunk{
+					Reasoning: start.ContentBlock.Thinking,
+					ThinkingBlocks: []llm.ThinkingBlock{{
+						Type:      "thinking",
+						Thinking:  start.ContentBlock.Thinking,
+						Signature: start.ContentBlock.Signature,
+					}},
+				}
+				return chunk, true
+			}
+			if start.ContentBlock.Type == "redacted_thinking" {
+				chunk := &llm.Chunk{
+					Reasoning: "<redacted_thinking />",
+					ThinkingBlocks: []llm.ThinkingBlock{{
+						Type:      "redacted_thinking",
+						Signature: start.ContentBlock.Signature,
+					}},
+				}
+				return chunk, true
 			}
 		case "content_block_delta":
 			delta := event.AsContentBlockDelta()
@@ -379,7 +413,13 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 			case "text_delta":
 				return &llm.Chunk{Content: delta.Delta.Text}, true
 			case "thinking_delta":
-				return &llm.Chunk{Reasoning: delta.Delta.Thinking}, true
+				return &llm.Chunk{
+					Reasoning: delta.Delta.Thinking,
+					ThinkingBlocks: []llm.ThinkingBlock{{
+						Type:     "thinking",
+						Thinking: delta.Delta.Thinking,
+					}},
+				}, true
 			case "input_json_delta":
 				if s.activeCall != nil {
 					s.activeCall.Function.Arguments += delta.Delta.PartialJSON

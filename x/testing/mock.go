@@ -15,9 +15,11 @@ import (
 
 // Step is a pre-programmed LLM response returned by MockProvider.
 type Step struct {
-	Content string
-	Calls   []llm.ToolCall
-	Err     error
+	Content        string
+	Reasoning      string
+	ThinkingBlocks []llm.ThinkingBlock
+	Calls          []llm.ToolCall
+	Err            error
 	// Chunks, if set, causes Stream() to return these chunks instead of using
 	// Content/Calls. Use this to test streaming code paths.
 	Chunks []llm.Chunk
@@ -60,7 +62,12 @@ func (m *MockProvider) Generate(_ context.Context, req *llm.LLMRequest) (*llm.LL
 	if s.Err != nil {
 		return nil, s.Err
 	}
-	return &llm.LLMResponse{Content: s.Content, Calls: s.Calls}, nil
+	return &llm.LLMResponse{
+		Content:        s.Content,
+		Reasoning:      s.Reasoning,
+		ThinkingBlocks: s.ThinkingBlocks,
+		Calls:          s.Calls,
+	}, nil
 }
 
 // Stream returns a MockStream built from the next step's Chunks.
