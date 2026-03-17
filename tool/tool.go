@@ -15,10 +15,11 @@ type Tool interface {
 	Execute(ctx context.Context, args string) (string, error)
 }
 
-// StreamingTool is a Tool that can emit partial output during execution.
 type StreamingTool interface {
 	Tool
 	// ExecuteStreaming runs the tool and calls emit for each chunk of output.
+	// emit may return an error (e.g., if session storage fails), in which case
+	// the tool should ideally stop and return that error.
 	// It returns the final complete output.
-	ExecuteStreaming(ctx context.Context, args string, emit func(string)) (string, error)
+	ExecuteStreaming(ctx context.Context, args string, emit func(string) error) (string, error)
 }

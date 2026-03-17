@@ -107,8 +107,8 @@ func RunTools(
 				} else {
 					var execErr error
 					if st, ok := t.(tool.StreamingTool); ok {
-						output, execErr = st.ExecuteStreaming(ctx, call.Function.Arguments, func(delta string) {
-							_ = s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolOutputDelta, map[string]any{
+						output, execErr = st.ExecuteStreaming(ctx, call.Function.Arguments, func(delta string) error {
+							return s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolOutputDelta, map[string]any{
 								"tool":  call.Function.Name,
 								"id":    call.ID,
 								"delta": delta,
