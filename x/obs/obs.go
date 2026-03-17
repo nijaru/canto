@@ -61,6 +61,44 @@ func EndTurn(span trace.Span, err error) {
 	span.End()
 }
 
+// StartGraph starts a "canto.graph" child span for a graph execution.
+func StartGraph(ctx context.Context, graphID, sessionID string) (context.Context, trace.Span) {
+	return Tracer().Start(ctx, "canto.graph",
+		trace.WithAttributes(
+			attribute.String("canto.graph_id", graphID),
+			attribute.String("canto.session_id", sessionID),
+		),
+	)
+}
+
+// StartNode starts a "canto.graph.node" child span for a node in a graph.
+func StartNode(ctx context.Context, nodeID string) (context.Context, trace.Span) {
+	return Tracer().Start(ctx, "canto.graph.node",
+		trace.WithAttributes(attribute.String("canto.node_id", nodeID)),
+	)
+}
+
+// StartSwarm starts a "canto.swarm" child span for a swarm execution.
+func StartSwarm(ctx context.Context, sessionID string) (context.Context, trace.Span) {
+	return Tracer().Start(ctx, "canto.swarm",
+		trace.WithAttributes(attribute.String("canto.session_id", sessionID)),
+	)
+}
+
+// StartSwarmRound starts a "canto.swarm.round" child span for a single round in a swarm.
+func StartSwarmRound(ctx context.Context, round int) (context.Context, trace.Span) {
+	return Tracer().Start(ctx, "canto.swarm.round",
+		trace.WithAttributes(attribute.Int("canto.swarm.round", round)),
+	)
+}
+
+// StartAgent starts a "canto.agent" child span.
+func StartAgent(ctx context.Context, agentID string) (context.Context, trace.Span) {
+	return Tracer().Start(ctx, "canto.agent",
+		trace.WithAttributes(attribute.String("canto.agent_id", agentID)),
+	)
+}
+
 // StartContext starts a "canto.context" child span for the context-pipeline
 // build phase. Call this immediately before builder.Build and defer span.End.
 func StartContext(ctx context.Context) (context.Context, trace.Span) {

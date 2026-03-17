@@ -11,6 +11,7 @@ import (
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
+	"github.com/nijaru/canto/x/obs"
 )
 
 // Edge connects two nodes in the graph. The Condition is evaluated on the
@@ -144,6 +145,9 @@ func (g *Graph) execute(
 		return agent.StepResult{}, fmt.Errorf("graph: entry node %q not registered", g.entry)
 	}
 
+	ctx, span := obs.StartGraph(ctx, g.id, sess.ID())
+	defer span.End()
+
 	current := g.entry
 	var lastResult agent.StepResult
 	var totalUsage llm.Usage
@@ -151,17 +155,23 @@ func (g *Graph) execute(
 	for {
 		if err := ctx.Err(); err != nil {
 			lastResult.Usage = totalUsage
+			span.RecordError(err)
 			return lastResult, err
 		}
 
 		a, ok := g.nodes[current]
 		if !ok {
 			lastResult.Usage = totalUsage
-			return lastResult, fmt.Errorf("graph: node %q not registered", current)
+			err := fmt.Errorf("graph: node %q not registered", current)
+			span.RecordError(err)
+			return lastResult, err
 		}
 
 		var result agent.StepResult
 		var err error
+
+		// Execute the node within a dedicated span.
+		ctx, nodeSpan := obs.StartNode(ctx, current)
 
 		// Use streaming if requested AND the node supports it.
 		if chunkFn != nil {
@@ -175,9 +185,12 @@ func (g *Graph) execute(
 		}
 
 		if err != nil {
+			nodeSpan.RecordError(err)
+			nodeSpan.End()
 			lastResult.Usage = totalUsage
 			return lastResult, fmt.Errorf("graph: node %q: %w", current, err)
 		}
+		nodeSpan.End()
 
 		totalUsage.InputTokens += result.Usage.InputTokens
 		totalUsage.OutputTokens += result.Usage.OutputTokens

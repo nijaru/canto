@@ -8,6 +8,7 @@ import (
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
+	"github.com/nijaru/canto/x/obs"
 )
 
 // SwarmResult summarises a completed swarm run.
@@ -52,10 +53,16 @@ func New(blackboard Blackboard, maxRounds int, agents ...agent.Agent) *Swarm {
 func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, error) {
 	var result SwarmResult
 
+	ctx, span := obs.StartSwarm(ctx, sess.ID())
+	defer span.End()
+
 	for round := range s.maxRounds {
 		if err := ctx.Err(); err != nil {
+			span.RecordError(err)
 			return result, err
 		}
+
+		ctx, roundSpan := obs.StartSwarmRound(ctx, round)
 
 		unclaimed, err := s.blackboard.ListUnclaimed(ctx)
 		if err != nil {
@@ -112,13 +119,17 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 				// agents can observe what this agent is working on.
 				_ = s.blackboard.Post(ctx, ag.ID(), "current_task", claimed.Description)
 
-				// Execute one agent turn on the shared session.
+				// Execute one agent turn on the shared session within its own span.
+				ctx, agentSpan := obs.StartAgent(ctx, ag.ID())
 				turnRes, turnErr := ag.Turn(ctx, sess)
 				if turnErr != nil {
+					agentSpan.RecordError(turnErr)
+					agentSpan.End()
 					out.err = fmt.Errorf("turn for task %q: %w", claimed.ID, turnErr)
 					outcomes[idx] = out
 					return
 				}
+				agentSpan.End()
 				usageMu.Lock()
 				result.TotalUsage.InputTokens += turnRes.Usage.InputTokens
 				result.TotalUsage.OutputTokens += turnRes.Usage.OutputTokens
@@ -131,6 +142,7 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 			}(i, a, unclaimed)
 		}
 		wg.Wait()
+		roundSpan.End()
 
 		// Collect errors and tally completions.
 		for _, o := range outcomes {
