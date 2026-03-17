@@ -9,6 +9,7 @@ require (
 	github.com/go-json-experiment/json v0.0.0-20260214004413-d219187c3433
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/sashabaranov/go-openai v1.41.2
+	github.com/tetratelabs/wazero v1.11.0
 	go.opentelemetry.io/otel v1.42.0
 	go.opentelemetry.io/otel/metric v1.42.0
 	go.opentelemetry.io/otel/sdk v1.42.0
