@@ -80,7 +80,7 @@ func main() {
 
 **Layer 3 — Runtime**
 
-- `session/` — Append-only event log, JSONL and SQLite backends, trajectory recording
+- `session/` — Append-only event log, JSONL and SQLite backends, transcripts
 - `context/` — Context pipeline: token guards, compaction, KV-cache preservation
 - `tool/` — Registry, MCP client/server
 - `skill/` — Progressive disclosure skill packages (SKILL.md standard)
@@ -91,7 +91,7 @@ func main() {
 
 - `x/graph/` — DAG orchestration with conditional Go routing functions
 - `x/swarm/` — Blackboard-based multi-agent coordination
-- `x/eval/` — Trajectory scoring harness
+- `x/eval/` — Run transcript evaluation harness
 - `x/tools/` — Bash, code execution, sandboxed executor, memory search, lazy tool discovery
 
 ## Core Interfaces
