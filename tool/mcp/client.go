@@ -3,12 +3,13 @@ package mcp
 import (
 	"bufio"
 	"context"
-	"github.com/go-json-experiment/json"
 	"fmt"
 	"io"
 	"os/exec"
 	"sync"
 	"sync/atomic"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/tool"

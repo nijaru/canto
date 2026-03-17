@@ -98,6 +98,10 @@ func (p *Provider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMR
 		switch block.Type {
 		case "text":
 			res.Content += block.Text
+		case "thinking":
+			res.Reasoning += block.Text
+		case "redacted_thinking":
+			res.Reasoning += "<redacted_thinking />"
 		case "tool_use":
 			call := llm.ToolCall{
 				ID:   block.ID,
@@ -253,7 +257,8 @@ func (p *Provider) convertRequest(req *llm.LLMRequest) sdk.MessageNewParams {
 	}
 
 	// Handle ResponseFormat via tool_choice for JSON Schema
-	if rf := req.ResponseFormat; rf != nil && rf.Type == llm.ResponseFormatJSONSchema && rf.Schema != nil {
+	if rf := req.ResponseFormat; rf != nil && rf.Type == llm.ResponseFormatJSONSchema &&
+		rf.Schema != nil {
 		name := rf.Name
 		if name == "" {
 			name = "json_response"
@@ -365,12 +370,16 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 				s.activeCall.Function.Name = start.ContentBlock.Name
 				return &llm.Chunk{Calls: []llm.ToolCall{*s.activeCall}}, true
 			}
-			// "thinking" and "redacted_thinking" blocks are skipped.
+			if start.ContentBlock.Type == "thinking" {
+				return &llm.Chunk{Reasoning: start.ContentBlock.Text}, true
+			}
 		case "content_block_delta":
 			delta := event.AsContentBlockDelta()
 			switch delta.Delta.Type {
 			case "text_delta":
 				return &llm.Chunk{Content: delta.Delta.Text}, true
+			case "thinking_delta":
+				return &llm.Chunk{Reasoning: delta.Delta.Thinking}, true
 			case "input_json_delta":
 				if s.activeCall != nil {
 					s.activeCall.Function.Arguments += delta.Delta.PartialJSON
@@ -381,7 +390,6 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 					}
 					return chunk, true
 				}
-				// "thinking_delta" is internal reasoning; not emitted to callers.
 			}
 		case "message_delta":
 			delta := event.AsMessageDelta()

@@ -2,13 +2,14 @@ package tools
 
 import (
 	"context"
-	"github.com/go-json-experiment/json"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/tool"

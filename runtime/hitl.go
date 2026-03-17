@@ -2,8 +2,9 @@ package runtime
 
 import (
 	"context"
-	"github.com/go-json-experiment/json"
 	"fmt"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"

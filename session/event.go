@@ -18,13 +18,16 @@ const (
 	EventTypeExternalInput EventType = "external_input"
 
 	// Observability / Lifecycle
-	EventTypeTurnStarted           EventType = "turn_started"
-	EventTypeTurnCompleted         EventType = "turn_completed"
-	EventTypeStepStarted           EventType = "step_started"
-	EventTypeStepCompleted         EventType = "step_completed"
+	EventTypeTurnStarted            EventType = "turn_started"
+	EventTypeTurnCompleted          EventType = "turn_completed"
+	EventTypeStepStarted            EventType = "step_started"
+	EventTypeStepCompleted          EventType = "step_completed"
 	EventTypeToolExecutionStarted   EventType = "tool_execution_started"
 	EventTypeToolExecutionCompleted EventType = "tool_execution_completed"
 	EventTypeCompactionTriggered    EventType = "compaction_triggered"
+
+	// Framework Extensions
+	EventTypeToolOutputDelta EventType = "tool_output_delta"
 )
 
 // Event is a single append-only fact in a session.
@@ -34,9 +37,14 @@ type Event struct {
 	Type      EventType      `json:"type"`
 	Timestamp time.Time      `json:"timestamp"`
 	Data      jsontext.Value `json:"data"`
+	Metadata  map[string]any `json:"metadata,omitzero"`
 	Cost      float64        `json:"cost,omitzero"`
 }
 
+// UnmarshalData unmarshals the event's data into the given value.
+func (e Event) UnmarshalData(v any) error {
+	return json.Unmarshal(e.Data, v)
+}
 
 // NewEvent creates a new event with a unique ID and current timestamp.
 func NewEvent(sessionID string, eventType EventType, data any) Event {

@@ -2,8 +2,9 @@ package context
 
 import (
 	"context"
-	"github.com/go-json-experiment/json"
 	"strings"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"

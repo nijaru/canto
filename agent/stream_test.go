@@ -236,6 +236,12 @@ func TestWithProcessorsInsertsBeforeCapabilities(t *testing.T) {
 	_ = ps[n-3] // first sentinel
 }
 
-func noopProcessor(_ context.Context, _ llm.Provider, _ string, _ *session.Session, _ *llm.LLMRequest) error {
+func noopProcessor(
+	_ context.Context,
+	_ llm.Provider,
+	_ string,
+	_ *session.Session,
+	_ *llm.LLMRequest,
+) error {
 	return nil
 }

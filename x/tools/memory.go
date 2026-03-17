@@ -4,9 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+
 	"github.com/go-json-experiment/json"
 	"github.com/go-json-experiment/json/jsontext"
-	"fmt"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/memory"

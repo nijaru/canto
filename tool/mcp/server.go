@@ -3,11 +3,12 @@ package mcp
 import (
 	"bufio"
 	"context"
-	"github.com/go-json-experiment/json"
-	"github.com/go-json-experiment/json/jsontext"
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/go-json-experiment/json"
+	"github.com/go-json-experiment/json/jsontext"
 
 	"github.com/nijaru/canto/tool"
 )
@@ -178,17 +179,17 @@ func normalizeSchema(params any) map[string]any {
 // JSON-RPC 2.0 types.
 
 type jsonrpcRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
+	JSONRPC string         `json:"jsonrpc"`
 	ID      jsontext.Value `json:"id,omitzero"` // number, string, or null
-	Method  string          `json:"method"`
+	Method  string         `json:"method"`
 	Params  jsontext.Value `json:"params,omitzero"`
 }
 
 type jsonrpcResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
+	JSONRPC string         `json:"jsonrpc"`
 	ID      jsontext.Value `json:"id"`
-	Result  any             `json:"result,omitzero"`
-	Error   *jsonrpcError   `json:"error,omitzero"`
+	Result  any            `json:"result,omitzero"`
+	Error   *jsonrpcError  `json:"error,omitzero"`
 }
 
 type jsonrpcError struct {

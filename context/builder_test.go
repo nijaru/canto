@@ -16,10 +16,13 @@ import (
 
 func TestBuilder_Build(t *testing.T) {
 	sess := session.New("test-session")
-	_ = sess.Append(context.Background(), session.NewEvent(sess.ID(), session.EventTypeMessageAdded, llm.Message{
-		Role:    llm.RoleUser,
-		Content: "Hello world",
-	}))
+	_ = sess.Append(
+		context.Background(),
+		session.NewEvent(sess.ID(), session.EventTypeMessageAdded, llm.Message{
+			Role:    llm.RoleUser,
+			Content: "Hello world",
+		}),
+	)
 
 	reg := tool.NewRegistry()
 	// Add a mock tool

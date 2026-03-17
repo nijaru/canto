@@ -41,10 +41,13 @@ func TestGraphConditionalRouting(t *testing.T) {
 	})
 
 	sess := session.New("graph-test")
-	_ = sess.Append(context.Background(), session.NewEvent("graph-test", session.EventTypeMessageAdded, llm.Message{
-		Role:    llm.RoleUser,
-		Content: "Write a report on Go.",
-	}))
+	_ = sess.Append(
+		context.Background(),
+		session.NewEvent("graph-test", session.EventTypeMessageAdded, llm.Message{
+			Role:    llm.RoleUser,
+			Content: "Write a report on Go.",
+		}),
+	)
 
 	result, err := g.Run(ctx, sess)
 	if err != nil {
@@ -77,10 +80,13 @@ func TestGraphTerminatesAtTerminalNode(t *testing.T) {
 	// No edges — solo is a terminal node.
 
 	sess := session.New("terminal-test")
-	_ = sess.Append(context.Background(), session.NewEvent("terminal-test", session.EventTypeMessageAdded, llm.Message{
-		Role:    llm.RoleUser,
-		Content: "Do it.",
-	}))
+	_ = sess.Append(
+		context.Background(),
+		session.NewEvent("terminal-test", session.EventTypeMessageAdded, llm.Message{
+			Role:    llm.RoleUser,
+			Content: "Do it.",
+		}),
+	)
 
 	_, err := g.Run(ctx, sess)
 	if err != nil {
@@ -182,10 +188,13 @@ func TestAddEdge_NilConditionIsUnconditional(t *testing.T) {
 	g.AddEdge("a", "b", nil)
 
 	sess := session.New("nil-cond-test")
-	_ = sess.Append(context.Background(), session.NewEvent("nil-cond-test", session.EventTypeMessageAdded, llm.Message{
-		Role:    llm.RoleUser,
-		Content: "Go.",
-	}))
+	_ = sess.Append(
+		context.Background(),
+		session.NewEvent("nil-cond-test", session.EventTypeMessageAdded, llm.Message{
+			Role:    llm.RoleUser,
+			Content: "Go.",
+		}),
+	)
 
 	_, err := g.Run(ctx, sess)
 	if err != nil {
@@ -211,10 +220,13 @@ func TestRun_ContextCancelled(t *testing.T) {
 	g.AddNode(a)
 
 	sess := session.New("cancel-test")
-	_ = sess.Append(context.Background(), session.NewEvent("cancel-test", session.EventTypeMessageAdded, llm.Message{
-		Role:    llm.RoleUser,
-		Content: "Go.",
-	}))
+	_ = sess.Append(
+		context.Background(),
+		session.NewEvent("cancel-test", session.EventTypeMessageAdded, llm.Message{
+			Role:    llm.RoleUser,
+			Content: "Go.",
+		}),
+	)
 
 	_, err := g.Run(ctx, sess)
 	if err == nil {
@@ -234,10 +246,13 @@ func TestRun_EntryNodeNotRegistered(t *testing.T) {
 	// No nodes added.
 
 	sess := session.New("no-entry-test")
-	_ = sess.Append(context.Background(), session.NewEvent("no-entry-test", session.EventTypeMessageAdded, llm.Message{
-		Role:    llm.RoleUser,
-		Content: "Go.",
-	}))
+	_ = sess.Append(
+		context.Background(),
+		session.NewEvent("no-entry-test", session.EventTypeMessageAdded, llm.Message{
+			Role:    llm.RoleUser,
+			Content: "Go.",
+		}),
+	)
 
 	_, err := g.Run(ctx, sess)
 	if err == nil {

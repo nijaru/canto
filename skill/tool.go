@@ -2,12 +2,13 @@ package skill
 
 import (
 	"context"
-	"github.com/go-json-experiment/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/llm"
 )

@@ -3,11 +3,12 @@ package hook
 import (
 	"bytes"
 	"context"
-	"github.com/go-json-experiment/json"
 	"fmt"
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/go-json-experiment/json"
 )
 
 // HookEvent defines the lifecycle events that triggers a hook.

@@ -3,10 +3,11 @@ package memory
 import (
 	"context"
 	"database/sql"
-	"github.com/go-json-experiment/json"
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/session"
 	_ "modernc.org/sqlite"

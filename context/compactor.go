@@ -2,10 +2,11 @@ package context
 
 import (
 	"context"
-	"github.com/go-json-experiment/json"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"

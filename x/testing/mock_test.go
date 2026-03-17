@@ -92,7 +92,10 @@ func TestAssertToolCalled(t *testing.T) {
 			}{Name: "bash", Arguments: "{}"}},
 		},
 	}
-	_ = sess.Append(context.Background(), session.NewEvent("s1", session.EventTypeMessageAdded, msg))
+	_ = sess.Append(
+		context.Background(),
+		session.NewEvent("s1", session.EventTypeMessageAdded, msg),
+	)
 
 	inner := &testing.T{}
 	AssertToolCalled(inner, sess, "bash")

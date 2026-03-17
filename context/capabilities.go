@@ -31,6 +31,14 @@ func CapabilitiesProcessor() ContextProcessor {
 			if !caps.Temperature {
 				req.Temperature = 0
 			}
+			// Strip reasoning from history for models that don't support extended
+			// thinking. Reasoning is preserved in the session log for observability;
+			// it is only filtered here at request-build time.
+			if !caps.Thinking {
+				for i := range req.Messages {
+					req.Messages[i].Reasoning = ""
+				}
+			}
 			return nil
 		},
 	)

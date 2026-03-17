@@ -3,14 +3,15 @@ package tools
 import (
 	"context"
 	"crypto/rand"
-	"github.com/go-json-experiment/json"
-	"github.com/go-json-experiment/json/jsontext"
 	"fmt"
 	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/go-json-experiment/json"
+	"github.com/go-json-experiment/json/jsontext"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/tool"

@@ -1,8 +1,9 @@
 package anthropic
 
 import (
-	"github.com/go-json-experiment/json/jsontext"
 	"testing"
+
+	"github.com/go-json-experiment/json/jsontext"
 )
 
 // provider returns a zero-value Provider sufficient for testing convertSchema,

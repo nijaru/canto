@@ -8,10 +8,11 @@ package eval
 import (
 	"bufio"
 	"context"
-	"github.com/go-json-experiment/json"
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/session"
 )

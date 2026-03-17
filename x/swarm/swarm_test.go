@@ -65,6 +65,7 @@ func (m *mockAgent) ID() string { return m.id }
 func (m *mockAgent) Step(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
 	return agent.StepResult{}, nil
 }
+
 func (m *mockAgent) Turn(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
 	atomic.AddInt32(&m.turns, 1)
 	if m.turnErr != nil {

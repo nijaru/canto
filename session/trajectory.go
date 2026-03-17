@@ -1,9 +1,10 @@
 package session
 
 import (
-	"github.com/go-json-experiment/json"
 	"strings"
 	"time"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/oklog/ulid/v2"

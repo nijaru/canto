@@ -23,11 +23,12 @@ const (
 
 // Message represents a single message in the LLM conversation.
 type Message struct {
-	Role    Role       `json:"role"`
-	Content string     `json:"content"`
-	Name    string     `json:"name,omitzero"` // For tool output or identifying the assistant
-	ToolID  string     `json:"tool_id,omitzero"`
-	Calls   []ToolCall `json:"tool_calls,omitzero"`
+	Role      Role       `json:"role"`
+	Content   string     `json:"content"`
+	Reasoning string     `json:"reasoning,omitzero"`
+	Name      string     `json:"name,omitzero"` // For tool output or identifying the assistant
+	ToolID    string     `json:"tool_id,omitzero"`
+	Calls     []ToolCall `json:"tool_calls,omitzero"`
 }
 
 // ToolCall represents a request from the LLM to call a tool.
@@ -88,9 +89,10 @@ type LLMRequest struct {
 
 // LLMResponse is the unified response from any provider.
 type LLMResponse struct {
-	Content string     `json:"content"`
-	Calls   []ToolCall `json:"tool_calls,omitzero"`
-	Usage   Usage      `json:"usage"`
+	Content   string     `json:"content"`
+	Reasoning string     `json:"reasoning,omitzero"`
+	Calls     []ToolCall `json:"tool_calls,omitzero"`
+	Usage     Usage      `json:"usage"`
 }
 
 // Usage tracks token consumption and cost.
@@ -136,6 +138,7 @@ func DefaultCapabilities() Capabilities {
 		SystemRole:  RoleSystem,
 	}
 }
+
 // GenerateFromStream collects chunks from a stream and assembles an LLMResponse.
 // It is intended for use by Provider implementations to avoid duplicating
 // the complex logic of assembling streaming chunks.
@@ -151,6 +154,7 @@ func GenerateFromStream(s Stream) (*LLMResponse, error) {
 			break
 		}
 		resp.Content += chunk.Content
+		resp.Reasoning += chunk.Reasoning
 		for _, call := range chunk.Calls {
 			if idx, ok := toolCallIndices[call.ID]; ok {
 				// Update existing call. If the chunk contains the full state,
@@ -234,8 +238,9 @@ type Stream interface {
 
 // Chunk represents a single piece of a streaming response.
 type Chunk struct {
-	Content string     `json:"content"`
-	Calls   []ToolCall `json:"tool_calls,omitempty"`
+	Content   string     `json:"content"`
+	Reasoning string     `json:"reasoning,omitempty"`
+	Calls     []ToolCall `json:"tool_calls,omitempty"`
 	// Usage is populated in the final chunk(s) if supported by the provider.
 	Usage *Usage `json:"usage,omitempty"`
 }

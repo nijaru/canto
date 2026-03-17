@@ -2,9 +2,10 @@ package context
 
 import (
 	"context"
-	"github.com/go-json-experiment/json"
 	"fmt"
 	"testing"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -70,11 +71,14 @@ func TestLazyToolProcessor_UnlocksFromHistory(t *testing.T) {
 	sess := session.New("s3")
 	specs := []llm.ToolSpec{{Name: "tool_1", Description: "desc of tool_1"}}
 	data, _ := json.Marshal(specs)
-	_ = sess.Append(context.Background(), session.NewEvent("s3", session.EventTypeMessageAdded, llm.Message{
-		Role:    llm.RoleTool,
-		Name:    "search_tools",
-		Content: string(data),
-	}))
+	_ = sess.Append(
+		context.Background(),
+		session.NewEvent("s3", session.EventTypeMessageAdded, llm.Message{
+			Role:    llm.RoleTool,
+			Name:    "search_tools",
+			Content: string(data),
+		}),
+	)
 
 	req := &llm.LLMRequest{}
 	if err := p.Process(context.Background(), nil, "", sess, req); err != nil {

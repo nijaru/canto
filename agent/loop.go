@@ -59,9 +59,10 @@ func RunStep(ctx context.Context, s *session.Session, cfg StepConfig) (StepResul
 
 	// Record assistant response with cost from the provider.
 	msg := llm.Message{
-		Role:    llm.RoleAssistant,
-		Content: resp.Content,
-		Calls:   resp.Calls,
+		Role:      llm.RoleAssistant,
+		Content:   resp.Content,
+		Reasoning: resp.Reasoning,
+		Calls:     resp.Calls,
 	}
 	e := session.NewEvent(s.ID(), session.EventTypeMessageAdded, msg)
 	e.Cost = resp.Usage.Cost

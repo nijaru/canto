@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-json-experiment/json"
 	"github.com/oklog/ulid/v2"
 	_ "modernc.org/sqlite"
 )
@@ -49,6 +50,7 @@ func (s *SQLiteStore) init() error {
 			type TEXT,
 			timestamp TEXT,
 			data BLOB,
+			metadata BLOB,
 			cost REAL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_events_session_id ON events(session_id)`,
@@ -87,15 +89,22 @@ func (s *SQLiteStore) Save(ctx context.Context, e Event) error {
 
 func (s *SQLiteStore) saveTx(ctx context.Context, exec interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
-}, e Event) error {
+}, e Event,
+) error {
+	var metadata []byte
+	if len(e.Metadata) > 0 {
+		metadata, _ = json.Marshal(e.Metadata)
+	}
+
 	_, err := exec.ExecContext(
 		ctx,
-		"INSERT INTO events (id, session_id, type, timestamp, data, cost) VALUES (?, ?, ?, ?, ?, ?)",
+		"INSERT INTO events (id, session_id, type, timestamp, data, metadata, cost) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		e.ID.String(),
 		e.SessionID,
 		string(e.Type),
 		e.Timestamp.Format(time.RFC3339),
 		[]byte(e.Data),
+		metadata,
 		e.Cost,
 	)
 	return err
@@ -103,14 +112,22 @@ func (s *SQLiteStore) saveTx(ctx context.Context, exec interface {
 
 // Load reconstructs a session from the database.
 func (s *SQLiteStore) Load(ctx context.Context, sessionID string) (*Session, error) {
-	return s.LoadUntil(ctx, sessionID, ulid.Make()) // Load all events (Make() is max ULID effectively for current time)
+	return s.LoadUntil(
+		ctx,
+		sessionID,
+		ulid.Make(),
+	) // Load all events (Make() is max ULID effectively for current time)
 }
 
 // LoadUntil loads a session up to (and including) the given event ID.
-func (s *SQLiteStore) LoadUntil(ctx context.Context, sessionID string, eventID ulid.ULID) (*Session, error) {
+func (s *SQLiteStore) LoadUntil(
+	ctx context.Context,
+	sessionID string,
+	eventID ulid.ULID,
+) (*Session, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		"SELECT id, session_id, type, timestamp, data, cost FROM events WHERE session_id = ? AND id <= ? ORDER BY id ASC",
+		"SELECT id, session_id, type, timestamp, data, metadata, cost FROM events WHERE session_id = ? AND id <= ? ORDER BY id ASC",
 		sessionID,
 		eventID.String(),
 	)
@@ -123,7 +140,8 @@ func (s *SQLiteStore) LoadUntil(ctx context.Context, sessionID string, eventID u
 	for rows.Next() {
 		var e Event
 		var idStr, typeStr, timeStr string
-		if err := rows.Scan(&idStr, &e.SessionID, &typeStr, &timeStr, &e.Data, &e.Cost); err != nil {
+		var metadata []byte
+		if err := rows.Scan(&idStr, &e.SessionID, &typeStr, &timeStr, &e.Data, &metadata, &e.Cost); err != nil {
 			return nil, err
 		}
 
@@ -138,6 +156,9 @@ func (s *SQLiteStore) LoadUntil(ctx context.Context, sessionID string, eventID u
 		e.ID = id
 		e.Type = EventType(typeStr)
 		e.Timestamp = t
+		if len(metadata) > 0 {
+			json.Unmarshal(metadata, &e.Metadata)
+		}
 		// Internal load doesn't need write-through back to itself.
 		sess.mu.Lock()
 		sess.events = append(sess.events, e)
@@ -181,7 +202,7 @@ func (s *SQLiteStore) Fork(ctx context.Context, originalID, newID string) (*Sess
 // Search searches the event log using FTS5.
 func (s *SQLiteStore) Search(ctx context.Context, sessionID string, query string) ([]Event, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT e.id, e.session_id, e.type, e.timestamp, e.data, e.cost 
+		`SELECT e.id, e.session_id, e.type, e.timestamp, e.data, e.metadata, e.cost 
 		 FROM events e
 		 JOIN events_fts f ON f.rowid = e.rowid
 		 WHERE e.session_id = ? AND f.content MATCH ?
@@ -197,7 +218,8 @@ func (s *SQLiteStore) Search(ctx context.Context, sessionID string, query string
 	for rows.Next() {
 		var e Event
 		var idStr, typeStr, timeStr string
-		if err := rows.Scan(&idStr, &e.SessionID, &typeStr, &timeStr, &e.Data, &e.Cost); err != nil {
+		var metadata []byte
+		if err := rows.Scan(&idStr, &e.SessionID, &typeStr, &timeStr, &e.Data, &metadata, &e.Cost); err != nil {
 			return nil, err
 		}
 
@@ -212,6 +234,9 @@ func (s *SQLiteStore) Search(ctx context.Context, sessionID string, query string
 		e.ID = id
 		e.Type = EventType(typeStr)
 		e.Timestamp = t
+		if len(metadata) > 0 {
+			json.Unmarshal(metadata, &e.Metadata)
+		}
 		res = append(res, e)
 	}
 	if err := rows.Err(); err != nil {

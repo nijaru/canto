@@ -2,10 +2,11 @@ package eval_test
 
 import (
 	"context"
-	"github.com/go-json-experiment/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -20,10 +21,13 @@ func buildSession(id string, turns []struct {
 },
 ) *session.Session {
 	sess := session.New(id)
-	_ = sess.Append(context.Background(), session.NewEvent(id, session.EventTypeMessageAdded, llm.Message{
-		Role:    llm.RoleUser,
-		Content: "Do the task",
-	}))
+	_ = sess.Append(
+		context.Background(),
+		session.NewEvent(id, session.EventTypeMessageAdded, llm.Message{
+			Role:    llm.RoleUser,
+			Content: "Do the task",
+		}),
+	)
 	for _, t := range turns {
 		calls := []llm.ToolCall{}
 		if t.toolName != "" {

@@ -101,45 +101,57 @@ func RunTools(
 			}
 
 			if r != nil {
-				toolOutput, execErr := r.Execute(
-					ctx,
-					call.Function.Name,
-					call.Function.Arguments,
-				)
-				output += toolOutput
-				if execErr != nil {
-					output = fmt.Sprintf("%s\nError: %s", output, execErr)
-					if h != nil {
-						_, hookErr := h.Run(
-							ctx,
-							hook.EventPostToolUseFailure,
-							hook.SessionMeta{ID: s.ID()},
-							map[string]any{
-								"tool":  call.Function.Name,
-								"error": execErr.Error(),
-							},
-						)
-						if hookErr != nil {
-							slog.Warn(
-								"PostToolUseFailure hook failed",
-								"tool", call.Function.Name,
-								"error", hookErr,
-							)
-						}
-					}
+				t, ok := r.Get(call.Function.Name)
+				if !ok {
+					output = fmt.Sprintf("Error: tool %q not found", call.Function.Name)
 				} else {
-					if h != nil {
-						_, hookErr := h.Run(
-							ctx,
-							hook.EventPostToolUse,
-							hook.SessionMeta{ID: s.ID()},
-							map[string]any{
-								"tool":   call.Function.Name,
-								"output": toolOutput,
-							},
-						)
-						if hookErr != nil {
-							slog.Warn("PostToolUse hook failed", "tool", call.Function.Name, "error", hookErr)
+					var execErr error
+					if st, ok := t.(tool.StreamingTool); ok {
+						output, execErr = st.ExecuteStreaming(ctx, call.Function.Arguments, func(delta string) {
+							_ = s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeToolOutputDelta, map[string]any{
+								"tool":  call.Function.Name,
+								"id":    call.ID,
+								"delta": delta,
+							}))
+						})
+					} else {
+						output, execErr = t.Execute(ctx, call.Function.Arguments)
+					}
+
+					if execErr != nil {
+						output = fmt.Sprintf("%s\nError: %s", output, execErr)
+						if h != nil {
+							_, hookErr := h.Run(
+								ctx,
+								hook.EventPostToolUseFailure,
+								hook.SessionMeta{ID: s.ID()},
+								map[string]any{
+									"tool":  call.Function.Name,
+									"error": execErr.Error(),
+								},
+							)
+							if hookErr != nil {
+								slog.Warn(
+									"PostToolUseFailure hook failed",
+									"tool", call.Function.Name,
+									"error", hookErr,
+								)
+							}
+						}
+					} else {
+						if h != nil {
+							_, hookErr := h.Run(
+								ctx,
+								hook.EventPostToolUse,
+								hook.SessionMeta{ID: s.ID()},
+								map[string]any{
+									"tool":   call.Function.Name,
+									"output": output,
+								},
+							)
+							if hookErr != nil {
+								slog.Warn("PostToolUse hook failed", "tool", call.Function.Name, "error", hookErr)
+							}
 						}
 					}
 				}

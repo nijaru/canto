@@ -124,7 +124,10 @@ func TestSubscribe_ConcurrentAppendCancel(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range eventsPerWriter {
-				_ = s.Append(context.Background(), NewEvent("sess-race", EventTypeMessageAdded, nil))
+				_ = s.Append(
+					context.Background(),
+					NewEvent("sess-race", EventTypeMessageAdded, nil),
+				)
 			}
 		}()
 	}

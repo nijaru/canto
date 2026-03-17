@@ -46,6 +46,7 @@ func (a *BaseAgent) StreamStep(
 	// Assemble the complete response from chunks.
 	// Tool calls are accumulated by ID — each delta updates the same entry.
 	var contentBuilder strings.Builder
+	var reasoningBuilder strings.Builder
 	var usage llm.Usage
 	assembledCalls := make(map[string]llm.ToolCall) // keyed by call ID
 	callOrder := make([]string, 0)                  // preserve insertion order
@@ -57,6 +58,9 @@ func (a *BaseAgent) StreamStep(
 		}
 		if chunk.Content != "" {
 			contentBuilder.WriteString(chunk.Content)
+		}
+		if chunk.Reasoning != "" {
+			reasoningBuilder.WriteString(chunk.Reasoning)
 		}
 		if chunk.Usage != nil {
 			usage.InputTokens += chunk.Usage.InputTokens
@@ -88,9 +92,10 @@ func (a *BaseAgent) StreamStep(
 
 	// Record assistant message.
 	msg := llm.Message{
-		Role:    llm.RoleAssistant,
-		Content: contentBuilder.String(),
-		Calls:   calls,
+		Role:      llm.RoleAssistant,
+		Content:   contentBuilder.String(),
+		Reasoning: reasoningBuilder.String(),
+		Calls:     calls,
 	}
 	e := session.NewEvent(s.ID(), session.EventTypeMessageAdded, msg)
 	e.Cost = usage.Cost

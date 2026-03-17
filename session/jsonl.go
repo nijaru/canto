@@ -85,7 +85,11 @@ func (s *JSONLStore) Load(ctx context.Context, sessionID string) (*Session, erro
 }
 
 // LoadUntil loads a session up to (and including) the given event ID.
-func (s *JSONLStore) LoadUntil(ctx context.Context, sessionID string, eventID ulid.ULID) (*Session, error) {
+func (s *JSONLStore) LoadUntil(
+	ctx context.Context,
+	sessionID string,
+	eventID ulid.ULID,
+) (*Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

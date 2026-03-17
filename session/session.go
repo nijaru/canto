@@ -2,8 +2,9 @@ package session
 
 import (
 	"context"
-	"github.com/go-json-experiment/json"
 	"sync"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/oklog/ulid/v2"

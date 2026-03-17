@@ -58,7 +58,7 @@ func (m *MockProvider) Cost(ctx context.Context, model string, usage llm.Usage) 
 	return 0
 }
 func (m *MockProvider) Capabilities(_ string) llm.Capabilities { return llm.DefaultCapabilities() }
-func (m *MockProvider) IsTransient(err error) bool         { return false }
+func (m *MockProvider) IsTransient(err error) bool             { return false }
 
 func TestMain(t *testing.T) {
 	tmpDir := t.TempDir()

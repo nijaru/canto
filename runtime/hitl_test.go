@@ -2,9 +2,10 @@ package runtime
 
 import (
 	"context"
-	"github.com/go-json-experiment/json"
 	"testing"
 	"time"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/session"
 )
