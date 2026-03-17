@@ -20,6 +20,7 @@ func TestHNSWStore_Concurrency(t *testing.T) {
 
 	const numWorkers = 10
 	const itemsPerWorker = 50
+	total := numWorkers * itemsPerWorker
 	var wg sync.WaitGroup
 
 	// Concurrent upserts
@@ -27,7 +28,7 @@ func TestHNSWStore_Concurrency(t *testing.T) {
 		wg.Go(func() {
 			for j := 0; j < itemsPerWorker; j++ {
 				docID := fmt.Sprintf("worker%d_item%d", i, j)
-				vec := []float32{float32(i), float32(j), 0.0}
+				vec := []float32{float32(i + 1), float32(j + 1), 0.0}
 				if err := store.Upsert(ctx, docID, vec, map[string]any{"worker": i, "idx": j}); err != nil {
 					t.Errorf("Upsert failed: %v", err)
 					return
@@ -36,7 +37,7 @@ func TestHNSWStore_Concurrency(t *testing.T) {
 		})
 	}
 
-	// Concurrent searches (interleaved with upserts above)
+	// Concurrent searches
 	for range numWorkers {
 		wg.Go(func() {
 			for range itemsPerWorker {
@@ -50,8 +51,16 @@ func TestHNSWStore_Concurrency(t *testing.T) {
 
 	wg.Wait()
 
+	// Verify DB has all items
+	var count int
+	if err := store.DB.QueryRow("SELECT COUNT(*) FROM vectors").Scan(&count); err != nil {
+		t.Fatalf("failed to count rows: %v", err)
+	}
+	if count != total {
+		t.Errorf("expected %d rows in DB, got %d", total, count)
+	}
+
 	// Verify all writes landed
-	total := numWorkers * itemsPerWorker
 	results, err := store.Search(ctx, []float32{0.5, 0.5, 0.0}, total, nil)
 	if err != nil {
 		t.Fatalf("final search failed: %v", err)

@@ -181,7 +181,7 @@ func (w *wrappedStream) Next() (*llm.Chunk, bool) {
 	return chunk, ok
 }
 
-func (w *wrappedStream) Err() error   { return w.inner.Err() }
+func (w *wrappedStream) Err() error { return w.inner.Err() }
 func (w *wrappedStream) Close() error {
 	err := w.inner.Close()
 	if err != nil {

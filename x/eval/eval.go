@@ -65,24 +65,19 @@ func Run(
 		workers = 10 // Default concurrency
 	}
 
-	var results []EvalResult // for returning
-	_ = results              // avoid unused
-
 	type task struct {
 		sess *session.Session
 		idx  int
 	}
 
-	results = make([]EvalResult, len(sessions))
+	results := make([]EvalResult, len(sessions))
 	taskCh := make(chan task, len(sessions))
 	errCh := make(chan error, 1)
 
 	var wg sync.WaitGroup
-	wg.Add(workers)
 
 	for i := 0; i < workers; i++ {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for t := range taskCh {
 				traj, err := session.ExportRun(t.sess)
 				if err != nil {
@@ -137,7 +132,7 @@ func Run(
 				}
 				results[t.idx] = res
 			}
-		}()
+		})
 	}
 
 	for i, sess := range sessions {

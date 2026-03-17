@@ -35,7 +35,7 @@ func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, e
 
 // RunStep executes a single step of the agentic loop using the provided config.
 // It builds the context, generates a response, and executes any requested tools.
-func RunStep(ctx context.Context, s *session.Session, cfg StepConfig) (StepResult, error) {
+func RunStep(ctx context.Context, s *session.Session, cfg StepConfig) (res StepResult, err error) {
 	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeStepStarted, map[string]any{
 		"agent_id": cfg.ID,
 		"model":    cfg.Model,
@@ -43,19 +43,31 @@ func RunStep(ctx context.Context, s *session.Session, cfg StepConfig) (StepResul
 		return StepResult{}, err
 	}
 
+	defer func() {
+		data := map[string]any{
+			"agent_id": cfg.ID,
+			"usage":    res.Usage,
+		}
+		if err != nil {
+			data["error"] = err.Error()
+		}
+		_ = s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeStepCompleted, data))
+	}()
+
 	req := &llm.LLMRequest{
 		Model: cfg.Model,
 	}
 
 	// Build context
-	if err := cfg.Builder.Build(ctx, cfg.Provider, cfg.Model, s, req); err != nil {
-		return StepResult{}, err
+	if err = cfg.Builder.Build(ctx, cfg.Provider, cfg.Model, s, req); err != nil {
+		return
 	}
 
 	resp, err := cfg.Provider.Generate(ctx, req)
 	if err != nil {
-		return StepResult{}, err
+		return
 	}
+	res.Usage = resp.Usage
 
 	// Record assistant response with cost from the provider.
 	msg := llm.Message{
@@ -66,27 +78,17 @@ func RunStep(ctx context.Context, s *session.Session, cfg StepConfig) (StepResul
 	}
 	e := session.NewEvent(s.ID(), session.EventTypeMessageAdded, msg)
 	e.Cost = resp.Usage.Cost
-	if err := s.Append(ctx, e); err != nil {
-		return StepResult{}, err
+	if err = s.Append(ctx, e); err != nil {
+		return
 	}
 	llm.RecordUsage(ctx, req.Model, resp.Usage)
 
 	// Execute tool calls in parallel and append results to the session.
 	handoffTargets := getHandoffTargets(cfg.Tools)
-	res, err := RunTools(ctx, s, resp.Calls, cfg.Tools, cfg.Hooks, handoffTargets)
-	if err != nil {
-		return res, err
-	}
-	res.Usage = resp.Usage
+	res, err = RunTools(ctx, s, resp.Calls, cfg.Tools, cfg.Hooks, handoffTargets)
+	res.Usage = resp.Usage // Restore usage as RunTools only returns results/handoff
 
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeStepCompleted, map[string]any{
-		"agent_id": cfg.ID,
-		"usage":    resp.Usage,
-	})); err != nil {
-		return res, err
-	}
-
-	return res, nil
+	return
 }
 
 // Turn executes one or more steps until the agent finishes or a handoff is requested.
@@ -97,30 +99,45 @@ func (a *BaseAgent) Turn(ctx context.Context, s *session.Session) (StepResult, e
 // RunTurn executes one or more steps until the agent finishes (no pending tool
 // calls) or a handoff is requested, or maxSteps is reached.
 // It can run any Agent implementation that satisfies the interface.
-func RunTurn(ctx context.Context, a Agent, s *session.Session, maxSteps int) (StepResult, error) {
+func RunTurn(
+	ctx context.Context,
+	a Agent,
+	s *session.Session,
+	maxSteps int,
+) (res StepResult, err error) {
 	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeTurnStarted, map[string]any{
 		"agent_id": a.ID(),
 	})); err != nil {
 		return StepResult{}, err
 	}
 
-	steps := 0
-	var result StepResult
+	var steps int
 	var totalUsage llm.Usage
-	for steps < maxSteps {
-		var err error
-		result, err = a.Step(ctx, s)
+	defer func() {
+		data := map[string]any{
+			"agent_id": a.ID(),
+			"steps":    steps,
+			"usage":    totalUsage,
+		}
 		if err != nil {
-			return StepResult{}, err
+			data["error"] = err.Error()
+		}
+		_ = s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeTurnCompleted, data))
+	}()
+
+	for steps < maxSteps {
+		res, err = a.Step(ctx, s)
+		if err != nil {
+			return
 		}
 		steps++
-		totalUsage.InputTokens += result.Usage.InputTokens
-		totalUsage.OutputTokens += result.Usage.OutputTokens
-		totalUsage.TotalTokens += result.Usage.TotalTokens
-		totalUsage.Cost += result.Usage.Cost
+		totalUsage.InputTokens += res.Usage.InputTokens
+		totalUsage.OutputTokens += res.Usage.OutputTokens
+		totalUsage.TotalTokens += res.Usage.TotalTokens
+		totalUsage.Cost += res.Usage.Cost
 
 		// If a handoff was requested, stop immediately so the caller can route.
-		if result.Handoff != nil {
+		if res.Handoff != nil {
 			break
 		}
 
@@ -137,29 +154,19 @@ func RunTurn(ctx context.Context, a Agent, s *session.Session, maxSteps int) (St
 	}
 
 	if steps >= maxSteps {
-		return StepResult{}, fmt.Errorf("%w (%d)", ErrMaxSteps, maxSteps)
+		err = fmt.Errorf("%w (%d)", ErrMaxSteps, maxSteps)
+		return
 	}
-	result.Usage = totalUsage
+	res.Usage = totalUsage
 
 	// Populate Content from the last assistant message without tool calls.
 	msgs := s.Messages()
 	for i := len(msgs) - 1; i >= 0; i-- {
 		if msgs[i].Role == llm.RoleAssistant && len(msgs[i].Calls) == 0 {
-			result.Content = msgs[i].Content
+			res.Content = msgs[i].Content
 			break
 		}
 	}
 
-	// We don't have direct access to BaseAgent.Hooks here, but custom agents
-	// can handle their own EventStop if they want. BaseAgent does this in its
-	// Turn implementation if needed, but for now we keep RunTurn purely interface-based.
-
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeTurnCompleted, map[string]any{
-		"agent_id": a.ID(),
-		"steps":    steps,
-	})); err != nil {
-		return result, err
-	}
-
-	return result, nil
+	return
 }

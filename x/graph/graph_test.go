@@ -24,14 +24,16 @@ func (m *mockProvider) IsTransient(_ error) bool               { return false }
 func (m *mockProvider) Generate(_ context.Context, _ *llm.LLMRequest) (*llm.LLMResponse, error) {
 	return &llm.LLMResponse{Content: m.msg}, nil
 }
+
 func (m *mockProvider) Stream(_ context.Context, _ *llm.LLMRequest) (llm.Stream, error) {
 	return ctesting.NewMockStream(llm.Chunk{Content: m.msg}), nil
 }
+
 func (m *mockProvider) CountTokens(_ context.Context, _ string, _ []llm.Message) (int, error) {
 	return 0, nil
 }
 func (m *mockProvider) Cost(_ context.Context, _ string, _ llm.Usage) float64 { return 0 }
-func (m *mockProvider) Models(_ context.Context) ([]catwalk.Model, error) { return nil, nil }
+func (m *mockProvider) Models(_ context.Context) ([]catwalk.Model, error)     { return nil, nil }
 
 func TestGraphConditionalRouting(t *testing.T) {
 	ctx := context.Background()

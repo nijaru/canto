@@ -36,7 +36,10 @@ func NewRecordProvider(p llm.Provider, path string) *RecordProvider {
 }
 
 // Generate executes the request through the underlying provider and records the response.
-func (r *RecordProvider) Generate(ctx context.Context, req *llm.LLMRequest) (*llm.LLMResponse, error) {
+func (r *RecordProvider) Generate(
+	ctx context.Context,
+	req *llm.LLMRequest,
+) (*llm.LLMResponse, error) {
 	resp, err := r.Provider.Generate(ctx, req)
 	if err != nil {
 		return nil, err
@@ -84,6 +87,10 @@ func (s *recordingStream) Next() (*llm.Chunk, bool) {
 
 func (s *recordingStream) Close() error {
 	err := s.Stream.Close()
+	if err != nil || s.Stream.Err() != nil {
+		return err
+	}
+
 	s.parent.mu.Lock()
 	s.parent.steps = append(s.parent.steps, RecordedStep{
 		Request: s.req,

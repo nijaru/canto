@@ -28,7 +28,7 @@ func (a *BaseAgent) StreamStep(
 	ctx context.Context,
 	s *session.Session,
 	chunkFn func(*llm.Chunk),
-) (StepResult, error) {
+) (res StepResult, err error) {
 	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeStepStarted, map[string]any{
 		"agent_id": a.ID(),
 		"model":    a.Model,
@@ -36,17 +36,28 @@ func (a *BaseAgent) StreamStep(
 		return StepResult{}, err
 	}
 
+	defer func() {
+		data := map[string]any{
+			"agent_id": a.ID(),
+			"usage":    res.Usage,
+		}
+		if err != nil {
+			data["error"] = err.Error()
+		}
+		_ = s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeStepCompleted, data))
+	}()
+
 	req := &llm.LLMRequest{
 		Model: a.Model,
 	}
 
-	if err := a.Builder.Build(ctx, a.Provider, a.Model, s, req); err != nil {
-		return StepResult{}, err
+	if err = a.Builder.Build(ctx, a.Provider, a.Model, s, req); err != nil {
+		return
 	}
 
 	stream, err := a.Provider.Stream(ctx, req)
 	if err != nil {
-		return StepResult{}, err
+		return
 	}
 	defer stream.Close()
 
@@ -55,6 +66,7 @@ func (a *BaseAgent) StreamStep(
 	var contentBuilder strings.Builder
 	var reasoningBuilder strings.Builder
 	var usage llm.Usage
+	var thinkingBlocks []llm.ThinkingBlock
 	assembledCalls := make(map[string]llm.ToolCall) // keyed by call ID
 	callOrder := make([]string, 0)                  // preserve insertion order
 
@@ -68,6 +80,14 @@ func (a *BaseAgent) StreamStep(
 		}
 		if chunk.Reasoning != "" {
 			reasoningBuilder.WriteString(chunk.Reasoning)
+		}
+		for _, block := range chunk.ThinkingBlocks {
+			if block.Signature != "" {
+				thinkingBlocks = append(thinkingBlocks, block)
+			} else if len(thinkingBlocks) > 0 {
+				last := &thinkingBlocks[len(thinkingBlocks)-1]
+				last.Thinking += block.Thinking
+			}
 		}
 		if chunk.Usage != nil {
 			usage.InputTokens += chunk.Usage.InputTokens
@@ -87,8 +107,9 @@ func (a *BaseAgent) StreamStep(
 			chunkFn(chunk)
 		}
 	}
-	if err := stream.Err(); err != nil {
-		return StepResult{}, fmt.Errorf("stream: %w", err)
+	if err = stream.Err(); err != nil {
+		err = fmt.Errorf("stream: %w", err)
+		return
 	}
 
 	// Reconstruct ordered calls slice.
@@ -99,33 +120,24 @@ func (a *BaseAgent) StreamStep(
 
 	// Record assistant message.
 	msg := llm.Message{
-		Role:      llm.RoleAssistant,
-		Content:   contentBuilder.String(),
-		Reasoning: reasoningBuilder.String(),
-		Calls:     calls,
+		Role:           llm.RoleAssistant,
+		Content:        contentBuilder.String(),
+		Reasoning:      reasoningBuilder.String(),
+		ThinkingBlocks: thinkingBlocks,
+		Calls:          calls,
 	}
 	e := session.NewEvent(s.ID(), session.EventTypeMessageAdded, msg)
 	e.Cost = usage.Cost
-	if err := s.Append(ctx, e); err != nil {
-		return StepResult{}, err
+	if err = s.Append(ctx, e); err != nil {
+		return
 	}
 	llm.RecordUsage(ctx, req.Model, usage)
 
 	// Execute tool calls in parallel and append results to the session.
-	res, err := a.runTools(ctx, s, calls)
-	if err != nil {
-		return res, err
-	}
-	res.Usage = usage
+	res, err = a.runTools(ctx, s, calls)
+	res.Usage = usage // Restore usage as runTools only returns results/handoff
 
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeStepCompleted, map[string]any{
-		"agent_id": a.ID(),
-		"usage":    usage,
-	})); err != nil {
-		return res, err
-	}
-
-	return res, nil
+	return
 }
 
 // StreamTurn executes one or more streaming steps until the agent finishes,
@@ -135,29 +147,39 @@ func (a *BaseAgent) StreamTurn(
 	ctx context.Context,
 	s *session.Session,
 	chunkFn func(*llm.Chunk),
-) (StepResult, error) {
+) (res StepResult, err error) {
 	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeTurnStarted, map[string]any{
 		"agent_id": a.ID(),
 	})); err != nil {
 		return StepResult{}, err
 	}
 
-	steps := 0
-	var result StepResult
+	var steps int
 	var totalUsage llm.Usage
-	for steps < a.MaxSteps {
-		var err error
-		result, err = a.StreamStep(ctx, s, chunkFn)
+	defer func() {
+		data := map[string]any{
+			"agent_id": a.ID(),
+			"steps":    steps,
+			"usage":    totalUsage,
+		}
 		if err != nil {
-			return StepResult{}, err
+			data["error"] = err.Error()
+		}
+		_ = s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeTurnCompleted, data))
+	}()
+
+	for steps < a.MaxSteps {
+		res, err = a.StreamStep(ctx, s, chunkFn)
+		if err != nil {
+			return
 		}
 		steps++
-		totalUsage.InputTokens += result.Usage.InputTokens
-		totalUsage.OutputTokens += result.Usage.OutputTokens
-		totalUsage.TotalTokens += result.Usage.TotalTokens
-		totalUsage.Cost += result.Usage.Cost
+		totalUsage.InputTokens += res.Usage.InputTokens
+		totalUsage.OutputTokens += res.Usage.OutputTokens
+		totalUsage.TotalTokens += res.Usage.TotalTokens
+		totalUsage.Cost += res.Usage.Cost
 
-		if result.Handoff != nil {
+		if res.Handoff != nil {
 			break
 		}
 
@@ -172,14 +194,15 @@ func (a *BaseAgent) StreamTurn(
 	}
 
 	if steps >= a.MaxSteps {
-		return StepResult{}, fmt.Errorf("%w (%d)", ErrMaxSteps, a.MaxSteps)
+		err = fmt.Errorf("%w (%d)", ErrMaxSteps, a.MaxSteps)
+		return
 	}
-	result.Usage = totalUsage
+	res.Usage = totalUsage
 
 	msgs := s.Messages()
 	for i := len(msgs) - 1; i >= 0; i-- {
 		if msgs[i].Role == llm.RoleAssistant && len(msgs[i].Calls) == 0 {
-			result.Content = msgs[i].Content
+			res.Content = msgs[i].Content
 			break
 		}
 	}
@@ -188,12 +211,5 @@ func (a *BaseAgent) StreamTurn(
 		a.Hooks.Run(ctx, hook.EventStop, hook.SessionMeta{ID: s.ID()}, nil)
 	}
 
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.EventTypeTurnCompleted, map[string]any{
-		"agent_id": a.ID(),
-		"steps":    steps,
-	})); err != nil {
-		return result, err
-	}
-
-	return result, nil
+	return
 }

@@ -217,17 +217,15 @@ func (m *LaneManager) Stop() {
 
 	var wg sync.WaitGroup
 	for _, l := range lanes {
-		wg.Add(1)
-		go func(ln *lane) {
-			defer wg.Done()
-			close(ln.drain)
+		wg.Go(func() {
+			close(l.drain)
 			select {
-			case <-ln.done:
+			case <-l.done:
 			case <-time.After(m.DrainTimeout):
-				ln.cancel()
-				<-ln.done
+				l.cancel()
+				<-l.done
 			}
-		}(l)
+		})
 	}
 	wg.Wait()
 }

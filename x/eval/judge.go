@@ -57,12 +57,21 @@ Provide your evaluation and end with a score strictly formatted as "Score: X.X/1
 
 	matches := scoreRegex.FindStringSubmatch(resp.Content)
 	if len(matches) < 2 {
-		return 0, fmt.Errorf("llm_judge %q: could not find score in response: %q", j.NameText, resp.Content)
+		return 0, fmt.Errorf(
+			"llm_judge %q: could not find score in response: %q",
+			j.NameText,
+			resp.Content,
+		)
 	}
 
 	score, err := strconv.ParseFloat(matches[1], 64)
 	if err != nil {
-		return 0, fmt.Errorf("llm_judge %q: invalid score format %q: %w", j.NameText, matches[1], err)
+		return 0, fmt.Errorf(
+			"llm_judge %q: invalid score format %q: %w",
+			j.NameText,
+			matches[1],
+			err,
+		)
 	}
 
 	if score < 0 {
