@@ -10,27 +10,36 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-const defaultRunnerTimeout = 2 * time.Minute
+const (
+	defaultWaitTimeout      = 30 * time.Second
+	defaultExecutionTimeout = 2 * time.Minute
+)
 
 // Runner orchestrates the execution of an agent within a session.
 // It always uses a LaneManager to serialize execution within a session
 // while allowing concurrent execution across different sessions.
 type Runner struct {
-	Store   session.Store
-	Agent   agent.Agent
-	Timeout time.Duration
-	lanes   *LaneManager
-	Hooks   *hook.Runner
+	Store session.Store
+	Agent agent.Agent
+
+	// WaitTimeout is the maximum time to wait in the lane queue for a session.
+	WaitTimeout time.Duration
+	// ExecutionTimeout is the maximum time to spend running the agent turn.
+	ExecutionTimeout time.Duration
+
+	lanes *LaneManager
+	Hooks *hook.Runner
 }
 
 // NewRunner creates a Runner with per-session lane serialization enabled.
 func NewRunner(s session.Store, a agent.Agent) *Runner {
 	return &Runner{
-		Store:   s,
-		Agent:   a,
-		Timeout: defaultRunnerTimeout,
-		lanes:   NewLaneManager(),
-		Hooks:   hook.NewRunner(),
+		Store:            s,
+		Agent:            a,
+		WaitTimeout:      defaultWaitTimeout,
+		ExecutionTimeout: defaultExecutionTimeout,
+		lanes:            NewLaneManager(),
+		Hooks:            hook.NewRunner(),
 	}
 }
 
@@ -88,16 +97,24 @@ func (r *Runner) SendStream(
 
 // Run executes the agent on the given session, serialized within the session lane.
 func (r *Runner) Run(ctx context.Context, sessionID string) (agent.StepResult, error) {
-	if r.Timeout > 0 {
+	waitCtx := ctx
+	if r.WaitTimeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.Timeout)
+		waitCtx, cancel = context.WithTimeout(ctx, r.WaitTimeout)
 		defer cancel()
 	}
 
 	var result agent.StepResult
-	errCh := r.lanes.Execute(ctx, sessionID, func(ctx context.Context) error {
+	errCh := r.lanes.Execute(waitCtx, sessionID, func(laneCtx context.Context) error {
+		execCtx := laneCtx
+		if r.ExecutionTimeout > 0 {
+			var cancel context.CancelFunc
+			execCtx, cancel = context.WithTimeout(laneCtx, r.ExecutionTimeout)
+			defer cancel()
+		}
+
 		var err error
-		result, err = r.execute(ctx, sessionID, nil)
+		result, err = r.execute(execCtx, sessionID, nil)
 		return err
 	})
 	return result, <-errCh
@@ -110,16 +127,24 @@ func (r *Runner) RunStream(
 	sessionID string,
 	chunkFn func(*llm.Chunk),
 ) (agent.StepResult, error) {
-	if r.Timeout > 0 {
+	waitCtx := ctx
+	if r.WaitTimeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.Timeout)
+		waitCtx, cancel = context.WithTimeout(ctx, r.WaitTimeout)
 		defer cancel()
 	}
 
 	var result agent.StepResult
-	errCh := r.lanes.Execute(ctx, sessionID, func(ctx context.Context) error {
+	errCh := r.lanes.Execute(waitCtx, sessionID, func(laneCtx context.Context) error {
+		execCtx := laneCtx
+		if r.ExecutionTimeout > 0 {
+			var cancel context.CancelFunc
+			execCtx, cancel = context.WithTimeout(laneCtx, r.ExecutionTimeout)
+			defer cancel()
+		}
+
 		var err error
-		result, err = r.execute(ctx, sessionID, chunkFn)
+		result, err = r.execute(execCtx, sessionID, chunkFn)
 		return err
 	})
 	return result, <-errCh

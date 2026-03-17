@@ -6,14 +6,16 @@ import (
 	"sync"
 
 	"github.com/nijaru/canto/agent"
+	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
 
 // SwarmResult summarises a completed swarm run.
 type SwarmResult struct {
-	Rounds    int
-	TasksDone int
-	TotalCost float64
+	Rounds     int
+	TasksDone  int
+	TotalCost  float64
+	TotalUsage llm.Usage
 }
 
 // Swarm coordinates a set of agents via a shared Blackboard.
@@ -74,6 +76,7 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 
 		outcomes := make([]outcome, len(s.agents))
 		var wg sync.WaitGroup
+		var usageMu sync.Mutex
 
 		// Distribute unclaimed tasks round-robin as hints, but let agents
 		// actually claim via the atomic ClaimTask. An agent whose hint was
@@ -110,11 +113,19 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 				_ = s.blackboard.Post(ctx, ag.ID(), "current_task", claimed.Description)
 
 				// Execute one agent turn on the shared session.
-				if _, turnErr := ag.Turn(ctx, sess); turnErr != nil {
+				turnRes, turnErr := ag.Turn(ctx, sess)
+				if turnErr != nil {
 					out.err = fmt.Errorf("turn for task %q: %w", claimed.ID, turnErr)
 					outcomes[idx] = out
 					return
 				}
+				usageMu.Lock()
+				result.TotalUsage.InputTokens += turnRes.Usage.InputTokens
+				result.TotalUsage.OutputTokens += turnRes.Usage.OutputTokens
+				result.TotalUsage.TotalTokens += turnRes.Usage.TotalTokens
+				result.TotalUsage.Cost += turnRes.Usage.Cost
+				usageMu.Unlock()
+
 				out.worked = true
 				outcomes[idx] = out
 			}(i, a, unclaimed)

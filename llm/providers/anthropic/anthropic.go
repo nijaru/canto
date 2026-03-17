@@ -146,7 +146,13 @@ func (p *Provider) Stream(ctx context.Context, req *llm.LLMRequest) (llm.Stream,
 		}
 	}
 
-	return &Stream{stream: stream, targetName: targetName}, nil
+	return &Stream{
+		stream:     stream,
+		targetName: targetName,
+		model:      req.Model,
+		p:          p,
+		ctx:        ctx,
+	}, nil
 }
 
 func (p *Provider) Models(ctx context.Context) ([]catwalk.Model, error) {
@@ -333,6 +339,9 @@ type Stream struct {
 	err        error
 	activeCall *llm.ToolCall
 	targetName string // Name of the tool used for ResponseFormatJSONSchema
+	model      string
+	p          *Provider
+	ctx        context.Context
 }
 
 func (s *Stream) Next() (*llm.Chunk, bool) {
@@ -340,6 +349,12 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 		event := s.stream.Current()
 
 		switch event.Type {
+		case "message_start":
+			msg := event.AsMessageStart()
+			usage := llm.Usage{
+				InputTokens: int(msg.Message.Usage.InputTokens),
+			}
+			return &llm.Chunk{Usage: &usage}, true
 		case "content_block_start":
 			start := event.AsContentBlockStart()
 			if start.ContentBlock.Type == "tool_use" {
@@ -368,6 +383,13 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 				}
 				// "thinking_delta" is internal reasoning; not emitted to callers.
 			}
+		case "message_delta":
+			delta := event.AsMessageDelta()
+			usage := llm.Usage{
+				OutputTokens: int(delta.Usage.OutputTokens),
+			}
+			usage.Cost = s.p.Cost(s.ctx, s.model, usage)
+			return &llm.Chunk{Usage: &usage}, true
 		case "content_block_stop":
 			s.activeCall = nil
 		case "message_stop":

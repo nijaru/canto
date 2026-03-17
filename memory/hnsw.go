@@ -20,6 +20,10 @@ type HNSWStore struct {
 	db    *sql.DB
 	graph *hnsw.Graph[string]
 	mu    sync.RWMutex
+
+	// OverfetchFactor controls the number of extra nodes fetched during an
+	// approximate search to satisfy metadata filters. Default is 3.0.
+	OverfetchFactor float64
 }
 
 // NewHNSWStore creates a new HNSW-backed vector store.
@@ -45,7 +49,8 @@ func NewHNSWStore(ctx context.Context, dsn string) (*HNSWStore, error) {
 	s := &HNSWStore{
 		db: db,
 		// Initialize the Graph with default performant parameters using Cosine Distance
-		graph: hnsw.NewGraph[string](),
+		graph:           hnsw.NewGraph[string](),
+		OverfetchFactor: 3.0,
 	}
 
 	if err := s.init(ctx); err != nil {
@@ -150,7 +155,7 @@ func (s *HNSWStore) Search(
 	// Request more nodes than k to allow for filtering downstream
 	searchK := k
 	if len(filter) > 0 {
-		searchK = k * 3 // heuristic: over-fetch to satisfy metadata filters
+		searchK = int(float64(k) * s.OverfetchFactor)
 	}
 	nodes := s.graph.Search(queryVector, searchK)
 	s.mu.RUnlock()

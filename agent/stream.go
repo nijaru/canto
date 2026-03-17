@@ -46,6 +46,7 @@ func (a *BaseAgent) StreamStep(
 	// Assemble the complete response from chunks.
 	// Tool calls are accumulated by ID — each delta updates the same entry.
 	var contentBuilder strings.Builder
+	var usage llm.Usage
 	assembledCalls := make(map[string]llm.ToolCall) // keyed by call ID
 	callOrder := make([]string, 0)                  // preserve insertion order
 
@@ -56,6 +57,12 @@ func (a *BaseAgent) StreamStep(
 		}
 		if chunk.Content != "" {
 			contentBuilder.WriteString(chunk.Content)
+		}
+		if chunk.Usage != nil {
+			usage.InputTokens += chunk.Usage.InputTokens
+			usage.OutputTokens += chunk.Usage.OutputTokens
+			usage.TotalTokens += chunk.Usage.TotalTokens
+			usage.Cost += chunk.Usage.Cost
 		}
 		for _, call := range chunk.Calls {
 			if call.ID != "" {
@@ -86,10 +93,17 @@ func (a *BaseAgent) StreamStep(
 		Calls:   calls,
 	}
 	e := session.NewEvent(s.ID(), session.EventTypeMessageAdded, msg)
+	e.Cost = usage.Cost
 	s.Append(e)
+	llm.RecordUsage(ctx, req.Model, usage)
 
 	// Execute tool calls in parallel and append results to the session.
-	return a.runTools(ctx, s, calls)
+	res, err := a.runTools(ctx, s, calls)
+	if err != nil {
+		return res, err
+	}
+	res.Usage = usage
+	return res, nil
 }
 
 // StreamTurn executes one or more streaming steps until the agent finishes,
@@ -102,6 +116,7 @@ func (a *BaseAgent) StreamTurn(
 ) (StepResult, error) {
 	steps := 0
 	var result StepResult
+	var totalUsage llm.Usage
 	for steps < a.MaxSteps {
 		var err error
 		result, err = a.StreamStep(ctx, s, chunkFn)
@@ -109,8 +124,13 @@ func (a *BaseAgent) StreamTurn(
 			return StepResult{}, err
 		}
 		steps++
+		totalUsage.InputTokens += result.Usage.InputTokens
+		totalUsage.OutputTokens += result.Usage.OutputTokens
+		totalUsage.TotalTokens += result.Usage.TotalTokens
+		totalUsage.Cost += result.Usage.Cost
 
 		if result.Handoff != nil {
+			result.Usage = totalUsage
 			return result, nil
 		}
 
@@ -127,6 +147,7 @@ func (a *BaseAgent) StreamTurn(
 	if steps >= a.MaxSteps {
 		return StepResult{}, fmt.Errorf("%w (%d)", ErrMaxSteps, a.MaxSteps)
 	}
+	result.Usage = totalUsage
 
 	msgs := s.Messages()
 	for i := len(msgs) - 1; i >= 0; i-- {

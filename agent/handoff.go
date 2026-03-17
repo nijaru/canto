@@ -28,6 +28,9 @@ type StepResult struct {
 	// ToolResults contains the results of any tools executed in the last step.
 	// Useful for graph routing based on tool output without session re-parsing.
 	ToolResults []llm.Message
+
+	// Usage reports the token consumption for the turn (sum of all steps).
+	Usage llm.Usage
 }
 
 // Handoff describes a control transfer from one agent to another.

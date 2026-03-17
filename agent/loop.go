@@ -48,6 +48,7 @@ func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, e
 	if err != nil {
 		return res, err
 	}
+	res.Usage = resp.Usage
 
 	s.Append(session.NewEvent(s.ID(), session.EventTypeStepCompleted, map[string]any{
 		"agent_id": a.agentID,
@@ -67,6 +68,7 @@ func (a *BaseAgent) Turn(ctx context.Context, s *session.Session) (StepResult, e
 
 	steps := 0
 	var result StepResult
+	var totalUsage llm.Usage
 	for steps < a.MaxSteps {
 		var err error
 		result, err = a.Step(ctx, s)
@@ -74,6 +76,10 @@ func (a *BaseAgent) Turn(ctx context.Context, s *session.Session) (StepResult, e
 			return StepResult{}, err
 		}
 		steps++
+		totalUsage.InputTokens += result.Usage.InputTokens
+		totalUsage.OutputTokens += result.Usage.OutputTokens
+		totalUsage.TotalTokens += result.Usage.TotalTokens
+		totalUsage.Cost += result.Usage.Cost
 
 		// If a handoff was requested, stop immediately so the caller can route.
 		if result.Handoff != nil {
@@ -95,6 +101,7 @@ func (a *BaseAgent) Turn(ctx context.Context, s *session.Session) (StepResult, e
 	if steps >= a.MaxSteps {
 		return StepResult{}, fmt.Errorf("%w (%d)", ErrMaxSteps, a.MaxSteps)
 	}
+	result.Usage = totalUsage
 
 	// Populate Content from the last assistant message without tool calls.
 	msgs := s.Messages()

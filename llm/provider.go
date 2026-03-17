@@ -198,6 +198,8 @@ type Stream interface {
 type Chunk struct {
 	Content string     `json:"content"`
 	Calls   []ToolCall `json:"tool_calls,omitempty"`
+	// Usage is populated in the final chunk(s) if supported by the provider.
+	Usage *Usage `json:"usage,omitempty"`
 }
 
 // RetryProvider wraps an LLM provider and automatically retries transient errors

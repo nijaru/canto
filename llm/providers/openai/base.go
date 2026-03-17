@@ -143,9 +143,10 @@ func (b *Base) ConvertRequest(req *llm.LLMRequest) openai.ChatCompletionRequest 
 
 	caps := b.Capabilities(req.Model)
 	cr := openai.ChatCompletionRequest{
-		Model:    req.Model,
-		Messages: messages,
-		Tools:    tools,
+		Model:         req.Model,
+		Messages:      messages,
+		Tools:         tools,
+		StreamOptions: &openai.StreamOptions{IncludeUsage: true},
 	}
 	if caps.Temperature {
 		cr.Temperature = float32(req.Temperature)
@@ -271,6 +272,17 @@ func (s *OpenAIStream) Next() (*llm.Chunk, bool) {
 			}
 			s.err = err
 			return nil, false
+		}
+
+		// Handle final usage chunk (which may have no choices)
+		if resp.Usage != nil {
+			return &llm.Chunk{
+				Usage: &llm.Usage{
+					InputTokens:  resp.Usage.PromptTokens,
+					OutputTokens: resp.Usage.CompletionTokens,
+					TotalTokens:  resp.Usage.TotalTokens,
+				},
+			}, true
 		}
 
 		if len(resp.Choices) == 0 {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/nijaru/canto/agent"
+	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
 
@@ -113,14 +114,17 @@ func (g *Graph) Run(ctx context.Context, sess *session.Session) (agent.StepResul
 
 	current := g.entry
 	var lastResult agent.StepResult
+	var totalUsage llm.Usage
 
 	for {
 		if err := ctx.Err(); err != nil {
+			lastResult.Usage = totalUsage
 			return lastResult, err
 		}
 
 		a, ok := g.nodes[current]
 		if !ok {
+			lastResult.Usage = totalUsage
 			return lastResult, fmt.Errorf("graph: node %q not registered", current)
 		}
 
@@ -128,8 +132,13 @@ func (g *Graph) Run(ctx context.Context, sess *session.Session) (agent.StepResul
 		// We run the turn directly on the agent to avoid storing a per-node runner.
 		result, err := a.Turn(ctx, sess)
 		if err != nil {
+			lastResult.Usage = totalUsage
 			return lastResult, fmt.Errorf("graph: node %q: %w", current, err)
 		}
+		totalUsage.InputTokens += result.Usage.InputTokens
+		totalUsage.OutputTokens += result.Usage.OutputTokens
+		totalUsage.TotalTokens += result.Usage.TotalTokens
+		totalUsage.Cost += result.Usage.Cost
 		lastResult = result
 
 		// If the agent issued a handoff, record it in the session log.
@@ -146,6 +155,7 @@ func (g *Graph) Run(ctx context.Context, sess *session.Session) (agent.StepResul
 		current = next
 	}
 
+	lastResult.Usage = totalUsage
 	return lastResult, nil
 }
 
