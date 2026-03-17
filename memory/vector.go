@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"math"
 	"slices"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -42,6 +43,12 @@ type SQLiteVectorStore struct {
 
 // NewSQLiteVectorStore creates a new SQLite-backed vector store.
 func NewSQLiteVectorStore(dsn string) (*SQLiteVectorStore, error) {
+	if !strings.Contains(dsn, "?") {
+		dsn += "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	} else if !strings.Contains(dsn, "journal_mode") {
+		dsn += "&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	}
+
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
@@ -97,14 +104,12 @@ func (s *SQLiteVectorStore) Upsert(
 	return err
 }
 
-// Search performs a brute-force cosine similarity search.
-// The filter parameter is accepted for interface compatibility but ignored;
-// the SQLite implementation scans all vectors regardless.
+// Search performs a brute-force cosine similarity search with optional metadata filtering.
 func (s *SQLiteVectorStore) Search(
 	ctx context.Context,
 	queryVector []float32,
 	k int,
-	_ map[string]any,
+	filter map[string]any,
 ) ([]SearchResult, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT id, vector, metadata FROM vectors")
 	if err != nil {
@@ -113,9 +118,9 @@ func (s *SQLiteVectorStore) Search(
 	defer rows.Close()
 
 	type rawResult struct {
-		id    string
-		score float32
-		data  string
+		id       string
+		score    float32
+		metadata map[string]any
 	}
 	var rawResults []rawResult
 	for rows.Next() {
@@ -126,8 +131,27 @@ func (s *SQLiteVectorStore) Search(
 			return nil, err
 		}
 
+		var metadata map[string]any
+		if err := json.Unmarshal([]byte(mData), &metadata); err != nil {
+			continue // Skip corrupt entries
+		}
+
+		// Apply filter if provided
+		if len(filter) > 0 {
+			match := true
+			for k, v := range filter {
+				if mv, ok := metadata[k]; !ok || mv != v {
+					match = false
+					break
+				}
+			}
+			if !match {
+				continue
+			}
+		}
+
 		if len(vData)%4 != 0 {
-			continue // Should not happen
+			continue
 		}
 
 		vector := make([]float32, len(vData)/4)
@@ -137,9 +161,9 @@ func (s *SQLiteVectorStore) Search(
 
 		score := cosineSimilarity(queryVector, vector)
 		rawResults = append(rawResults, rawResult{
-			id:    id,
-			score: score,
-			data:  mData,
+			id:       id,
+			score:    score,
+			metadata: metadata,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -163,14 +187,10 @@ func (s *SQLiteVectorStore) Search(
 
 	var results []SearchResult
 	for _, r := range rawResults {
-		var metadata map[string]any
-		if err := json.Unmarshal([]byte(r.data), &metadata); err != nil {
-			return nil, err
-		}
 		results = append(results, SearchResult{
 			ID:       r.id,
 			Score:    r.score,
-			Metadata: metadata,
+			Metadata: r.metadata,
 		})
 	}
 

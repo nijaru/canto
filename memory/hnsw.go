@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/coder/hnsw"
@@ -25,6 +26,12 @@ type HNSWStore struct {
 // It initializes the SQLite db at dsn, and rebuilds the HNSW graph from the durable DB
 // on startup to restore its in-memory state.
 func NewHNSWStore(ctx context.Context, dsn string) (*HNSWStore, error) {
+	if !strings.Contains(dsn, "?") {
+		dsn += "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	} else if !strings.Contains(dsn, "journal_mode") {
+		dsn += "&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	}
+
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("hnsw: open sqlite: %w", err)
@@ -131,16 +138,21 @@ func (s *HNSWStore) Upsert(
 	return nil
 }
 
-// Search performs a highly efficient approximate k-NN search using the memory-mapped HNSW graph.
-// Results are populated with their durable metadata from SQLite.
+// Search performs an efficient approximate k-NN search using the in-memory HNSW graph
+// with optional metadata filtering from the durable SQLite store.
 func (s *HNSWStore) Search(
 	ctx context.Context,
 	queryVector []float32,
 	k int,
-	_ map[string]any, // Unfiltered pure Go implementation (drops filter args per Phase 1 spec)
+	filter map[string]any,
 ) ([]SearchResult, error) {
 	s.mu.RLock()
-	nodes := s.graph.Search(queryVector, k)
+	// Request more nodes than k to allow for filtering downstream
+	searchK := k
+	if len(filter) > 0 {
+		searchK = k * 3 // heuristic: over-fetch to satisfy metadata filters
+	}
+	nodes := s.graph.Search(queryVector, searchK)
 	s.mu.RUnlock()
 
 	if len(nodes) == 0 {
@@ -148,13 +160,12 @@ func (s *HNSWStore) Search(
 	}
 
 	// Retrieve durable metadata for the matched subset
-	results := make([]SearchResult, 0, len(nodes))
+	var results []SearchResult
 	for _, node := range nodes {
 		var mData string
 		err := s.db.QueryRowContext(ctx, "SELECT metadata FROM vectors WHERE id = ?", node.Key).
 			Scan(&mData)
 		if err != nil {
-			// If node exists in memory index but not disk, ignore cleanly
 			if err == sql.ErrNoRows {
 				continue
 			}
@@ -163,7 +174,21 @@ func (s *HNSWStore) Search(
 
 		var metadata map[string]any
 		if err := json.Unmarshal([]byte(mData), &metadata); err != nil {
-			return nil, fmt.Errorf("hnsw decode metadata %s: %w", node.Key, err)
+			continue
+		}
+
+		// Apply metadata filter
+		if len(filter) > 0 {
+			match := true
+			for fk, fv := range filter {
+				if mv, ok := metadata[fk]; !ok || mv != fv {
+					match = false
+					break
+				}
+			}
+			if !match {
+				continue
+			}
 		}
 
 		results = append(results, SearchResult{
@@ -171,6 +196,10 @@ func (s *HNSWStore) Search(
 			Score:    1.0 - hnsw.CosineDistance(queryVector, node.Value),
 			Metadata: metadata,
 		})
+
+		if len(results) >= k {
+			break
+		}
 	}
 
 	slices.SortFunc(results, func(a, b SearchResult) int {
