@@ -5,10 +5,12 @@ import (
 	"errors"
 	"testing"
 
+	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/x/graph"
+	ctesting "github.com/nijaru/canto/x/testing"
 )
 
 type mockProvider struct {
@@ -22,6 +24,14 @@ func (m *mockProvider) IsTransient(_ error) bool               { return false }
 func (m *mockProvider) Generate(_ context.Context, _ *llm.LLMRequest) (*llm.LLMResponse, error) {
 	return &llm.LLMResponse{Content: m.msg}, nil
 }
+func (m *mockProvider) Stream(_ context.Context, _ *llm.LLMRequest) (llm.Stream, error) {
+	return ctesting.NewMockStream(llm.Chunk{Content: m.msg}), nil
+}
+func (m *mockProvider) CountTokens(_ context.Context, _ string, _ []llm.Message) (int, error) {
+	return 0, nil
+}
+func (m *mockProvider) Cost(_ context.Context, _ string, _ llm.Usage) float64 { return 0 }
+func (m *mockProvider) Models(_ context.Context) ([]catwalk.Model, error) { return nil, nil }
 
 func TestGraphConditionalRouting(t *testing.T) {
 	ctx := context.Background()
@@ -31,7 +41,7 @@ func TestGraphConditionalRouting(t *testing.T) {
 	writer := agent.New("writer", "Write the report.", "gpt-4",
 		&mockProvider{msg: "report written"}, nil)
 
-	g := graph.New("researcher")
+	g := graph.New("main", "researcher")
 	g.AddNode(researcher)
 	g.AddNode(writer)
 
@@ -75,7 +85,7 @@ func TestGraphTerminatesAtTerminalNode(t *testing.T) {
 	solo := agent.New("solo", "Do everything.", "gpt-4",
 		&mockProvider{msg: "done"}, nil)
 
-	g := graph.New("solo")
+	g := graph.New("main", "solo")
 	g.AddNode(solo)
 	// No edges — solo is a terminal node.
 
@@ -105,7 +115,7 @@ func TestValidate_ValidGraph(t *testing.T) {
 	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "a"}, nil)
 	b := agent.New("b", "Do B.", "gpt-4", &mockProvider{msg: "b"}, nil)
 
-	g := graph.New("a")
+	g := graph.New("main", "a")
 	g.AddNode(a)
 	g.AddNode(b)
 	g.AddEdge("a", "b", nil)
@@ -116,7 +126,7 @@ func TestValidate_ValidGraph(t *testing.T) {
 }
 
 func TestValidate_EntryNodeMissing(t *testing.T) {
-	g := graph.New("missing")
+	g := graph.New("main", "missing")
 	// No nodes registered — entry node not present.
 	err := g.Validate()
 	if err == nil {
@@ -128,7 +138,7 @@ func TestValidate_EdgeMissingSourceNode(t *testing.T) {
 	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "a"}, nil)
 	b := agent.New("b", "Do B.", "gpt-4", &mockProvider{msg: "b"}, nil)
 
-	g := graph.New("a")
+	g := graph.New("main", "a")
 	g.AddNode(a)
 	g.AddNode(b)
 	// Add an edge from a node that is not registered.
@@ -143,7 +153,7 @@ func TestValidate_EdgeMissingSourceNode(t *testing.T) {
 func TestValidate_EdgeMissingTargetNode(t *testing.T) {
 	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "a"}, nil)
 
-	g := graph.New("a")
+	g := graph.New("main", "a")
 	g.AddNode(a)
 	g.AddEdge("a", "nowhere", nil)
 
@@ -158,7 +168,7 @@ func TestValidate_CycleDetected(t *testing.T) {
 	b := agent.New("b", "Do B.", "gpt-4", &mockProvider{msg: "b"}, nil)
 	c := agent.New("c", "Do C.", "gpt-4", &mockProvider{msg: "c"}, nil)
 
-	g := graph.New("a")
+	g := graph.New("main", "a")
 	g.AddNode(a)
 	g.AddNode(b)
 	g.AddNode(c)
@@ -181,7 +191,7 @@ func TestAddEdge_NilConditionIsUnconditional(t *testing.T) {
 	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "a"}, nil)
 	b := agent.New("b", "Do B.", "gpt-4", &mockProvider{msg: "b"}, nil)
 
-	g := graph.New("a")
+	g := graph.New("main", "a")
 	g.AddNode(a)
 	g.AddNode(b)
 	// nil condition — must be treated as unconditional.
@@ -216,7 +226,7 @@ func TestRun_ContextCancelled(t *testing.T) {
 
 	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "a"}, nil)
 
-	g := graph.New("a")
+	g := graph.New("main", "a")
 	g.AddNode(a)
 
 	sess := session.New("cancel-test")
@@ -242,7 +252,7 @@ func TestRun_ContextCancelled(t *testing.T) {
 func TestRun_EntryNodeNotRegistered(t *testing.T) {
 	ctx := context.Background()
 
-	g := graph.New("missing")
+	g := graph.New("main", "missing")
 	// No nodes added.
 
 	sess := session.New("no-entry-test")
@@ -257,5 +267,89 @@ func TestRun_EntryNodeNotRegistered(t *testing.T) {
 	_, err := g.Run(ctx, sess)
 	if err == nil {
 		t.Fatal("expected error for unregistered entry node, got nil")
+	}
+}
+
+func TestNestedGraphs(t *testing.T) {
+	ctx := context.Background()
+
+	// Child graph: a -> b
+	a := agent.New("a", "Do A.", "gpt-4", &mockProvider{msg: "a"}, nil)
+	b := agent.New("b", "Do B.", "gpt-4", &mockProvider{msg: "b"}, nil)
+	child := graph.New("child", "a")
+	child.AddNode(a)
+	child.AddNode(b)
+	child.AddEdge("a", "b", nil)
+
+	// Parent graph: child -> c
+	c := agent.New("c", "Do C.", "gpt-4", &mockProvider{msg: "c"}, nil)
+	parent := graph.New("parent", "child")
+	parent.AddNode(child)
+	parent.AddNode(c)
+	parent.AddEdge("child", "c", nil)
+
+	sess := session.New("nest-test")
+	_ = sess.Append(ctx, session.NewEvent("nest-test", session.EventTypeMessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "Go.",
+	}))
+
+	result, err := parent.Run(ctx, sess)
+	if err != nil {
+		t.Fatalf("parent.Run: %v", err)
+	}
+
+	if result.Content != "c" {
+		t.Errorf("expected final result 'c', got %q", result.Content)
+	}
+
+	msgs := sess.Messages()
+	// user + child(a+b) + c = 4
+	if len(msgs) != 4 {
+		t.Errorf("expected 4 messages, got %d", len(msgs))
+	}
+}
+
+type streamingMockProvider struct {
+	mockProvider
+	chunks []llm.Chunk
+}
+
+func (m *streamingMockProvider) Stream(_ context.Context, _ *llm.LLMRequest) (llm.Stream, error) {
+	return ctesting.NewMockStream(m.chunks...), nil
+}
+
+func TestGraph_StreamTurn(t *testing.T) {
+	ctx := context.Background()
+
+	chunks := []llm.Chunk{
+		{Content: "hello "},
+		{Content: "world"},
+	}
+	a := agent.New("a", "Greeting.", "gpt-4", &streamingMockProvider{chunks: chunks}, nil)
+	b := agent.New("b", "Ending.", "gpt-4", &mockProvider{msg: "!"}, nil)
+
+	g := graph.New("main", "a")
+	g.AddNode(a)
+	g.AddNode(b)
+	g.AddEdge("a", "b", nil)
+
+	sess := session.New("stream-test")
+	_ = sess.Append(ctx, session.NewEvent("stream-test", session.EventTypeMessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "Greet me.",
+	}))
+
+	var seen string
+	_, err := g.StreamTurn(ctx, sess, func(chunk *llm.Chunk) {
+		seen += chunk.Content
+	})
+	if err != nil {
+		t.Fatalf("g.StreamTurn: %v", err)
+	}
+
+	// We expect chunks from 'a' to be relayed. 'b' also relays its message as a chunk.
+	if seen != "hello world!" {
+		t.Errorf("expected 'hello world!', got %q", seen)
 	}
 }

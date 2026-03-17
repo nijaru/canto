@@ -27,17 +27,41 @@ type Edge struct {
 // are satisfied by each agent's StepResult. Stops at a terminal node
 // (no outgoing edge satisfied) or when the context is cancelled.
 type Graph struct {
+	id    string
 	nodes map[string]agent.Agent
 	edges []Edge
 	entry string
 }
 
-// New creates an empty Graph rooted at the given entry agent ID.
-func New(entry string) *Graph {
+// New creates an empty Graph with the given ID and entry agent ID.
+func New(id, entry string) *Graph {
 	return &Graph{
+		id:    id,
 		nodes: make(map[string]agent.Agent),
 		entry: entry,
 	}
+}
+
+// ID returns the graph's unique identifier.
+func (g *Graph) ID() string { return g.id }
+
+// Step executes the graph pipeline. For a graph, Step and Turn are equivalent.
+func (g *Graph) Step(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+	return g.Run(ctx, sess)
+}
+
+// Turn executes the graph pipeline.
+func (g *Graph) Turn(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+	return g.Run(ctx, sess)
+}
+
+// StreamTurn executes the graph pipeline, relaying chunks from any streaming nodes.
+func (g *Graph) StreamTurn(
+	ctx context.Context,
+	sess *session.Session,
+	chunkFn func(*llm.Chunk),
+) (agent.StepResult, error) {
+	return g.execute(ctx, sess, chunkFn)
 }
 
 // AddNode registers an agent as a node in the graph.
@@ -108,6 +132,14 @@ func (g *Graph) Validate() error {
 // It follows edges whose conditions are satisfied by each StepResult.
 // Returns the final StepResult (from the last agent to execute) and any error.
 func (g *Graph) Run(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+	return g.execute(ctx, sess, nil)
+}
+
+func (g *Graph) execute(
+	ctx context.Context,
+	sess *session.Session,
+	chunkFn func(*llm.Chunk),
+) (agent.StepResult, error) {
 	if _, ok := g.nodes[g.entry]; !ok {
 		return agent.StepResult{}, fmt.Errorf("graph: entry node %q not registered", g.entry)
 	}
@@ -128,13 +160,25 @@ func (g *Graph) Run(ctx context.Context, sess *session.Session) (agent.StepResul
 			return lastResult, fmt.Errorf("graph: node %q not registered", current)
 		}
 
-		// Swap the runner's agent to the current node's agent and execute.
-		// We run the turn directly on the agent to avoid storing a per-node runner.
-		result, err := a.Turn(ctx, sess)
+		var result agent.StepResult
+		var err error
+
+		// Use streaming if requested AND the node supports it.
+		if chunkFn != nil {
+			if streamer, ok := a.(agent.Streamer); ok {
+				result, err = streamer.StreamTurn(ctx, sess, chunkFn)
+			} else {
+				result, err = a.Turn(ctx, sess)
+			}
+		} else {
+			result, err = a.Turn(ctx, sess)
+		}
+
 		if err != nil {
 			lastResult.Usage = totalUsage
 			return lastResult, fmt.Errorf("graph: node %q: %w", current, err)
 		}
+
 		totalUsage.InputTokens += result.Usage.InputTokens
 		totalUsage.OutputTokens += result.Usage.OutputTokens
 		totalUsage.TotalTokens += result.Usage.TotalTokens
