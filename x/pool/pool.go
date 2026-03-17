@@ -73,7 +73,7 @@ func run(ctx context.Context, task Task, a agent.Agent) Result {
 		return Result{Task: task, Err: err}
 	}
 
-	traj, err := session.ExportTrajectory(sess)
+	traj, err := session.ExportRun(sess)
 	if err != nil {
 		return Result{Task: task, Err: err}
 	}

@@ -10,21 +10,21 @@ import (
 	"github.com/oklog/ulid/v2"
 )
 
-// Trajectory represents a structured trace of an agent's execution.
+// RunLog represents a structured trace of an agent's execution.
 // It is used for evaluation, reinforcement learning (RL) fine-tuning,
 // and offline analysis.
-type Trajectory struct {
-	SessionID string           `json:"session_id"`
-	AgentID   string           `json:"agent_id"`
-	StartTime time.Time        `json:"start_time"`
-	EndTime   time.Time        `json:"end_time"`
-	Turns     []TrajectoryTurn `json:"turns"`
-	TotalCost float64          `json:"total_cost"`
-	Metadata  map[string]any   `json:"metadata,omitzero"`
+type RunLog struct {
+	SessionID string         `json:"session_id"`
+	AgentID   string         `json:"agent_id"`
+	StartTime time.Time      `json:"start_time"`
+	EndTime   time.Time      `json:"end_time"`
+	Turns     []RunTurn      `json:"turns"`
+	TotalCost float64        `json:"total_cost"`
+	Metadata  map[string]any `json:"metadata,omitzero"`
 }
 
-// TrajectoryTurn represents a single perceive-decide-act-observe loop.
-type TrajectoryTurn struct {
+// RunTurn represents a single perceive-decide-act-observe loop.
+type RunTurn struct {
 	TurnID      string         `json:"turn_id"`
 	Timestamp   time.Time      `json:"timestamp"`
 	Input       []llm.Message  `json:"input"`
@@ -70,12 +70,12 @@ func (ep *Episode) Text() string {
 	return sb.String()
 }
 
-// Distill compresses a Trajectory into an Episode by extracting only the signal:
+// Distill compresses a RunLog into an Episode by extracting only the signal:
 // successful tool call pairs (call + result) and the final textual conclusion.
 // The raw conversation transcript is discarded. The returned Episode is ready for
 // storage in an archival memory store so orchestrators can retrieve completed work
 // without loading full session logs.
-func Distill(traj *Trajectory) *Episode {
+func Distill(traj *RunLog) *Episode {
 	ep := &Episode{
 		ID:        ulid.Make().String(),
 		SessionID: traj.SessionID,
@@ -113,24 +113,24 @@ func Distill(traj *Trajectory) *Episode {
 	return ep
 }
 
-// ExportTrajectory converts a session's event log into a structured Trajectory.
-func ExportTrajectory(sess *Session) (*Trajectory, error) {
+// ExportRun converts a session's event log into a structured RunLog.
+func ExportRun(sess *Session) (*RunLog, error) {
 	events := sess.Events()
 	if len(events) == 0 {
-		return &Trajectory{
+		return &RunLog{
 			SessionID: sess.ID(),
-			Turns:     []TrajectoryTurn{},
+			Turns:     []RunTurn{},
 		}, nil
 	}
 
-	traj := &Trajectory{
+	traj := &RunLog{
 		SessionID: sess.ID(),
 		StartTime: events[0].Timestamp,
 		EndTime:   events[len(events)-1].Timestamp,
 		Metadata:  make(map[string]any),
 	}
 
-	var currentTurn *TrajectoryTurn
+	var currentTurn *RunTurn
 	var inputBuffer []llm.Message
 
 	for _, e := range events {
@@ -149,7 +149,7 @@ func ExportTrajectory(sess *Session) (*Trajectory, error) {
 				if currentTurn != nil {
 					traj.Turns = append(traj.Turns, *currentTurn)
 				}
-				currentTurn = &TrajectoryTurn{
+				currentTurn = &RunTurn{
 					TurnID:    e.ID.String(),
 					Timestamp: e.Timestamp,
 					Input:     make([]llm.Message, len(inputBuffer)),

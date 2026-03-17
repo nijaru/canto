@@ -8,13 +8,13 @@ import (
 )
 
 func TestDistill(t *testing.T) {
-	traj := &Trajectory{
+	traj := &RunLog{
 		SessionID: "sess-1",
 		AgentID:   "agent-1",
 		StartTime: time.Now(),
 		EndTime:   time.Now().Add(time.Minute),
 		TotalCost: 0.05,
-		Turns: []TrajectoryTurn{
+		Turns: []RunTurn{
 			{
 				// Turn with a successful tool call
 				Output: llm.Message{
@@ -94,7 +94,7 @@ func TestDistill(t *testing.T) {
 }
 
 func TestDistill_Empty(t *testing.T) {
-	ep := Distill(&Trajectory{SessionID: "s", AgentID: "a"})
+	ep := Distill(&RunLog{SessionID: "s", AgentID: "a"})
 	if ep.ID == "" {
 		t.Error("Episode ID must not be empty even for empty trajectory")
 	}

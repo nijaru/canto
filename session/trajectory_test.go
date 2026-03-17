@@ -8,7 +8,7 @@ import (
 	"github.com/nijaru/canto/llm"
 )
 
-func TestExportTrajectory(t *testing.T) {
+func TestExportRun(t *testing.T) {
 	sess := New("test-session")
 
 	// Add some events
@@ -57,7 +57,7 @@ func TestExportTrajectory(t *testing.T) {
 	e4.Cost = 0.02
 	sess.Append(context.Background(), e4)
 
-	traj, err := ExportTrajectory(sess)
+	traj, err := ExportRun(sess)
 	if err != nil {
 		t.Fatal(err)
 	}
