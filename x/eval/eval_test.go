@@ -72,17 +72,17 @@ func TestRunEval(t *testing.T) {
 		{"Done directly.", "", 0.0002},
 	})
 
-	scorers := []eval.Scorer{
-		&eval.ToolCallAccuracyScorer{Expected: []string{"search"}},
-		&eval.CostEfficiencyScorer{},
-		&eval.TurnCountScorer{},
-	}
-
-	results, err := eval.RunEval(
+	results, err := eval.Run(
 		context.Background(),
 		[]*session.Session{sess1, sess2},
-		scorers,
-		outPath,
+		eval.Options{
+			TurnEvals: []eval.TurnEvaluator{
+				&eval.ToolCallAccuracy{Expected: []string{"search"}},
+				&eval.CostEfficiency{},
+				&eval.TurnEfficiency{},
+			},
+			OutputPath: outPath,
+		},
 	)
 	if err != nil {
 		t.Fatalf("RunEval: %v", err)
