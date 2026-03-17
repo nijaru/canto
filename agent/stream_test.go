@@ -217,22 +217,23 @@ func TestBaseAgentImplementsStreamer(t *testing.T) {
 
 func TestWithProcessorsInsertsBeforeCapabilities(t *testing.T) {
 	a := New("a", "", "m", &mockProvider{}, nil)
-	origLen := len(a.Builder.Processors)
+	origLen := len(a.Builder.Processors())
 
 	a2 := New("a2", "", "m", &mockProvider{}, nil,
 		WithProcessors(ccontext.ProcessorFunc(noopProcessor)),
 		WithProcessors(ccontext.ProcessorFunc(noopProcessor)),
 	)
-	if got := len(a2.Builder.Processors); got != origLen+2 {
+	if got := len(a2.Builder.Processors()); got != origLen+2 {
 		t.Errorf("expected %d processors, got %d", origLen+2, got)
 	}
 	// Last processor must still be CapabilitiesProcessor (not our sentinels).
 	// CapabilitiesProcessor is a ProcessorFunc — we can check the sentinels
 	// are NOT at position len-1 by verifying they are at len-3 and len-2.
-	n := len(a2.Builder.Processors)
-	_ = a2.Builder.Processors[n-1] // CapabilitiesProcessor: just confirm no panic
-	_ = a2.Builder.Processors[n-2] // second sentinel
-	_ = a2.Builder.Processors[n-3] // first sentinel
+	ps := a2.Builder.Processors()
+	n := len(ps)
+	_ = ps[n-1] // CapabilitiesProcessor: just confirm no panic
+	_ = ps[n-2] // second sentinel
+	_ = ps[n-3] // first sentinel
 }
 
 func noopProcessor(_ context.Context, _ llm.Provider, _ string, _ *session.Session, _ *llm.LLMRequest) error {

@@ -13,14 +13,21 @@ import (
 
 // Builder implements the context engineering pipeline.
 type Builder struct {
-	Processors []ContextProcessor
+	processors []ContextProcessor
 }
 
 // NewBuilder creates a new builder with the default processor chain.
 func NewBuilder(processors ...ContextProcessor) *Builder {
 	return &Builder{
-		Processors: processors,
+		processors: processors,
 	}
+}
+
+// Processors returns a copy of the current processor chain.
+func (b *Builder) Processors() []ContextProcessor {
+	res := make([]ContextProcessor, len(b.processors))
+	copy(res, b.processors)
+	return res
 }
 
 // Build executes the processor chain to transform the session and request.
@@ -31,7 +38,7 @@ func (b *Builder) Build(
 	sess *session.Session,
 	req *llm.LLMRequest,
 ) error {
-	for _, cp := range b.Processors {
+	for _, cp := range b.processors {
 		if err := cp.Process(ctx, p, model, sess, req); err != nil {
 			return err
 		}
@@ -41,12 +48,29 @@ func (b *Builder) Build(
 
 // Prepend inserts p at the front of the processor chain.
 func (b *Builder) Prepend(p ContextProcessor) {
-	b.Processors = append([]ContextProcessor{p}, b.Processors...)
+	b.processors = append([]ContextProcessor{p}, b.processors...)
 }
 
 // Append adds p at the end of the processor chain.
 func (b *Builder) Append(p ContextProcessor) {
-	b.Processors = append(b.Processors, p)
+	b.processors = append(b.processors, p)
+}
+
+// InsertBeforeLast inserts processors into the chain immediately before the
+// last processor. If the chain is empty, it appends them.
+func (b *Builder) InsertBeforeLast(ps ...ContextProcessor) {
+	if len(b.processors) == 0 {
+		b.processors = append(b.processors, ps...)
+		return
+	}
+	// Insert before the last processor (e.g. CapabilitiesProcessor).
+	n := len(b.processors)
+	tail := b.processors[n-1]
+	merged := make([]ContextProcessor, 0, n-1+len(ps)+1)
+	merged = append(merged, b.processors[:n-1]...)
+	merged = append(merged, ps...)
+	merged = append(merged, tail)
+	b.processors = merged
 }
 
 // HistoryProcessor appends the session event log to the LLM request messages.

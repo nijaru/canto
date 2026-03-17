@@ -52,18 +52,7 @@ func WithBuilder(b *ccontext.Builder) Option { return func(a *BaseAgent) { a.Bui
 // without rebuilding the full default chain with WithBuilder.
 func WithProcessors(ps ...ccontext.ContextProcessor) Option {
 	return func(a *BaseAgent) {
-		b := a.Builder.Processors
-		if len(b) == 0 {
-			a.Builder.Processors = ps
-			return
-		}
-		// Insert before the last processor (CapabilitiesProcessor by convention).
-		tail := b[len(b)-1]
-		merged := make([]ccontext.ContextProcessor, 0, len(b)-1+len(ps)+1)
-		merged = append(merged, b[:len(b)-1]...)
-		merged = append(merged, ps...)
-		merged = append(merged, tail)
-		a.Builder.Processors = merged
+		a.Builder.InsertBeforeLast(ps...)
 	}
 }
 

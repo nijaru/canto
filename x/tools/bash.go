@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 
 	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/tool"
 )
 
 // BashTool executes shell commands.
@@ -42,6 +41,6 @@ func (b *BashTool) Execute(ctx context.Context, args string) (string, error) {
 		return "", err
 	}
 
-	executor := tool.DefaultExecutor
+	executor := DefaultExecutor
 	return executor.Execute(ctx, "bash", "-c", input.Command)
 }
