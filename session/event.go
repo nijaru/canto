@@ -15,6 +15,15 @@ const (
 	EventTypeMessageAdded  EventType = "message_added"
 	EventTypeHandoff       EventType = "handoff"
 	EventTypeExternalInput EventType = "external_input"
+
+	// Observability / Lifecycle
+	EventTypeTurnStarted           EventType = "turn_started"
+	EventTypeTurnCompleted         EventType = "turn_completed"
+	EventTypeStepStarted           EventType = "step_started"
+	EventTypeStepCompleted         EventType = "step_completed"
+	EventTypeToolExecutionStarted   EventType = "tool_execution_started"
+	EventTypeToolExecutionCompleted EventType = "tool_execution_completed"
+	EventTypeCompactionTriggered    EventType = "compaction_triggered"
 )
 
 // Event is a single append-only fact in a session.

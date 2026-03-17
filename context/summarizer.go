@@ -51,6 +51,13 @@ func (p *SummarizeProcessor) Process(
 		return nil
 	}
 
+	sess.Append(session.NewEvent(sess.ID(), session.EventTypeCompactionTriggered, map[string]any{
+		"strategy":      "summarize",
+		"max_tokens":    p.MaxTokens,
+		"threshold_pct": p.ThresholdPct,
+		"current_tokens": currentTokens,
+	}))
+
 	if p.OnPreCompact != nil {
 		p.OnPreCompact(ctx, sess)
 	}

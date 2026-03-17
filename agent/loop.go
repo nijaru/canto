@@ -13,6 +13,11 @@ import (
 // If any tool call produces a Handoff payload targeting a known peer agent,
 // the result's Handoff field is set so callers can route accordingly.
 func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, error) {
+	s.Append(session.NewEvent(s.ID(), session.EventTypeStepStarted, map[string]any{
+		"agent_id": a.agentID,
+		"model":    a.Model,
+	}))
+
 	req := &llm.LLMRequest{
 		Model: a.Model,
 	}
@@ -39,13 +44,27 @@ func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, e
 	llm.RecordUsage(ctx, req.Model, resp.Usage)
 
 	// Execute tool calls in parallel and append results to the session.
-	return a.runTools(ctx, s, resp.Calls)
+	res, err := a.runTools(ctx, s, resp.Calls)
+	if err != nil {
+		return res, err
+	}
+
+	s.Append(session.NewEvent(s.ID(), session.EventTypeStepCompleted, map[string]any{
+		"agent_id": a.agentID,
+		"usage":    resp.Usage,
+	}))
+
+	return res, nil
 }
 
 // Turn executes one or more steps until the agent finishes (no pending tool
 // calls) or a handoff is requested, or MaxSteps is reached.
 // The returned StepResult reflects the final step's outcome.
 func (a *BaseAgent) Turn(ctx context.Context, s *session.Session) (StepResult, error) {
+	s.Append(session.NewEvent(s.ID(), session.EventTypeTurnStarted, map[string]any{
+		"agent_id": a.agentID,
+	}))
+
 	steps := 0
 	var result StepResult
 	for steps < a.MaxSteps {
@@ -58,7 +77,7 @@ func (a *BaseAgent) Turn(ctx context.Context, s *session.Session) (StepResult, e
 
 		// If a handoff was requested, stop immediately so the caller can route.
 		if result.Handoff != nil {
-			return result, nil
+			break
 		}
 
 		// Continue only if the last message is a tool result (model must
@@ -89,6 +108,11 @@ func (a *BaseAgent) Turn(ctx context.Context, s *session.Session) (StepResult, e
 	if a.Hooks != nil {
 		a.Hooks.Run(ctx, hook.EventStop, hook.SessionMeta{ID: s.ID()}, nil)
 	}
+
+	s.Append(session.NewEvent(s.ID(), session.EventTypeTurnCompleted, map[string]any{
+		"agent_id": a.agentID,
+		"steps":    steps,
+	}))
 
 	return result, nil
 }

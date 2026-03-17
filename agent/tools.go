@@ -46,6 +46,12 @@ func (a *BaseAgent) runTools(
 			defer wg.Done()
 			var output string
 
+			s.Append(session.NewEvent(s.ID(), session.EventTypeToolExecutionStarted, map[string]any{
+				"tool": call.Function.Name,
+				"args": call.Function.Arguments,
+				"id":   call.ID,
+			}))
+
 			if a.Hooks != nil {
 				hookResults, err := a.Hooks.Run(
 					ctx,
@@ -121,10 +127,17 @@ func (a *BaseAgent) runTools(
 				output = fmt.Sprintf("Error: no tool registry configured; cannot execute %q", call.Function.Name)
 			}
 			results[i] = toolResult{call: call, output: output}
+
+			s.Append(session.NewEvent(s.ID(), session.EventTypeToolExecutionCompleted, map[string]any{
+				"tool":   call.Function.Name,
+				"id":     call.ID,
+				"output": output,
+			}))
 		}(i, call)
 	}
 	wg.Wait()
 
+	var toolMsgs []llm.Message
 	for _, r := range results {
 		if r.err != nil {
 			return StepResult{}, r.err
@@ -135,9 +148,13 @@ func (a *BaseAgent) runTools(
 			ToolID:  r.call.ID,
 			Name:    r.call.Function.Name,
 		}
+		toolMsgs = append(toolMsgs, toolMsg)
 		s.Append(session.NewEvent(s.ID(), session.EventTypeMessageAdded, toolMsg))
 	}
 
 	h := extractHandoff(s, handoffTargets)
-	return StepResult{Handoff: h}, nil
+	return StepResult{
+		Handoff:     h,
+		ToolResults: toolMsgs,
+	}, nil
 }

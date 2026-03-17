@@ -24,6 +24,10 @@ type StepResult struct {
 	// Handoff is non-nil when the agent's last action was a handoff to
 	// another agent. The caller must route to the target agent.
 	Handoff *Handoff
+
+	// ToolResults contains the results of any tools executed in the last step.
+	// Useful for graph routing based on tool output without session re-parsing.
+	ToolResults []llm.Message
 }
 
 // Handoff describes a control transfer from one agent to another.
