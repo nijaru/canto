@@ -94,6 +94,16 @@ Commands that must pass before shipping:
 | Error handling | Let errors propagate; catch only to recover                                                  |
 | Naming         | Proportional to scope; no V2/legacy/new markers                                              |
 
+## Go Idioms
+
+Use the `go-expert` skill for full guidance. Key modern idioms:
+
+- `slices` / `maps` packages — not manual loops or `sort.Slice`
+- `iter.Seq` / `iter.Seq2` — range-over-function iterators (Go 1.23+)
+- `sync.WaitGroup.Go` — replaces `Add(1); go func() { defer Done() }()`
+- `errors.AsType[T](err)` — type-safe error unwrapping (Go 1.26)
+- `t.Context()` in tests — not `context.TODO()`
+
 ## Design Principles
 
 1. **Explicit coordination** — graph routing and task assignment are Go code; agents decide their own behavior within a turn
