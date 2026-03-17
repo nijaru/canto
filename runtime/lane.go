@@ -23,6 +23,9 @@ type LaneManager struct {
 	// Config
 	LaneBufferSize int
 	IdleTimeout    time.Duration
+	DrainTimeout   time.Duration
+
+	closing bool
 }
 
 // NewLaneManager creates a new lane manager.
@@ -31,6 +34,7 @@ func NewLaneManager() *LaneManager {
 		lanes:          make(map[string]*lane),
 		LaneBufferSize: 64,
 		IdleTimeout:    10 * time.Minute,
+		DrainTimeout:   30 * time.Second,
 	}
 }
 
@@ -41,6 +45,7 @@ type lane struct {
 	lastUsed  time.Time
 	mu        sync.Mutex
 	done      chan struct{}
+	drain     chan struct{}
 	cancel    context.CancelFunc
 }
 
@@ -59,6 +64,15 @@ func (m *LaneManager) Execute(
 	}
 
 	for {
+		m.mu.RLock()
+		closing := m.closing
+		m.mu.RUnlock()
+
+		if closing {
+			result <- fmt.Errorf("lane manager is shutting down")
+			return result
+		}
+
 		l := m.getOrCreateLane(sessionID)
 
 		select {
@@ -105,6 +119,7 @@ func (m *LaneManager) getOrCreateLane(sessionID string) *lane {
 		requests:  make(chan Request, m.LaneBufferSize),
 		lastUsed:  time.Now(),
 		done:      make(chan struct{}),
+		drain:     make(chan struct{}),
 		cancel:    cancel,
 	}
 	m.lanes[sessionID] = l
@@ -166,6 +181,18 @@ func (m *LaneManager) runLane(ctx context.Context, l *lane) {
 			l.mu.Unlock()
 			timer.Reset(m.IdleTimeout)
 
+		case <-l.drain:
+			// Drain remaining requests in the buffer.
+			for {
+				select {
+				case req := <-l.requests:
+					err := req.Fn(req.Ctx)
+					req.Result <- err
+				default:
+					return
+				}
+			}
+
 		case <-ctx.Done():
 			// Shutdown signal
 			return
@@ -173,17 +200,34 @@ func (m *LaneManager) runLane(ctx context.Context, l *lane) {
 	}
 }
 
-// Stop shuts down all lanes and waits for them to finish.
+// Stop shuts down all lanes, preventing new requests and waiting for
+// in-flight turns to finish with a timeout.
 func (m *LaneManager) Stop() {
 	m.mu.Lock()
+	if m.closing {
+		m.mu.Unlock()
+		return
+	}
+	m.closing = true
 	lanes := make([]*lane, 0, len(m.lanes))
 	for _, l := range m.lanes {
 		lanes = append(lanes, l)
 	}
 	m.mu.Unlock()
 
+	var wg sync.WaitGroup
 	for _, l := range lanes {
-		l.cancel()
-		<-l.done
+		wg.Add(1)
+		go func(ln *lane) {
+			defer wg.Done()
+			close(ln.drain)
+			select {
+			case <-ln.done:
+			case <-time.After(m.DrainTimeout):
+				ln.cancel()
+				<-ln.done
+			}
+		}(l)
 	}
+	wg.Wait()
 }
