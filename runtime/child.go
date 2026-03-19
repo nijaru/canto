@@ -27,6 +27,9 @@ type ChildSpec struct {
 	SharedPrefixKey string
 	InitialMessages []llm.Message
 	Metadata        map[string]any
+	// Detached keeps child execution running even if the Spawn context is
+	// canceled. The default is attached execution, which inherits cancellation.
+	Detached bool
 }
 
 // ChildRef identifies a spawned child run.
@@ -57,6 +60,7 @@ type ChildRunner struct {
 	WaitTimeout      time.Duration
 	ExecutionTimeout time.Duration
 	Lanes            *LaneManager
+	Coordinator      LaneCoordinator
 	Hooks            *hook.Runner
 	MaxConcurrent    int
 
@@ -144,7 +148,12 @@ func (r *ChildRunner) Spawn(
 	r.handles[ref.ID] = handle
 	r.mu.Unlock()
 
-	go r.runChild(parent, childSess, spec.Agent, ref, handle)
+	runCtx := ctx
+	if spec.Detached {
+		runCtx = context.WithoutCancel(ctx)
+	}
+
+	go r.runChild(runCtx, parent, childSess, spec.Agent, ref, handle)
 
 	return ref, nil
 }
@@ -198,6 +207,7 @@ func (r *ChildRunner) materializeChildSession(
 }
 
 func (r *ChildRunner) runChild(
+	ctx context.Context,
 	parent *session.Session,
 	childSess *session.Session,
 	childAgent agent.Agent,
@@ -209,9 +219,9 @@ func (r *ChildRunner) runChild(
 		defer func() { <-r.sem }()
 	}
 
-	ctx := context.Background()
+	eventCtx := context.WithoutCancel(ctx)
 	result := ChildResult{Ref: ref}
-	_ = parent.Append(ctx, session.NewChildStartedEvent(parent.ID(), session.ChildStartedData{
+	_ = parent.Append(eventCtx, session.NewChildStartedEvent(parent.ID(), session.ChildStartedData{
 		ChildID:        ref.ID,
 		ChildSessionID: ref.SessionID,
 		AgentID:        ref.AgentID,
@@ -219,6 +229,7 @@ func (r *ChildRunner) runChild(
 
 	childRuntime := NewRunner(r.Store, childAgent)
 	childRuntime.Lanes = r.Lanes
+	childRuntime.Coordinator = r.Coordinator
 	childRuntime.Hooks = r.Hooks
 	childRuntime.WaitTimeout = r.WaitTimeout
 	childRuntime.ExecutionTimeout = r.ExecutionTimeout
@@ -229,7 +240,7 @@ func (r *ChildRunner) runChild(
 		if errors.Is(result.Err, context.Canceled) ||
 			errors.Is(result.Err, context.DeadlineExceeded) {
 			_ = parent.Append(
-				ctx,
+				eventCtx,
 				session.NewChildCanceledEvent(parent.ID(), session.ChildCanceledData{
 					ChildID:        ref.ID,
 					ChildSessionID: ref.SessionID,
@@ -237,14 +248,14 @@ func (r *ChildRunner) runChild(
 				}),
 			)
 		} else {
-			_ = parent.Append(ctx, session.NewChildFailedEvent(parent.ID(), session.ChildFailedData{
+			_ = parent.Append(eventCtx, session.NewChildFailedEvent(parent.ID(), session.ChildFailedData{
 				ChildID:        ref.ID,
 				ChildSessionID: ref.SessionID,
 				Error:          result.Err.Error(),
 			}))
 		}
 	} else {
-		_ = parent.Append(ctx, session.NewChildCompletedEvent(parent.ID(), session.ChildCompletedData{
+		_ = parent.Append(eventCtx, session.NewChildCompletedEvent(parent.ID(), session.ChildCompletedData{
 			ChildID:        ref.ID,
 			ChildSessionID: ref.SessionID,
 			Summary:        result.Result.Content,

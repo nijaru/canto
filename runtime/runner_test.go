@@ -2,6 +2,8 @@ package runtime
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -159,5 +161,157 @@ func TestRunner_Evict(t *testing.T) {
 	}
 	if s1 == s2 {
 		t.Error("expected a new *session.Session after Evict, but got the same object")
+	}
+}
+
+type coordinatorBlockingAgent struct {
+	started chan<- string
+	release <-chan struct{}
+	current *int32
+	maxSeen *int32
+}
+
+func (a *coordinatorBlockingAgent) ID() string { return "coordinator-blocking" }
+
+func (a *coordinatorBlockingAgent) Step(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a *coordinatorBlockingAgent) Turn(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	current := atomic.AddInt32(a.current, 1)
+	for {
+		max := atomic.LoadInt32(a.maxSeen)
+		if current <= max || atomic.CompareAndSwapInt32(a.maxSeen, max, current) {
+			break
+		}
+	}
+	defer atomic.AddInt32(a.current, -1)
+
+	select {
+	case a.started <- sess.ID():
+	case <-ctx.Done():
+		return agent.StepResult{}, ctx.Err()
+	}
+
+	select {
+	case <-a.release:
+	case <-ctx.Done():
+		return agent.StepResult{}, ctx.Err()
+	}
+
+	msg := llm.Message{Role: llm.RoleAssistant, Content: "done " + sess.ID()}
+	if err := sess.Append(ctx, session.NewMessage(sess.ID(), msg)); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{Content: msg.Content}, nil
+}
+
+type slowAgent struct {
+	delay time.Duration
+}
+
+func (a *slowAgent) ID() string { return "slow" }
+
+func (a *slowAgent) Step(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a *slowAgent) Turn(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+	select {
+	case <-time.After(a.delay):
+	case <-ctx.Done():
+		return agent.StepResult{}, ctx.Err()
+	}
+	msg := llm.Message{Role: llm.RoleAssistant, Content: "slow done"}
+	if err := sess.Append(ctx, session.NewMessage(sess.ID(), msg)); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{Content: msg.Content}, nil
+}
+
+func TestRunnerCoordinator_SerializesPerSession(t *testing.T) {
+	store, err := session.NewSQLiteStore(t.TempDir() + "/coord-session.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	var current int32
+	var maxSeen int32
+
+	runner := NewRunner(store, &coordinatorBlockingAgent{
+		started: started,
+		release: release,
+		current: &current,
+		maxSeen: &maxSeen,
+	})
+	runner.Lanes = nil
+	runner.Coordinator = NewInMemoryLaneCoordinator()
+
+	ctx := t.Context()
+	sessionID := "coord-session"
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := runner.Run(ctx, sessionID)
+			errs <- err
+		}()
+	}
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for coordinator-backed run to start")
+	}
+
+	select {
+	case id := <-started:
+		t.Fatalf("second run for %s started before release", id)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	}
+	if got := atomic.LoadInt32(&maxSeen); got != 1 {
+		t.Fatalf("max concurrent same-session runs = %d, want 1", got)
+	}
+}
+
+func TestRunnerCoordinator_RenewsLeaseForLongRunningWork(t *testing.T) {
+	store, err := session.NewSQLiteStore(t.TempDir() + "/coord-renew.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	coord := NewInMemoryLaneCoordinator()
+	coord.SetLeaseTTL(20 * time.Millisecond)
+
+	runner := NewRunner(store, &slowAgent{delay: 80 * time.Millisecond})
+	runner.Lanes = nil
+	runner.Coordinator = coord
+
+	result, err := runner.Run(t.Context(), "coord-renew")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result.Content != "slow done" {
+		t.Fatalf("content = %q, want slow done", result.Content)
 	}
 }

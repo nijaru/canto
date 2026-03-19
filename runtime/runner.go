@@ -33,8 +33,9 @@ type Runner struct {
 	// ExecutionTimeout is the maximum time to spend running the agent turn.
 	ExecutionTimeout time.Duration
 
-	Lanes *LaneManager
-	Hooks *hook.Runner
+	Lanes       *LaneManager
+	Coordinator LaneCoordinator
+	Hooks       *hook.Runner
 
 	mu       sync.Mutex
 	sessions map[string]*session.Session
@@ -186,7 +187,13 @@ func (r *Runner) run(
 	chunkFn func(*llm.Chunk),
 ) (agent.StepResult, error) {
 	if r.Lanes == nil {
+		if r.Coordinator != nil {
+			return r.executeWithCoordinator(ctx, sess, chunkFn)
+		}
 		return r.execute(ctx, sess, chunkFn)
+	}
+	if r.Coordinator != nil {
+		return r.executeWithCoordinator(ctx, sess, chunkFn)
 	}
 
 	waitCtx := ctx
@@ -210,6 +217,42 @@ func (r *Runner) run(
 		return err
 	})
 	return result, <-errCh
+}
+
+func (r *Runner) executeWithCoordinator(
+	ctx context.Context,
+	sess *session.Session,
+	chunkFn func(*llm.Chunk),
+) (agent.StepResult, error) {
+	if r.Coordinator == nil {
+		return r.execute(ctx, sess, chunkFn)
+	}
+
+	waitCtx := ctx
+	if r.WaitTimeout > 0 {
+		var cancel context.CancelFunc
+		waitCtx, cancel = context.WithTimeout(ctx, r.WaitTimeout)
+		defer cancel()
+	}
+
+	ticket, err := r.Coordinator.Enqueue(waitCtx, sess.ID())
+	if err != nil {
+		return agent.StepResult{}, err
+	}
+	lease, err := r.Coordinator.Await(waitCtx, ticket)
+	if err != nil {
+		return agent.StepResult{}, err
+	}
+
+	execCtx := ctx
+	if r.ExecutionTimeout > 0 {
+		var cancel context.CancelFunc
+		execCtx, cancel = context.WithTimeout(ctx, r.ExecutionTimeout)
+		defer cancel()
+	}
+
+	result, execErr := r.executeUnderLease(execCtx, sess, chunkFn, lease)
+	return result, execErr
 }
 
 func (r *Runner) execute(

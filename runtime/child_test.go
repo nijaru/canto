@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -253,5 +254,128 @@ func TestChildRunnerSpawn_MaxConcurrent(t *testing.T) {
 
 	if got := atomic.LoadInt32(&maxSeen); got != 2 {
 		t.Fatalf("max concurrent children = %d, want 2", got)
+	}
+}
+
+func TestChildRunnerSpawn_InheritsSpawnContextByDefault(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	started := make(chan string, 1)
+	release := make(chan struct{})
+	var current int32
+	var maxSeen int32
+
+	spawnCtx, cancel := context.WithCancel(t.Context())
+	ref, err := childRunner.Spawn(spawnCtx, parent, ChildSpec{
+		ID: "child-attached",
+		Agent: &blockingAgent{
+			id:      "child-attached",
+			started: started,
+			release: release,
+			current: &current,
+			maxSeen: &maxSeen,
+		},
+	})
+	if err != nil {
+		t.Fatalf("spawn child: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for child start")
+	}
+
+	cancel()
+
+	result, err := childRunner.Wait(t.Context(), ref.ID)
+	if err != nil {
+		t.Fatalf("wait child: %v", err)
+	}
+	if !errors.Is(result.Err, context.Canceled) {
+		t.Fatalf("child error = %v, want context.Canceled", result.Err)
+	}
+
+	parentReloaded, err := store.Load(t.Context(), parent.ID())
+	if err != nil {
+		t.Fatalf("load parent: %v", err)
+	}
+	var sawCanceled bool
+	for _, event := range parentReloaded.Events() {
+		if event.Type == session.ChildCanceled {
+			sawCanceled = true
+			break
+		}
+	}
+	if !sawCanceled {
+		t.Fatal("expected parent to record child cancellation")
+	}
+}
+
+func TestChildRunnerSpawn_DetachedIgnoresSpawnContextCancellation(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	started := make(chan string, 1)
+	release := make(chan struct{})
+	var current int32
+	var maxSeen int32
+
+	spawnCtx, cancel := context.WithCancel(t.Context())
+	ref, err := childRunner.Spawn(spawnCtx, parent, ChildSpec{
+		ID:       "child-detached",
+		Detached: true,
+		Agent: &blockingAgent{
+			id:      "child-detached",
+			started: started,
+			release: release,
+			current: &current,
+			maxSeen: &maxSeen,
+		},
+	})
+	if err != nil {
+		t.Fatalf("spawn child: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for detached child start")
+	}
+
+	cancel()
+
+	waitCtx, waitCancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer waitCancel()
+	if _, err := childRunner.Wait(waitCtx, ref.ID); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("wait before release = %v, want context.DeadlineExceeded", err)
+	}
+
+	close(release)
+
+	result, err := childRunner.Wait(t.Context(), ref.ID)
+	if err != nil {
+		t.Fatalf("wait child: %v", err)
+	}
+	if result.Err != nil {
+		t.Fatalf("detached child err = %v, want nil", result.Err)
+	}
+	if result.Result.Content != "child-detached done" {
+		t.Fatalf("detached child content = %q, want child-detached done", result.Result.Content)
 	}
 }
