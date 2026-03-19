@@ -3,22 +3,48 @@
 > [!WARNING]
 > **Status: Pre-release.** Core interfaces are currently unstable and subject to change.
 
-Canto is a layered Go framework for building durable LLM agents and multi-agent systems.
+Canto is a Go framework for building durable LLM agents and agent systems.
 
-The framework organizes agentic behavior into discrete, swappable layers. At its core, Canto uses an append-only event log to track session history, providing a deterministic foundation for state recovery, observability, and regression testing. It is designed for developers building production agents that require auditability and reliability beyond simple prompt loops.
+It is built around an append-only session log. That gives you a stable place to hang context compaction, tool use, child runs, artifact refs, replay, and export without collapsing everything into one prompt loop.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/nijaru/canto.svg)](https://pkg.go.dev/github.com/nijaru/canto)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Features
+## Start Here
 
-- **Durable Sessions**: Append-only event log (JSONL/SQLite) for state recovery and auditability.
-- **Layered Decoupling**: Separate layers for LLM providers, agent loops, context management, and tools.
-- **Advanced Orchestration**: Support for graph routing, multi-agent swarms, and parallel tool dispatch.
-- **Context Pipeline**: Middleware-style request builder with budget guards and auto-compaction.
-- **Observability**: Integrated OpenTelemetry tracing and a transcript evaluation suite (`x/eval`).
-- **Memory**: Support for HNSW vector stores and SQLite-backed long-term memory.
-- **Resilience**: Provider-level key rotation, fallback chains, and budget caps.
+If you are new to the framework, use this order:
+
+1. Read the executable quickstart in [examples/quickstart/main.go](examples/quickstart/main.go).
+2. Learn the session model in [`session`](session/): raw transcript vs effective prompt history.
+3. Learn the context split in [`context`](context/): preview-safe request shaping vs commit-time mutation.
+4. Learn orchestration in [`runtime`](runtime/) and [examples/subagents/main.go](examples/subagents/main.go): attached vs detached child runs, local lanes vs coordinator-backed execution.
+5. Learn tool integration in [`tool`](tool/) and [`tool/mcp`](tool/mcp/): local tools plus MCP-backed tools and servers.
+
+## What Canto Decides
+
+Canto provides the framework pieces that are hard to rebuild correctly:
+
+- durable session history
+- context construction and compaction hooks
+- tool registry and MCP transport integration
+- child-session lifecycle and nested run export
+- local and distributed execution coordination
+
+Your application still decides agent-level policy:
+
+- when to spawn child runs
+- how much context to hand off
+- which model or tool to choose
+- how to merge results back into the user-facing session
+- what approval, safety, or UX rules to enforce
+
+## Core Ideas
+
+- **Durable sessions**: Append-only event log in JSONL or SQLite.
+- **Prompt truth vs transcript truth**: Raw messages stay immutable; effective history stays replayable after compaction.
+- **Two-phase context building**: Preview-safe request shaping is separate from commit-time mutation.
+- **Framework-level orchestration**: Child sessions, lifecycle events, artifact refs, and nested run export are built in.
+- **Protocol support where it matters**: MCP uses the official Go SDK at the transport boundary.
 
 ## Installation
 
@@ -98,7 +124,26 @@ func main() {
 
 The executable quickstart lives at [examples/quickstart/main.go](examples/quickstart/main.go) and is compiled by `go test ./...`.
 
-## Subagent Pattern
+## Common Paths
+
+### Single Durable Agent
+
+Use this path when you want one agent with durable history:
+
+- create a `session.Session`
+- append user messages to the session
+- run an `agent.Agent`
+- read `Messages()` for transcript truth or `EffectiveMessages()` for model-visible history
+
+The quickest reference is [examples/quickstart/main.go](examples/quickstart/main.go).
+
+### Context Preview vs Commit
+
+Use [`context.Builder.BuildPreview`](context/) when you need to inspect or shape the next request without mutating durable state. Use `Build` or `BuildCommit` when processors may compact, offload, or otherwise record new durable facts before the request is sent.
+
+This split exists so the framework can support dry-run inspection, tracing, and request planning without hiding stateful behavior behind a single middleware hook.
+
+### Child Runs
 
 The parent/child subagent pattern in Canto is a framework capability, not a prescribed agent policy:
 
@@ -106,6 +151,14 @@ The parent/child subagent pattern in Canto is a framework capability, not a pres
 - the application decides when to spawn children, how to hand off context, and how to merge results
 
 See [examples/subagents/main.go](examples/subagents/main.go) for a bounded orchestrator-worker example that keeps those concerns separate.
+
+By default, child runs are attached to the spawn context and are canceled with it. Set `runtime.ChildSpec.Detached` only for background work that should outlive the caller.
+
+### MCP Tools
+
+Use [`tool.Registry`](tool/) for local tools. Use [`tool/mcp`](tool/mcp/) when you need to discover or serve tools over MCP.
+
+The framework uses the official Go MCP SDK for transport and session handling, while Canto still owns tool validation and registry adaptation.
 
 ## History Semantics
 

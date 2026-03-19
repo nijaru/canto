@@ -1,17 +1,20 @@
-// Package context builds model requests from session state.
+// Package context builds model requests from durable session state.
 //
-// Builder.BuildPreview runs preview-safe request shaping only. Builder.Build
-// and Builder.BuildCommit run commit-time mutation first and then rebuild the
-// request from the updated session state.
+// The package has two phases:
+//   - Builder.BuildPreview shapes the in-flight request without mutating
+//     durable state.
+//   - Builder.Build and Builder.BuildCommit run commit-time mutation first and
+//     then rebuild the request from the updated session state.
 //
+// New code should prefer RequestProcessor for preview-safe shaping and
+// ContextMutator for durable changes such as compaction or artifact recording.
 // Legacy Processor implementations remain supported and still declare side
-// effects through ProcessorEffects. New code can use RequestProcessor and
-// ContextMutator to make the phase split explicit.
+// effects through ProcessorEffects.
 //
-// History uses session.EffectiveMessages rather than the raw transcript, so
-// compaction remains durable across future turns. Offloader and Summarizer
-// persist compaction snapshots back into the session log; Offloader also emits
-// durable artifact descriptors for externalized content. LazyTools derives
-// unlocked tool state from prior search_tools completions recorded in the
-// session.
+// History is always derived from session.EffectiveMessages rather than the raw
+// transcript, so compaction stays durable across future turns. Offloader and
+// Summarizer persist compaction snapshots back into the session log; Offloader
+// also emits durable artifact descriptors for externalized content. LazyTools
+// derives unlocked tool state from prior search_tools completions recorded in
+// the session.
 package context
