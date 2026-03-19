@@ -160,3 +160,23 @@ Instructions here.
 		t.Errorf("expected name registry-test, got %s", s.Name)
 	}
 }
+
+func TestRegistryListSorted(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(&Skill{Name: "zeta", Description: "last"})
+	reg.Register(&Skill{Name: "alpha", Description: "first"})
+	reg.Register(&Skill{Name: "mid", Description: "middle"})
+
+	skills := reg.List()
+	if len(skills) != 3 {
+		t.Fatalf("len(skills) = %d, want 3", len(skills))
+	}
+	if skills[0].Name != "alpha" || skills[1].Name != "mid" || skills[2].Name != "zeta" {
+		t.Fatalf(
+			"skill order = [%s %s %s], want [alpha mid zeta]",
+			skills[0].Name,
+			skills[1].Name,
+			skills[2].Name,
+		)
+	}
+}

@@ -3,6 +3,7 @@ package skill
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 )
 
@@ -63,9 +64,15 @@ func (r *Registry) Get(name string) (*Skill, bool) {
 func (r *Registry) List() []*Skill {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	names := make([]string, 0, len(r.skills))
+	for name := range r.skills {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
 	res := make([]*Skill, 0, len(r.skills))
-	for _, s := range r.skills {
-		res = append(res, s)
+	for _, name := range names {
+		res = append(res, r.skills[name])
 	}
 	return res
 }
