@@ -92,3 +92,78 @@ func TestExportRun(t *testing.T) {
 		t.Errorf("expected turn 2 output to be final assistant message")
 	}
 }
+
+func TestExportRunTreeIncludesChildRuns(t *testing.T) {
+	parent := New("parent")
+	child := New("child-session")
+
+	if err := child.Append(t.Context(), NewMessage(child.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "Child task",
+	})); err != nil {
+		t.Fatalf("append child user: %v", err)
+	}
+	if err := child.Append(t.Context(), NewMessage(child.ID(), llm.Message{
+		Role:    llm.RoleAssistant,
+		Content: "Child result",
+	})); err != nil {
+		t.Fatalf("append child assistant: %v", err)
+	}
+
+	if err := parent.Append(t.Context(), NewChildRequestedEvent(parent.ID(), ChildRequestedData{
+		ChildID:        "child-1",
+		ChildSessionID: child.ID(),
+		AgentID:        "worker",
+		Mode:           ChildModeHandoff,
+		Task:           "Do the child task",
+	})); err != nil {
+		t.Fatalf("append child requested: %v", err)
+	}
+	if err := parent.Append(t.Context(), NewArtifactRecordedEvent(parent.ID(), ArtifactRecordedData{
+		ChildID: "child-1",
+		Artifact: ArtifactRef{
+			ID:   "artifact-1",
+			Kind: "patch",
+			URI:  "/tmp/patch.diff",
+		},
+	})); err != nil {
+		t.Fatalf("append artifact recorded: %v", err)
+	}
+	if err := parent.Append(t.Context(), NewChildCompletedEvent(parent.ID(), ChildCompletedData{
+		ChildID:        "child-1",
+		ChildSessionID: child.ID(),
+		Summary:        "Child finished successfully",
+	})); err != nil {
+		t.Fatalf("append child completed: %v", err)
+	}
+
+	tree, err := ExportRunTree(parent, func(sessionID string) (*Session, error) {
+		if sessionID == child.ID() {
+			return child, nil
+		}
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatalf("export run tree: %v", err)
+	}
+	if len(tree.ChildRuns) != 1 {
+		t.Fatalf("expected 1 child run, got %d", len(tree.ChildRuns))
+	}
+
+	childRun := tree.ChildRuns[0]
+	if childRun.Status != ChildStatusCompleted {
+		t.Fatalf("child status = %q, want completed", childRun.Status)
+	}
+	if childRun.Summary != "Child finished successfully" {
+		t.Fatalf("child summary = %q", childRun.Summary)
+	}
+	if len(childRun.Artifacts) != 1 || childRun.Artifacts[0].Kind != "patch" {
+		t.Fatalf("unexpected child artifacts: %#v", childRun.Artifacts)
+	}
+	if childRun.Run == nil || childRun.Run.SessionID != child.ID() {
+		t.Fatalf("expected nested child run, got %#v", childRun.Run)
+	}
+	if len(childRun.Run.Turns) != 1 {
+		t.Fatalf("expected 1 child turn, got %d", len(childRun.Run.Turns))
+	}
+}

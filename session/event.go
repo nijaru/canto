@@ -26,6 +26,15 @@ const (
 	ToolStarted         EventType = "tool_started"
 	ToolCompleted       EventType = "tool_completed"
 	CompactionTriggered EventType = "compaction_triggered"
+	ChildRequested      EventType = "child_requested"
+	ChildStarted        EventType = "child_started"
+	ChildProgressed     EventType = "child_progressed"
+	ChildBlocked        EventType = "child_blocked"
+	ChildCompleted      EventType = "child_completed"
+	ChildFailed         EventType = "child_failed"
+	ChildCanceled       EventType = "child_canceled"
+	ChildMerged         EventType = "child_merged"
+	ArtifactRecorded    EventType = "artifact_recorded"
 
 	// Framework Extensions
 	ToolOutputDelta EventType = "tool_output_delta"

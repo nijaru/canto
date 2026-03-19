@@ -98,6 +98,15 @@ func main() {
 
 The executable quickstart lives at [examples/quickstart/main.go](examples/quickstart/main.go) and is compiled by `go test ./...`.
 
+## Subagent Pattern
+
+The parent/child subagent pattern in Canto is a framework capability, not a prescribed agent policy:
+
+- the framework provides isolated child sessions, durable lifecycle events, and nested trajectory export
+- the application decides when to spawn children, how to hand off context, and how to merge results
+
+See [examples/subagents/main.go](examples/subagents/main.go) for a bounded orchestrator-worker example that keeps those concerns separate.
+
 ## History Semantics
 
 - `sess.Messages()` is transcript truth: the raw append-only messages exactly as they were emitted.
