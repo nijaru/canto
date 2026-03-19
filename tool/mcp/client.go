@@ -1,183 +1,91 @@
 package mcp
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"io"
+	"iter"
 	"os/exec"
-	"sync"
-	"sync/atomic"
 
 	"github.com/go-json-experiment/json"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/tool"
 )
 
-// Client represents a connection to an MCP server via stdio.
+type clientSession interface {
+	Close() error
+	CallTool(context.Context, *sdkmcp.CallToolParams) (*sdkmcp.CallToolResult, error)
+	Tools(context.Context, *sdkmcp.ListToolsParams) iter.Seq2[*sdkmcp.Tool, error]
+}
+
+// Client represents an MCP client session wrapped with Canto validation and
+// tool-registry adaptation.
 type Client struct {
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	reader *bufio.Reader
-	mu     sync.Mutex // serializes requests; MCP stdio is sequential
-	nextID atomic.Uint64
+	session clientSession
+}
+
+// NewClient connects to an MCP server over the provided official SDK transport.
+func NewClient(
+	ctx context.Context,
+	transport sdkmcp.Transport,
+	name string,
+	version string,
+) (*Client, error) {
+	if name == "" {
+		name = "canto"
+	}
+	if version == "" {
+		version = "0.0.1"
+	}
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: name, Version: version}, nil)
+	session, err := client.Connect(ctx, transport, nil)
+	if err != nil {
+		return nil, fmt.Errorf("mcp connect: %w", err)
+	}
+	return &Client{session: session}, nil
 }
 
 // NewStdioClient starts an MCP server process and connects via stdio.
 func NewStdioClient(ctx context.Context, command string, args ...string) (*Client, error) {
-	cmd := exec.CommandContext(ctx, command, args...)
-
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, err
-	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-
-	go func() {
-		_ = cmd.Wait()
-	}()
-
-	c := &Client{
-		cmd:    cmd,
-		stdin:  stdin,
-		reader: bufio.NewReader(stdout),
-	}
-
-	if err := c.initialize(); err != nil {
-		c.Close()
-		return nil, err
-	}
-
-	return c, nil
+	return NewClient(
+		ctx,
+		&sdkmcp.CommandTransport{Command: exec.CommandContext(ctx, command, args...)},
+		"canto",
+		"0.0.1",
+	)
 }
 
 // Close shuts down the client and the underlying process.
 func (c *Client) Close() error {
-	if c.stdin != nil {
-		c.stdin.Close()
+	if c == nil || c.session == nil {
+		return nil
 	}
-	if c.cmd != nil && c.cmd.Process != nil {
-		return c.cmd.Process.Kill()
-	}
-	return nil
-}
-
-// call sends a JSON-RPC request and returns the parsed response.
-// Caller must hold c.mu.
-func (c *Client) call(method string, params any) (*jsonrpcResponse, error) {
-	id := c.nextID.Add(1)
-	idRaw, _ := json.Marshal(id)
-
-	req := jsonrpcRequest{
-		JSONRPC: "2.0",
-		ID:      idRaw,
-		Method:  method,
-	}
-	if params != nil {
-		raw, err := json.Marshal(params)
-		if err != nil {
-			return nil, fmt.Errorf("mcp: marshal params: %w", err)
-		}
-		req.Params = raw
-	}
-
-	enc, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("mcp: marshal request: %w", err)
-	}
-	enc = append(enc, '\n')
-	if _, err := c.stdin.Write(enc); err != nil {
-		return nil, fmt.Errorf("mcp: write: %w", err)
-	}
-
-	line, err := c.reader.ReadBytes('\n')
-	if err != nil {
-		return nil, fmt.Errorf("mcp: read response: %w", err)
-	}
-
-	var resp jsonrpcResponse
-	if err := json.Unmarshal(line, &resp); err != nil {
-		return nil, fmt.Errorf("mcp: parse response: %w", err)
-	}
-	if resp.Error != nil {
-		return nil, fmt.Errorf("mcp: server error %d: %s", resp.Error.Code, resp.Error.Message)
-	}
-	return &resp, nil
-}
-
-// notify sends a JSON-RPC notification (no response expected).
-// Caller must hold c.mu.
-func (c *Client) notify(method string) error {
-	req := jsonrpcRequest{
-		JSONRPC: "2.0",
-		Method:  method,
-	}
-	enc, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("mcp: marshal notification: %w", err)
-	}
-	enc = append(enc, '\n')
-	_, err = c.stdin.Write(enc)
-	return err
-}
-
-// initialize sends the initialize request and initialized notification.
-func (c *Client) initialize() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	params := map[string]any{
-		"protocolVersion": protocolVersion,
-		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": "canto", "version": "0.0.1"},
-	}
-	if _, err := c.call("initialize", params); err != nil {
-		return fmt.Errorf("mcp initialize: %w", err)
-	}
-	return c.notify("notifications/initialized")
+	return c.session.Close()
 }
 
 // DiscoverTools fetches available tools from the MCP server and returns them
 // as tool.Tool values that can be registered in a tool.Registry.
-func (c *Client) DiscoverTools() ([]tool.Tool, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	resp, err := c.call("tools/list", nil)
-	if err != nil {
-		return nil, fmt.Errorf("mcp tools/list: %w", err)
+func (c *Client) DiscoverTools(ctx context.Context) ([]tool.Tool, error) {
+	if c == nil || c.session == nil {
+		return nil, fmt.Errorf("mcp: nil client session")
 	}
 
-	var result struct {
-		Tools []mcpToolSpec `json:"tools"`
-	}
-	raw, err := json.Marshal(resp.Result)
-	if err != nil {
-		return nil, fmt.Errorf("mcp: marshal result: %w", err)
-	}
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return nil, fmt.Errorf("mcp: parse tools/list result: %w", err)
-	}
-
-	tools := make([]tool.Tool, 0, len(result.Tools))
-	for _, t := range result.Tools {
-		tools = append(tools, &wrapper{
-			client: c,
-			spec: llm.Spec{
-				Name:        t.Name,
-				Description: t.Description,
-				Parameters:  t.InputSchema,
-			},
-		})
+	var tools []tool.Tool
+	for remoteTool, err := range c.session.Tools(ctx, nil) {
+		if err != nil {
+			return nil, fmt.Errorf("mcp tools/list: %w", err)
+		}
+		spec := llm.Spec{
+			Name:        remoteTool.Name,
+			Description: remoteTool.Description,
+			Parameters:  normalizeSchema(remoteTool.InputSchema),
+		}
+		if err := Validate(spec); err != nil {
+			return nil, err
+		}
+		tools = append(tools, &wrapper{client: c, spec: spec})
 	}
 	return tools, nil
 }
@@ -188,41 +96,25 @@ func (c *Client) CallTool(
 	name string,
 	arguments map[string]any,
 ) (string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	params := map[string]any{
-		"name":      name,
-		"arguments": arguments,
+	if c == nil || c.session == nil {
+		return "", fmt.Errorf("mcp: nil client session")
 	}
-	resp, err := c.call("tools/call", params)
+
+	resp, err := c.session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name:      name,
+		Arguments: arguments,
+	})
 	if err != nil {
 		return "", fmt.Errorf("mcp tools/call %q: %w", name, err)
 	}
 
-	// Extract text content from the result.
-	var result struct {
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-		IsError bool `json:"isError"`
-	}
-	raw, err := json.Marshal(resp.Result)
-	if err != nil {
-		return "", fmt.Errorf("mcp: marshal result: %w", err)
-	}
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return "", fmt.Errorf("mcp: parse tools/call result: %w", err)
-	}
-
 	var text string
-	for _, c := range result.Content {
-		if c.Type == "text" {
-			text += c.Text
+	for _, block := range resp.Content {
+		if content, ok := block.(*sdkmcp.TextContent); ok {
+			text += content.Text
 		}
 	}
-	if result.IsError {
+	if resp.IsError {
 		return "", fmt.Errorf("mcp tool %q error: %s", name, text)
 	}
 	return text, nil

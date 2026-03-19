@@ -1,22 +1,20 @@
 package mcp
 
 import (
-	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"sync"
+	"strings"
 
 	"github.com/go-json-experiment/json"
-	"github.com/go-json-experiment/json/jsontext"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nijaru/canto/tool"
 )
 
-const protocolVersion = "2024-11-05"
-
-// Server exposes a tool.Registry over the MCP stdio JSON-RPC protocol.
-// It reads newline-delimited JSON-RPC requests from r and writes responses to w.
+// Server exposes a tool.Registry through the official MCP Go SDK while
+// preserving Canto-owned registry and validation semantics.
 type Server struct {
 	reg     *tool.Registry
 	name    string
@@ -28,131 +26,81 @@ func NewServer(reg *tool.Registry, name, version string) *Server {
 	return &Server{reg: reg, name: name, version: version}
 }
 
-// Serve reads JSON-RPC requests from r and writes responses to w until ctx is
-// cancelled or r returns EOF. Each request is handled synchronously in order;
-// the write side is mutex-protected so future parallel dispatch is safe to add.
-func (s *Server) Serve(ctx context.Context, r io.Reader, w io.Writer) error {
-	var mu sync.Mutex
-	write := func(v any) error {
-		b, err := json.Marshal(v)
-		if err != nil {
-			return err
-		}
-		mu.Lock()
-		defer mu.Unlock()
-		_, err = fmt.Fprintf(w, "%s\n", b)
-		return err
-	}
+// Run serves the registry over the provided MCP transport.
+func (s *Server) Run(ctx context.Context, transport sdkmcp.Transport) error {
+	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: s.name, Version: s.version}, nil)
 
-	scanner := bufio.NewScanner(r)
-	// MCP messages can be large (tool results with file content, etc.).
-	scanner.Buffer(make([]byte, 1<<20), 1<<20)
-
-	for {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if !scanner.Scan() {
-			if err := scanner.Err(); err != nil {
-				return err
+	if s.reg != nil {
+		for _, name := range s.reg.Names() {
+			toolImpl, ok := s.reg.Get(name)
+			if !ok {
+				continue
 			}
-			return nil // EOF
-		}
-
-		var req jsonrpcRequest
-		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
-			_ = write(errResponse(nil, codeParseError, "parse error: "+err.Error()))
-			continue
-		}
-		if req.JSONRPC != "2.0" {
-			_ = write(errResponse(req.ID, codeInvalidRequest, "jsonrpc must be \"2.0\""))
-			continue
-		}
-
-		// Notifications have no id — no response is sent.
-		isNotification := req.ID == nil
-		resp, err := s.dispatch(ctx, &req)
-		if err != nil {
-			if !isNotification {
-				_ = write(errResponse(req.ID, codeInternalError, err.Error()))
-			}
-			continue
-		}
-		if resp != nil {
-			_ = write(resp)
+			spec := toolImpl.Spec()
+			server.AddTool(&sdkmcp.Tool{
+				Name:        spec.Name,
+				Description: spec.Description,
+				InputSchema: normalizeSchema(spec.Parameters),
+			}, func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+				output, err := toolImpl.Execute(ctx, string(req.Params.Arguments))
+				if err != nil {
+					return &sdkmcp.CallToolResult{
+						Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: err.Error()}},
+						IsError: true,
+					}, nil
+				}
+				return &sdkmcp.CallToolResult{
+					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: output}},
+				}, nil
+			})
 		}
 	}
-}
 
-func (s *Server) dispatch(ctx context.Context, req *jsonrpcRequest) (any, error) {
-	switch req.Method {
-	case "initialize":
-		return s.handleInitialize(req)
-	case "notifications/initialized":
-		return nil, nil // notification, no response
-	case "tools/list":
-		return s.handleToolsList(req)
-	case "tools/call":
-		return s.handleToolsCall(ctx, req)
-	default:
-		if req.ID == nil {
-			return nil, nil // unknown notification, ignore
-		}
-		return errResponse(req.ID, codeMethodNotFound, "method not found: "+req.Method), nil
+	err := server.Run(ctx, transport)
+	if ctx.Err() != nil || isCleanShutdown(err) {
+		return ctx.Err()
 	}
-}
-
-func (s *Server) handleInitialize(req *jsonrpcRequest) (any, error) {
-	result := map[string]any{
-		"protocolVersion": protocolVersion,
-		"capabilities":    map[string]any{"tools": map[string]any{}},
-		"serverInfo":      map[string]any{"name": s.name, "version": s.version},
-	}
-	return okResponse(req.ID, result), nil
-}
-
-func (s *Server) handleToolsList(req *jsonrpcRequest) (any, error) {
-	specs := s.reg.Specs()
-	tools := make([]mcpToolSpec, 0, len(specs))
-	for _, spec := range specs {
-		tools = append(tools, mcpToolSpec{
-			Name:        spec.Name,
-			Description: spec.Description,
-			InputSchema: normalizeSchema(spec.Parameters),
-		})
-	}
-	return okResponse(req.ID, map[string]any{"tools": tools}), nil
-}
-
-func (s *Server) handleToolsCall(ctx context.Context, req *jsonrpcRequest) (any, error) {
-	var params struct {
-		Name      string         `json:"name"`
-		Arguments map[string]any `json:"arguments"`
-	}
-	if err := json.Unmarshal(req.Params, &params); err != nil {
-		return errResponse(req.ID, codeInvalidParams, "invalid params: "+err.Error()), nil
-	}
-	if params.Name == "" {
-		return errResponse(req.ID, codeInvalidParams, "name is required"), nil
-	}
-
-	argsJSON, err := json.Marshal(params.Arguments)
 	if err != nil {
-		return errResponse(req.ID, codeInvalidParams, "cannot marshal arguments: "+err.Error()), nil
+		return fmt.Errorf("mcp run: %w", err)
 	}
+	return nil
+}
 
-	output, execErr := s.reg.Execute(ctx, params.Name, string(argsJSON))
-	isError := execErr != nil
-	text := output
-	if isError {
-		text = execErr.Error()
-	}
+// Serve adapts separate reader/writer streams into an MCP IO transport.
+func (s *Server) Serve(ctx context.Context, r io.Reader, w io.Writer) error {
+	return s.Run(ctx, &sdkmcp.IOTransport{
+		Reader: asReadCloser(r),
+		Writer: asWriteCloser(w),
+	})
+}
 
-	result := map[string]any{
-		"content": []map[string]any{{"type": "text", "text": text}},
-		"isError": isError,
+func isCleanShutdown(err error) bool {
+	if err == nil {
+		return true
 	}
-	return okResponse(req.ID, result), nil
+	return errors.Is(err, io.EOF) ||
+		errors.Is(err, sdkmcp.ErrConnectionClosed) ||
+		strings.Contains(err.Error(), "server is closing: EOF")
+}
+
+func asReadCloser(r io.Reader) io.ReadCloser {
+	if rc, ok := r.(io.ReadCloser); ok {
+		return rc
+	}
+	return io.NopCloser(r)
+}
+
+type nopWriteCloser struct {
+	io.Writer
+}
+
+func (nopWriteCloser) Close() error { return nil }
+
+func asWriteCloser(w io.Writer) io.WriteCloser {
+	if wc, ok := w.(io.WriteCloser); ok {
+		return wc
+	}
+	return nopWriteCloser{Writer: w}
 }
 
 // normalizeSchema converts a Spec.Parameters (any JSON-serializable value)
@@ -174,52 +122,4 @@ func normalizeSchema(params any) map[string]any {
 		m["type"] = "object"
 	}
 	return m
-}
-
-// JSON-RPC 2.0 types.
-
-type jsonrpcRequest struct {
-	JSONRPC string         `json:"jsonrpc"`
-	ID      jsontext.Value `json:"id,omitzero"` // number, string, or null
-	Method  string         `json:"method"`
-	Params  jsontext.Value `json:"params,omitzero"`
-}
-
-type jsonrpcResponse struct {
-	JSONRPC string         `json:"jsonrpc"`
-	ID      jsontext.Value `json:"id"`
-	Result  any            `json:"result,omitzero"`
-	Error   *jsonrpcError  `json:"error,omitzero"`
-}
-
-type jsonrpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-type mcpToolSpec struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"inputSchema"`
-}
-
-// Standard JSON-RPC 2.0 error codes.
-const (
-	codeParseError     = -32700
-	codeInvalidRequest = -32600
-	codeMethodNotFound = -32601
-	codeInvalidParams  = -32602
-	codeInternalError  = -32603
-)
-
-func okResponse(id jsontext.Value, result any) *jsonrpcResponse {
-	return &jsonrpcResponse{JSONRPC: "2.0", ID: id, Result: result}
-}
-
-func errResponse(id jsontext.Value, code int, msg string) *jsonrpcResponse {
-	return &jsonrpcResponse{
-		JSONRPC: "2.0",
-		ID:      id,
-		Error:   &jsonrpcError{Code: code, Message: msg},
-	}
 }

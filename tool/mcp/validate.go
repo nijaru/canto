@@ -40,12 +40,15 @@ func checkName(name string) error {
 	if name == "" {
 		return fmt.Errorf("mcp/validate: tool name is empty")
 	}
+	if len(name) > 128 {
+		return fmt.Errorf("mcp/validate: tool name %q exceeds 128 characters", name)
+	}
 	if reservedNames[name] {
 		return fmt.Errorf("mcp/validate: tool name %q is reserved", name)
 	}
 	if !validName.MatchString(name) {
 		return fmt.Errorf(
-			"mcp/validate: tool name %q contains invalid characters (want [a-zA-Z0-9_-])",
+			"mcp/validate: tool name %q contains invalid characters (want [a-zA-Z0-9_.-])",
 			name,
 		)
 	}
@@ -53,7 +56,7 @@ func checkName(name string) error {
 }
 
 // validName matches the MCP tool name character set.
-var validName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+var validName = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
 
 // promptInjectionPatterns matches description text that embeds instructions
 // targeting the LLM rather than describing tool behavior.
