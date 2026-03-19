@@ -7,6 +7,8 @@
 //     compaction snapshots are applied.
 //   - EffectiveEntries returns the same model-visible history together with
 //     originating message-event IDs when known.
+//   - Artifact events carry durable artifact descriptors and provenance rather
+//     than embedding artifact bodies directly in the log.
 //
 // Forked sessions preserve lineage by minting fresh event IDs and recording
 // fork_origin metadata that points back to the parent session and event.

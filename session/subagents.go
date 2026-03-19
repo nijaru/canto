@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 
+	"github.com/nijaru/canto/artifact"
 	"github.com/nijaru/canto/llm"
 )
 
@@ -30,13 +31,7 @@ const (
 
 // ArtifactRef identifies an artifact emitted by a session or child run.
 // Storage, merge policy, and UI treatment are left to higher-level apps.
-type ArtifactRef struct {
-	ID       string         `json:"id"`
-	Kind     string         `json:"kind"`
-	URI      string         `json:"uri"`
-	Label    string         `json:"label,omitzero"`
-	Metadata map[string]any `json:"metadata,omitzero"`
-}
+type ArtifactRef = artifact.Descriptor
 
 // ChildRequestedData records a parent request for a child run.
 type ChildRequestedData struct {

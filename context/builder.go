@@ -30,7 +30,7 @@ func (b *Builder) Processors() []Processor {
 	return res
 }
 
-// Build executes the processor chain to transform the session and request.
+// Build executes the commit-time pipeline to transform the session and request.
 func (b *Builder) Build(
 	ctx context.Context,
 	p llm.Provider,
@@ -38,12 +38,38 @@ func (b *Builder) Build(
 	sess *session.Session,
 	req *llm.Request,
 ) error {
-	for _, cp := range b.processors {
-		if err := cp.Process(ctx, p, model, sess, req); err != nil {
-			return err
-		}
+	return b.BuildCommit(ctx, p, model, sess, req)
+}
+
+// BuildPreview builds a request using only preview-safe request processors.
+func (b *Builder) BuildPreview(
+	ctx context.Context,
+	p llm.Provider,
+	model string,
+	sess *session.Session,
+	req *llm.Request,
+) error {
+	pipeline, err := b.previewPipeline()
+	if err != nil {
+		return err
 	}
-	return nil
+	return pipeline.BuildPreview(ctx, p, model, sess, req)
+}
+
+// BuildCommit runs commit-time mutation first and then rebuilds the request
+// from the updated session state.
+func (b *Builder) BuildCommit(
+	ctx context.Context,
+	p llm.Provider,
+	model string,
+	sess *session.Session,
+	req *llm.Request,
+) error {
+	pipeline, err := b.commitPipeline()
+	if err != nil {
+		return err
+	}
+	return pipeline.BuildCommit(ctx, p, model, sess, req)
 }
 
 // Effects returns the aggregate side effects of the current processor chain.
@@ -80,6 +106,34 @@ func (b *Builder) InsertBeforeLast(ps ...Processor) {
 	merged = append(merged, ps...)
 	merged = append(merged, tail)
 	b.processors = merged
+}
+
+func (b *Builder) previewPipeline() (*Pipeline, error) {
+	pipeline := NewPipeline()
+	for _, proc := range b.processors {
+		rp, err := adaptRequestProcessor(proc)
+		if err != nil {
+			return nil, fmt.Errorf("preview pipeline: %w", err)
+		}
+		pipeline.AddRequestProcessor(rp)
+	}
+	return pipeline, nil
+}
+
+func (b *Builder) commitPipeline() (*Pipeline, error) {
+	pipeline := NewPipeline()
+	for _, proc := range b.processors {
+		if EffectsOf(proc).HasSideEffects() {
+			pipeline.AddMutator(adaptMutator(proc))
+			continue
+		}
+		rp, err := adaptRequestProcessor(proc)
+		if err != nil {
+			return nil, fmt.Errorf("commit pipeline: %w", err)
+		}
+		pipeline.AddRequestProcessor(rp)
+	}
+	return pipeline, nil
 }
 
 // History appends the effective model-visible session history to the request.

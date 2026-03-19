@@ -3,9 +3,9 @@ package context
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
+	"strings"
 
+	"github.com/nijaru/canto/artifact"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -13,8 +13,6 @@ import (
 const (
 	defaultThresholdPct = 0.60
 	defaultMinKeepTurns = 3
-	dirPerm             = 0o755
-	filePerm            = 0o644
 	largeToolThreshold  = 1000
 )
 
@@ -24,6 +22,7 @@ type Offloader struct {
 	MaxTokens    int
 	ThresholdPct float64
 	OffloadDir   string
+	Artifacts    artifact.Store
 	MinKeepTurns int
 	OnPreCompact func(ctx context.Context, sess *session.Session)
 }
@@ -47,6 +46,26 @@ func NewOffloader(maxTokens int, offloadDir string) *Offloader {
 	}
 }
 
+// NewArtifactOffloader creates a new offload processor backed by an artifact store.
+func NewArtifactOffloader(maxTokens int, store artifact.Store) *Offloader {
+	return &Offloader{
+		MaxTokens:    maxTokens,
+		ThresholdPct: defaultThresholdPct,
+		Artifacts:    store,
+		MinKeepTurns: defaultMinKeepTurns,
+	}
+}
+
+// Mutate performs durable offload compaction and records artifact descriptors.
+func (p *Offloader) Mutate(
+	ctx context.Context,
+	pr llm.Provider,
+	model string,
+	sess *session.Session,
+) error {
+	return p.compact(ctx, pr, model, sess)
+}
+
 func (p *Offloader) Process(
 	ctx context.Context,
 	pr llm.Provider,
@@ -54,10 +73,31 @@ func (p *Offloader) Process(
 	sess *session.Session,
 	req *llm.Request,
 ) error {
-	if p.MaxTokens <= 0 || p.OffloadDir == "" {
+	before, err := sess.EffectiveMessages()
+	if err != nil {
+		return err
+	}
+	prefix := historyPrefix(req, len(before))
+	if err := p.compact(ctx, pr, model, sess); err != nil {
+		return err
+	}
+	after, err := sess.EffectiveMessages()
+	if err != nil {
+		return err
+	}
+	req.Messages = append(prefix, after...)
+	return nil
+}
+
+func (p *Offloader) compact(
+	ctx context.Context,
+	pr llm.Provider,
+	model string,
+	sess *session.Session,
+) error {
+	if p.MaxTokens <= 0 || (p.OffloadDir == "" && p.Artifacts == nil) {
 		return nil
 	}
-
 	entries, err := sess.EffectiveEntries()
 	if err != nil {
 		return err
@@ -82,28 +122,20 @@ func (p *Offloader) Process(
 		p.OnPreCompact(ctx, sess)
 	}
 
-	// 3. Select messages to offload
-	// Strategy: Keep last 3 turns (Assistant + User/Tool)
-	// For messages older than that, if they are large tool results, offload them.
-
-	// Ensure offload directory exists
-	if err := os.MkdirAll(p.OffloadDir, dirPerm); err != nil {
-		return fmt.Errorf("failed to create offload dir: %w", err)
-	}
-	root, err := os.OpenRoot(p.OffloadDir)
-	if err != nil {
-		return fmt.Errorf("failed to open offload root: %w", err)
-	}
-	defer root.Close()
-
 	// Identify candidates
 	numMessages := len(entries)
 	if numMessages <= p.MinKeepTurns {
 		return nil
 	}
-	prefix := historyPrefix(req, len(messages))
 	events := sess.Events()
 	cutoffEventID := lastMessageEventID(events)
+	store, closeStore, err := p.artifactStore()
+	if err != nil {
+		return err
+	}
+	if closeStore != nil {
+		defer closeStore()
+	}
 
 	// Simple implementation: Offload Tool results that are not in the last N messages
 	candidates := entries[:numMessages-p.MinKeepTurns]
@@ -112,17 +144,31 @@ func (p *Offloader) Process(
 	for i, entry := range candidates {
 		m := entry.Message
 		if m.Role == llm.RoleTool && len(m.Content) > largeToolThreshold {
-			// Offload it
 			id := offloadCandidateID(sess.ID(), cutoffEventID, entry, i)
-			filename := id + ".json"
-			path := filepath.Join(p.OffloadDir, filename)
-
-			if err := root.WriteFile(filename, []byte(m.Content), filePerm); err != nil {
-				return fmt.Errorf("failed to write offload file: %w", err)
+			desc, err := store.Put(ctx, artifact.Descriptor{
+				ID:                id,
+				Kind:              "context_offload",
+				Label:             "Offloaded tool output",
+				MIMEType:          "text/plain",
+				ProducerSessionID: sess.ID(),
+				ProducerEventID:   entry.EventID,
+				Metadata: map[string]any{
+					"strategy":        "offload",
+					"source_event_id": entry.EventID,
+					"tool_id":         m.ToolID,
+				},
+			}, strings.NewReader(m.Content))
+			if err != nil {
+				return fmt.Errorf("failed to persist offload artifact: %w", err)
+			}
+			if err := sess.Append(ctx, session.NewArtifactRecordedEvent(sess.ID(), session.ArtifactRecordedData{
+				Artifact:  desc,
+				SessionID: sess.ID(),
+			})); err != nil {
+				return fmt.Errorf("failed to record offload artifact: %w", err)
 			}
 
-			// Replace with placeholder
-			m.Content = offloadPlaceholder(path)
+			m.Content = offloadPlaceholder(desc.URI)
 			entry.Message = m
 		}
 		newEntries = append(newEntries, entry)
@@ -130,11 +176,6 @@ func (p *Offloader) Process(
 
 	// Add remaining messages (non-candidates)
 	newEntries = append(newEntries, cloneHistoryEntries(entries[numMessages-p.MinKeepTurns:])...)
-
-	newMessages := make([]llm.Message, 0, len(newEntries))
-	for _, entry := range newEntries {
-		newMessages = append(newMessages, entry.Message)
-	}
 
 	event := session.NewCompactionEvent(sess.ID(), session.CompactionSnapshot{
 		Strategy:      "offload",
@@ -147,8 +188,16 @@ func (p *Offloader) Process(
 	if err := sess.Append(ctx, event); err != nil {
 		return err
 	}
-
-	req.Messages = append(prefix, newMessages...)
-
 	return nil
+}
+
+func (p *Offloader) artifactStore() (artifact.Store, func() error, error) {
+	if p.Artifacts != nil {
+		return p.Artifacts, nil, nil
+	}
+	store, err := artifact.NewFileStore(p.OffloadDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	return store, store.Close, nil
 }

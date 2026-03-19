@@ -2,6 +2,7 @@ package context
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,9 +108,19 @@ func TestOffloadProcessor(t *testing.T) {
 	}
 
 	// Verify file exists
-	files, err := filepath.Glob(filepath.Join(tempDir, "*.json"))
+	files, err := filepath.Glob(filepath.Join(tempDir, "objects", "*", "body"))
 	if err != nil || len(files) == 0 {
 		t.Errorf("expected offload file to be created")
+	}
+
+	var artifactEvents int
+	for _, event := range sess.Events() {
+		if event.Type == session.ArtifactRecorded {
+			artifactEvents++
+		}
+	}
+	if artifactEvents == 0 {
+		t.Fatalf("expected offload to record artifact descriptors")
 	}
 
 	historyReq := &llm.Request{}
@@ -165,7 +176,7 @@ func TestOffloadProcessor_DuplicateToolOutputsGetDistinctArtifacts(t *testing.T)
 		t.Fatalf("offload failed: %v", err)
 	}
 
-	files, err := filepath.Glob(filepath.Join(tempDir, "*.json"))
+	files, err := filepath.Glob(filepath.Join(tempDir, "objects", "*", "body"))
 	if err != nil {
 		t.Fatalf("glob offload files: %v", err)
 	}
@@ -256,6 +267,48 @@ func TestBuilderEffectsAggregatesProcessorSideEffects(t *testing.T) {
 	}
 	if !effects.External {
 		t.Fatalf("expected external side effects from offloader, got %#v", effects)
+	}
+}
+
+func TestBuilderBuildPreviewRejectsSideEffects(t *testing.T) {
+	builder := NewBuilder(
+		Instructions("system"),
+		NewOffloader(1000, t.TempDir()),
+	)
+
+	err := builder.BuildPreview(t.Context(), nil, "", session.New("preview"), &llm.Request{})
+	if !errors.Is(err, ErrPreviewUnsafeProcessor) {
+		t.Fatalf("BuildPreview error = %v, want ErrPreviewUnsafeProcessor", err)
+	}
+}
+
+func TestPipelineBuildCommitRunsMutatorsBeforeRequestProcessors(t *testing.T) {
+	sess := session.New("pipeline")
+	pipeline := NewPipeline(RequestProcessorFunc(
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
+			msgs, err := sess.EffectiveMessages()
+			if err != nil {
+				return err
+			}
+			req.Messages = append(req.Messages, msgs...)
+			return nil
+		},
+	))
+	pipeline.AddMutator(ContextMutatorFunc(
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session) error {
+			return sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
+				Role:    llm.RoleUser,
+				Content: "mutated first",
+			}))
+		},
+	))
+
+	req := &llm.Request{}
+	if err := pipeline.BuildCommit(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatalf("BuildCommit: %v", err)
+	}
+	if len(req.Messages) != 1 || req.Messages[0].Content != "mutated first" {
+		t.Fatalf("unexpected commit-built messages: %#v", req.Messages)
 	}
 }
 

@@ -38,12 +38,44 @@ func NewSummarizer(maxTokens int, provider llm.Provider, model string) *Summariz
 	}
 }
 
+// Mutate performs durable summarize compaction without directly rewriting the request.
+func (p *Summarizer) Mutate(
+	ctx context.Context,
+	pr llm.Provider,
+	model string,
+	sess *session.Session,
+) error {
+	return p.summarize(ctx, pr, model, sess)
+}
+
 func (p *Summarizer) Process(
 	ctx context.Context,
 	pr llm.Provider,
 	model string,
 	sess *session.Session,
 	req *llm.Request,
+) error {
+	before, err := sess.EffectiveMessages()
+	if err != nil {
+		return err
+	}
+	prefix := historyPrefix(req, len(before))
+	if err := p.summarize(ctx, pr, model, sess); err != nil {
+		return err
+	}
+	after, err := sess.EffectiveMessages()
+	if err != nil {
+		return err
+	}
+	req.Messages = append(prefix, after...)
+	return nil
+}
+
+func (p *Summarizer) summarize(
+	ctx context.Context,
+	pr llm.Provider,
+	model string,
+	sess *session.Session,
 ) error {
 	if p.MaxTokens <= 0 || p.Provider == nil {
 		return nil
@@ -78,7 +110,6 @@ func (p *Summarizer) Process(
 	if numMessages <= p.MinKeepTurns {
 		return nil
 	}
-	prefix := historyPrefix(req, len(messages))
 
 	// Strategy: Keep system messages and the last N turns.
 	// Summarize the rest.
@@ -169,11 +200,6 @@ func (p *Summarizer) Process(
 	})
 	newEntries = append(newEntries, cloneHistoryEntries(recentEntries)...)
 
-	newMessages := make([]llm.Message, 0, len(newEntries))
-	for _, entry := range newEntries {
-		newMessages = append(newMessages, entry.Message)
-	}
-
 	event := session.NewCompactionEvent(sess.ID(), session.CompactionSnapshot{
 		Strategy:      "summarize",
 		MaxTokens:     p.MaxTokens,
@@ -185,8 +211,5 @@ func (p *Summarizer) Process(
 	if err := sess.Append(ctx, event); err != nil {
 		return err
 	}
-
-	req.Messages = append(prefix, newMessages...)
-
 	return nil
 }
