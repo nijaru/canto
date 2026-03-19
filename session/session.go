@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"crypto/rand"
+	"log/slog"
 	"sync"
 
 	"github.com/go-json-experiment/json"
@@ -116,6 +117,9 @@ func (s *Session) Fork(newID string) *Session {
 	entropy := ulid.Monotonic(rand.Reader, 0)
 	idMap := make(map[string]string, len(s.events))
 	for i, e := range s.events {
+		if err := e.ensureMetadata(); err != nil {
+			slog.Warn("fork metadata decode failed", "event_id", e.ID, "error", err)
+		}
 		originSessionID := e.SessionID
 		originEventID := e.ID
 		e.ID = ulid.MustNew(ulid.Timestamp(e.Timestamp), entropy)
@@ -229,6 +233,19 @@ func (s *Session) Subscribe(ctx context.Context) <-chan Event {
 
 // Events returns the full event log.
 func (s *Session) Events() []Event {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	res := make([]Event, len(s.events))
+	copy(res, s.events)
+	for i := range res {
+		if err := res[i].ensureMetadata(); err != nil {
+			slog.Warn("event metadata decode failed", "event_id", res[i].ID, "error", err)
+		}
+	}
+	return res
+}
+
+func (s *Session) snapshotEvents() []Event {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	res := make([]Event, len(s.events))

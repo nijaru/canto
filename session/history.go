@@ -95,7 +95,7 @@ func (s *Session) EffectiveMessages() ([]llm.Message, error) {
 // the latest durable compaction snapshot, together with the originating event
 // ID for each message when known.
 func (s *Session) EffectiveEntries() ([]HistoryEntry, error) {
-	return effectiveEntriesFromEvents(s.Events())
+	return effectiveEntriesFromEvents(s.snapshotEvents())
 }
 
 func effectiveEntriesFromEvents(events []Event) ([]HistoryEntry, error) {
@@ -192,7 +192,10 @@ func (s CompactionSnapshot) entries() []HistoryEntry {
 	return entries
 }
 
-func remapCompactionSnapshot(snapshot CompactionSnapshot, idMap map[string]string) CompactionSnapshot {
+func remapCompactionSnapshot(
+	snapshot CompactionSnapshot,
+	idMap map[string]string,
+) CompactionSnapshot {
 	if newID, ok := idMap[snapshot.CutoffEventID]; ok {
 		snapshot.CutoffEventID = newID
 	}

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-json-experiment/json"
 	"github.com/oklog/ulid/v2"
 	_ "modernc.org/sqlite"
 )
@@ -91,19 +90,19 @@ func (s *SQLiteStore) saveTx(ctx context.Context, exec interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }, e Event,
 ) error {
-	var metadata []byte
-	if len(e.Metadata) > 0 {
-		metadata, _ = json.Marshal(e.Metadata)
+	metadata, err := e.encodedMetadata()
+	if err != nil {
+		return err
 	}
 
-	_, err := exec.ExecContext(
+	_, err = exec.ExecContext(
 		ctx,
 		"INSERT INTO events (id, session_id, type, timestamp, data, metadata, cost) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		e.ID.String(),
 		e.SessionID,
 		string(e.Type),
 		e.Timestamp.Format(time.RFC3339),
-		[]byte(e.Data),
+		e.Data,
 		metadata,
 		e.Cost,
 	)
@@ -138,26 +137,17 @@ func (s *SQLiteStore) LoadUntil(
 
 	sess := New(sessionID).WithWriter(s)
 	for rows.Next() {
-		var e Event
 		var idStr, typeStr, timeStr string
-		var metadata []byte
-		if err := rows.Scan(&idStr, &e.SessionID, &typeStr, &timeStr, &e.Data, &metadata, &e.Cost); err != nil {
+		var loadedSessionID string
+		var data, metadata []byte
+		var cost float64
+		if err := rows.Scan(&idStr, &loadedSessionID, &typeStr, &timeStr, &data, &metadata, &cost); err != nil {
 			return nil, err
 		}
 
-		id, err := ulid.Parse(idStr)
+		e, err := decodeEventRow(idStr, loadedSessionID, typeStr, timeStr, data, metadata, cost)
 		if err != nil {
 			return nil, err
-		}
-		t, err := time.Parse(time.RFC3339, timeStr)
-		if err != nil {
-			return nil, err
-		}
-		e.ID = id
-		e.Type = EventType(typeStr)
-		e.Timestamp = t
-		if len(metadata) > 0 {
-			json.Unmarshal(metadata, &e.Metadata)
 		}
 		// Internal load doesn't need write-through back to itself.
 		sess.mu.Lock()
@@ -216,26 +206,17 @@ func (s *SQLiteStore) Search(ctx context.Context, sessionID string, query string
 
 	var res []Event
 	for rows.Next() {
-		var e Event
 		var idStr, typeStr, timeStr string
-		var metadata []byte
-		if err := rows.Scan(&idStr, &e.SessionID, &typeStr, &timeStr, &e.Data, &metadata, &e.Cost); err != nil {
+		var sessionID string
+		var data, metadata []byte
+		var cost float64
+		if err := rows.Scan(&idStr, &sessionID, &typeStr, &timeStr, &data, &metadata, &cost); err != nil {
 			return nil, err
 		}
 
-		id, err := ulid.Parse(idStr)
+		e, err := decodeEventRow(idStr, sessionID, typeStr, timeStr, data, metadata, cost)
 		if err != nil {
 			return nil, err
-		}
-		t, err := time.Parse(time.RFC3339, timeStr)
-		if err != nil {
-			return nil, err
-		}
-		e.ID = id
-		e.Type = EventType(typeStr)
-		e.Timestamp = t
-		if len(metadata) > 0 {
-			json.Unmarshal(metadata, &e.Metadata)
 		}
 		res = append(res, e)
 	}

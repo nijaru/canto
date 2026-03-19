@@ -141,7 +141,7 @@ func ExportRunTree(sess *Session, load func(sessionID string) (*Session, error))
 }
 
 func exportRun(sess *Session) (*RunLog, error) {
-	events := sess.Events()
+	events := sess.snapshotEvents()
 	if len(events) == 0 {
 		return &RunLog{
 			SessionID: sess.ID(),
@@ -217,7 +217,7 @@ func exportRunTree(
 	defer delete(seen, sess.ID())
 
 	childByID := make(map[string]*ChildRunLog)
-	for _, e := range sess.Events() {
+	for _, e := range sess.snapshotEvents() {
 		switch e.Type {
 		case ChildRequested:
 			data, ok, err := e.ChildRequestedData()

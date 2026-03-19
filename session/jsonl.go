@@ -2,13 +2,14 @@ package session
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
 
-	"github.com/go-json-experiment/json"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -42,7 +43,7 @@ func (s *JSONLStore) saveLocked(e Event) error {
 	}
 	defer f.Close()
 
-	if err := json.MarshalWrite(f, e); err != nil {
+	if err := writeEventJSON(f, e); err != nil {
 		return err
 	}
 	_, err = f.Write([]byte("\n"))
@@ -65,20 +66,31 @@ func (s *JSONLStore) Load(ctx context.Context, sessionID string) (*Session, erro
 	defer f.Close()
 
 	sess := New(sessionID).WithWriter(s)
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		var e Event
-		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+	reader := bufio.NewReader(f)
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if readErr != nil && readErr != io.EOF {
+			return nil, readErr
+		}
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			if readErr == io.EOF {
+				break
+			}
+			continue
+		}
+
+		e, err := decodeEventJSON(line)
+		if err != nil {
 			return nil, err
 		}
 		// Internal load doesn't need write-through back to itself.
 		sess.mu.Lock()
 		sess.events = append(sess.events, e)
 		sess.mu.Unlock()
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
+		if readErr == io.EOF {
+			break
+		}
 	}
 
 	return sess, nil
@@ -101,10 +113,22 @@ func (s *JSONLStore) LoadUntil(
 	defer f.Close()
 
 	sess := New(sessionID).WithWriter(s)
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		var e Event
-		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+	reader := bufio.NewReader(f)
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if readErr != nil && readErr != io.EOF {
+			return nil, readErr
+		}
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			if readErr == io.EOF {
+				break
+			}
+			continue
+		}
+
+		e, err := decodeEventJSON(line)
+		if err != nil {
 			return nil, err
 		}
 		// Internal load doesn't need write-through back to itself.
@@ -114,8 +138,11 @@ func (s *JSONLStore) LoadUntil(
 		if e.ID == eventID {
 			break
 		}
+		if readErr == io.EOF {
+			break
+		}
 	}
-	return sess, scanner.Err()
+	return sess, nil
 }
 
 // Fork creates a new session by copying all events from an existing session.

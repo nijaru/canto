@@ -49,11 +49,40 @@ type Event struct {
 	Data      jsontext.Value `json:"data"`
 	Metadata  map[string]any `json:"metadata,omitzero"`
 	Cost      float64        `json:"cost,omitzero"`
+
+	metadataRaw jsontext.Value
 }
 
 // UnmarshalData unmarshals the event's data into the given value.
 func (e Event) UnmarshalData(v any) error {
 	return json.Unmarshal(e.Data, v)
+}
+
+func (e *Event) ensureMetadata() error {
+	if e.Metadata != nil || len(e.metadataRaw) == 0 {
+		return nil
+	}
+
+	var metadata map[string]any
+	if err := json.Unmarshal(e.metadataRaw, &metadata); err != nil {
+		return err
+	}
+	e.Metadata = metadata
+	return nil
+}
+
+func (e Event) encodedMetadata() (jsontext.Value, error) {
+	if e.Metadata != nil {
+		raw, err := json.Marshal(e.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		return raw, nil
+	}
+	if len(e.metadataRaw) > 0 {
+		return e.metadataRaw, nil
+	}
+	return nil, nil
 }
 
 // NewEvent creates a new event with a unique ID and current timestamp.

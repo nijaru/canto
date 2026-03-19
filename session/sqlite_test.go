@@ -104,3 +104,36 @@ func TestSQLiteStoreFork(t *testing.T) {
 		}
 	}
 }
+
+func TestSQLiteStoreLoadMaterializesMetadataOnEvents(t *testing.T) {
+	dbFile := "test_canto_metadata.db"
+	defer os.Remove(dbFile)
+
+	store, err := NewSQLiteStore(dbFile)
+	if err != nil {
+		t.Fatalf("failed to create sqlite store: %v", err)
+	}
+	defer store.Close()
+
+	event := NewEvent("meta-session", Handoff, map[string]string{"note": "hello"})
+	event.Metadata = map[string]any{
+		"kind": "handoff",
+		"seq":  float64(1),
+	}
+	if err := store.Save(t.Context(), event); err != nil {
+		t.Fatalf("save event: %v", err)
+	}
+
+	sess, err := store.Load(t.Context(), "meta-session")
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+
+	events := sess.Events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if got := events[0].Metadata["kind"]; got != "handoff" {
+		t.Fatalf("metadata kind = %#v, want %q", got, "handoff")
+	}
+}
