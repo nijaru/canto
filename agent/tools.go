@@ -192,10 +192,10 @@ func executeToolWithHooks(
 	}
 
 	res := toolResult{call: call, output: output}
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.ToolCompleted, map[string]any{
-		"tool":   call.Function.Name,
-		"id":     call.ID,
-		"output": output,
+	if err := s.Append(ctx, session.NewToolCompletedEvent(s.ID(), session.ToolCompletedData{
+		Tool:   call.Function.Name,
+		ID:     call.ID,
+		Output: output,
 	})); err != nil {
 		res.err = err
 	}

@@ -2,6 +2,7 @@ package context
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"charm.land/catwalk/pkg/catwalk"
@@ -47,18 +48,19 @@ func (m *mockProvider) IsTransient(_ error) bool               { return false }
 
 func TestSummarizer(t *testing.T) {
 	sess := session.New("test-session")
+	history := []llm.Message{
+		{Role: llm.RoleSystem, Content: "System prompt"},
+		{Role: llm.RoleUser, Content: "Hello 1"},   // candidate
+		{Role: llm.RoleAssistant, Content: "Hi 1"}, // candidate
+		{Role: llm.RoleUser, Content: "Hello 2"},   // candidate
+		{Role: llm.RoleAssistant, Content: "Hi 2"}, // candidate
+		{Role: llm.RoleUser, Content: "Hello 3"},   // recent 1
+		{Role: llm.RoleAssistant, Content: "Hi 3"}, // recent 2
+		{Role: llm.RoleUser, Content: "Hello 4"},   // recent 3
+	}
 
 	req := &llm.Request{
-		Messages: []llm.Message{
-			{Role: llm.RoleSystem, Content: "System prompt"},
-			{Role: llm.RoleUser, Content: "Hello 1"},   // candidate
-			{Role: llm.RoleAssistant, Content: "Hi 1"}, // candidate
-			{Role: llm.RoleUser, Content: "Hello 2"},   // candidate
-			{Role: llm.RoleAssistant, Content: "Hi 2"}, // candidate
-			{Role: llm.RoleUser, Content: "Hello 3"},   // recent 1
-			{Role: llm.RoleAssistant, Content: "Hi 3"}, // recent 2
-			{Role: llm.RoleUser, Content: "Hello 4"},   // recent 3
-		},
+		Messages: slices.Clone(history),
 	}
 
 	// Expand content to trigger threshold
@@ -68,6 +70,14 @@ func TestSummarizer(t *testing.T) {
 	}
 	for i := 1; i < len(req.Messages); i++ {
 		req.Messages[i].Content += longStr
+	}
+	for i := range history {
+		history[i].Content = req.Messages[i].Content
+	}
+	for _, msg := range history {
+		if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append history: %v", err)
+		}
 	}
 
 	provider := &mockProvider{
@@ -109,5 +119,16 @@ func TestSummarizer(t *testing.T) {
 
 	if req.Messages[4].Content != "Hello 4"+longStr {
 		t.Errorf("expected last message to be 'Hello 4...', got '%s'", req.Messages[4].Content)
+	}
+
+	historyReq := &llm.Request{}
+	if err := History().Process(context.Background(), nil, "", sess, historyReq); err != nil {
+		t.Fatalf("history rebuild failed: %v", err)
+	}
+	if len(historyReq.Messages) != 5 {
+		t.Fatalf("expected 5 rebuilt history messages, got %d", len(historyReq.Messages))
+	}
+	if historyReq.Messages[1].Content != expectedSummary {
+		t.Fatalf("expected persisted summary, got %q", historyReq.Messages[1].Content)
 	}
 }

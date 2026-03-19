@@ -2,6 +2,7 @@ package context
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/go-json-experiment/json"
@@ -66,8 +67,16 @@ func (p *LazyTools) Process(
 	}
 
 	// Scan session history for search_tools results and unlock those tools.
-	unlocked := p.unlockedFromHistory(sess)
+	unlocked, err := SearchUnlockedTools(sess)
+	if err != nil {
+		return err
+	}
+	unlockedNames := make([]string, 0, len(unlocked))
 	for name := range unlocked {
+		unlockedNames = append(unlockedNames, name)
+	}
+	slices.Sort(unlockedNames)
+	for _, name := range unlockedNames {
 		if t, ok := p.Registry.Get(name); ok {
 			spec := t.Spec()
 			req.Tools = append(req.Tools, &spec)
@@ -82,27 +91,32 @@ func (p *LazyTools) Process(
 	return nil
 }
 
-// unlockedFromHistory scans the session for search_tools results and
-// extracts the tool names that were returned. Those tools are "unlocked"
-// and should be included in the next request.
-func (p *LazyTools) unlockedFromHistory(sess *session.Session) map[string]struct{} {
+// SearchUnlockedTools derives the set of tools previously unlocked via
+// successful search_tools results recorded in the session's tool-completed
+// events.
+func SearchUnlockedTools(sess *session.Session) (map[string]struct{}, error) {
 	unlocked := make(map[string]struct{})
-	for _, m := range sess.Messages() {
-		if m.Role != llm.RoleTool || m.Name != searchToolName {
+	for _, e := range sess.Events() {
+		result, ok, err := e.ToolCompletedData()
+		if err != nil {
+			return nil, err
+		}
+		if !ok || result.Tool != searchToolName {
 			continue
 		}
-		// Try to parse as a JSON array of Spec.
+
 		var specs []llm.Spec
-		if err := json.Unmarshal([]byte(m.Content), &specs); err != nil {
+		if err := json.Unmarshal([]byte(result.Output), &specs); err != nil {
 			continue
 		}
 		for _, spec := range specs {
-			if spec.Name != "" && spec.Name != searchToolName {
-				unlocked[spec.Name] = struct{}{}
+			if spec.Name == "" || spec.Name == searchToolName {
+				continue
 			}
+			unlocked[spec.Name] = struct{}{}
 		}
 	}
-	return unlocked
+	return unlocked, nil
 }
 
 // injectSystemHint prepends a system message with the hint text.

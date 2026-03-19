@@ -69,15 +69,23 @@ func TestOffloadProcessor(t *testing.T) {
 	for i := 0; i < 2000; i++ {
 		largeContent += "large content "
 	}
+	history := []llm.Message{
+		{Role: llm.RoleUser, Content: "request"},
+		{Role: llm.RoleAssistant, Content: "calling tool..."},
+		{Role: llm.RoleTool, Content: largeContent, ToolID: "t1"},
+		{Role: llm.RoleAssistant, Content: "done"},
+		{Role: llm.RoleUser, Content: "next"},
+	}
+	for _, msg := range history {
+		if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append history: %v", err)
+		}
+	}
 
 	req := &llm.Request{
-		Messages: []llm.Message{
-			{Role: llm.RoleUser, Content: "request"},
-			{Role: llm.RoleAssistant, Content: "calling tool..."},
-			{Role: llm.RoleTool, Content: largeContent, ToolID: "t1"},
-			{Role: llm.RoleAssistant, Content: "done"},
-			{Role: llm.RoleUser, Content: "next"},
-		},
+		Messages: append(
+			[]llm.Message{{Role: llm.RoleSystem, Content: "instructions"}},
+			history...),
 	}
 
 	// Threshold is 60%, MaxTokens = 1000.
@@ -90,11 +98,11 @@ func TestOffloadProcessor(t *testing.T) {
 		t.Fatalf("offload failed: %v", err)
 	}
 
-	// Message 2 (RoleTool) should be offloaded because it's older than last 2
-	if len(req.Messages[2].Content) > 1000 {
+	// Message 3 (RoleTool) should be offloaded because it's older than last 2.
+	if len(req.Messages[3].Content) > 1000 {
 		t.Errorf(
 			"expected message to be offloaded, but still have %d chars",
-			len(req.Messages[2].Content),
+			len(req.Messages[3].Content),
 		)
 	}
 
@@ -102,6 +110,152 @@ func TestOffloadProcessor(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join(tempDir, "*.json"))
 	if err != nil || len(files) == 0 {
 		t.Errorf("expected offload file to be created")
+	}
+
+	historyReq := &llm.Request{}
+	if err := History().Process(context.Background(), nil, "", sess, historyReq); err != nil {
+		t.Fatalf("history rebuild failed: %v", err)
+	}
+	if len(historyReq.Messages) != len(history) {
+		t.Fatalf(
+			"expected %d rebuilt history messages, got %d",
+			len(history),
+			len(historyReq.Messages),
+		)
+	}
+	if len(historyReq.Messages[2].Content) > 1000 {
+		t.Fatalf(
+			"expected rebuilt tool result to stay offloaded, got %d chars",
+			len(historyReq.Messages[2].Content),
+		)
+	}
+}
+
+func TestOffloadProcessor_DuplicateToolOutputsGetDistinctArtifacts(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "canto-offload-dupe-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	sess := session.New("dupe-session")
+	largeContent := strings.Repeat("same large content ", 200)
+	history := []llm.Message{
+		{Role: llm.RoleUser, Content: "request"},
+		{Role: llm.RoleTool, Content: largeContent, ToolID: "t1"},
+		{Role: llm.RoleTool, Content: largeContent, ToolID: "t2"},
+		{Role: llm.RoleAssistant, Content: "done"},
+		{Role: llm.RoleUser, Content: "next"},
+	}
+	for _, msg := range history {
+		if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append history: %v", err)
+		}
+	}
+
+	req := &llm.Request{
+		Messages: append(
+			[]llm.Message{{Role: llm.RoleSystem, Content: "instructions"}},
+			history...),
+	}
+
+	offloader := NewOffloader(1000, tempDir)
+	offloader.MinKeepTurns = 2
+	if err := offloader.Process(context.Background(), nil, "", sess, req); err != nil {
+		t.Fatalf("offload failed: %v", err)
+	}
+
+	files, err := filepath.Glob(filepath.Join(tempDir, "*.json"))
+	if err != nil {
+		t.Fatalf("glob offload files: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("expected 2 distinct offload artifacts, got %d", len(files))
+	}
+	if req.Messages[2].Content == req.Messages[3].Content {
+		t.Fatalf(
+			"expected distinct placeholders for duplicate outputs, got %q",
+			req.Messages[2].Content,
+		)
+	}
+}
+
+func TestHistoryUsesLatestCompactionSnapshot(t *testing.T) {
+	sess := session.New("compacted-session")
+	oldUser := llm.Message{Role: llm.RoleUser, Content: "old user"}
+	oldAssistant := llm.Message{Role: llm.RoleAssistant, Content: "old assistant"}
+	recent := llm.Message{Role: llm.RoleUser, Content: "recent"}
+
+	for _, msg := range []llm.Message{oldUser, oldAssistant, recent} {
+		if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append history: %v", err)
+		}
+	}
+
+	events := sess.Events()
+	snapshot := session.CompactionSnapshot{
+		Strategy:      "summarize",
+		CutoffEventID: events[len(events)-1].ID.String(),
+		Messages: []llm.Message{
+			{
+				Role:    llm.RoleSystem,
+				Content: "<conversation_summary>\nsummary\n</conversation_summary>",
+			},
+			recent,
+		},
+	}
+	if err := sess.Append(context.Background(), session.NewCompactionEvent(sess.ID(), snapshot)); err != nil {
+		t.Fatalf("append compaction: %v", err)
+	}
+
+	after := llm.Message{Role: llm.RoleAssistant, Content: "after"}
+	if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), after)); err != nil {
+		t.Fatalf("append after: %v", err)
+	}
+
+	req := &llm.Request{}
+	if err := History().Process(context.Background(), nil, "", sess, req); err != nil {
+		t.Fatalf("history process: %v", err)
+	}
+
+	if len(req.Messages) != 3 {
+		t.Fatalf("expected 3 messages from compacted history, got %d", len(req.Messages))
+	}
+	if req.Messages[0].Content != "<conversation_summary>\nsummary\n</conversation_summary>" {
+		t.Fatalf("unexpected summary message: %q", req.Messages[0].Content)
+	}
+	if req.Messages[1].Content != "recent" || req.Messages[2].Content != "after" {
+		t.Fatalf("unexpected compacted history: %#v", req.Messages)
+	}
+}
+
+func TestEffectsOfProcessorFuncIsRequestOnly(t *testing.T) {
+	proc := ProcessorFunc(
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
+			req.Messages = append(req.Messages, llm.Message{Role: llm.RoleSystem, Content: "hi"})
+			return nil
+		},
+	)
+
+	effects := EffectsOf(proc)
+	if effects.HasSideEffects() {
+		t.Fatalf("expected request-only processor, got %#v", effects)
+	}
+}
+
+func TestBuilderEffectsAggregatesProcessorSideEffects(t *testing.T) {
+	builder := NewBuilder(
+		Instructions("system"),
+		NewOffloader(1000, t.TempDir()),
+		NewSummarizer(1000, &mockProvider{id: "mock"}, "mock-model"),
+	)
+
+	effects := builder.Effects()
+	if !effects.Session {
+		t.Fatalf("expected session side effects, got %#v", effects)
+	}
+	if !effects.External {
+		t.Fatalf("expected external side effects from offloader, got %#v", effects)
 	}
 }
 

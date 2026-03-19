@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/go-json-experiment/json"
-
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -28,6 +26,15 @@ type Offloader struct {
 	OffloadDir   string
 	MinKeepTurns int
 	OnPreCompact func(ctx context.Context, sess *session.Session)
+}
+
+// Effects reports that offloading mutates both session state and external
+// filesystem state.
+func (p *Offloader) Effects() ProcessorEffects {
+	return ProcessorEffects{
+		Session:  true,
+		External: true,
+	}
 }
 
 // NewOffloader creates a new offload processor.
@@ -51,21 +58,24 @@ func (p *Offloader) Process(
 		return nil
 	}
 
+	entries, err := sess.EffectiveEntries()
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	messages := make([]llm.Message, 0, len(entries))
+	for _, entry := range entries {
+		messages = append(messages, entry.Message)
+	}
+
 	// 1. Calculate usage
-	currentTokens := EstimateMessagesTokens(ctx, pr, model, req.Messages)
+	currentTokens := EstimateMessagesTokens(ctx, pr, model, messages)
 
 	// 2. If usage <= Threshold, do nothing
 	if !exceedsThreshold(currentTokens, p.MaxTokens, p.ThresholdPct) {
 		return nil
-	}
-
-	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.CompactionTriggered, map[string]any{
-		"strategy":       "offload",
-		"max_tokens":     p.MaxTokens,
-		"threshold_pct":  p.ThresholdPct,
-		"current_tokens": currentTokens,
-	})); err != nil {
-		return err
 	}
 
 	if p.OnPreCompact != nil {
@@ -80,55 +90,65 @@ func (p *Offloader) Process(
 	if err := os.MkdirAll(p.OffloadDir, dirPerm); err != nil {
 		return fmt.Errorf("failed to create offload dir: %w", err)
 	}
+	root, err := os.OpenRoot(p.OffloadDir)
+	if err != nil {
+		return fmt.Errorf("failed to open offload root: %w", err)
+	}
+	defer root.Close()
 
 	// Identify candidates
-	numMessages := len(req.Messages)
+	numMessages := len(entries)
 	if numMessages <= p.MinKeepTurns {
 		return nil
 	}
-
-	// Build content→eventID index once (O(N)) to avoid O(N²) scan per candidate.
+	prefix := historyPrefix(req, len(messages))
 	events := sess.Events()
-	contentToEventID := make(map[string]string, len(events))
-	for _, e := range events {
-		if e.Type == session.MessageAdded {
-			var m llm.Message
-			if err := json.Unmarshal(e.Data, &m); err == nil && m.Content != "" {
-				contentToEventID[m.Content] = e.ID.String()
-			}
-		}
-	}
+	cutoffEventID := lastMessageEventID(events)
 
 	// Simple implementation: Offload Tool results that are not in the last N messages
-	candidates := req.Messages[:numMessages-p.MinKeepTurns]
-	var newMessages []llm.Message
+	candidates := entries[:numMessages-p.MinKeepTurns]
+	newEntries := make([]session.HistoryEntry, 0, numMessages)
 
-	for _, m := range candidates {
+	for i, entry := range candidates {
+		m := entry.Message
 		if m.Role == llm.RoleTool && len(m.Content) > largeToolThreshold {
 			// Offload it
-			id := contentToEventID[m.Content]
-			if id == "" {
-				id = fmt.Sprintf("offload-%s-%d", sess.ID(), len(newMessages))
-			}
-			path := filepath.Join(p.OffloadDir, id+".json")
+			id := offloadCandidateID(sess.ID(), cutoffEventID, entry, i)
+			filename := id + ".json"
+			path := filepath.Join(p.OffloadDir, filename)
 
-			if err := os.WriteFile(path, []byte(m.Content), filePerm); err != nil {
+			if err := root.WriteFile(filename, []byte(m.Content), filePerm); err != nil {
 				return fmt.Errorf("failed to write offload file: %w", err)
 			}
 
 			// Replace with placeholder
-			m.Content = fmt.Sprintf(
-				"[Content offloaded to %s. Use read_offload tool to retrieve.]",
-				path,
-			)
+			m.Content = offloadPlaceholder(path)
+			entry.Message = m
 		}
-		newMessages = append(newMessages, m)
+		newEntries = append(newEntries, entry)
 	}
 
 	// Add remaining messages (non-candidates)
-	newMessages = append(newMessages, req.Messages[numMessages-p.MinKeepTurns:]...)
+	newEntries = append(newEntries, cloneHistoryEntries(entries[numMessages-p.MinKeepTurns:])...)
 
-	req.Messages = newMessages
+	newMessages := make([]llm.Message, 0, len(newEntries))
+	for _, entry := range newEntries {
+		newMessages = append(newMessages, entry.Message)
+	}
+
+	event := session.NewCompactionEvent(sess.ID(), session.CompactionSnapshot{
+		Strategy:      "offload",
+		MaxTokens:     p.MaxTokens,
+		ThresholdPct:  p.ThresholdPct,
+		CurrentTokens: currentTokens,
+		CutoffEventID: cutoffEventID,
+		Entries:       newEntries,
+	})
+	if err := sess.Append(ctx, event); err != nil {
+		return err
+	}
+
+	req.Messages = append(prefix, newMessages...)
 
 	return nil
 }

@@ -61,7 +61,31 @@ func TestLazyToolProcessor_AboveThreshold_OnlySearchTool(t *testing.T) {
 	}
 }
 
-func TestLazyToolProcessor_UnlocksFromHistory(t *testing.T) {
+func TestSearchUnlockedTools(t *testing.T) {
+	sess := session.New("s-tools")
+	specs := []llm.Spec{{Name: "tool_1", Description: "desc of tool_1"}}
+	data, err := json.Marshal(specs)
+	if err != nil {
+		t.Fatalf("marshal specs: %v", err)
+	}
+	if err := sess.Append(context.Background(), session.NewToolCompletedEvent(sess.ID(), session.ToolCompletedData{
+		Tool:   "search_tools",
+		ID:     "call_1",
+		Output: string(data),
+	})); err != nil {
+		t.Fatalf("append tool completion: %v", err)
+	}
+
+	unlocked, err := SearchUnlockedTools(sess)
+	if err != nil {
+		t.Fatalf("search unlocked tools: %v", err)
+	}
+	if _, ok := unlocked["tool_1"]; !ok {
+		t.Fatal("expected tool_1 to be unlocked")
+	}
+}
+
+func TestLazyToolProcessor_UnlocksFromSessionState(t *testing.T) {
 	reg := makeRegistry(3) // tool_0, tool_1, tool_2
 	reg.Register(&mockTool{name: "search_tools"})
 	p := NewLazyTools(reg)
@@ -70,15 +94,17 @@ func TestLazyToolProcessor_UnlocksFromHistory(t *testing.T) {
 	// Seed session with a prior search_tools result that unlocked tool_1.
 	sess := session.New("s3")
 	specs := []llm.Spec{{Name: "tool_1", Description: "desc of tool_1"}}
-	data, _ := json.Marshal(specs)
-	_ = sess.Append(
-		context.Background(),
-		session.NewEvent("s3", session.MessageAdded, llm.Message{
-			Role:    llm.RoleTool,
-			Name:    "search_tools",
-			Content: string(data),
-		}),
-	)
+	data, err := json.Marshal(specs)
+	if err != nil {
+		t.Fatalf("marshal specs: %v", err)
+	}
+	if err := sess.Append(context.Background(), session.NewToolCompletedEvent(sess.ID(), session.ToolCompletedData{
+		Tool:   "search_tools",
+		ID:     "call_1",
+		Output: string(data),
+	})); err != nil {
+		t.Fatalf("append tool completion: %v", err)
+	}
 
 	req := &llm.Request{}
 	if err := p.Process(context.Background(), nil, "", sess, req); err != nil {
@@ -97,5 +123,43 @@ func TestLazyToolProcessor_UnlocksFromHistory(t *testing.T) {
 	}
 	if names["tool_0"] || names["tool_2"] {
 		t.Error("expected tool_0 and tool_2 NOT in req.Tools (not unlocked)")
+	}
+}
+
+func TestLazyToolProcessor_UnlockedToolsAreSorted(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&mockTool{name: "tool_b"})
+	reg.Register(&mockTool{name: "tool_a"})
+	reg.Register(&mockTool{name: "search_tools"})
+
+	p := NewLazyTools(reg)
+	p.Threshold = 1
+
+	sess := session.New("s4")
+	specs := []llm.Spec{
+		{Name: "tool_b", Description: "desc of tool_b"},
+		{Name: "tool_a", Description: "desc of tool_a"},
+	}
+	data, err := json.Marshal(specs)
+	if err != nil {
+		t.Fatalf("marshal specs: %v", err)
+	}
+	if err := sess.Append(context.Background(), session.NewToolCompletedEvent(sess.ID(), session.ToolCompletedData{
+		Tool:   "search_tools",
+		ID:     "call_1",
+		Output: string(data),
+	})); err != nil {
+		t.Fatalf("append tool completion: %v", err)
+	}
+
+	req := &llm.Request{}
+	if err := p.Process(context.Background(), nil, "", sess, req); err != nil {
+		t.Fatal(err)
+	}
+	if len(req.Tools) != 3 {
+		t.Fatalf("expected 3 tools, got %d", len(req.Tools))
+	}
+	if req.Tools[0].Name != "search_tools" || req.Tools[1].Name != "tool_a" || req.Tools[2].Name != "tool_b" {
+		t.Fatalf("unexpected tool order: %v", []string{req.Tools[0].Name, req.Tools[1].Name, req.Tools[2].Name})
 	}
 }

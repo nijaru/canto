@@ -76,6 +76,23 @@ func TestRegistry_Specs(t *testing.T) {
 	}
 }
 
+func TestRegistry_SpecsAndNames_AreSorted(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(&staticTool{name: "zeta", result: "z"})
+	reg.Register(&staticTool{name: "alpha", result: "a"})
+	reg.Register(&staticTool{name: "beta", result: "b"})
+
+	names := reg.Names()
+	if got, want := strings.Join(names, ","), "alpha,beta,zeta"; got != want {
+		t.Fatalf("registry names = %q, want %q", got, want)
+	}
+
+	specs := reg.Specs()
+	if got := []string{specs[0].Name, specs[1].Name, specs[2].Name}; strings.Join(got, ",") != "alpha,beta,zeta" {
+		t.Fatalf("registry specs order = %v, want [alpha beta zeta]", got)
+	}
+}
+
 func TestRegistry_Execute_Found(t *testing.T) {
 	reg := NewRegistry()
 	reg.Register(&staticTool{name: "greeter", result: "hello"})

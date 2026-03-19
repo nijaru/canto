@@ -46,6 +46,15 @@ func (b *Builder) Build(
 	return nil
 }
 
+// Effects returns the aggregate side effects of the current processor chain.
+func (b *Builder) Effects() ProcessorEffects {
+	var effects ProcessorEffects
+	for _, p := range b.processors {
+		effects = effects.merge(EffectsOf(p))
+	}
+	return effects
+}
+
 // Prepend inserts p at the front of the processor chain.
 func (b *Builder) Prepend(p Processor) {
 	b.processors = append([]Processor{p}, b.processors...)
@@ -73,12 +82,14 @@ func (b *Builder) InsertBeforeLast(ps ...Processor) {
 	b.processors = merged
 }
 
-// History appends the session event log to the LLM request messages.
+// History appends the effective model-visible session history to the request.
 func History() Processor {
 	return ProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
-			// Extract all messages from the session
-			messages := sess.Messages()
+			messages, err := sess.EffectiveMessages()
+			if err != nil {
+				return err
+			}
 			req.Messages = append(req.Messages, messages...)
 			return nil
 		},

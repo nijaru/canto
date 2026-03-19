@@ -48,8 +48,9 @@ func WithBuilder(b *ccontext.Builder) Option { return func(a *BaseAgent) { a.Bui
 
 // WithProcessors inserts additional context processors into the default builder
 // chain, placed before Capabilities (which must run last).
-// Use this to add memory retrieval, custom compaction, or other middleware
-// without rebuilding the full default chain with WithBuilder.
+// Use this to add memory retrieval, custom compaction, or other request or
+// session-shaping middleware without rebuilding the full default chain with
+// WithBuilder.
 func WithProcessors(ps ...ccontext.Processor) Option {
 	return func(a *BaseAgent) {
 		a.Builder.InsertBeforeLast(ps...)

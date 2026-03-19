@@ -21,6 +21,12 @@ type Summarizer struct {
 	OnPreCompact func(ctx context.Context, sess *session.Session)
 }
 
+// Effects reports that summarization appends durable compaction facts to the
+// session log.
+func (p *Summarizer) Effects() ProcessorEffects {
+	return ProcessorEffects{Session: true}
+}
+
 // NewSummarizer creates a new summarize processor.
 func NewSummarizer(maxTokens int, provider llm.Provider, model string) *Summarizer {
 	return &Summarizer{
@@ -43,21 +49,24 @@ func (p *Summarizer) Process(
 		return nil
 	}
 
+	entries, err := sess.EffectiveEntries()
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	messages := make([]llm.Message, 0, len(entries))
+	for _, entry := range entries {
+		messages = append(messages, entry.Message)
+	}
+
 	// 1. Calculate usage
-	currentTokens := EstimateMessagesTokens(ctx, pr, model, req.Messages)
+	currentTokens := EstimateMessagesTokens(ctx, pr, model, messages)
 
 	// 2. If usage <= Threshold, do nothing
 	if !exceedsThreshold(currentTokens, p.MaxTokens, p.ThresholdPct) {
 		return nil
-	}
-
-	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.CompactionTriggered, map[string]any{
-		"strategy":       "summarize",
-		"max_tokens":     p.MaxTokens,
-		"threshold_pct":  p.ThresholdPct,
-		"current_tokens": currentTokens,
-	})); err != nil {
-		return err
 	}
 
 	if p.OnPreCompact != nil {
@@ -65,22 +74,24 @@ func (p *Summarizer) Process(
 	}
 
 	// 3. Identify candidates
-	numMessages := len(req.Messages)
+	numMessages := len(entries)
 	if numMessages <= p.MinKeepTurns {
 		return nil
 	}
+	prefix := historyPrefix(req, len(messages))
 
 	// Strategy: Keep system messages and the last N turns.
 	// Summarize the rest.
-	var systemMsgs []llm.Message
+	var systemEntries []session.HistoryEntry
 	var candidates []llm.Message
-	var recentMsgs []llm.Message
+	var recentEntries []session.HistoryEntry
 
-	for i, m := range req.Messages {
+	for i, entry := range entries {
+		m := entry.Message
 		if m.Role == llm.RoleSystem {
-			systemMsgs = append(systemMsgs, m)
+			systemEntries = append(systemEntries, entry)
 		} else if i >= numMessages-p.MinKeepTurns {
-			recentMsgs = append(recentMsgs, m)
+			recentEntries = append(recentEntries, entry)
 		} else {
 			candidates = append(candidates, m)
 		}
@@ -146,15 +157,36 @@ func (p *Summarizer) Process(
 	}
 
 	// Build new messages: system + summary + recent
-	var newMessages []llm.Message
-	newMessages = append(newMessages, systemMsgs...)
-	newMessages = append(newMessages, llm.Message{
-		Role:    llm.RoleSystem,
-		Content: fmt.Sprintf("<conversation_summary>\n%s\n</conversation_summary>", resp.Content),
+	newEntries := cloneHistoryEntries(systemEntries)
+	newEntries = append(newEntries, session.HistoryEntry{
+		Message: llm.Message{
+			Role: llm.RoleSystem,
+			Content: fmt.Sprintf(
+				"<conversation_summary>\n%s\n</conversation_summary>",
+				resp.Content,
+			),
+		},
 	})
-	newMessages = append(newMessages, recentMsgs...)
+	newEntries = append(newEntries, cloneHistoryEntries(recentEntries)...)
 
-	req.Messages = newMessages
+	newMessages := make([]llm.Message, 0, len(newEntries))
+	for _, entry := range newEntries {
+		newMessages = append(newMessages, entry.Message)
+	}
+
+	event := session.NewCompactionEvent(sess.ID(), session.CompactionSnapshot{
+		Strategy:      "summarize",
+		MaxTokens:     p.MaxTokens,
+		ThresholdPct:  p.ThresholdPct,
+		CurrentTokens: currentTokens,
+		CutoffEventID: lastMessageEventID(sess.Events()),
+		Entries:       newEntries,
+	})
+	if err := sess.Append(ctx, event); err != nil {
+		return err
+	}
+
+	req.Messages = append(prefix, newMessages...)
 
 	return nil
 }

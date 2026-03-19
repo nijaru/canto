@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"crypto/rand"
 	"sync"
 
 	"github.com/go-json-experiment/json"
@@ -112,9 +113,23 @@ func (s *Session) Fork(newID string) *Session {
 	defer s.mu.RUnlock()
 
 	events := make([]Event, len(s.events))
+	entropy := ulid.Monotonic(rand.Reader, 0)
+	idMap := make(map[string]string, len(s.events))
 	for i, e := range s.events {
+		originSessionID := e.SessionID
+		originEventID := e.ID
+		e.ID = ulid.MustNew(ulid.Timestamp(e.Timestamp), entropy)
+		idMap[originEventID.String()] = e.ID.String()
 		e.SessionID = newID
+		e.Metadata = cloneMetadata(e.Metadata)
+		e.Metadata["fork_origin"] = ForkOrigin{
+			SessionID: originSessionID,
+			EventID:   originEventID.String(),
+		}.metadataValue()
 		events[i] = e
+	}
+	for i, e := range events {
+		events[i] = remapForkedEventData(e, idMap)
 	}
 
 	res := &Session{
@@ -130,6 +145,32 @@ func (s *Session) Fork(newID string) *Session {
 	return res
 }
 
+func cloneMetadata(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return make(map[string]any)
+	}
+
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func remapForkedEventData(e Event, idMap map[string]string) Event {
+	snapshot, ok, err := e.CompactionSnapshot()
+	if err != nil || !ok {
+		return e
+	}
+
+	rewritten, marshalErr := json.Marshal(remapCompactionSnapshot(snapshot, idMap))
+	if marshalErr != nil {
+		return e
+	}
+	e.Data = rewritten
+	return e
+}
+
 // ID returns the session identifier.
 func (s *Session) ID() string {
 	return s.id
@@ -139,19 +180,19 @@ func (s *Session) ID() string {
 // If a writer is attached, the event is persisted to the store immediately.
 func (s *Session) Append(ctx context.Context, e Event) error {
 	s.mu.Lock()
+	writer := s.writer
+	if writer != nil {
+		if err := writer.Save(ctx, e); err != nil {
+			s.mu.Unlock()
+			return err
+		}
+	}
 	s.events = append(s.events, e)
 	if s.reducer != nil {
 		s.state = s.reducer(s.state, e)
 	}
-	subs := s.subscribers // snapshot pointer slice under lock
-	writer := s.writer
+	subs := append([]*subscriber(nil), s.subscribers...)
 	s.mu.Unlock()
-
-	if writer != nil {
-		if err := writer.Save(ctx, e); err != nil {
-			return err
-		}
-	}
 
 	for _, sub := range subs {
 		sub.trySend(e)

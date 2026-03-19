@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/nijaru/canto/llm"
@@ -40,9 +41,15 @@ func (r *Registry) Get(name string) (Tool, bool) {
 func (r *Registry) Specs() []*llm.Spec {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	res := make([]*llm.Spec, 0, len(r.tools))
-	for _, t := range r.tools {
-		spec := t.Spec()
+	names := make([]string, 0, len(r.tools))
+	for name := range r.tools {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+
+	res := make([]*llm.Spec, 0, len(names))
+	for _, name := range names {
+		spec := r.tools[name].Spec()
 		res = append(res, &spec)
 	}
 	return res
@@ -56,6 +63,7 @@ func (r *Registry) Names() []string {
 	for name := range r.tools {
 		names = append(names, name)
 	}
+	slices.Sort(names)
 	return names
 }
 
