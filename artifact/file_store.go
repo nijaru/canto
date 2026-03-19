@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"net/url"
 	"os"
@@ -53,16 +54,46 @@ func (s *FileStore) Put(ctx context.Context, desc Descriptor, r io.Reader) (Desc
 		return Descriptor{}, fmt.Errorf("artifact file store: nil root")
 	}
 
-	body, err := io.ReadAll(r)
-	if err != nil {
-		return Descriptor{}, fmt.Errorf("artifact file store read body: %w", err)
+	if desc.ID == "" {
+		desc.ID = ulid.Make().String()
 	}
-
-	desc = finalizeDescriptor(desc, body)
+	if desc.Metadata == nil {
+		desc.Metadata = make(map[string]any)
+	}
 	if err := s.root.MkdirAll(descriptorDir(desc.ID), fileStoreDirPerm); err != nil {
 		return Descriptor{}, fmt.Errorf("artifact file store mkdir artifact %q: %w", desc.ID, err)
 	}
 
+	tmpBodyPath := descriptorTempBodyPath(desc.ID)
+	bodyPath := descriptorBodyPath(desc.ID)
+	f, err := s.root.OpenFile(tmpBodyPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fileStoreFilePerm)
+	if err != nil {
+		return Descriptor{}, fmt.Errorf("artifact file store create temp body %q: %w", desc.ID, err)
+	}
+	cleanupTmp := true
+	defer func() {
+		if cleanupTmp {
+			_ = s.root.Remove(tmpBodyPath)
+		}
+	}()
+
+	written, digest, err := copyAndDigest(f, r)
+	closeErr := f.Close()
+	if err != nil {
+		return Descriptor{}, fmt.Errorf("artifact file store stream body %q: %w", desc.ID, err)
+	}
+	if closeErr != nil {
+		return Descriptor{}, fmt.Errorf(
+			"artifact file store close temp body %q: %w",
+			desc.ID,
+			closeErr,
+		)
+	}
+	if err := ctx.Err(); err != nil {
+		return Descriptor{}, err
+	}
+
+	desc = finalizeDescriptor(desc, written, digest)
 	desc.URI = fileURI(filepath.Join(s.root.Name(), descriptorBodyPath(desc.ID)))
 	raw, err := json.Marshal(desc)
 	if err != nil {
@@ -72,10 +103,12 @@ func (s *FileStore) Put(ctx context.Context, desc Descriptor, r io.Reader) (Desc
 			err,
 		)
 	}
-	if err := s.root.WriteFile(descriptorBodyPath(desc.ID), body, fileStoreFilePerm); err != nil {
-		return Descriptor{}, fmt.Errorf("artifact file store write body %q: %w", desc.ID, err)
+	if err := s.root.Rename(tmpBodyPath, bodyPath); err != nil {
+		return Descriptor{}, fmt.Errorf("artifact file store finalize body %q: %w", desc.ID, err)
 	}
+	cleanupTmp = false
 	if err := s.root.WriteFile(descriptorMetadataPath(desc.ID), raw, fileStoreFilePerm); err != nil {
+		_ = s.root.Remove(bodyPath)
 		return Descriptor{}, fmt.Errorf("artifact file store write descriptor %q: %w", desc.ID, err)
 	}
 	return desc, nil
@@ -117,19 +150,12 @@ func (s *FileStore) Open(ctx context.Context, id string) (io.ReadCloser, Descrip
 	return f, desc, nil
 }
 
-func finalizeDescriptor(desc Descriptor, body []byte) Descriptor {
-	if desc.ID == "" {
-		desc.ID = ulid.Make().String()
-	}
+func finalizeDescriptor(desc Descriptor, size int64, digest []byte) Descriptor {
 	if desc.Size == 0 {
-		desc.Size = int64(len(body))
+		desc.Size = size
 	}
 	if desc.Digest == "" {
-		sum := sha256.Sum256(body)
-		desc.Digest = "sha256:" + hex.EncodeToString(sum[:])
-	}
-	if desc.Metadata == nil {
-		desc.Metadata = make(map[string]any)
+		desc.Digest = "sha256:" + hex.EncodeToString(digest)
 	}
 	return desc
 }
@@ -142,10 +168,27 @@ func descriptorBodyPath(id string) string {
 	return filepath.Join(descriptorDir(id), "body")
 }
 
+func descriptorTempBodyPath(id string) string {
+	return filepath.Join(descriptorDir(id), "body.tmp")
+}
+
 func descriptorMetadataPath(id string) string {
 	return filepath.Join(descriptorDir(id), "descriptor.json")
 }
 
 func fileURI(path string) string {
 	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
+}
+
+func copyAndDigest(w io.Writer, r io.Reader) (int64, []byte, error) {
+	hasher := sha256.New()
+	written, err := io.Copy(io.MultiWriter(w, hasher), r)
+	if err != nil {
+		return 0, nil, err
+	}
+	return written, finalizeDigest(hasher), nil
+}
+
+func finalizeDigest(h hash.Hash) []byte {
+	return h.Sum(nil)
 }
