@@ -86,9 +86,35 @@ func (b *Builder) Prepend(p Processor) {
 	b.processors = append([]Processor{p}, b.processors...)
 }
 
+// PrependRequestProcessor inserts a preview-safe request processor at the
+// front of the processor chain.
+func (b *Builder) PrependRequestProcessor(r RequestProcessor) {
+	b.Prepend(requestProcessorBridge{request: r})
+}
+
+// PrependMutator inserts a commit-time mutator at the front of the processor
+// chain. Mutators default to session-side effects unless they expose a more
+// specific effect description.
+func (b *Builder) PrependMutator(m ContextMutator) {
+	b.Prepend(contextMutatorBridge{mutator: m})
+}
+
 // Append adds p at the end of the processor chain.
 func (b *Builder) Append(p Processor) {
 	b.processors = append(b.processors, p)
+}
+
+// AppendRequestProcessor adds a preview-safe request processor to the end of
+// the processor chain.
+func (b *Builder) AppendRequestProcessor(r RequestProcessor) {
+	b.Append(requestProcessorBridge{request: r})
+}
+
+// AppendMutator adds a commit-time mutator to the end of the processor chain.
+// Mutators default to session-side effects unless they expose a more specific
+// effect description.
+func (b *Builder) AppendMutator(m ContextMutator) {
+	b.Append(contextMutatorBridge{mutator: m})
 }
 
 // InsertBeforeLast inserts processors into the chain immediately before the
@@ -106,6 +132,57 @@ func (b *Builder) InsertBeforeLast(ps ...Processor) {
 	merged = append(merged, ps...)
 	merged = append(merged, tail)
 	b.processors = merged
+}
+
+type requestProcessorBridge struct {
+	request RequestProcessor
+}
+
+func (b requestProcessorBridge) Process(
+	ctx context.Context,
+	p llm.Provider,
+	model string,
+	sess *session.Session,
+	req *llm.Request,
+) error {
+	return b.request.ApplyRequest(ctx, p, model, sess, req)
+}
+
+func (b requestProcessorBridge) Effects() ProcessorEffects {
+	if b.request == nil {
+		return ProcessorEffects{}
+	}
+	if d, ok := b.request.(EffectDescriber); ok {
+		return d.Effects()
+	}
+	return ProcessorEffects{}
+}
+
+type contextMutatorBridge struct {
+	mutator ContextMutator
+}
+
+func (b contextMutatorBridge) Process(
+	ctx context.Context,
+	p llm.Provider,
+	model string,
+	sess *session.Session,
+	req *llm.Request,
+) error {
+	if b.mutator == nil {
+		return nil
+	}
+	return b.mutator.Mutate(ctx, p, model, sess)
+}
+
+func (b contextMutatorBridge) Effects() ProcessorEffects {
+	if b.mutator == nil {
+		return ProcessorEffects{}
+	}
+	if d, ok := b.mutator.(EffectDescriber); ok {
+		return d.Effects()
+	}
+	return ProcessorEffects{Session: true}
 }
 
 func (b *Builder) previewPipeline() (*Pipeline, error) {

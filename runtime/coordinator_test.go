@@ -41,7 +41,7 @@ func TestInMemoryLaneCoordinator_FIFOPerSession(t *testing.T) {
 	case <-time.After(20 * time.Millisecond):
 	}
 
-	if err := coord.Ack(t.Context(), firstLease, LaneResult{Status: "completed"}); err != nil {
+	if err := coord.Ack(t.Context(), firstLease, LaneResult{Status: LaneStatusCompleted}); err != nil {
 		t.Fatalf("ack first: %v", err)
 	}
 
@@ -118,12 +118,12 @@ func TestInMemoryLaneCoordinator_RejectsStaleAckAfterReclaim(t *testing.T) {
 		t.Fatalf("await second lease: %v", err)
 	}
 
-	err = coord.Ack(t.Context(), firstLease, LaneResult{Status: "completed"})
+	err = coord.Ack(t.Context(), firstLease, LaneResult{Status: LaneStatusCompleted})
 	if !errors.Is(err, ErrLaneLeaseStale) {
 		t.Fatalf("stale ack error = %v, want ErrLaneLeaseStale", err)
 	}
 
-	if err := coord.Ack(t.Context(), secondLease, LaneResult{Status: "completed"}); err != nil {
+	if err := coord.Ack(t.Context(), secondLease, LaneResult{Status: LaneStatusCompleted}); err != nil {
 		t.Fatalf("ack second lease: %v", err)
 	}
 }
@@ -152,7 +152,7 @@ func TestInMemoryLaneCoordinator_RenewExtendsLease(t *testing.T) {
 		t.Fatalf("renewed expiry %v is not after original %v", renewed.ExpiresAt, lease.ExpiresAt)
 	}
 
-	if err := coord.Ack(t.Context(), renewed, LaneResult{Status: "completed"}); err != nil {
+	if err := coord.Ack(t.Context(), renewed, LaneResult{Status: LaneStatusCompleted}); err != nil {
 		t.Fatalf("ack renewed lease: %v", err)
 	}
 }
@@ -198,7 +198,7 @@ func TestInMemoryLaneCoordinator_NackKeepsRequestQueued(t *testing.T) {
 	}
 
 	if err := coord.Nack(t.Context(), lease, LaneResult{
-		Status: "retry",
+		Status: LaneStatusRetry,
 		Error:  "temporary failure",
 	}); err != nil {
 		t.Fatalf("nack: %v", err)

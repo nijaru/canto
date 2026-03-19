@@ -312,6 +312,44 @@ func TestPipelineBuildCommitRunsMutatorsBeforeRequestProcessors(t *testing.T) {
 	}
 }
 
+func TestBuilderPhasedHelpersSupportRequestProcessorsAndMutators(t *testing.T) {
+	sess := session.New("builder-phases")
+	builder := NewBuilder()
+	builder.AppendMutator(ContextMutatorFunc(
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session) error {
+			return sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
+				Role:    llm.RoleUser,
+				Content: "from mutator",
+			}))
+		},
+	))
+	builder.AppendRequestProcessor(RequestProcessorFunc(
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
+			msgs, err := sess.EffectiveMessages()
+			if err != nil {
+				return err
+			}
+			req.Messages = append(req.Messages, msgs...)
+			return nil
+		},
+	))
+
+	if err := builder.BuildPreview(t.Context(), nil, "", sess, &llm.Request{}); !errors.Is(
+		err,
+		ErrPreviewUnsafeProcessor,
+	) {
+		t.Fatalf("BuildPreview error = %v, want ErrPreviewUnsafeProcessor", err)
+	}
+
+	req := &llm.Request{}
+	if err := builder.BuildCommit(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatalf("BuildCommit: %v", err)
+	}
+	if len(req.Messages) != 1 || req.Messages[0].Content != "from mutator" {
+		t.Fatalf("unexpected commit-built messages: %#v", req.Messages)
+	}
+}
+
 // --- CoreMemoryProcessor ---
 
 func newTestCoreStore(t *testing.T) *memory.CoreStore {

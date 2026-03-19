@@ -36,8 +36,18 @@ type LaneLease struct {
 }
 
 // LaneResult records the final disposition of a request.
+type LaneStatus string
+
+const (
+	LaneStatusCompleted LaneStatus = "completed"
+	LaneStatusCanceled  LaneStatus = "canceled"
+	LaneStatusFailed    LaneStatus = "failed"
+	LaneStatusRetry     LaneStatus = "retry"
+)
+
+// LaneResult records the final disposition of a request.
 type LaneResult struct {
-	Status      string
+	Status      LaneStatus
 	Error       string
 	CompletedAt time.Time
 	Metadata    map[string]any

@@ -85,12 +85,12 @@ func (r *Runner) executeUnderLease(
 	}
 	switch {
 	case execErr == nil:
-		laneResult.Status = "completed"
+		laneResult.Status = LaneStatusCompleted
 	case errors.Is(execErr, context.Canceled), errors.Is(execErr, context.DeadlineExceeded):
-		laneResult.Status = "canceled"
+		laneResult.Status = LaneStatusCanceled
 		laneResult.Error = execErr.Error()
 	default:
-		laneResult.Status = "failed"
+		laneResult.Status = LaneStatusFailed
 		laneResult.Error = execErr.Error()
 	}
 
