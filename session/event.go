@@ -51,11 +51,34 @@ type Event struct {
 	Cost      float64        `json:"cost,omitzero"`
 
 	metadataRaw jsontext.Value
+	message     *llm.Message
 }
 
 // UnmarshalData unmarshals the event's data into the given value.
 func (e Event) UnmarshalData(v any) error {
+	if e.Type == MessageAdded {
+		if m, ok := v.(*llm.Message); ok && e.message != nil {
+			*m = *e.message
+			return nil
+		}
+	}
 	return json.Unmarshal(e.Data, v)
+}
+
+func (e *Event) ensureMessage() (*llm.Message, error) {
+	if e.Type != MessageAdded {
+		return nil, nil
+	}
+	if e.message != nil {
+		return e.message, nil
+	}
+
+	var m llm.Message
+	if err := json.Unmarshal(e.Data, &m); err != nil {
+		return nil, err
+	}
+	e.message = &m
+	return e.message, nil
 }
 
 func (e *Event) ensureMetadata() error {

@@ -16,13 +16,16 @@ func historyPrefix(req *llm.Request, historyLen int) []llm.Message {
 	return slices.Clone(req.Messages[:prefixLen])
 }
 
-func lastMessageEventID(events []session.Event) string {
-	for i := len(events) - 1; i >= 0; i-- {
-		if events[i].Type == session.MessageAdded {
-			return events[i].ID.String()
+func lastMessageEventID(sess *session.Session) string {
+	var id string
+	sess.ForEachEventReverse(func(e session.Event) bool {
+		if e.Type == session.MessageAdded {
+			id = e.ID.String()
+			return false
 		}
-	}
-	return ""
+		return true
+	})
+	return id
 }
 
 func cloneHistoryEntries(entries []session.HistoryEntry) []session.HistoryEntry {

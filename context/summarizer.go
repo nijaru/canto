@@ -205,7 +205,7 @@ func (p *Summarizer) summarize(
 		MaxTokens:     p.MaxTokens,
 		ThresholdPct:  p.ThresholdPct,
 		CurrentTokens: currentTokens,
-		CutoffEventID: lastMessageEventID(sess.Events()),
+		CutoffEventID: lastMessageEventID(sess),
 		Entries:       newEntries,
 	})
 	if err := sess.Append(ctx, event); err != nil {

@@ -80,36 +80,23 @@ func (e Event) ForkOrigin() (ForkOrigin, bool, error) {
 // EffectiveMessages returns the model-visible session history after applying
 // the latest durable compaction snapshot, if any.
 func (s *Session) EffectiveMessages() ([]llm.Message, error) {
-	entries, err := s.EffectiveEntries()
-	if err != nil {
-		return nil, err
-	}
-	messages := make([]llm.Message, 0, len(entries))
-	for _, entry := range entries {
-		messages = append(messages, entry.Message)
-	}
-	return messages, nil
-}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-// EffectiveEntries returns the model-visible session history after applying
-// the latest durable compaction snapshot, together with the originating event
-// ID for each message when known.
-func (s *Session) EffectiveEntries() ([]HistoryEntry, error) {
-	return effectiveEntriesFromEvents(s.snapshotEvents())
-}
-
-func effectiveEntriesFromEvents(events []Event) ([]HistoryEntry, error) {
-	snapshot, ok, err := latestCompactionSnapshot(events)
+	snapshot, ok, err := s.latestCompactionSnapshot()
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
-		return rawEntriesFromEvents(events)
+		return s.rawMessagesLocked()
 	}
 
-	entries := slices.Clone(snapshot.entries())
+	messages := make([]llm.Message, 0, len(snapshot.entries())+16)
+	messages = append(messages, snapshot.messages()...)
+
 	cutoffSeen := false
-	for _, e := range events {
+	for i := range s.events {
+		e := &s.events[i]
 		if e.Type != MessageAdded {
 			continue
 		}
@@ -120,7 +107,69 @@ func effectiveEntriesFromEvents(events []Event) ([]HistoryEntry, error) {
 			continue
 		}
 
-		entry, err := historyEntryFromEvent(e)
+		m, err := e.ensureMessage()
+		if err != nil {
+			return nil, fmt.Errorf("effective history: decode message %s: %w", e.ID, err)
+		}
+		messages = append(messages, *m)
+	}
+
+	if !cutoffSeen {
+		return nil, fmt.Errorf(
+			"effective history: compaction cutoff %q not found",
+			snapshot.CutoffEventID,
+		)
+	}
+	return messages, nil
+}
+
+func (s *Session) rawMessagesLocked() ([]llm.Message, error) {
+	res := make([]llm.Message, 0, len(s.events)/2+1)
+	for i := range s.events {
+		e := &s.events[i]
+		if e.Type != MessageAdded {
+			continue
+		}
+
+		m, err := e.ensureMessage()
+		if err != nil {
+			return nil, fmt.Errorf("effective history: decode raw message %s: %w", e.ID, err)
+		}
+		res = append(res, *m)
+	}
+	return res, nil
+}
+
+// EffectiveEntries returns the model-visible session history after applying
+// the latest durable compaction snapshot, together with the originating event
+// ID for each message when known.
+func (s *Session) EffectiveEntries() ([]HistoryEntry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	snapshot, ok, err := s.latestCompactionSnapshot()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return s.rawEntriesLocked()
+	}
+
+	entries := slices.Clone(snapshot.entries())
+	cutoffSeen := false
+	for i := range s.events {
+		e := &s.events[i]
+		if e.Type != MessageAdded {
+			continue
+		}
+		if !cutoffSeen {
+			if e.ID.String() == snapshot.CutoffEventID {
+				cutoffSeen = true
+			}
+			continue
+		}
+
+		entry, err := s.historyEntryFromEvent(e)
 		if err != nil {
 			return nil, fmt.Errorf("effective history: decode message %s: %w", e.ID, err)
 		}
@@ -136,14 +185,15 @@ func effectiveEntriesFromEvents(events []Event) ([]HistoryEntry, error) {
 	return entries, nil
 }
 
-func rawEntriesFromEvents(events []Event) ([]HistoryEntry, error) {
-	res := make([]HistoryEntry, 0, len(events))
-	for _, e := range events {
+func (s *Session) rawEntriesLocked() ([]HistoryEntry, error) {
+	res := make([]HistoryEntry, 0, len(s.events)/2+1)
+	for i := range s.events {
+		e := &s.events[i]
 		if e.Type != MessageAdded {
 			continue
 		}
 
-		entry, err := historyEntryFromEvent(e)
+		entry, err := s.historyEntryFromEvent(e)
 		if err != nil {
 			return nil, fmt.Errorf("effective history: decode raw message %s: %w", e.ID, err)
 		}
@@ -152,33 +202,44 @@ func rawEntriesFromEvents(events []Event) ([]HistoryEntry, error) {
 	return res, nil
 }
 
-func historyEntryFromEvent(e Event) (HistoryEntry, error) {
-	var msg llm.Message
-	if err := e.UnmarshalData(&msg); err != nil {
+func (s *Session) historyEntryFromEvent(e *Event) (HistoryEntry, error) {
+	msg, err := e.ensureMessage()
+	if err != nil {
 		return HistoryEntry{}, err
 	}
 	return HistoryEntry{
 		EventID: e.ID.String(),
-		Message: msg,
+		Message: *msg,
 	}, nil
 }
 
-func latestCompactionSnapshot(events []Event) (CompactionSnapshot, bool, error) {
-	for i := len(events) - 1; i >= 0; i-- {
-		snapshot, ok, err := events[i].CompactionSnapshot()
+func (s *Session) latestCompactionSnapshot() (CompactionSnapshot, bool, error) {
+	for i := len(s.events) - 1; i >= 0; i-- {
+		snapshot, ok, err := s.events[i].CompactionSnapshot()
 		if err != nil {
 			return CompactionSnapshot{}, false, err
 		}
 		if !ok {
 			continue
 		}
-		if snapshot.CutoffEventID == "" || len(snapshot.entries()) == 0 {
+		if snapshot.CutoffEventID == "" || (len(snapshot.Entries) == 0 && len(snapshot.Messages) == 0) {
 			continue
 		}
 		return snapshot, true, nil
 	}
 
 	return CompactionSnapshot{}, false, nil
+}
+
+func (s CompactionSnapshot) messages() []llm.Message {
+	if len(s.Messages) > 0 {
+		return s.Messages
+	}
+	messages := make([]llm.Message, 0, len(s.Entries))
+	for _, entry := range s.Entries {
+		messages = append(messages, entry.Message)
+	}
+	return messages
 }
 
 func (s CompactionSnapshot) entries() []HistoryEntry {

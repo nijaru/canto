@@ -1,7 +1,7 @@
 # canto
 
-Composable, minimal-abstraction Go framework for building LLM agents and agent swarms.
-Designed for optimal developer experience, production reliability, and SOTA research ideas.
+Go primitives for durable agent backends.
+Focus on session durability, context construction, tools, and orchestration. Not a hosted platform or full-stack agent product.
 
 ## Project Structure
 

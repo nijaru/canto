@@ -143,12 +143,8 @@ func RunTurn(
 
 		// Continue only if the last message is a tool result (model must
 		// process it). Any other role means the agent has finished.
-		messages := s.Messages()
-		if len(messages) == 0 {
-			break
-		}
-		last := messages[len(messages)-1]
-		if last.Role != llm.RoleTool {
+		last, ok := s.LastMessage()
+		if !ok || last.Role != llm.RoleTool {
 			break
 		}
 	}
@@ -160,12 +156,8 @@ func RunTurn(
 	res.Usage = totalUsage
 
 	// Populate Content from the last assistant message without tool calls.
-	msgs := s.Messages()
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == llm.RoleAssistant && len(msgs[i].Calls) == 0 {
-			res.Content = msgs[i].Content
-			break
-		}
+	if msg, ok := s.LastAssistantMessage(); ok {
+		res.Content = msg.Content
 	}
 
 	return

@@ -96,18 +96,20 @@ func (p *LazyTools) Process(
 // events.
 func SearchUnlockedTools(sess *session.Session) (map[string]struct{}, error) {
 	unlocked := make(map[string]struct{})
-	for _, e := range sess.Events() {
+	var errOut error
+	sess.ForEachEvent(func(e session.Event) bool {
 		result, ok, err := e.ToolCompletedData()
 		if err != nil {
-			return nil, err
+			errOut = err
+			return false
 		}
 		if !ok || result.Tool != searchToolName {
-			continue
+			return true
 		}
 
 		var specs []llm.Spec
 		if err := json.Unmarshal([]byte(result.Output), &specs); err != nil {
-			continue
+			return true
 		}
 		for _, spec := range specs {
 			if spec.Name == "" || spec.Name == searchToolName {
@@ -115,8 +117,9 @@ func SearchUnlockedTools(sess *session.Session) (map[string]struct{}, error) {
 			}
 			unlocked[spec.Name] = struct{}{}
 		}
-	}
-	return unlocked, nil
+		return true
+	})
+	return unlocked, errOut
 }
 
 // injectSystemHint prepends a system message with the hint text.
@@ -128,5 +131,8 @@ func injectSystemHint(req *llm.Request, hint string) {
 		}
 	}
 	// No system message yet — prepend one.
-	req.Messages = append([]llm.Message{{Role: llm.RoleSystem, Content: hint}}, req.Messages...)
+	sys := llm.Message{Role: llm.RoleSystem, Content: hint}
+	req.Messages = append(req.Messages, llm.Message{})
+	copy(req.Messages[1:], req.Messages)
+	req.Messages[0] = sys
 }

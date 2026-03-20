@@ -127,8 +127,7 @@ func (p *Offloader) compact(
 	if numMessages <= p.MinKeepTurns {
 		return nil
 	}
-	events := sess.Events()
-	cutoffEventID := lastMessageEventID(events)
+	cutoffEventID := lastMessageEventID(sess)
 	store, closeStore, err := p.artifactStore()
 	if err != nil {
 		return err

@@ -253,17 +253,45 @@ func (s *Session) snapshotEvents() []Event {
 	return res
 }
 
+// ForEachEvent executes fn for each event in the session, from oldest to newest.
+// The iteration stops if fn returns false.
+func (s *Session) ForEachEvent(fn func(Event) bool) {
+	s.mu.RLock()
+	events := s.events
+	s.mu.RUnlock()
+
+	for _, e := range events {
+		if !fn(e) {
+			break
+		}
+	}
+}
+
+// ForEachEventReverse executes fn for each event in the session, from newest to oldest.
+// The iteration stops if fn returns false.
+func (s *Session) ForEachEventReverse(fn func(Event) bool) {
+	s.mu.RLock()
+	events := s.events
+	s.mu.RUnlock()
+
+	for i := len(events) - 1; i >= 0; i-- {
+		if !fn(events[i]) {
+			break
+		}
+	}
+}
+
 // Messages extracts all messages from the event log.
 func (s *Session) Messages() []llm.Message {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock() // Use Lock instead of RLock to allow ensureMessage to mutate the internal slice
+	defer s.mu.Unlock()
 
 	var res []llm.Message
-	for _, e := range s.events {
-		if e.Type == MessageAdded {
-			var m llm.Message
-			if err := json.Unmarshal(e.Data, &m); err == nil {
-				res = append(res, m)
+	for i := range s.events {
+		if s.events[i].Type == MessageAdded {
+			m, err := s.events[i].ensureMessage()
+			if err == nil {
+				res = append(res, *m)
 			}
 		}
 	}
@@ -279,6 +307,51 @@ func (s *Session) TotalCost() float64 {
 		total += e.Cost
 	}
 	return total
+}
+
+// LastEvent returns the most recent event in the session, if any.
+func (s *Session) LastEvent() (Event, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.events) == 0 {
+		return Event{}, false
+	}
+	return s.events[len(s.events)-1], true
+}
+
+// LastMessage returns the most recent message in the session, if any.
+func (s *Session) LastMessage() (llm.Message, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := len(s.events) - 1; i >= 0; i-- {
+		e := &s.events[i]
+		if e.Type == MessageAdded {
+			m, err := e.ensureMessage()
+			if err == nil {
+				return *m, true
+			}
+		}
+	}
+	return llm.Message{}, false
+}
+
+// LastAssistantMessage returns the most recent assistant message without tool
+// calls in the session, if any.
+func (s *Session) LastAssistantMessage() (llm.Message, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := len(s.events) - 1; i >= 0; i-- {
+		e := &s.events[i]
+		if e.Type == MessageAdded {
+			m, err := e.ensureMessage()
+			if err == nil && m.Role == llm.RoleAssistant && len(m.Calls) == 0 {
+				return *m, true
+			}
+		}
+	}
+	return llm.Message{}, false
 }
 
 // Store is an interface for persisting session state.

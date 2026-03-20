@@ -3,9 +3,11 @@
 > [!WARNING]
 > **Status: Pre-release.** Core interfaces are currently unstable and subject to change.
 
-Canto is a Go framework for building durable LLM agents and agent systems.
+Canto is a Go framework for durable agent backends.
 
-It is built around an append-only session log. That gives you a stable place to hang context compaction, tool use, child runs, artifact refs, replay, and export without collapsing everything into one prompt loop.
+It is built around an append-only session log. That gives you a stable place to put context compaction, tool use, child runs, artifact refs, replay, and export without collapsing everything into one prompt loop.
+
+It does not try to be a hosted platform, frontend SDK, or batteries-included product framework. The point is to give you durable state and runtime primitives so you can build your own agent behavior on top.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/nijaru/canto.svg)](https://pkg.go.dev/github.com/nijaru/canto)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -20,9 +22,25 @@ If you are new to the framework, use this order:
 4. Learn orchestration in [`runtime`](runtime/) and [examples/subagents/main.go](examples/subagents/main.go): attached vs detached child runs, local lanes vs coordinator-backed execution.
 5. Learn tool integration in [`tool`](tool/) and [`tool/mcp`](tool/mcp/): local tools plus MCP-backed tools and servers.
 
+## What Canto Is
+
+Canto fits best when you want to own agent policy and product UX, but you do not want to rebuild the backend runtime from scratch.
+
+- durable session state
+- context construction and compaction hooks
+- tool registry and MCP transport integration
+- child-session lifecycle and nested run export
+- local and distributed execution coordination
+
+## What Canto Is Not
+
+- not a hosted agent platform
+- not a frontend chat SDK
+- not a batteries-included app framework with every workflow already modeled
+
 ## What Canto Decides
 
-Canto provides the framework pieces that are hard to rebuild correctly:
+Canto provides the backend pieces that are hard to rebuild correctly:
 
 - durable session history
 - context construction and compaction hooks
@@ -44,7 +62,7 @@ Your application still decides agent-level policy:
 - **Prompt truth vs transcript truth**: Raw messages stay immutable; effective history stays replayable after compaction.
 - **Two-phase context building**: Preview-safe request shaping is separate from commit-time mutation.
 - **Framework-level orchestration**: Child sessions, lifecycle events, artifact refs, and nested run export are built in.
-- **Protocol support where it matters**: MCP uses the official Go SDK at the transport boundary.
+- **MCP transport integration**: MCP uses the official Go SDK at the transport boundary.
 
 ## Installation
 
@@ -54,7 +72,7 @@ go get github.com/nijaru/canto
 
 ## Architecture
 
-Canto's architecture depends downward only. Extensions depend on the runtime, which depends on the agent loop and LLM layer.
+Canto's packages depend downward only. Extensions depend on the runtime, which depends on the agent loop and LLM layer.
 
 ```
 +-------------------------------------------------------------+
@@ -72,7 +90,7 @@ Canto's architecture depends downward only. Extensions depend on the runtime, wh
 
 - **LLM Layer**: Normalizes interactions across providers (OpenAI, Anthropic, Gemini, etc.) and handles cost/token tracking.
 - **Agent Loop**: Orchestrates the atomic turn-based execution cycle.
-- **Runtime**: Manages the persistent session log, request construction (context), and long-term memory.
+- **Runtime**: Manages the persistent session log, request construction (context), and execution helpers.
 - **Extensions (x/)**: High-level patterns like DAG orchestration (Graph), Blackboard coordination (Swarm), and Judge-based evaluation.
 
 ## Quick Start
@@ -141,7 +159,7 @@ The quickest reference is [examples/quickstart/main.go](examples/quickstart/main
 
 Use [`context.Builder.BuildPreview`](context/) when you need to inspect or shape the next request without mutating durable state. Use `Build` or `BuildCommit` when processors may compact, offload, or otherwise record new durable facts before the request is sent.
 
-This split exists so the framework can support dry-run inspection, tracing, and request planning without hiding stateful behavior behind a single middleware hook.
+This split exists so the framework can support dry-run inspection, tracing, and request planning without hiding stateful behavior behind one middleware hook.
 
 ### Child Runs
 

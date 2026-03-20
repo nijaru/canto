@@ -259,7 +259,9 @@ func Instructions(instructions string) Processor {
 
 			// Prepend new system message
 			sys := llm.Message{Role: llm.RoleSystem, Content: instructions}
-			req.Messages = append([]llm.Message{sys}, req.Messages...)
+			req.Messages = append(req.Messages, llm.Message{})
+			copy(req.Messages[1:], req.Messages)
+			req.Messages[0] = sys
 			return nil
 		},
 	)
@@ -304,7 +306,9 @@ func CoreMemoryProcessor(store *memory.CoreStore) Processor {
 
 			// Prepend new system message
 			sys := llm.Message{Role: llm.RoleSystem, Content: memBlock}
-			req.Messages = append([]llm.Message{sys}, req.Messages...)
+			req.Messages = append(req.Messages, llm.Message{})
+			copy(req.Messages[1:], req.Messages)
+			req.Messages[0] = sys
 			return nil
 		},
 	)

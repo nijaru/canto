@@ -31,20 +31,21 @@ func BenchmarkDecodeEventJSON(b *testing.B) {
 }
 
 func BenchmarkEffectiveEntriesFromEvents(b *testing.B) {
-	events := make([]Event, 0, 256)
+	sess := New("bench-session")
 	for i := range 256 {
 		role := llm.RoleUser
 		if i%2 == 1 {
 			role = llm.RoleAssistant
 		}
-		events = append(events, NewMessage("bench-session", llm.Message{
+		_ = sess.Append(b.Context(), NewMessage(sess.ID(), llm.Message{
 			Role:    role,
 			Content: "message payload",
 		}))
 	}
 
+	b.ResetTimer()
 	for b.Loop() {
-		if _, err := effectiveEntriesFromEvents(events); err != nil {
+		if _, err := sess.EffectiveEntries(); err != nil {
 			b.Fatalf("effective entries: %v", err)
 		}
 	}

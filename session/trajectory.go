@@ -5,8 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-json-experiment/json"
-
 	"github.com/nijaru/canto/llm"
 	"github.com/oklog/ulid/v2"
 )
@@ -141,7 +139,10 @@ func ExportRunTree(sess *Session, load func(sessionID string) (*Session, error))
 }
 
 func exportRun(sess *Session) (*RunLog, error) {
-	events := sess.snapshotEvents()
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	events := sess.events
 	if len(events) == 0 {
 		return &RunLog{
 			SessionID: sess.ID(),
@@ -154,23 +155,25 @@ func exportRun(sess *Session) (*RunLog, error) {
 		StartTime: events[0].Timestamp,
 		EndTime:   events[len(events)-1].Timestamp,
 		Metadata:  make(map[string]any),
+		Turns:     make([]RunTurn, 0, len(events)/4+1),
 	}
 
 	var currentTurn *RunTurn
 	var inputBuffer []llm.Message
 
-	for _, e := range events {
+	for i := range events {
+		e := &events[i]
 		traj.TotalCost += e.Cost
 
 		switch e.Type {
 		case MessageAdded:
-			var msg llm.Message
-			if err := json.Unmarshal(e.Data, &msg); err != nil {
+			msg, err := e.ensureMessage()
+			if err != nil {
 				continue
 			}
 
 			if msg.Role == llm.RoleUser || msg.Role == llm.RoleSystem {
-				inputBuffer = append(inputBuffer, msg)
+				inputBuffer = append(inputBuffer, *msg)
 			} else if msg.Role == llm.RoleAssistant {
 				if currentTurn != nil {
 					traj.Turns = append(traj.Turns, *currentTurn)
@@ -179,14 +182,14 @@ func exportRun(sess *Session) (*RunLog, error) {
 					TurnID:    e.ID.String(),
 					Timestamp: e.Timestamp,
 					Input:     make([]llm.Message, len(inputBuffer)),
-					Output:    msg,
+					Output:    *msg,
 					ToolCalls: msg.Calls,
 					Cost:      e.Cost,
 				}
 				copy(currentTurn.Input, inputBuffer)
-				inputBuffer = nil // Reset input for next turn
+				inputBuffer = inputBuffer[:0] // Reset input for next turn without re-allocating
 			} else if msg.Role == llm.RoleTool && currentTurn != nil {
-				currentTurn.ToolResults = append(currentTurn.ToolResults, msg)
+				currentTurn.ToolResults = append(currentTurn.ToolResults, *msg)
 			}
 		}
 	}
