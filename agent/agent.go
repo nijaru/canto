@@ -46,14 +46,28 @@ func WithHooks(h *hook.Runner) Option { return func(a *BaseAgent) { a.Hooks = h 
 // WithBuilder replaces the agent's context builder pipeline.
 func WithBuilder(b *ccontext.Builder) Option { return func(a *BaseAgent) { a.Builder = b } }
 
-// WithProcessors inserts additional context processors into the default builder
+// WithProcessors inserts legacy context processors into the default builder
 // chain, placed before Capabilities (which must run last).
-// Use this to add memory retrieval, custom compaction, or other request or
-// session-shaping middleware without rebuilding the full default chain with
-// WithBuilder.
+// New code should prefer WithRequestProcessors and WithMutators when possible.
 func WithProcessors(ps ...ccontext.Processor) Option {
 	return func(a *BaseAgent) {
 		a.Builder.InsertBeforeLast(ps...)
+	}
+}
+
+// WithRequestProcessors inserts preview-safe request processors into the
+// default builder chain, placed before Capabilities (which must run last).
+func WithRequestProcessors(ps ...ccontext.RequestProcessor) Option {
+	return func(a *BaseAgent) {
+		a.Builder.InsertRequestProcessorsBeforeLast(ps...)
+	}
+}
+
+// WithMutators inserts commit-time mutators into the default builder chain,
+// placed before Capabilities (which must run last).
+func WithMutators(ms ...ccontext.ContextMutator) Option {
+	return func(a *BaseAgent) {
+		a.Builder.InsertMutatorsBeforeLast(ms...)
 	}
 }
 

@@ -1,7 +1,7 @@
 # Canto
 
 > [!WARNING]
-> **Status: Pre-release.** Core interfaces are currently unstable and subject to change.
+> **Status: Pre-release.** `v0.0.x` is not a compatibility guarantee. The intended first-alpha base is a semi-stable core for Ion and similar agent backends: `llm`, `agent`, `artifact`, `session`, `tool`, and `hook`, with `context`, `runtime`, `tool/mcp`, `memory`, and `skill` included but newer. `x/` packages and `examples/` remain experimental.
 
 Canto is a Go framework for durable agent backends.
 

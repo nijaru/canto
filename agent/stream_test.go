@@ -212,7 +212,7 @@ func TestBaseAgentImplementsStreamer(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// WithProcessors
+// Builder options
 // ---------------------------------------------------------------------------
 
 func TestWithProcessorsInsertsBeforeCapabilities(t *testing.T) {
@@ -236,12 +236,50 @@ func TestWithProcessorsInsertsBeforeCapabilities(t *testing.T) {
 	_ = ps[n-3] // first sentinel
 }
 
+func TestWithRequestProcessorsAndMutatorsInsertBeforeCapabilities(t *testing.T) {
+	a := New("a", "", "m", &mockProvider{}, nil)
+	origLen := len(a.Builder.Processors())
+
+	a2 := New("a2", "", "m", &mockProvider{}, nil,
+		WithRequestProcessors(ccontext.RequestProcessorFunc(noopRequestProcessor)),
+		WithMutators(ccontext.ContextMutatorFunc(noopMutator)),
+	)
+	if got := len(a2.Builder.Processors()); got != origLen+2 {
+		t.Errorf("expected %d processors, got %d", origLen+2, got)
+	}
+
+	ps := a2.Builder.Processors()
+	n := len(ps)
+	_ = ps[n-1] // Capabilities
+	_ = ps[n-2] // mutator bridge
+	_ = ps[n-3] // request processor bridge
+}
+
 func noopProcessor(
 	_ context.Context,
 	_ llm.Provider,
 	_ string,
 	_ *session.Session,
 	_ *llm.Request,
+) error {
+	return nil
+}
+
+func noopRequestProcessor(
+	_ context.Context,
+	_ llm.Provider,
+	_ string,
+	_ *session.Session,
+	_ *llm.Request,
+) error {
+	return nil
+}
+
+func noopMutator(
+	_ context.Context,
+	_ llm.Provider,
+	_ string,
+	_ *session.Session,
 ) error {
 	return nil
 }

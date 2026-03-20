@@ -89,14 +89,14 @@ func (b *Builder) Prepend(p Processor) {
 // PrependRequestProcessor inserts a preview-safe request processor at the
 // front of the processor chain.
 func (b *Builder) PrependRequestProcessor(r RequestProcessor) {
-	b.Prepend(requestProcessorBridge{request: r})
+	b.Prepend(wrapRequestProcessor(r))
 }
 
 // PrependMutator inserts a commit-time mutator at the front of the processor
 // chain. Mutators default to session-side effects unless they expose a more
 // specific effect description.
 func (b *Builder) PrependMutator(m ContextMutator) {
-	b.Prepend(contextMutatorBridge{mutator: m})
+	b.Prepend(wrapContextMutator(m))
 }
 
 // Append adds p at the end of the processor chain.
@@ -107,14 +107,41 @@ func (b *Builder) Append(p Processor) {
 // AppendRequestProcessor adds a preview-safe request processor to the end of
 // the processor chain.
 func (b *Builder) AppendRequestProcessor(r RequestProcessor) {
-	b.Append(requestProcessorBridge{request: r})
+	b.Append(wrapRequestProcessor(r))
 }
 
 // AppendMutator adds a commit-time mutator to the end of the processor chain.
 // Mutators default to session-side effects unless they expose a more specific
 // effect description.
 func (b *Builder) AppendMutator(m ContextMutator) {
-	b.Append(contextMutatorBridge{mutator: m})
+	b.Append(wrapContextMutator(m))
+}
+
+// InsertRequestProcessorsBeforeLast inserts preview-safe request processors
+// immediately before the last processor. If the chain is empty, it appends
+// them.
+func (b *Builder) InsertRequestProcessorsBeforeLast(rs ...RequestProcessor) {
+	if len(rs) == 0 {
+		return
+	}
+	ps := make([]Processor, 0, len(rs))
+	for _, r := range rs {
+		ps = append(ps, wrapRequestProcessor(r))
+	}
+	b.InsertBeforeLast(ps...)
+}
+
+// InsertMutatorsBeforeLast inserts commit-time mutators immediately before the
+// last processor. If the chain is empty, it appends them.
+func (b *Builder) InsertMutatorsBeforeLast(ms ...ContextMutator) {
+	if len(ms) == 0 {
+		return
+	}
+	ps := make([]Processor, 0, len(ms))
+	for _, m := range ms {
+		ps = append(ps, wrapContextMutator(m))
+	}
+	b.InsertBeforeLast(ps...)
 }
 
 // InsertBeforeLast inserts processors into the chain immediately before the
@@ -136,6 +163,10 @@ func (b *Builder) InsertBeforeLast(ps ...Processor) {
 
 type requestProcessorBridge struct {
 	request RequestProcessor
+}
+
+func wrapRequestProcessor(r RequestProcessor) Processor {
+	return requestProcessorBridge{request: r}
 }
 
 func (b requestProcessorBridge) Process(
@@ -160,6 +191,10 @@ func (b requestProcessorBridge) Effects() ProcessorEffects {
 
 type contextMutatorBridge struct {
 	mutator ContextMutator
+}
+
+func wrapContextMutator(m ContextMutator) Processor {
+	return contextMutatorBridge{mutator: m}
 }
 
 func (b contextMutatorBridge) Process(
