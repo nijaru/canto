@@ -7,16 +7,17 @@ import (
 	"time"
 )
 
-// Request represents a unit of work to be executed in a session lane.
-type Request struct {
+// queueRequest represents a unit of work in the local serial queue.
+type queueRequest struct {
 	Ctx    context.Context
 	Fn     func(ctx context.Context) error
 	Result chan error
 }
 
-// LaneManager manages per-session execution lanes to ensure sequential processing
-// within a session while allowing concurrency across different sessions.
-type LaneManager struct {
+// serialQueue is Runner's built-in local coordination path.
+// It serializes execution within a session while allowing concurrency across
+// different sessions.
+type serialQueue struct {
 	mu    sync.RWMutex
 	lanes map[string]*lane
 
@@ -28,9 +29,8 @@ type LaneManager struct {
 	closing bool
 }
 
-// NewLaneManager creates a new lane manager.
-func NewLaneManager() *LaneManager {
-	return &LaneManager{
+func newSerialQueue() *serialQueue {
+	return &serialQueue{
 		lanes:          make(map[string]*lane),
 		LaneBufferSize: 64,
 		IdleTimeout:    10 * time.Minute,
@@ -41,7 +41,7 @@ func NewLaneManager() *LaneManager {
 // lane represents a single execution lane for a session.
 type lane struct {
 	sessionID string
-	requests  chan Request
+	requests  chan queueRequest
 	lastUsed  time.Time
 	mu        sync.Mutex
 	done      chan struct{}
@@ -49,15 +49,14 @@ type lane struct {
 	cancel    context.CancelFunc
 }
 
-// Execute queues a function for execution in the specified session's lane.
-// It returns a channel that will receive the result of the execution.
-func (m *LaneManager) Execute(
+// execute queues a function for execution in the specified session lane.
+func (m *serialQueue) execute(
 	ctx context.Context,
 	sessionID string,
 	fn func(ctx context.Context) error,
 ) <-chan error {
 	result := make(chan error, 1)
-	req := Request{
+	req := queueRequest{
 		Ctx:    ctx,
 		Fn:     fn,
 		Result: result,
@@ -93,7 +92,7 @@ func (m *LaneManager) Execute(
 	}
 }
 
-func (m *LaneManager) getOrCreateLane(sessionID string) *lane {
+func (m *serialQueue) getOrCreateLane(sessionID string) *lane {
 	m.mu.RLock()
 	l, ok := m.lanes[sessionID]
 	m.mu.RUnlock()
@@ -116,7 +115,7 @@ func (m *LaneManager) getOrCreateLane(sessionID string) *lane {
 	ctx, cancel := context.WithCancel(context.Background())
 	l = &lane{
 		sessionID: sessionID,
-		requests:  make(chan Request, m.LaneBufferSize),
+		requests:  make(chan queueRequest, m.LaneBufferSize),
 		lastUsed:  time.Now(),
 		done:      make(chan struct{}),
 		drain:     make(chan struct{}),
@@ -129,7 +128,7 @@ func (m *LaneManager) getOrCreateLane(sessionID string) *lane {
 	return l
 }
 
-func (m *LaneManager) runLane(ctx context.Context, l *lane) {
+func (m *serialQueue) runLane(ctx context.Context, l *lane) {
 	defer func() {
 		m.mu.Lock()
 		delete(m.lanes, l.sessionID)
@@ -200,9 +199,8 @@ func (m *LaneManager) runLane(ctx context.Context, l *lane) {
 	}
 }
 
-// Stop shuts down all lanes, preventing new requests and waiting for
-// in-flight turns to finish with a timeout.
-func (m *LaneManager) Stop() {
+// stop prevents new requests and drains active local work.
+func (m *serialQueue) stop() {
 	m.mu.Lock()
 	if m.closing {
 		m.mu.Unlock()

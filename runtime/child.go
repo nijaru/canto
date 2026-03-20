@@ -59,11 +59,11 @@ type ChildRunner struct {
 	Store            session.Store
 	WaitTimeout      time.Duration
 	ExecutionTimeout time.Duration
-	Lanes            *LaneManager
-	Coordinator      LaneCoordinator
+	Coordinator      Coordinator
 	Hooks            *hook.Runner
 	MaxConcurrent    int
 
+	queue   *serialQueue
 	mu      sync.Mutex
 	handles map[string]*childHandle
 	sem     chan struct{}
@@ -75,16 +75,16 @@ func NewChildRunner(store session.Store) *ChildRunner {
 		Store:            store,
 		WaitTimeout:      defaultWaitTimeout,
 		ExecutionTimeout: defaultExecutionTimeout,
-		Lanes:            NewLaneManager(),
+		queue:            newSerialQueue(),
 		Hooks:            hook.NewRunner(),
 		handles:          make(map[string]*childHandle),
 	}
 }
 
-// Close stops the internal lane manager.
+// Close stops the internal local coordinator.
 func (r *ChildRunner) Close() {
-	if r.Lanes != nil {
-		r.Lanes.Stop()
+	if r.queue != nil {
+		r.queue.stop()
 	}
 }
 
@@ -228,7 +228,7 @@ func (r *ChildRunner) runChild(
 	}))
 
 	childRuntime := NewRunner(r.Store, childAgent)
-	childRuntime.Lanes = r.Lanes
+	childRuntime.queue = r.queue
 	childRuntime.Coordinator = r.Coordinator
 	childRuntime.Hooks = r.Hooks
 	childRuntime.WaitTimeout = r.WaitTimeout

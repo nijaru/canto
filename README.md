@@ -19,7 +19,7 @@ If you are new to the framework, use this order:
 1. Read the executable quickstart in [examples/quickstart/main.go](examples/quickstart/main.go).
 2. Learn the session model in [`session`](session/): raw transcript vs effective prompt history.
 3. Learn the context split in [`context`](context/): preview-safe request shaping vs commit-time mutation.
-4. Learn orchestration in [`runtime`](runtime/) and [examples/subagents/main.go](examples/subagents/main.go): attached vs detached child runs, local lanes vs coordinator-backed execution.
+4. Learn orchestration in [`runtime`](runtime/) and [examples/subagents/main.go](examples/subagents/main.go): attached vs detached child runs, default local coordination vs custom coordinator-backed execution.
 5. Learn tool integration in [`tool`](tool/) and [`tool/mcp`](tool/mcp/): local tools plus MCP-backed tools and servers.
 
 ## What Canto Is

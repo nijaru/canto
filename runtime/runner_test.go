@@ -252,8 +252,7 @@ func TestRunnerCoordinator_SerializesPerSession(t *testing.T) {
 		current: &current,
 		maxSeen: &maxSeen,
 	})
-	runner.Lanes = nil
-	runner.Coordinator = NewInMemoryLaneCoordinator()
+	runner.Coordinator = NewLocalCoordinator()
 
 	ctx := t.Context()
 	sessionID := "coord-session"
@@ -300,11 +299,10 @@ func TestRunnerCoordinator_RenewsLeaseForLongRunningWork(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	coord := NewInMemoryLaneCoordinator()
+	coord := NewLocalCoordinator()
 	coord.SetLeaseTTL(20 * time.Millisecond)
 
 	runner := NewRunner(store, &slowAgent{delay: 80 * time.Millisecond})
-	runner.Lanes = nil
 	runner.Coordinator = coord
 
 	result, err := runner.Run(t.Context(), "coord-renew")

@@ -11,62 +11,61 @@ import (
 )
 
 var (
-	ErrLaneTicketNotFound = errors.New("lane ticket not found")
-	ErrLaneLeaseExpired   = errors.New("lane lease expired")
-	ErrLaneLeaseStale     = errors.New("lane lease is stale")
+	ErrTicketNotFound = errors.New("coordination ticket not found")
+	ErrLeaseExpired   = errors.New("coordination lease expired")
+	ErrLeaseStale     = errors.New("coordination lease is stale")
 )
 
 const defaultLeaseTTL = 30 * time.Second
 
-// LaneTicket identifies a queued session-lane request.
-type LaneTicket struct {
+// Ticket identifies a queued session execution request.
+type Ticket struct {
 	RequestID  string
 	SessionID  string
 	Sequence   uint64
 	EnqueuedAt time.Time
 }
 
-// LaneLease grants temporary authority to execute a queued request.
-type LaneLease struct {
-	Ticket     LaneTicket
+// Lease grants temporary authority to execute a queued request.
+type Lease struct {
+	Ticket     Ticket
 	Attempt    uint32
 	LeaseToken uint64
 	GrantedAt  time.Time
 	ExpiresAt  time.Time
 }
 
-// LaneResult records the final disposition of a request.
-type LaneStatus string
+// ResultStatus records the final disposition of a request attempt.
+type ResultStatus string
 
 const (
-	LaneStatusCompleted LaneStatus = "completed"
-	LaneStatusCanceled  LaneStatus = "canceled"
-	LaneStatusFailed    LaneStatus = "failed"
-	LaneStatusRetry     LaneStatus = "retry"
+	ResultStatusCompleted ResultStatus = "completed"
+	ResultStatusCanceled  ResultStatus = "canceled"
+	ResultStatusFailed    ResultStatus = "failed"
+	ResultStatusRetry     ResultStatus = "retry"
 )
 
-// LaneResult records the final disposition of a request.
-type LaneResult struct {
-	Status      LaneStatus
+// Result records the final disposition of a request attempt.
+type Result struct {
+	Status      ResultStatus
 	Error       string
 	CompletedAt time.Time
 	Metadata    map[string]any
 }
 
-// LaneCoordinator provides adapter-neutral lease + queue semantics for
+// Coordinator provides adapter-neutral lease + queue semantics for
 // serialized per-session execution.
-type LaneCoordinator interface {
-	Enqueue(ctx context.Context, sessionID string) (LaneTicket, error)
-	Await(ctx context.Context, ticket LaneTicket) (LaneLease, error)
-	Renew(ctx context.Context, lease LaneLease) (LaneLease, error)
-	Ack(ctx context.Context, lease LaneLease, result LaneResult) error
-	Nack(ctx context.Context, lease LaneLease, result LaneResult) error
+type Coordinator interface {
+	Enqueue(ctx context.Context, sessionID string) (Ticket, error)
+	Await(ctx context.Context, ticket Ticket) (Lease, error)
+	Renew(ctx context.Context, lease Lease) (Lease, error)
+	Ack(ctx context.Context, lease Lease, result Result) error
+	Nack(ctx context.Context, lease Lease, result Result) error
 }
 
-// InMemoryLaneCoordinator provides the same lease + queue semantics as the
-// future distributed coordinator, but within one process for testing and local
-// integration.
-type InMemoryLaneCoordinator struct {
+// LocalCoordinator provides the same lease + queue semantics as future
+// distributed coordinators, but within one process for tests and local use.
+type LocalCoordinator struct {
 	mu       sync.Mutex
 	leaseTTL time.Duration
 	lanes    map[string]*coordinatorLane
@@ -81,37 +80,37 @@ type coordinatorLane struct {
 }
 
 type laneEntry struct {
-	ticket  LaneTicket
+	ticket  Ticket
 	attempt uint32
 }
 
 type laneActive struct {
-	lease  LaneLease
-	result LaneResult
+	lease  Lease
+	result Result
 }
 
-// NewInMemoryLaneCoordinator creates a local coordinator with lease expiry and
+// NewLocalCoordinator creates a local coordinator with lease expiry and
 // FIFO queue semantics.
-func NewInMemoryLaneCoordinator() *InMemoryLaneCoordinator {
-	return &InMemoryLaneCoordinator{
+func NewLocalCoordinator() *LocalCoordinator {
+	return &LocalCoordinator{
 		leaseTTL: defaultLeaseTTL,
 		lanes:    make(map[string]*coordinatorLane),
 	}
 }
 
 // SetLeaseTTL updates the lease duration used for newly granted or renewed leases.
-func (c *InMemoryLaneCoordinator) SetLeaseTTL(ttl time.Duration) {
+func (c *LocalCoordinator) SetLeaseTTL(ttl time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.leaseTTL = ttl
 }
 
-func (c *InMemoryLaneCoordinator) Enqueue(
+func (c *LocalCoordinator) Enqueue(
 	ctx context.Context,
 	sessionID string,
-) (LaneTicket, error) {
+) (Ticket, error) {
 	if err := ctx.Err(); err != nil {
-		return LaneTicket{}, err
+		return Ticket{}, err
 	}
 
 	c.mu.Lock()
@@ -119,7 +118,7 @@ func (c *InMemoryLaneCoordinator) Enqueue(
 
 	lane := c.getOrCreateLaneLocked(sessionID)
 	lane.nextSeq++
-	ticket := LaneTicket{
+	ticket := Ticket{
 		RequestID:  ulid.Make().String(),
 		SessionID:  sessionID,
 		Sequence:   lane.nextSeq,
@@ -130,24 +129,24 @@ func (c *InMemoryLaneCoordinator) Enqueue(
 	return ticket, nil
 }
 
-func (c *InMemoryLaneCoordinator) Await(ctx context.Context, ticket LaneTicket) (LaneLease, error) {
+func (c *LocalCoordinator) Await(ctx context.Context, ticket Ticket) (Lease, error) {
 	for {
 		if err := ctx.Err(); err != nil {
-			return LaneLease{}, err
+			return Lease{}, err
 		}
 
 		c.mu.Lock()
 		lane, ok := c.lanes[ticket.SessionID]
 		if !ok {
 			c.mu.Unlock()
-			return LaneLease{}, ErrLaneTicketNotFound
+			return Lease{}, ErrTicketNotFound
 		}
 
 		lease, waitCh, waitFor, err := c.tryGrantLocked(lane, ticket)
 		c.mu.Unlock()
 
 		if err != nil {
-			return LaneLease{}, err
+			return Lease{}, err
 		}
 		if lease != nil {
 			return *lease, nil
@@ -160,16 +159,16 @@ func (c *InMemoryLaneCoordinator) Await(ctx context.Context, ticket LaneTicket) 
 
 		select {
 		case <-ctx.Done():
-			return LaneLease{}, ctx.Err()
+			return Lease{}, ctx.Err()
 		case <-waitCh:
 		case <-timer:
 		}
 	}
 }
 
-func (c *InMemoryLaneCoordinator) Renew(ctx context.Context, lease LaneLease) (LaneLease, error) {
+func (c *LocalCoordinator) Renew(ctx context.Context, lease Lease) (Lease, error) {
 	if err := ctx.Err(); err != nil {
-		return LaneLease{}, err
+		return Lease{}, err
 	}
 
 	c.mu.Lock()
@@ -177,29 +176,29 @@ func (c *InMemoryLaneCoordinator) Renew(ctx context.Context, lease LaneLease) (L
 
 	lane, ok := c.lanes[lease.Ticket.SessionID]
 	if !ok {
-		return LaneLease{}, ErrLaneTicketNotFound
+		return Lease{}, ErrTicketNotFound
 	}
 	if lane.active == nil {
-		return LaneLease{}, ErrLaneLeaseStale
+		return Lease{}, ErrLeaseStale
 	}
 	if lane.active.lease.Ticket.RequestID != lease.Ticket.RequestID ||
 		lane.active.lease.LeaseToken != lease.LeaseToken {
-		return LaneLease{}, ErrLaneLeaseStale
+		return Lease{}, ErrLeaseStale
 	}
 	if time.Now().After(lane.active.lease.ExpiresAt) {
 		lane.active = nil
 		lane.notifyLocked()
-		return LaneLease{}, ErrLaneLeaseExpired
+		return Lease{}, ErrLeaseExpired
 	}
 
 	lane.active.lease.ExpiresAt = time.Now().UTC().Add(c.leaseTTL)
 	return lane.active.lease, nil
 }
 
-func (c *InMemoryLaneCoordinator) Ack(
+func (c *LocalCoordinator) Ack(
 	ctx context.Context,
-	lease LaneLease,
-	result LaneResult,
+	lease Lease,
+	result Result,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -210,10 +209,10 @@ func (c *InMemoryLaneCoordinator) Ack(
 	return c.finishLocked(lease, result, true)
 }
 
-func (c *InMemoryLaneCoordinator) Nack(
+func (c *LocalCoordinator) Nack(
 	ctx context.Context,
-	lease LaneLease,
-	result LaneResult,
+	lease Lease,
+	result Result,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -224,10 +223,10 @@ func (c *InMemoryLaneCoordinator) Nack(
 	return c.finishLocked(lease, result, false)
 }
 
-func (c *InMemoryLaneCoordinator) tryGrantLocked(
+func (c *LocalCoordinator) tryGrantLocked(
 	lane *coordinatorLane,
-	ticket LaneTicket,
-) (*LaneLease, chan struct{}, time.Duration, error) {
+	ticket Ticket,
+) (*Lease, chan struct{}, time.Duration, error) {
 	now := time.Now().UTC()
 	entryIdx := -1
 	for i, entry := range lane.queue {
@@ -237,7 +236,7 @@ func (c *InMemoryLaneCoordinator) tryGrantLocked(
 		}
 	}
 	if entryIdx == -1 {
-		return nil, nil, 0, ErrLaneTicketNotFound
+		return nil, nil, 0, ErrTicketNotFound
 	}
 
 	if lane.active != nil {
@@ -259,7 +258,7 @@ func (c *InMemoryLaneCoordinator) tryGrantLocked(
 	entry := lane.queue[0]
 	entry.attempt++
 	lane.nextLease++
-	lease := LaneLease{
+	lease := Lease{
 		Ticket:     entry.ticket,
 		Attempt:    entry.attempt,
 		LeaseToken: lane.nextLease,
@@ -270,28 +269,28 @@ func (c *InMemoryLaneCoordinator) tryGrantLocked(
 	return &lease, nil, 0, nil
 }
 
-func (c *InMemoryLaneCoordinator) finishLocked(
-	lease LaneLease,
-	result LaneResult,
+func (c *LocalCoordinator) finishLocked(
+	lease Lease,
+	result Result,
 	remove bool,
 ) error {
 	lane, ok := c.lanes[lease.Ticket.SessionID]
 	if !ok {
-		return ErrLaneTicketNotFound
+		return ErrTicketNotFound
 	}
 	if lane.active == nil {
-		return ErrLaneLeaseStale
+		return ErrLeaseStale
 	}
 
 	active := lane.active.lease
 	if active.Ticket.RequestID != lease.Ticket.RequestID ||
 		active.LeaseToken != lease.LeaseToken {
-		return ErrLaneLeaseStale
+		return ErrLeaseStale
 	}
 	if time.Now().After(active.ExpiresAt) {
 		lane.active = nil
 		lane.notifyLocked()
-		return ErrLaneLeaseExpired
+		return ErrLeaseExpired
 	}
 
 	if result.CompletedAt.IsZero() {
@@ -302,7 +301,7 @@ func (c *InMemoryLaneCoordinator) finishLocked(
 
 	if remove {
 		if len(lane.queue) == 0 || lane.queue[0].ticket.RequestID != lease.Ticket.RequestID {
-			return fmt.Errorf("lane ack %s: %w", lease.Ticket.RequestID, ErrLaneTicketNotFound)
+			return fmt.Errorf("coordinator ack %s: %w", lease.Ticket.RequestID, ErrTicketNotFound)
 		}
 		lane.queue = lane.queue[1:]
 	}
@@ -315,7 +314,7 @@ func (c *InMemoryLaneCoordinator) finishLocked(
 	return nil
 }
 
-func (c *InMemoryLaneCoordinator) getOrCreateLaneLocked(sessionID string) *coordinatorLane {
+func (c *LocalCoordinator) getOrCreateLaneLocked(sessionID string) *coordinatorLane {
 	if lane, ok := c.lanes[sessionID]; ok {
 		return lane
 	}

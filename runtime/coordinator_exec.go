@@ -15,7 +15,7 @@ func (r *Runner) executeUnderLease(
 	ctx context.Context,
 	sess *session.Session,
 	chunkFn func(*llm.Chunk),
-	lease LaneLease,
+	lease Lease,
 ) (agent.StepResult, error) {
 	if r.Coordinator == nil {
 		return r.execute(ctx, sess, chunkFn)
@@ -79,22 +79,22 @@ func (r *Runner) executeUnderLease(
 	default:
 	}
 
-	laneResult := LaneResult{
+	resultMeta := Result{
 		CompletedAt: time.Now().UTC(),
 		Metadata:    map[string]any{"session_id": sess.ID()},
 	}
 	switch {
 	case execErr == nil:
-		laneResult.Status = LaneStatusCompleted
+		resultMeta.Status = ResultStatusCompleted
 	case errors.Is(execErr, context.Canceled), errors.Is(execErr, context.DeadlineExceeded):
-		laneResult.Status = LaneStatusCanceled
-		laneResult.Error = execErr.Error()
+		resultMeta.Status = ResultStatusCanceled
+		resultMeta.Error = execErr.Error()
 	default:
-		laneResult.Status = LaneStatusFailed
-		laneResult.Error = execErr.Error()
+		resultMeta.Status = ResultStatusFailed
+		resultMeta.Error = execErr.Error()
 	}
 
-	ackErr := r.Coordinator.Ack(context.WithoutCancel(ctx), finalLease, laneResult)
+	ackErr := r.Coordinator.Ack(context.WithoutCancel(ctx), finalLease, resultMeta)
 	if renewErr != nil && execErr == nil {
 		return result, errors.Join(renewErr, ackErr)
 	}

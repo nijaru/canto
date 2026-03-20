@@ -17,8 +17,8 @@ const (
 )
 
 // Runner orchestrates the execution of an agent within a session.
-// It always uses a LaneManager to serialize execution within a session
-// while allowing concurrent execution across different sessions.
+// By default it uses built-in local coordination to serialize execution within
+// a session while allowing concurrent execution across different sessions.
 //
 // Runner maintains an in-memory session registry so that Subscribe, Send,
 // Run, and execute all share the same *session.Session object for a given
@@ -28,36 +28,37 @@ type Runner struct {
 	Store session.Store
 	Agent agent.Agent
 
-	// WaitTimeout is the maximum time to wait in the lane queue for a session.
+	// WaitTimeout is the maximum time to wait in the local queue or custom
+	// coordinator for a session run to start.
 	WaitTimeout time.Duration
 	// ExecutionTimeout is the maximum time to spend running the agent turn.
 	ExecutionTimeout time.Duration
 
-	Lanes       *LaneManager
-	Coordinator LaneCoordinator
+	Coordinator Coordinator
 	Hooks       *hook.Runner
 
+	queue    *serialQueue
 	mu       sync.Mutex
 	sessions map[string]*session.Session
 }
 
-// NewRunner creates a Runner with per-session lane serialization enabled.
+// NewRunner creates a Runner with per-session coordination enabled.
 func NewRunner(s session.Store, a agent.Agent) *Runner {
 	return &Runner{
 		Store:            s,
 		Agent:            a,
 		WaitTimeout:      defaultWaitTimeout,
 		ExecutionTimeout: defaultExecutionTimeout,
-		Lanes:            NewLaneManager(),
+		queue:            newSerialQueue(),
 		Hooks:            hook.NewRunner(),
 		sessions:         make(map[string]*session.Session),
 	}
 }
 
-// Close gracefully stops the internal lane manager and any active goroutines.
+// Close gracefully stops the internal local coordinator and any active goroutines.
 func (r *Runner) Close() {
-	if r.Lanes != nil {
-		r.Lanes.Stop()
+	if r.queue != nil {
+		r.queue.stop()
 	}
 }
 
@@ -155,8 +156,7 @@ func (r *Runner) SendStream(
 	return r.run(ctx, sess, chunkFn)
 }
 
-// Run executes the agent on the given session. If a LaneManager is configured,
-// execution is serialized within the session lane.
+// Run executes the agent on the given session.
 func (r *Runner) Run(ctx context.Context, sessionID string) (agent.StepResult, error) {
 	sess, err := r.getOrLoad(ctx, sessionID)
 	if err != nil {
@@ -165,8 +165,7 @@ func (r *Runner) Run(ctx context.Context, sessionID string) (agent.StepResult, e
 	return r.run(ctx, sess, nil)
 }
 
-// RunStream executes the agent with streaming. If a LaneManager is configured,
-// execution is serialized within the session lane.
+// RunStream executes the agent with streaming.
 func (r *Runner) RunStream(
 	ctx context.Context,
 	sessionID string,
@@ -180,20 +179,17 @@ func (r *Runner) RunStream(
 }
 
 // run is the shared entry point for Run/RunStream/Send/SendStream.
-// It applies lane serialization and delegates to execute.
+// It applies per-session coordination and delegates to execute.
 func (r *Runner) run(
 	ctx context.Context,
 	sess *session.Session,
 	chunkFn func(*llm.Chunk),
 ) (agent.StepResult, error) {
-	if r.Lanes == nil {
-		if r.Coordinator != nil {
-			return r.executeWithCoordinator(ctx, sess, chunkFn)
-		}
-		return r.execute(ctx, sess, chunkFn)
-	}
 	if r.Coordinator != nil {
 		return r.executeWithCoordinator(ctx, sess, chunkFn)
+	}
+	if r.queue == nil {
+		return r.execute(ctx, sess, chunkFn)
 	}
 
 	waitCtx := ctx
@@ -204,7 +200,7 @@ func (r *Runner) run(
 	}
 
 	var result agent.StepResult
-	errCh := r.Lanes.Execute(waitCtx, sess.ID(), func(laneCtx context.Context) error {
+	errCh := r.queue.execute(waitCtx, sess.ID(), func(laneCtx context.Context) error {
 		execCtx := laneCtx
 		if r.ExecutionTimeout > 0 {
 			var cancel context.CancelFunc

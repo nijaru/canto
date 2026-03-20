@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-func TestLaneManager_Serialization(t *testing.T) {
-	m := NewLaneManager()
+func TestSerialQueue_Serialization(t *testing.T) {
+	m := newSerialQueue()
 	sessionID := "test-session"
 
 	var (
@@ -21,7 +21,7 @@ func TestLaneManager_Serialization(t *testing.T) {
 
 	for i := 0; i < count; i++ {
 		val := i
-		channels[i] = m.Execute(context.Background(), sessionID, func(ctx context.Context) error {
+		channels[i] = m.execute(context.Background(), sessionID, func(ctx context.Context) error {
 			// Simulate work
 			time.Sleep(10 * time.Millisecond)
 			mu.Lock()
@@ -50,8 +50,8 @@ func TestLaneManager_Serialization(t *testing.T) {
 	}
 }
 
-func TestLaneManager_Concurrency(t *testing.T) {
-	m := NewLaneManager()
+func TestSerialQueue_Concurrency(t *testing.T) {
+	m := newSerialQueue()
 
 	// Two different sessions should run concurrently
 	session1 := "s1"
@@ -59,11 +59,11 @@ func TestLaneManager_Concurrency(t *testing.T) {
 
 	start := time.Now()
 
-	ch1 := m.Execute(context.Background(), session1, func(ctx context.Context) error {
+	ch1 := m.execute(context.Background(), session1, func(ctx context.Context) error {
 		time.Sleep(50 * time.Millisecond)
 		return nil
 	})
-	ch2 := m.Execute(context.Background(), session2, func(ctx context.Context) error {
+	ch2 := m.execute(context.Background(), session2, func(ctx context.Context) error {
 		time.Sleep(50 * time.Millisecond)
 		return nil
 	})
@@ -78,13 +78,13 @@ func TestLaneManager_Concurrency(t *testing.T) {
 	}
 }
 
-func TestLaneManager_IdleTimeout(t *testing.T) {
-	m := NewLaneManager()
+func TestSerialQueue_IdleTimeout(t *testing.T) {
+	m := newSerialQueue()
 	m.IdleTimeout = 100 * time.Millisecond
 	sessionID := "timeout-session"
 
 	// Create a lane
-	ch := m.Execute(context.Background(), sessionID, func(ctx context.Context) error {
+	ch := m.execute(context.Background(), sessionID, func(ctx context.Context) error {
 		return nil
 	})
 	<-ch

@@ -4,10 +4,10 @@
 // in-memory session object per session ID so appends, subscriptions, and runs
 // observe the same live state while persistence stays in the session.Store.
 //
-// By default, Runner uses a local LaneManager to serialize work within a
-// session and allow parallel work across different sessions. When a
-// LaneCoordinator is configured, the same execution path can run through a
-// distributed lease-and-queue coordinator instead.
+// By default, Runner uses built-in local coordination to serialize work within
+// a session and allow parallel work across different sessions. When a
+// Coordinator is configured, the same execution path can run through a custom
+// lease-and-queue coordinator instead.
 //
 // ChildRunner builds on the same model for parent/child orchestration:
 // materialize a child session, record durable lifecycle events in the parent,
