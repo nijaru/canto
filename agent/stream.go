@@ -183,12 +183,8 @@ func (a *BaseAgent) StreamTurn(
 			break
 		}
 
-		messages := s.Messages()
-		if len(messages) == 0 {
-			break
-		}
-		last := messages[len(messages)-1]
-		if last.Role != llm.RoleTool {
+		last, ok := s.LastMessage()
+		if !ok || last.Role != llm.RoleTool {
 			break
 		}
 	}
@@ -199,12 +195,8 @@ func (a *BaseAgent) StreamTurn(
 	}
 	res.Usage = totalUsage
 
-	msgs := s.Messages()
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == llm.RoleAssistant && len(msgs[i].Calls) == 0 {
-			res.Content = msgs[i].Content
-			break
-		}
+	if msg, ok := s.LastAssistantMessage(); ok {
+		res.Content = msg.Content
 	}
 
 	if a.Hooks != nil {
