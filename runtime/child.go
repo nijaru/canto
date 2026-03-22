@@ -153,7 +153,7 @@ func (r *ChildRunner) Spawn(
 		runCtx = context.WithoutCancel(ctx)
 	}
 
-	go r.runChild(runCtx, parent, childSess, spec.Agent, ref, handle)
+	go r.runChild(runCtx, parent, childSess, spec.Agent, ref, spec.Metadata, handle)
 
 	return ref, nil
 }
@@ -212,6 +212,7 @@ func (r *ChildRunner) runChild(
 	childSess *session.Session,
 	childAgent agent.Agent,
 	ref ChildRef,
+	metadata map[string]any,
 	handle *childHandle,
 ) {
 	if r.sem != nil {
@@ -234,6 +235,14 @@ func (r *ChildRunner) runChild(
 	childRuntime.WaitTimeout = r.WaitTimeout
 	childRuntime.ExecutionTimeout = r.ExecutionTimeout
 	childRuntime.sessions[childSess.ID()] = childSess
+
+	// Propagate metadata to the child execution context
+	ctx = session.WithMetadata(ctx, map[string]any{
+		"agent_id": ref.AgentID,
+	})
+	if len(metadata) > 0 {
+		ctx = session.WithMetadata(ctx, metadata)
+	}
 
 	result.Result, result.Err = childRuntime.Run(ctx, childSess.ID())
 	if result.Err != nil {

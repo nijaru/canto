@@ -20,6 +20,14 @@ type Persona struct {
 	Directives  string `json:"directives"`
 }
 
+// KnowledgeItem represents an arbitrary piece of information stored in memory.
+type KnowledgeItem struct {
+	ID        string         `json:"id"`
+	SessionID string         `json:"session_id"`
+	Content   string         `json:"content"`
+	Metadata  map[string]any `json:"metadata,omitzero"`
+}
+
 // CoreStore represents a durable store for mutable agent/session structs.
 type CoreStore struct {
 	db *sql.DB
@@ -74,6 +82,30 @@ func (s *CoreStore) init() error {
 		`CREATE TRIGGER IF NOT EXISTS episodes_au AFTER UPDATE ON episodes BEGIN
 			INSERT INTO episodes_fts(episodes_fts, rowid, content) VALUES('delete', old.rowid, old.content);
 			INSERT INTO episodes_fts(rowid, content) VALUES (new.rowid, new.content);
+		END`,
+		`CREATE TABLE IF NOT EXISTS knowledge (
+			rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+			id TEXT UNIQUE NOT NULL,
+			session_id TEXT NOT NULL,
+			content TEXT NOT NULL,
+			metadata TEXT
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_knowledge_session_id ON knowledge(session_id)`,
+		`CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
+			content,
+			content='knowledge',
+			content_rowid='rowid',
+			tokenize='trigram'
+		)`,
+		`CREATE TRIGGER IF NOT EXISTS knowledge_ai AFTER INSERT ON knowledge BEGIN
+			INSERT INTO knowledge_fts(rowid, content) VALUES (new.rowid, new.content);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS knowledge_ad AFTER DELETE ON knowledge BEGIN
+			INSERT INTO knowledge_fts(knowledge_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS knowledge_au AFTER UPDATE ON knowledge BEGIN
+			INSERT INTO knowledge_fts(knowledge_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+			INSERT INTO knowledge_fts(rowid, content) VALUES (new.rowid, new.content);
 		END`,
 	}
 	for _, q := range queries {
@@ -176,6 +208,54 @@ func scanEpisodes(rows *sql.Rows) ([]*session.Episode, error) {
 			return nil, fmt.Errorf("episode decode: %w", err)
 		}
 		result = append(result, &ep)
+	}
+	return result, rows.Err()
+}
+
+// SaveKnowledge persists a KnowledgeItem to the store.
+func (s *CoreStore) SaveKnowledge(ctx context.Context, item *KnowledgeItem) error {
+	metadata, err := json.Marshal(item.Metadata)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO knowledge (id, session_id, content, metadata) VALUES (?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET content=excluded.content, metadata=excluded.metadata
+	`, item.ID, item.SessionID, item.Content, string(metadata))
+	return err
+}
+
+// SearchKnowledge finds knowledge items whose content matches the FTS5 query.
+func (s *CoreStore) SearchKnowledge(
+	ctx context.Context,
+	query string,
+	limit int,
+) ([]*KnowledgeItem, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT k.id, k.session_id, k.content, k.metadata FROM knowledge k
+		JOIN knowledge_fts f ON f.rowid = k.rowid
+		WHERE f.content MATCH ?
+		ORDER BY k.rowid DESC
+		LIMIT ?
+	`, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []*KnowledgeItem
+	for rows.Next() {
+		var item KnowledgeItem
+		var metadata string
+		if err := rows.Scan(&item.ID, &item.SessionID, &item.Content, &metadata); err != nil {
+			return nil, err
+		}
+		if metadata != "" {
+			if err := json.Unmarshal([]byte(metadata), &item.Metadata); err != nil {
+				return nil, err
+			}
+		}
+		result = append(result, &item)
 	}
 	return result, rows.Err()
 }

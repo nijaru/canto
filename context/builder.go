@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/memory"
@@ -331,6 +332,69 @@ func CoreMemoryProcessor(store *memory.CoreStore) Processor {
 			for i, m := range req.Messages {
 				if m.Role == llm.RoleSystem {
 					if loc := coreMemoryRegex.FindStringIndex(m.Content); loc != nil {
+						req.Messages[i].Content = m.Content[:loc[0]] + memBlock + "\n\n" + m.Content[loc[1]:]
+					} else {
+						req.Messages[i].Content = memBlock + "\n\n" + m.Content
+					}
+					return nil
+				}
+			}
+
+			// Prepend new system message
+			sys := llm.Message{Role: llm.RoleSystem, Content: memBlock}
+			req.Messages = append(req.Messages, llm.Message{})
+			copy(req.Messages[1:], req.Messages)
+			req.Messages[0] = sys
+			return nil
+		},
+	)
+}
+
+// knowledgeMemoryRegex matches an existing knowledge_memory block and any trailing newlines.
+var knowledgeMemoryRegex = regexp.MustCompile(`(?s)<knowledge_memory>.*?</knowledge_memory>\n*`)
+
+// KnowledgeMemory retrieves and injects matching knowledge items from the store based on a query.
+// If query is empty, it uses the text of the last message in the session history.
+func KnowledgeMemory(store *memory.CoreStore, query string, limit int) Processor {
+	return ProcessorFunc(
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
+			if store == nil {
+				return nil
+			}
+			q := query
+			if q == "" {
+				messages := sess.Messages()
+				for i := len(messages) - 1; i >= 0; i-- {
+					if messages[i].Content != "" {
+						q = messages[i].Content
+						break
+					}
+				}
+			}
+			if q == "" {
+				return nil
+			}
+
+			items, err := store.SearchKnowledge(ctx, q, limit)
+			if err != nil {
+				return err
+			}
+			if len(items) == 0 {
+				return nil
+			}
+
+			var sb strings.Builder
+			sb.WriteString("<knowledge_memory>\n")
+			for _, item := range items {
+				fmt.Fprintf(&sb, "---\n%s\n", item.Content)
+			}
+			sb.WriteString("</knowledge_memory>")
+			memBlock := sb.String()
+
+			// Prepend or replace system instruction if not already there
+			for i, m := range req.Messages {
+				if m.Role == llm.RoleSystem {
+					if loc := knowledgeMemoryRegex.FindStringIndex(m.Content); loc != nil {
 						req.Messages[i].Content = m.Content[:loc[0]] + memBlock + "\n\n" + m.Content[loc[1]:]
 					} else {
 						req.Messages[i].Content = memBlock + "\n\n" + m.Content
