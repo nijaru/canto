@@ -1,10 +1,11 @@
 //go:build ignore
 
-// long-horizon demonstrates the "context reset loop" pattern: an agent that
-// works on a long task across multiple sessions. Each cycle gets a fresh
-// context window. Progress is tracked in a file so the agent can resume.
+// long-horizon demonstrates the "context reset loop" (or "Ralph Wiggum") pattern.
+// It shows how to run an agent repeatedly on a long task across multiple sessions,
+// where each cycle gets a fresh context window.
 //
-// CycleRunner handles the loop; the agent uses bash to read/write progress.
+// Progress is tracked externally via a file (plan.md), so the agent can resume
+// where it left off without exceeding the LLM context limits over time.
 //
 // Run: OPENAI_API_KEY=... go run examples/long-horizon/main.go
 package main
@@ -22,11 +23,53 @@ import (
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
 	"github.com/nijaru/canto/x/tools"
-
-	longhorizon "github.com/nijaru/canto/examples/long-horizon"
 )
 
 const planFile = "./data/long-horizon/plan.md"
+
+// CycleRunner implements a hard context reset loop.
+type CycleRunner struct {
+	Agent     agent.Agent
+	Store     session.Store
+	PlanFile  string
+	MaxCycles int
+	CheckFn   func(planPath string) (bool, error)
+	SessionFn func(cycle int) *session.Session
+}
+
+func (c *CycleRunner) Run(ctx context.Context) error {
+	for cycle := range c.MaxCycles {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		sess := c.SessionFn(cycle)
+
+		// Run the agent for this cycle.
+		if _, err := c.Agent.Turn(ctx, sess); err != nil {
+			return fmt.Errorf("cycle %d failed: %w", cycle, err)
+		}
+
+		// Persist the new events to the store.
+		if c.Store != nil {
+			for _, e := range sess.Events() {
+				if err := c.Store.Save(ctx, e); err != nil {
+					return fmt.Errorf("cycle %d save failed: %w", cycle, err)
+				}
+			}
+		}
+
+		// Check whether the goal has been reached.
+		done, err := c.CheckFn(c.PlanFile)
+		if err != nil {
+			return fmt.Errorf("cycle %d check failed: %w", cycle, err)
+		}
+		if done {
+			return nil
+		}
+	}
+	return fmt.Errorf("reached MaxCycles (%d) without completing", c.MaxCycles)
+}
 
 func main() {
 	ctx := context.Background()
@@ -60,7 +103,7 @@ When all tasks are done, write "## Status: COMPLETE" to the plan file.`, planFil
 		log.Fatal(err)
 	}
 
-	cr := &longhorizon.CycleRunner{
+	cr := &CycleRunner{
 		Agent:     a,
 		Store:     store,
 		PlanFile:  planFile,

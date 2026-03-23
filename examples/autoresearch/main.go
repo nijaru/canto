@@ -1,10 +1,10 @@
 //go:build ignore
 
-// autoresearch demonstrates running an agent in a loop to produce
-// a research report. Each iteration reads the current report draft
-// from disk and continues writing until the agent signals completion.
+// autoresearch demonstrates an autonomous experiment loop.
+// It uses an agent to repeatedly optimize a target function, keeping
+// changes that improve a performance metric and reverting changes that don't.
 //
-// Run: OPENAI_API_KEY=... go run examples/autoresearch/main.go
+// Run: OPENAI_API_KEY=... cd examples/autoresearch && go run main.go
 package main
 
 import (
@@ -12,6 +12,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
+	"regexp"
+	"strconv"
+	"time"
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm/providers/openai"
@@ -21,23 +25,28 @@ import (
 	"github.com/nijaru/canto/x/tools"
 )
 
+const (
+	targetFile = "target.go"
+	evalScript = "./evaluate.sh"
+)
+
+var scoreRegex = regexp.MustCompile(`SCORE:\s*([0-9.]+)`)
+
 func main() {
 	ctx := context.Background()
 
-	// Tools: bash gives the agent file read/write and search.
+	// 1. Setup the Canto agent
 	reg := tool.NewRegistry()
 	reg.Register(&tools.BashTool{})
 
 	provider := openai.New(os.Getenv("OPENAI_API_KEY"))
 
-	instructions := `You are a research assistant. Your task is to produce a thorough
-research report on the given topic. On each run:
-1. Read the current draft from report.md (if it exists).
-2. Add new sections, fix gaps, and improve quality.
-3. Write the updated report back to report.md.
-4. When satisfied, output: RESEARCH_COMPLETE`
+	instructionsBytes, err := os.ReadFile("program.md")
+	if err != nil {
+		log.Fatalf("failed to read program.md: %v", err)
+	}
 
-	a := agent.New("researcher", instructions, "gpt-4o", provider, reg)
+	a := agent.New("researcher", string(instructionsBytes), "gpt-4o", provider, reg)
 
 	store, err := session.NewJSONLStore("./data/autoresearch")
 	if err != nil {
@@ -45,49 +54,100 @@ research report on the given topic. On each run:
 	}
 
 	runner := runtime.NewRunner(store, a)
+	sessionID := "autoresearch-loop"
 
-	topic := "the history and architecture of transformer models"
-	sessionID := "autoresearch-transformers"
+	// 2. Establish the baseline
+	fmt.Println("Running baseline evaluation...")
+	bestScore, err := evaluate(ctx)
+	if err != nil {
+		log.Fatalf("Baseline evaluation failed. Ensure target.go compiles and evaluate.sh works. Error: %v", err)
+	}
+	fmt.Printf("Baseline Score: %.2f\n\n", bestScore)
 
-	// Seed the first message.
+	// Seed initial message if the session is new
 	sess, _ := store.Load(ctx, sessionID)
 	if len(sess.Messages()) == 0 {
 		store.Save(ctx, session.NewEvent(sessionID, session.MessageAdded,
-			map[string]string{"role": "user", "content": fmt.Sprintf("Research topic: %s", topic)},
+			map[string]string{"role": "user", "content": fmt.Sprintf("The current baseline score is %.2f ns/op. Please modify the target.go file to improve performance.", bestScore)},
 		))
 	}
 
-	// Run up to 5 iterations; each builds on the previous session.
-	for i := range 5 {
-		fmt.Printf("--- iteration %d ---\n", i+1)
-		if _, err := runner.Run(ctx, sessionID); err != nil {
-			log.Fatalf("run failed: %v", err)
+	// 3. The Autonomous Loop
+	for i := 1; i <= 10; i++ {
+		fmt.Printf("--- Iteration %d ---\n", i)
+
+		// Backup the current best version of target.go
+		backup, err := os.ReadFile(targetFile)
+		if err != nil {
+			log.Fatalf("failed to read target: %v", err)
 		}
 
-		// Check for completion signal in the session messages.
-		sess, _ := store.Load(ctx, sessionID)
-		msgs := sess.Messages()
-		if len(msgs) > 0 {
-			last := msgs[len(msgs)-1]
-			if last.Role == "assistant" && containsAny(last.Content, "RESEARCH_COMPLETE") {
-				fmt.Println("Research complete.")
-				break
-			}
+		// Let the agent act (it will modify target.go)
+		fmt.Println("Agent is thinking and modifying code...")
+		if _, err := runner.Run(ctx, sessionID); err != nil {
+			log.Printf("Agent run failed: %v", err)
 		}
+
+		// Evaluate the new code
+		fmt.Println("Evaluating changes...")
+		newScore, evalErr := evaluate(ctx)
+
+		var outcomeMessage string
+
+		if evalErr != nil {
+			// Failed to compile or test failed
+			fmt.Printf("Evaluation failed: %v. Reverting to backup.\n", evalErr)
+			os.WriteFile(targetFile, backup, 0644)
+			outcomeMessage = fmt.Sprintf("Your last change caused an error: %v. I have reverted target.go back to the previous state. Please try a different approach.", evalErr)
+		} else if newScore < bestScore {
+			// Improvement! (Lower ns/op is better)
+			fmt.Printf("SUCCESS! Score improved from %.2f to %.2f. Keeping changes.\n", bestScore, newScore)
+			bestScore = newScore
+			outcomeMessage = fmt.Sprintf("Success! The benchmark score improved to %.2f ns/op. The changes have been kept. Please make another optimization to improve it further.", bestScore)
+		} else {
+			// Worse or equal performance
+			fmt.Printf("Score worsened or did not improve (%.2f vs best %.2f). Reverting.\n", newScore, bestScore)
+			os.WriteFile(targetFile, backup, 0644)
+			outcomeMessage = fmt.Sprintf("The optimization did not improve the score (got %.2f, best is %.2f). I have reverted the file. Please try a different strategy.", newScore, bestScore)
+		}
+
+		fmt.Println()
+
+		// Feed the outcome back to the agent so it learns
+		store.Save(ctx, session.NewEvent(sessionID, session.MessageAdded,
+			map[string]string{"role": "user", "content": outcomeMessage},
+		))
 	}
 
-	fmt.Println("Report written to report.md")
+	fmt.Println("Autoresearch complete. Check target.go for the final optimized code.")
 }
 
-func containsAny(s string, subs ...string) bool {
-	for _, sub := range subs {
-		if len(s) >= len(sub) {
-			for i := 0; i <= len(s)-len(sub); i++ {
-				if s[i:i+len(sub)] == sub {
-					return true
-				}
-			}
+// evaluate runs the evaluation script and returns the parsed score.
+func evaluate(ctx context.Context) (float64, error) {
+	// Give the script a strict timeout so the loop doesn't hang on infinite loops.
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, evalScript)
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return 0, fmt.Errorf("evaluation timed out after 30 seconds (possible infinite loop)")
 		}
+		return 0, fmt.Errorf("script failed: %s\nOutput: %s", err, string(output))
 	}
-	return false
+
+	// Extract the metric
+	matches := scoreRegex.FindStringSubmatch(string(output))
+	if len(matches) < 2 {
+		return 0, fmt.Errorf("could not find 'SCORE: <value>' in output: %s", string(output))
+	}
+
+	score, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse score '%s': %v", matches[1], err)
+	}
+
+	return score, nil
 }
