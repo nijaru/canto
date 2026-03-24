@@ -218,14 +218,18 @@ func (s *Session) ID() string {
 // If the context contains metadata (via WithMetadata), it is merged into the event's metadata.
 func (s *Session) Append(ctx context.Context, e Event) error {
 	if md := MetadataFromContext(ctx); len(md) > 0 {
-		if e.Metadata == nil {
-			e.Metadata = make(map[string]any, len(md))
-		}
-		for k, v := range md {
-			if _, exists := e.Metadata[k]; !exists {
-				e.Metadata[k] = v
+		newMd := make(map[string]any, len(e.Metadata)+len(md))
+		if e.Metadata != nil {
+			for k, v := range e.Metadata {
+				newMd[k] = v
 			}
 		}
+		for k, v := range md {
+			if _, exists := newMd[k]; !exists {
+				newMd[k] = v
+			}
+		}
+		e.Metadata = newMd
 	}
 
 	s.mu.Lock()

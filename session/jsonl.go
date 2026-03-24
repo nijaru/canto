@@ -131,11 +131,17 @@ func (s *JSONLStore) LoadUntil(
 		if err != nil {
 			return nil, err
 		}
+
+		if e.ID.Compare(eventID) > 0 {
+			break
+		}
+
 		// Internal load doesn't need write-through back to itself.
 		sess.mu.Lock()
 		sess.events = append(sess.events, e)
 		sess.mu.Unlock()
-		if e.ID == eventID {
+		
+		if e.ID.Compare(eventID) == 0 {
 			break
 		}
 		if readErr == io.EOF {
