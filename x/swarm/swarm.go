@@ -62,9 +62,9 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 			return result, err
 		}
 
-		ctx, roundSpan := obs.StartSwarmRound(ctx, round)
+		roundCtx, roundSpan := obs.StartSwarmRound(ctx, round)
 
-		unclaimed, err := s.blackboard.ListUnclaimed(ctx)
+		unclaimed, err := s.blackboard.ListUnclaimed(roundCtx)
 		if err != nil {
 			return result, fmt.Errorf("swarm round %d: list: %w", round, err)
 		}
@@ -97,7 +97,7 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 				// Try each task in order until one is successfully claimed.
 				var claimed *Task
 				for j := range tasks {
-					ok, claimErr := s.blackboard.ClaimTask(ctx, ag.ID(), tasks[j].ID)
+					ok, claimErr := s.blackboard.ClaimTask(roundCtx, ag.ID(), tasks[j].ID)
 					if claimErr != nil {
 						out.err = fmt.Errorf("claim %q: %w", tasks[j].ID, claimErr)
 						outcomes[idx] = out
@@ -117,10 +117,10 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 
 				// Post the claimed task description to the blackboard so other
 				// agents can observe what this agent is working on.
-				_ = s.blackboard.Post(ctx, ag.ID(), "current_task", claimed.Description)
+				_ = s.blackboard.Post(roundCtx, ag.ID(), "current_task", claimed.Description)
 
 				// Execute one agent turn on the shared session within its own span.
-				ctx, agentSpan := obs.StartAgent(ctx, ag.ID())
+				ctx, agentSpan := obs.StartAgent(roundCtx, ag.ID())
 				turnRes, turnErr := ag.Turn(ctx, sess)
 				if turnErr != nil {
 					agentSpan.RecordError(turnErr)
