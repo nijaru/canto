@@ -188,7 +188,7 @@ func (s *CoreStore) SearchEpisodes(
 		WHERE f.content MATCH ?
 		ORDER BY e.rowid DESC
 		LIMIT ?
-	`, query, limit)
+	`, escapeFTS(query), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ func (s *CoreStore) SearchKnowledge(
 		WHERE f.content MATCH ?
 		ORDER BY k.rowid DESC
 		LIMIT ?
-	`, query, limit)
+	`, escapeFTS(query), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -263,4 +263,10 @@ func (s *CoreStore) SearchKnowledge(
 // Close finalizes connection pooling.
 func (s *CoreStore) Close() error {
 	return s.db.Close()
+}
+
+// escapeFTS wraps the query in quotes and escapes internal quotes to prevent FTS5 syntax errors
+// and properly perform substring searches with the trigram tokenizer.
+func escapeFTS(query string) string {
+	return `"` + strings.ReplaceAll(query, `"`, `""`) + `"`
 }
