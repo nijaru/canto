@@ -170,7 +170,10 @@ func GenerateFromStream(s Stream) (*Response, error) {
 		resp.Reasoning += chunk.Reasoning
 		for i, block := range chunk.ThinkingBlocks {
 			if idx, ok := thinkingBlockIndices[i]; ok {
-				resp.ThinkingBlocks[idx] = block
+				resp.ThinkingBlocks[idx].Thinking += block.Thinking
+				if block.Signature != "" {
+					resp.ThinkingBlocks[idx].Signature = block.Signature
+				}
 			} else {
 				thinkingBlockIndices[i] = len(resp.ThinkingBlocks)
 				resp.ThinkingBlocks = append(resp.ThinkingBlocks, block)
