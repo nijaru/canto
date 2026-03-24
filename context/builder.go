@@ -230,6 +230,9 @@ func (b contextMutatorBridge) Effects() ProcessorEffects {
 func (b *Builder) previewPipeline() (*Pipeline, error) {
 	pipeline := NewPipeline()
 	for _, proc := range b.processors {
+		if EffectsOf(proc).HasSideEffects() {
+			continue // Skip mutators for preview-safe path
+		}
 		rp, err := adaptRequestProcessor(proc)
 		if err != nil {
 			return nil, fmt.Errorf("preview pipeline: %w", err)
@@ -239,11 +242,41 @@ func (b *Builder) previewPipeline() (*Pipeline, error) {
 	return pipeline, nil
 }
 
+func unwrapProcessor(p any) any {
+	if b, ok := p.(contextMutatorBridge); ok {
+		return b.mutator
+	}
+	if b, ok := p.(requestProcessorBridge); ok {
+		return b.request
+	}
+	if m, ok := p.(legacyProcessorMutator); ok {
+		return m.processor
+	}
+	return p
+}
+
 func (b *Builder) commitPipeline() (*Pipeline, error) {
 	pipeline := NewPipeline()
+	var hasOffloader bool
+	var hasSummarizer bool
+	offloaderBeforeSummarizer := true
+	var seenSummarizer bool
+
 	for _, proc := range b.processors {
 		if EffectsOf(proc).HasSideEffects() {
 			pipeline.AddMutator(adaptMutator(proc))
+
+			unwrapped := unwrapProcessor(proc)
+			switch unwrapped.(type) {
+			case *Offloader:
+				hasOffloader = true
+				if seenSummarizer {
+					offloaderBeforeSummarizer = false
+				}
+			case *Summarizer:
+				hasSummarizer = true
+				seenSummarizer = true
+			}
 			continue
 		}
 		rp, err := adaptRequestProcessor(proc)
@@ -252,6 +285,18 @@ func (b *Builder) commitPipeline() (*Pipeline, error) {
 		}
 		pipeline.AddRequestProcessor(rp)
 	}
+
+	if hasSummarizer && !hasOffloader {
+		return nil, fmt.Errorf(
+			"commit pipeline: compaction requires offloader before summarizer (never skip to summarize)",
+		)
+	}
+	if hasSummarizer && hasOffloader && !offloaderBeforeSummarizer {
+		return nil, fmt.Errorf(
+			"commit pipeline: compaction requires offloader to run before summarizer",
+		)
+	}
+
 	return pipeline, nil
 }
 

@@ -2,7 +2,6 @@ package context
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -270,15 +269,15 @@ func TestBuilderEffectsAggregatesProcessorSideEffects(t *testing.T) {
 	}
 }
 
-func TestBuilderBuildPreviewRejectsSideEffects(t *testing.T) {
+func TestBuilderBuildPreviewSkipsSideEffects(t *testing.T) {
 	builder := NewBuilder(
 		Instructions("system"),
 		NewOffloader(1000, t.TempDir()),
 	)
 
 	err := builder.BuildPreview(t.Context(), nil, "", session.New("preview"), &llm.Request{})
-	if !errors.Is(err, ErrPreviewUnsafeProcessor) {
-		t.Fatalf("BuildPreview error = %v, want ErrPreviewUnsafeProcessor", err)
+	if err != nil {
+		t.Fatalf("BuildPreview expected success, got error: %v", err)
 	}
 }
 
@@ -334,11 +333,8 @@ func TestBuilderPhasedHelpersSupportRequestProcessorsAndMutators(t *testing.T) {
 		},
 	))
 
-	if err := builder.BuildPreview(t.Context(), nil, "", sess, &llm.Request{}); !errors.Is(
-		err,
-		ErrPreviewUnsafeProcessor,
-	) {
-		t.Fatalf("BuildPreview error = %v, want ErrPreviewUnsafeProcessor", err)
+	if err := builder.BuildPreview(t.Context(), nil, "", sess, &llm.Request{}); err != nil {
+		t.Fatalf("BuildPreview expected success, got error: %v", err)
 	}
 
 	req := &llm.Request{}

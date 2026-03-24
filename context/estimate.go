@@ -40,8 +40,26 @@ func EstimateMessagesTokens(
 	for _, m := range messages {
 		total += 4 // per-message overhead
 		total += EstimateTokens(m.Content)
+		if m.Name != "" {
+			total += EstimateTokens(m.Name)
+		}
+		if m.ToolID != "" {
+			total += EstimateTokens(m.ToolID)
+		}
+		if m.Reasoning != "" {
+			total += EstimateTokens(m.Reasoning)
+		}
+		for _, b := range m.ThinkingBlocks {
+			total += EstimateTokens(b.Thinking) + EstimateTokens(b.Signature)
+		}
 		for _, call := range m.Calls {
-			total += EstimateTokens(call.Function.Name) + EstimateTokens(call.Function.Arguments)
+			total += EstimateTokens(
+				call.ID,
+			) + EstimateTokens(
+				call.Function.Name,
+			) + EstimateTokens(
+				call.Function.Arguments,
+			)
 		}
 	}
 	return total
