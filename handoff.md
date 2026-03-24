@@ -3,37 +3,34 @@
 ## Summary
 Canto is a Go-native framework for **durable agent backends**. It prioritizes append-only session state, explicit context engineering, and backend-grade execution primitives over "batteries-included" application magic. It is currently in **Phase 4 (Path to Alpha)**.
 
-## Current Project Status (2026-03-23)
+## Current Project Status (2026-03-24)
 - **Build**: `make test` passes. `make build` has a pre-existing failure in `examples/subagents` (the `//go:build ignore` main.go means no `main()` in the `main` package). Not introduced by recent changes.
 - **Tests**: all passing. `x/redis` tests gated behind `//go:build redis` (requires Docker).
-- **Git**: 4 commits ahead of origin.
+- **Git**: 8 commits ahead of origin.
 
 ## What Just Happened
+
+### Package Review Sweep (P2+P3 COMPLETE, P4 REMAINING)
+All P2 and P3 packages reviewed — **no bugs found** in any newly reviewed package. 7 bugs fixed across context/, memory/, llm/, session/ (prior sessions). Key findings:
+
+- **session/** (`canto-gjkj`): Fixed `JSONLStore.LoadUntil` boundary check and `Session.Append` metadata cloning. `EffectiveEntries` and `Subscribe` fan-out audited — no bugs.
+- **agent/** (`canto-s984`): Step/Turn loops, handoff extraction, thinking block accumulation — all correct.
+- **runtime/** (`canto-o5mf`): Coordinator lease semantics, lane queue, ChildRunner lifecycle, InputGate — all correct.
+- **tool/** (`canto-f5ar`): 100% coverage. Clean interfaces.
+- **artifact/** (`canto-etkt`): FileStore atomic write pattern verified.
+- **skill/** (`canto-3w11`): Loader, registry, CRUD tools — all correct.
+- **x/redis/** (`canto-ugn5`): Lua scripts, atomic lease ops — verified.
+- **x/eval/** (`canto-jyva`): Parallel eval harness — correct.
+- **x/tools/** (`canto-89co`): Bash, file, memory, task, search tools — all correct.
+
+P4 remaining: `hook/`, `x/obs/`, `x/swarm/`, `x/graph/`, `x/pool/`, `x/testing/`
 
 ### Redis Distributed Coordinator (DONE)
 `x/redis/RedisCoordinator` implements the `runtime.Coordinator` interface with:
 - Sorted-set FIFO queues for per-session ordering
-- Lua scripts for atomic grant/renew/ack/nack (single-script Enqueue eliminates ZCard+ZAddNX race)
+- Lua scripts for atomic grant/renew/ack/nack
 - TTL-based key cleanup on Nack/crash (att/tok keys get PEXPIRE with 6x safety margin)
-- Persistent lease token counter (INCR on `:tok` key, separate from lease hash)
-- `//go:build redis` + testcontainers-go for containerized integration tests (11 tests)
-- Commits: `b5523d9` (redis), `824334a` (examples fix)
-
-### Correctness Fixes (DONE)
-Five bugs found and fixed during code review:
-1. **Enqueue race** — two-command gap allowed stale sequence numbers. Fixed with single Lua script.
-2. **att/tok key leak** — keys persisted forever after Nack/crash. Fixed with PEXPIRE in grant script.
-3. **`parseLease` zeroed RequestID** — Ack/Renew/Nack always compared against empty string. Fixed by passing original Ticket.
-4. **Lease token counter reset** — hash deletion on expiry caused token collisions. Fixed with persistent `tok` key.
-5. **`examples/subagents` build** — `runExample` undefined when compiling with `//go:build ignore`. Fixed by extracting to `example.go`.
-
-### Package Review Sweep (IN PROGRESS)
-18 review tasks in `tk`. Priority order:
-- **P2**: `session/` (51.6%), `llm/` (30.5%), `memory/` (59.4%), `context/` (74.6%)
-- **P3**: `agent/`, `runtime/`, `artifact/`, `tool/`, `skill/`, `x/redis/`, `x/eval/`, `x/tools/`
-- **P4**: `hook/`, `x/obs/`, `x/swarm/`, `x/graph/`, `x/pool/`, `x/testing/`
-
-Run `tk ready` to find the next package to review.
+- Persistent lease token counter (INCR on `:tok` key)
 
 ## Phase 4 Roadmap — Remaining Work
 - [x] Explicit alpha package boundary
@@ -42,7 +39,7 @@ Run `tk ready` to find the next package to review.
 - [x] First-class artifact subsystem
 - [x] Two-phase context pipeline
 - [x] Performance baseline (event memoization, O(1) history)
-- [ ] **Package review sweep** (18 packages remaining)
+- [ ] **Package review sweep** (6 P4 packages remaining)
 - [ ] Artifact storage refinement (`canto-n22u`)
 - [ ] Ion dogfood friction capture (`canto-h9da`)
 - [ ] Alpha release gate checklist (`canto-dtnr`)
@@ -62,7 +59,7 @@ x/graph, x/swarm, x/eval, x/redis
 
 - **State**: Append-only event log (JSONL/SQLite). Never mutate events.
 - **Coordination**: `runtime.Coordinator` interface. `LocalCoordinator` (built-in) or `RedisCoordinator` (distributed).
-- **Context**: `Processor` pipeline. Preview-safe (`BuildPreview`) vs commit-time (`BuildCommit`).
+- **Context**: `Processor` pipeline. `BuildPreview` (shaping only) vs `BuildCommit` (mutators + shaping).
 - **Sessions**: Durable with `Subscribe()`, `LoadUntil`, `Fork`. `WithMetadata` for context propagation.
 - **Artifacts**: Durable descriptors with pluggable `Store` (local file-backed default).
 
@@ -72,9 +69,7 @@ x/graph, x/swarm, x/eval, x/redis
 - `ai/DECISIONS.md` — append-only design decision log
 - `ai/ROADMAP.md` — phase gates and progress
 - `x/redis/coordinator.go` — Redis coordinator implementation
-- `x/redis/coordinator_test.go` — integration tests
 - `runtime/coordinator.go` — Coordinator interface + LocalCoordinator
-- `runtime/coordinator_exec.go` — Runner integration (lease renewal, ack)
 - `.tasks/` — task tracker (`tk`), local-only
 
 ## Developer Context
