@@ -74,7 +74,10 @@ func main() {
 	fmt.Println("Running baseline evaluation...")
 	bestScore, err := evaluate(ctx)
 	if err != nil {
-		log.Fatalf("Baseline evaluation failed. Ensure target.go compiles and evaluate.sh works. Error: %v", err)
+		log.Fatalf(
+			"Baseline evaluation failed. Ensure target.go compiles and evaluate.sh works. Error: %v",
+			err,
+		)
 	}
 	fmt.Printf("Baseline Score: %.2f\n\n", bestScore)
 
@@ -82,7 +85,7 @@ func main() {
 	history = append(history, bestScore)
 
 	// Open or create the JSONL experiment log
-	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		log.Fatalf("failed to open log file: %v", err)
 	}
@@ -101,8 +104,16 @@ func main() {
 	// Seed initial message if the session is new
 	sess, _ := store.Load(ctx, sessionID)
 	if len(sess.Messages()) == 0 {
-		store.Save(ctx, session.NewEvent(sessionID, session.MessageAdded,
-			map[string]string{"role": "user", "content": fmt.Sprintf("The current baseline score is %.2f ns/op. Please modify the target.go file to improve performance.", bestScore)},
+		store.Save(ctx, session.NewEvent(
+			sessionID,
+			session.MessageAdded,
+			map[string]string{
+				"role": "user",
+				"content": fmt.Sprintf(
+					"The current baseline score is %.2f ns/op. Please modify the target.go file to improve performance.",
+					bestScore,
+				),
+			},
 		))
 	}
 
@@ -133,8 +144,11 @@ func main() {
 		if evalErr != nil {
 			// Failed to compile or test failed
 			fmt.Printf("Evaluation failed: %v. Reverting to backup.\n", evalErr)
-			os.WriteFile(targetFile, backup, 0644)
-			outcomeMessage = fmt.Sprintf("Your last change caused an error: %v. I have reverted target.go back to the previous state. Please try a different approach.", evalErr)
+			os.WriteFile(targetFile, backup, 0o644)
+			outcomeMessage = fmt.Sprintf(
+				"Your last change caused an error: %v. I have reverted target.go back to the previous state. Please try a different approach.",
+				evalErr,
+			)
 			kept = false
 		} else {
 			history = append(history, newScore)
@@ -156,12 +170,12 @@ func main() {
 				kept = true
 			} else if improvement > 0 {
 				fmt.Printf("Score slightly improved to %.2f, but within noise margin (Confidence: %.2fx MAD < 1.0). Reverting to avoid complexity bloat.\n", newScore, confidence)
-				os.WriteFile(targetFile, backup, 0644)
+				os.WriteFile(targetFile, backup, 0o644)
 				outcomeMessage = fmt.Sprintf("The score slightly improved to %.2f, but it was within the margin of error (noise). I have reverted the file to avoid adding unnecessary code complexity. Try a more significant optimization.", newScore)
 				kept = false
 			} else {
 				fmt.Printf("Score worsened or did not improve (%.2f vs best %.2f). Reverting.\n", newScore, bestScore)
-				os.WriteFile(targetFile, backup, 0644)
+				os.WriteFile(targetFile, backup, 0o644)
 				outcomeMessage = fmt.Sprintf("The optimization did not improve the score (got %.2f, best is %.2f). I have reverted the file. Please try a different strategy.", newScore, bestScore)
 				kept = false
 			}
@@ -189,7 +203,9 @@ func main() {
 		))
 	}
 
-	fmt.Println("Autoresearch complete. Check target.go for the final optimized code and experiments.jsonl for the log.")
+	fmt.Println(
+		"Autoresearch complete. Check target.go for the final optimized code and experiments.jsonl for the log.",
+	)
 }
 
 // evaluate runs the evaluation script and returns the parsed score.
@@ -200,7 +216,6 @@ func evaluate(ctx context.Context) (float64, error) {
 
 	cmd := exec.CommandContext(ctx, evalScript)
 	output, err := cmd.CombinedOutput()
-
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return 0, fmt.Errorf("evaluation timed out after 30 seconds (possible infinite loop)")
