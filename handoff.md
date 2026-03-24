@@ -10,8 +10,8 @@ Canto is a Go-native framework for **durable agent backends**. It prioritizes ap
 
 ## What Just Happened
 
-### Package Review Sweep (P2+P3 COMPLETE, P4 REMAINING)
-All P2 and P3 packages reviewed — **no bugs found** in any newly reviewed package. 7 bugs fixed across context/, memory/, llm/, session/ (prior sessions). Key findings:
+### Package Review Sweep (COMPLETE)
+All packages reviewed — **7 bugs fixed** across context/, memory/, llm/, session/. Summary:
 
 - **session/** (`canto-gjkj`): Fixed `JSONLStore.LoadUntil` boundary check and `Session.Append` metadata cloning. `EffectiveEntries` and `Subscribe` fan-out audited — no bugs.
 - **agent/** (`canto-s984`): Step/Turn loops, handoff extraction, thinking block accumulation — all correct.
@@ -22,8 +22,12 @@ All P2 and P3 packages reviewed — **no bugs found** in any newly reviewed pack
 - **x/redis/** (`canto-ugn5`): Lua scripts, atomic lease ops — verified.
 - **x/eval/** (`canto-jyva`): Parallel eval harness — correct.
 - **x/tools/** (`canto-89co`): Bash, file, memory, task, search tools — all correct.
-
-P4 remaining: `hook/`, `x/obs/`, `x/swarm/`, `x/graph/`, `x/pool/`, `x/testing/`
+- **hook/** (`canto-1wmh`): Command/Func hooks, Runner event matching — correct.
+- **x/pool/** (`canto-6olb`): Bounded worker pool, ordering preserved — correct.
+- **x/graph/** (`canto-rmzx`): DAG routing, DFS cycle detection, nested graphs — correct.
+- **x/swarm/** (`canto-6mhd`): **Observability bug**: `obs.StartSwarmRound` returns (ctx, roundSpan) but derived ctx is discarded — goroutines capture outer ctx. Span hierarchy wrong but not a runtime bug.
+- **x/obs/** (`canto-09tx`): OTel provider/tool wrappers — correct.
+- **x/testing/** (`canto-e0di`): MockProvider, RecordProvider, Assert helpers — correct.
 
 ### Redis Distributed Coordinator (DONE)
 `x/redis/RedisCoordinator` implements the `runtime.Coordinator` interface with:
@@ -39,7 +43,7 @@ P4 remaining: `hook/`, `x/obs/`, `x/swarm/`, `x/graph/`, `x/pool/`, `x/testing/`
 - [x] First-class artifact subsystem
 - [x] Two-phase context pipeline
 - [x] Performance baseline (event memoization, O(1) history)
-- [ ] **Package review sweep** (6 P4 packages remaining)
+- [x] **Package review sweep** (all packages reviewed, 7 bugs fixed)
 - [ ] Artifact storage refinement (`canto-n22u`)
 - [ ] Ion dogfood friction capture (`canto-h9da`)
 - [ ] Alpha release gate checklist (`canto-dtnr`)
