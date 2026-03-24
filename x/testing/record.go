@@ -14,7 +14,7 @@ import (
 type RecordedStep struct {
 	Request  *llm.Request  `json:"request"`
 	Response *llm.Response `json:"response,omitempty"`
-	Chunks   []llm.Chunk      `json:"chunks,omitempty"`
+	Chunks   []llm.Chunk   `json:"chunks,omitempty"`
 }
 
 // RecordProvider wraps an llm.Provider and records all interactions to a list

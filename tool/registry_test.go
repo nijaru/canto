@@ -88,7 +88,10 @@ func TestRegistry_SpecsAndNames_AreSorted(t *testing.T) {
 	}
 
 	specs := reg.Specs()
-	if got := []string{specs[0].Name, specs[1].Name, specs[2].Name}; strings.Join(got, ",") != "alpha,beta,zeta" {
+	if got := []string{specs[0].Name, specs[1].Name, specs[2].Name}; strings.Join(
+		got,
+		",",
+	) != "alpha,beta,zeta" {
 		t.Fatalf("registry specs order = %v, want [alpha beta zeta]", got)
 	}
 }

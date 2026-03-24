@@ -222,7 +222,8 @@ func (s *Session) latestCompactionSnapshot() (CompactionSnapshot, bool, error) {
 		if !ok {
 			continue
 		}
-		if snapshot.CutoffEventID == "" || (len(snapshot.Entries) == 0 && len(snapshot.Messages) == 0) {
+		if snapshot.CutoffEventID == "" ||
+			(len(snapshot.Entries) == 0 && len(snapshot.Messages) == 0) {
 			continue
 		}
 		return snapshot, true, nil

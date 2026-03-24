@@ -159,7 +159,11 @@ func TestLazyToolProcessor_UnlockedToolsAreSorted(t *testing.T) {
 	if len(req.Tools) != 3 {
 		t.Fatalf("expected 3 tools, got %d", len(req.Tools))
 	}
-	if req.Tools[0].Name != "search_tools" || req.Tools[1].Name != "tool_a" || req.Tools[2].Name != "tool_b" {
-		t.Fatalf("unexpected tool order: %v", []string{req.Tools[0].Name, req.Tools[1].Name, req.Tools[2].Name})
+	if req.Tools[0].Name != "search_tools" || req.Tools[1].Name != "tool_a" ||
+		req.Tools[2].Name != "tool_b" {
+		t.Fatalf(
+			"unexpected tool order: %v",
+			[]string{req.Tools[0].Name, req.Tools[1].Name, req.Tools[2].Name},
+		)
 	}
 }
