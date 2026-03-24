@@ -498,6 +498,61 @@ func TestCoreMemoryProcessor_ReplacesExistingBlock(t *testing.T) {
 	}
 }
 
+func TestKnowledgeMemory_UsesEffectiveMessagesAfterCompaction(t *testing.T) {
+	store := newTestCoreStore(t)
+	ctx := context.Background()
+
+	// Save a knowledge item that matches the effective (post-compaction) message.
+	if err := store.SaveKnowledge(ctx, &memory.KnowledgeItem{
+		ID:      "k1",
+		Content: "uniqueeffectivetoken",
+	}); err != nil {
+		t.Fatalf("SaveKnowledge: %v", err)
+	}
+
+	// Build a session with a raw message and then a compaction snapshot that
+	// replaces it with a different message.
+	sess := session.New("km-compacted")
+	rawMsg := llm.Message{Role: llm.RoleUser, Content: "uniquerawtoken"}
+	if err := sess.Append(ctx, session.NewMessage(sess.ID(), rawMsg)); err != nil {
+		t.Fatalf("append raw: %v", err)
+	}
+
+	// Compaction replaces raw message with the effective message.
+	events := sess.Events()
+	snapshot := session.CompactionSnapshot{
+		Strategy:      "summarize",
+		CutoffEventID: events[len(events)-1].ID.String(),
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "uniqueeffectivetoken"},
+		},
+	}
+	if err := sess.Append(ctx, session.NewCompactionEvent(sess.ID(), snapshot)); err != nil {
+		t.Fatalf("append compaction: %v", err)
+	}
+
+	// KnowledgeMemory with no explicit query should derive the query from
+	// the effective history — "uniqueeffectivetoken" — and find the item.
+	proc := KnowledgeMemory(store, "", 5)
+	req := &llm.Request{}
+	if err := proc.Process(ctx, nil, "", sess, req); err != nil {
+		t.Fatalf("KnowledgeMemory.Process: %v", err)
+	}
+
+	found := false
+	for _, msg := range req.Messages {
+		if strings.Contains(msg.Content, "uniqueeffectivetoken") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error(
+			"expected KnowledgeMemory to inject knowledge matching the effective history query, not the raw history",
+		)
+	}
+}
+
 func TestCoreMemoryProcessor_NilStore(t *testing.T) {
 	sess := session.New("sess-nil-store")
 	req := &llm.Request{}

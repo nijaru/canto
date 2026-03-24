@@ -150,6 +150,7 @@ func RunTurn(
 	}
 
 	if steps >= maxSteps {
+		res.Usage = totalUsage
 		err = fmt.Errorf("%w (%d)", ErrMaxSteps, maxSteps)
 		return
 	}

@@ -131,6 +131,39 @@ func TestChildRunnerSpawn_ForkCopiesParentHistory(t *testing.T) {
 	}
 }
 
+func TestChildRunnerWait_ReleasesHandle(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent-release").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	ref, err := childRunner.Spawn(t.Context(), parent, ChildSpec{
+		ID:    "child-release",
+		Agent: &echoAgent{},
+		Mode:  session.ChildModeHandoff,
+		InitialMessages: []llm.Message{
+			{Role: llm.RoleUser, Content: "go"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+
+	if _, err := childRunner.Wait(t.Context(), ref.ID); err != nil {
+		t.Fatalf("first wait: %v", err)
+	}
+
+	// After Wait returns, the handle should be released — a second Wait must fail.
+	if _, err := childRunner.Wait(t.Context(), ref.ID); err == nil {
+		t.Error("expected second Wait to return error after handle released, got nil")
+	}
+}
+
 func TestChildRunnerWaitUnknownChild(t *testing.T) {
 	childRunner := NewChildRunner(nil)
 	defer childRunner.Close()

@@ -17,7 +17,7 @@ import (
 // in-memory HNSW index (github.com/coder/hnsw) with an embedded SQLite database
 // for durable metadata storage and cross-session persistence.
 type HNSWStore struct {
-	DB    *sql.DB
+	db    *sql.DB
 	graph *hnsw.Graph[string]
 	mu    sync.RWMutex
 
@@ -47,7 +47,7 @@ func NewHNSWStore(ctx context.Context, dsn string) (*HNSWStore, error) {
 	}
 
 	s := &HNSWStore{
-		DB:              db,
+		db: db,
 		// Initialize the Graph with default performant parameters using Cosine Distance
 		graph:           hnsw.NewGraph[string](),
 		OverfetchFactor: 3.0,
@@ -72,13 +72,13 @@ func (s *HNSWStore) init(ctx context.Context) error {
 		vector TEXT,
 		metadata TEXT
 	)`
-	_, err := s.DB.ExecContext(ctx, q)
+	_, err := s.db.ExecContext(ctx, q)
 	return err
 }
 
 // load reconstructs the in-memory HNSW index from SQLite rows on startup.
 func (s *HNSWStore) load(ctx context.Context) error {
-	rows, err := s.DB.QueryContext(ctx, "SELECT id, vector FROM vectors")
+	rows, err := s.db.QueryContext(ctx, "SELECT id, vector FROM vectors")
 	if err != nil {
 		return err
 	}
@@ -125,7 +125,7 @@ func (s *HNSWStore) Upsert(
 	defer s.mu.Unlock()
 
 	// Write durably to disk
-	_, err = s.DB.ExecContext(
+	_, err = s.db.ExecContext(
 		ctx,
 		"INSERT INTO vectors (id, vector, metadata) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET vector=excluded.vector, metadata=excluded.metadata",
 		id,
@@ -181,7 +181,7 @@ func (s *HNSWStore) Search(
 		strings.Join(placeholders, ","),
 	)
 
-	rows, err := s.DB.QueryContext(ctx, q, args...)
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("hnsw: metadata query: %w", err)
 	}
@@ -248,7 +248,7 @@ func (s *HNSWStore) Delete(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, err := s.DB.ExecContext(ctx, "DELETE FROM vectors WHERE id = ?", id)
+	_, err := s.db.ExecContext(ctx, "DELETE FROM vectors WHERE id = ?", id)
 	if err != nil {
 		return err
 	}
@@ -257,9 +257,15 @@ func (s *HNSWStore) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// DB returns the underlying SQLite database handle.
+// Use this only for advanced introspection or testing; prefer the store methods.
+func (s *HNSWStore) DB() *sql.DB {
+	return s.db
+}
+
 // Close finalizes connection pooling for the underlying SQLite proxy db.
 func (s *HNSWStore) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.DB.Close()
+	return s.db.Close()
 }

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -198,6 +199,43 @@ func TestStreamTurnMaxSteps(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "steps") {
 		t.Errorf("expected max steps error, got: %v", err)
+	}
+}
+
+func TestStreamTurnMaxSteps_PreservesUsage(t *testing.T) {
+	call := llm.Call{ID: "c1", Type: "function"}
+	call.Function.Name = "loop"
+	call.Function.Arguments = `{}`
+
+	usageChunk := &llm.Usage{InputTokens: 10, OutputTokens: 5, TotalTokens: 15}
+	chunks := []llm.Chunk{{Calls: []llm.Call{call}, Usage: usageChunk}}
+	var allChunks [][]llm.Chunk
+	for range 10 {
+		allChunks = append(allChunks, chunks)
+	}
+
+	p := &streamMockProvider{chunks: allChunks}
+	reg := tool.NewRegistry()
+	reg.Register(tool.Func("loop", "loops", nil,
+		func(_ context.Context, _ string) (string, error) {
+			return "looping", nil
+		}))
+
+	a := New("a", "sys", "m", p, reg, WithMaxSteps(3))
+	s := userSession("s-stream-maxsteps-usage", "start")
+
+	result, err := a.StreamTurn(context.Background(), s, nil)
+	if !errors.Is(err, ErrMaxSteps) {
+		t.Fatalf("expected ErrMaxSteps, got %v", err)
+	}
+	// Each step contributes TotalTokens=15; total across MaxSteps=3 should be 45.
+	want := 15 * 3
+	if int(result.Usage.TotalTokens) != want {
+		t.Errorf(
+			"Usage.TotalTokens = %d, want %d (accumulated across all steps)",
+			result.Usage.TotalTokens,
+			want,
+		)
 	}
 }
 

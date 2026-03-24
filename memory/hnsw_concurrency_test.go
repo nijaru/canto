@@ -53,7 +53,7 @@ func TestHNSWStore_Concurrency(t *testing.T) {
 
 	// Verify DB has all items
 	var count int
-	if err := store.DB.QueryRow("SELECT COUNT(*) FROM vectors").Scan(&count); err != nil {
+	if err := store.DB().QueryRow("SELECT COUNT(*) FROM vectors").Scan(&count); err != nil {
 		t.Fatalf("failed to count rows: %v", err)
 	}
 	if count != total {

@@ -68,7 +68,7 @@ func (a *BaseAgent) StreamStep(
 	var usage llm.Usage
 	var thinkingBlocks []llm.ThinkingBlock
 	assembledCalls := make(map[string]llm.Call) // keyed by call ID
-	callOrder := make([]string, 0)                  // preserve insertion order
+	callOrder := make([]string, 0)              // preserve insertion order
 
 	for {
 		chunk, ok := stream.Next()
@@ -190,6 +190,7 @@ func (a *BaseAgent) StreamTurn(
 	}
 
 	if steps >= a.MaxSteps {
+		res.Usage = totalUsage
 		err = fmt.Errorf("%w (%d)", ErrMaxSteps, a.MaxSteps)
 		return
 	}

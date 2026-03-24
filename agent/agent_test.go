@@ -460,6 +460,50 @@ func TestTurnPopulatesContent(t *testing.T) {
 	}
 }
 
+func TestTurnMaxSteps_PreservesUsage(t *testing.T) {
+	makeToolResponse := func() *llm.Response {
+		return &llm.Response{
+			Calls: []llm.Call{{
+				ID:   "c1",
+				Type: "function",
+				Function: struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				}{Name: "echo", Arguments: `{}`},
+			}},
+			Usage: llm.Usage{InputTokens: 10, OutputTokens: 5, TotalTokens: 15},
+		}
+	}
+
+	reg := tool.NewRegistry()
+	reg.Register(&simpleTool{name: "echo", output: "pong"})
+
+	maxSteps := 2
+	responses := make([]*llm.Response, maxSteps)
+	for i := range responses {
+		responses[i] = makeToolResponse()
+	}
+	p := &mockProvider{responses: responses}
+
+	a := New("test-agent", "You are helpful.", "gpt-4", p, reg)
+	a.MaxSteps = maxSteps
+	s := userSession("s-maxsteps-usage", "loop forever")
+
+	result, err := a.Turn(context.Background(), s)
+	if !errors.Is(err, ErrMaxSteps) {
+		t.Fatalf("expected ErrMaxSteps, got %v", err)
+	}
+	// Each step contributes TotalTokens=15; total across maxSteps=2 should be 30.
+	want := 15 * maxSteps
+	if int(result.Usage.TotalTokens) != want {
+		t.Errorf(
+			"Usage.TotalTokens = %d, want %d (accumulated across all steps)",
+			result.Usage.TotalTokens,
+			want,
+		)
+	}
+}
+
 func TestWithMaxSteps(t *testing.T) {
 	a := New("a", "", "m", &mockProvider{}, nil, WithMaxSteps(5))
 	if a.MaxSteps != 5 {

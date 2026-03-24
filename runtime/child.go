@@ -169,6 +169,9 @@ func (r *ChildRunner) Wait(ctx context.Context, childID string) (ChildResult, er
 
 	select {
 	case <-handle.done:
+		r.mu.Lock()
+		delete(r.handles, childID)
+		r.mu.Unlock()
 		return handle.result, nil
 	case <-ctx.Done():
 		return ChildResult{}, ctx.Err()
@@ -277,13 +280,12 @@ func (r *ChildRunner) runChild(
 }
 
 func (r *ChildRunner) ensureSemaphore() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.MaxConcurrent <= 0 {
 		r.sem = nil
 		return
 	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.sem == nil || cap(r.sem) != r.MaxConcurrent {
 		r.sem = make(chan struct{}, r.MaxConcurrent)
 	}

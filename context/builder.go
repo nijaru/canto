@@ -59,6 +59,12 @@ func (b *Builder) BuildPreview(
 
 // BuildCommit runs commit-time mutation first and then rebuilds the request
 // from the updated session state.
+//
+// Processor ordering note: processors are classified by their declared effects.
+// Side-effecting processors (session or external mutations) always run before
+// request processors, regardless of the order they were registered. If your
+// pipeline depends on a specific interleaved order of mutators and request
+// processors, use Pipeline directly instead of Builder.
 func (b *Builder) BuildCommit(
 	ctx context.Context,
 	p llm.Provider,
@@ -303,6 +309,27 @@ func Instructions(instructions string) Processor {
 	)
 }
 
+// injectSystemBlock prepends block into the first system message in req,
+// replacing any existing match of blockRegex. If no system message exists,
+// a new one is prepended.
+func injectSystemBlock(req *llm.Request, blockRegex *regexp.Regexp, block string) {
+	for i, m := range req.Messages {
+		if m.Role != llm.RoleSystem {
+			continue
+		}
+		if loc := blockRegex.FindStringIndex(m.Content); loc != nil {
+			req.Messages[i].Content = m.Content[:loc[0]] + block + "\n\n" + m.Content[loc[1]:]
+		} else {
+			req.Messages[i].Content = block + "\n\n" + m.Content
+		}
+		return
+	}
+	sys := llm.Message{Role: llm.RoleSystem, Content: block}
+	req.Messages = append(req.Messages, llm.Message{})
+	copy(req.Messages[1:], req.Messages)
+	req.Messages[0] = sys
+}
+
 // coreMemoryRegex matches an existing core_memory block and any trailing newlines.
 var coreMemoryRegex = regexp.MustCompile(`(?s)<core_memory>.*?</core_memory>\n*`)
 
@@ -320,31 +347,13 @@ func CoreMemoryProcessor(store *memory.CoreStore) Processor {
 			if persona == nil {
 				return nil
 			}
-
 			memBlock := fmt.Sprintf(
 				"<core_memory>\nAgent Name: %s\nPersona Context: %s\nDirectives: %s\n</core_memory>",
 				persona.Name,
 				persona.Description,
 				persona.Directives,
 			)
-
-			// Prepend or replace system instruction if not already there
-			for i, m := range req.Messages {
-				if m.Role == llm.RoleSystem {
-					if loc := coreMemoryRegex.FindStringIndex(m.Content); loc != nil {
-						req.Messages[i].Content = m.Content[:loc[0]] + memBlock + "\n\n" + m.Content[loc[1]:]
-					} else {
-						req.Messages[i].Content = memBlock + "\n\n" + m.Content
-					}
-					return nil
-				}
-			}
-
-			// Prepend new system message
-			sys := llm.Message{Role: llm.RoleSystem, Content: memBlock}
-			req.Messages = append(req.Messages, llm.Message{})
-			copy(req.Messages[1:], req.Messages)
-			req.Messages[0] = sys
+			injectSystemBlock(req, coreMemoryRegex, memBlock)
 			return nil
 		},
 	)
@@ -354,7 +363,7 @@ func CoreMemoryProcessor(store *memory.CoreStore) Processor {
 var knowledgeMemoryRegex = regexp.MustCompile(`(?s)<knowledge_memory>.*?</knowledge_memory>\n*`)
 
 // KnowledgeMemory retrieves and injects matching knowledge items from the store based on a query.
-// If query is empty, it uses the text of the last message in the session history.
+// If query is empty, it uses the text of the last message in the effective session history.
 func KnowledgeMemory(store *memory.CoreStore, query string, limit int) Processor {
 	return ProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
@@ -363,7 +372,10 @@ func KnowledgeMemory(store *memory.CoreStore, query string, limit int) Processor
 			}
 			q := query
 			if q == "" {
-				messages := sess.Messages()
+				messages, err := sess.EffectiveMessages()
+				if err != nil {
+					return err
+				}
 				for i := len(messages) - 1; i >= 0; i-- {
 					if messages[i].Content != "" {
 						q = messages[i].Content
@@ -389,25 +401,7 @@ func KnowledgeMemory(store *memory.CoreStore, query string, limit int) Processor
 				fmt.Fprintf(&sb, "---\n%s\n", item.Content)
 			}
 			sb.WriteString("</knowledge_memory>")
-			memBlock := sb.String()
-
-			// Prepend or replace system instruction if not already there
-			for i, m := range req.Messages {
-				if m.Role == llm.RoleSystem {
-					if loc := knowledgeMemoryRegex.FindStringIndex(m.Content); loc != nil {
-						req.Messages[i].Content = m.Content[:loc[0]] + memBlock + "\n\n" + m.Content[loc[1]:]
-					} else {
-						req.Messages[i].Content = memBlock + "\n\n" + m.Content
-					}
-					return nil
-				}
-			}
-
-			// Prepend new system message
-			sys := llm.Message{Role: llm.RoleSystem, Content: memBlock}
-			req.Messages = append(req.Messages, llm.Message{})
-			copy(req.Messages[1:], req.Messages)
-			req.Messages[0] = sys
+			injectSystemBlock(req, knowledgeMemoryRegex, sb.String())
 			return nil
 		},
 	)
