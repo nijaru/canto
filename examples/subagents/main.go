@@ -1,5 +1,3 @@
-//go:build ignore
-
 // subagents demonstrates Canto's core orchestration primitives for managing
 // multi-agent workflows.
 //
@@ -14,7 +12,7 @@
 // 3. session.ArtifactRecordedEvent (tracking files created by subagents)
 // 4. session.ExportRunTree (exporting the full hierarchy for telemetry/evals)
 //
-// Run: go run examples/subagents/main.go
+// Run: go run ./examples/subagents
 package main
 
 import (

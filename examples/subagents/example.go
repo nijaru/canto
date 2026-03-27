@@ -136,10 +136,10 @@ func runExample(ctx context.Context) (orchestrationResult, error) {
 			URI:   tasks[i].ArtifactURI,
 			Label: tasks[i].Task,
 		}
-		if err := parent.Append(ctx, session.NewArtifactRecordedEvent(parent.ID(), session.ArtifactRecordedData{
+		if err := session.RecordArtifact(ctx, parent, session.ArtifactRecordedData{
 			ChildID:  ref.ID,
 			Artifact: artifact,
-		})); err != nil {
+		}); err != nil {
 			return orchestrationResult{}, err
 		}
 		if err := parent.Append(ctx, session.NewChildMergedEvent(parent.ID(), session.ChildMergedData{

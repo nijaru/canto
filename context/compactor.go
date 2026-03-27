@@ -144,27 +144,24 @@ func (p *Offloader) compact(
 		m := entry.Message
 		if m.Role == llm.RoleTool && len(m.Content) > largeToolThreshold {
 			id := offloadCandidateID(sess.ID(), cutoffEventID, entry, i)
-			desc, err := store.Put(ctx, artifact.Descriptor{
-				ID:                id,
-				Kind:              "context_offload",
-				Label:             "Offloaded tool output",
-				MIMEType:          "text/plain",
-				ProducerSessionID: sess.ID(),
-				ProducerEventID:   entry.EventID,
-				Metadata: map[string]any{
-					"strategy":        "offload",
-					"source_event_id": entry.EventID,
-					"tool_id":         m.ToolID,
+			desc, err := session.StoreArtifact(ctx, sess, store, session.ArtifactRecordedData{
+				SessionID: sess.ID(),
+				Artifact: artifact.Descriptor{
+					ID:                id,
+					Kind:              "context_offload",
+					Label:             "Offloaded tool output",
+					MIMEType:          "text/plain",
+					ProducerSessionID: sess.ID(),
+					ProducerEventID:   entry.EventID,
+					Metadata: map[string]any{
+						"strategy":        "offload",
+						"source_event_id": entry.EventID,
+						"tool_id":         m.ToolID,
+					},
 				},
 			}, strings.NewReader(m.Content))
 			if err != nil {
 				return fmt.Errorf("failed to persist offload artifact: %w", err)
-			}
-			if err := sess.Append(ctx, session.NewArtifactRecordedEvent(sess.ID(), session.ArtifactRecordedData{
-				Artifact:  desc,
-				SessionID: sess.ID(),
-			})); err != nil {
-				return fmt.Errorf("failed to record offload artifact: %w", err)
 			}
 
 			m.Content = offloadPlaceholder(desc.URI)

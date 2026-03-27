@@ -177,6 +177,12 @@ See [examples/subagents/main.go](examples/subagents/main.go) for a bounded orche
 
 By default, child runs are attached to the spawn context and are canceled with it. Set `runtime.ChildSpec.Detached` only for background work that should outlive the caller.
 
+If your host wants one obvious way to share runtime settings across foreground
+and background execution, use `runtime.ExecutionConfig`,
+`runtime.NewRunnerWithConfig(...)`, `runtime.NewChildRunnerWithConfig(...)`, or
+`runner.ChildRunner()` to carry the same coordinator, hook, and timeout posture
+through both paths.
+
 ### MCP Tools
 
 Use [`tool.Registry`](tool/) for local tools. Use [`tool/mcp`](tool/mcp/) when you need to discover or serve tools over MCP.
@@ -190,6 +196,10 @@ The framework uses the official Go MCP SDK for transport and session handling, w
 - `sess.EffectiveEntries()` returns prompt truth together with originating message-event IDs when known, which is useful for compaction and replay tooling.
 - Forks preserve lineage with fresh event IDs plus `fork_origin` metadata, so branches are durable without losing ancestry.
 - SQLite and JSONL stores now also expose first-class tree queries through `session.SessionTreeStore`, so parent/children/lineage navigation does not require scanning copied fork events.
+- Use `session.StoreArtifact(...)` when you want the framework to persist an
+  artifact body and emit the corresponding durable `artifact_recorded` event in
+  one step. Use `session.RecordArtifact(...)` for existing external descriptors
+  or refs.
 
 ## License
 
