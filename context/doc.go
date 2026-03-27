@@ -14,7 +14,9 @@
 // History is always derived from session.EffectiveMessages rather than the raw
 // transcript, so compaction stays durable across future turns. Offloader and
 // Summarizer persist compaction snapshots back into the session log; Offloader
-// also emits durable artifact descriptors for externalized content. LazyTools
-// derives unlocked tool state from prior search_tools completions recorded in
-// the session.
+// also emits durable artifact descriptors for externalized content.
+// CompactSession provides a small consumer-neutral helper for manually running
+// the built-in offload-then-summarize compaction path. LazyTools derives
+// unlocked tool state from prior search_tools completions recorded in the
+// session.
 package context
