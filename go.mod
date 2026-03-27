@@ -8,7 +8,7 @@ require (
 	github.com/coder/hnsw v0.6.1
 	github.com/go-json-experiment/json v0.0.0-20260214004413-d219187c3433
 	github.com/modelcontextprotocol/go-sdk v1.4.1
-	github.com/nijaru/agentskills v0.0.0-20260327094035-b6dfec01fd57
+	github.com/nijaru/agentskills v0.0.0-20260327104504-1968077cb46d
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/sashabaranov/go-openai v1.41.2
