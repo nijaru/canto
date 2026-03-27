@@ -80,6 +80,11 @@ func TestSQLiteStoreFork(t *testing.T) {
 	if child.ID() != childID {
 		t.Fatalf("forked session ID = %q, want %q", child.ID(), childID)
 	}
+	parentLoaded, err := store.Load(ctx, parentID)
+	if err != nil {
+		t.Fatalf("load parent: %v", err)
+	}
+	parentEvents := parentLoaded.Events()
 
 	loaded, err := store.Load(ctx, childID)
 	if err != nil {
@@ -102,6 +107,43 @@ func TestSQLiteStoreFork(t *testing.T) {
 		if origin.SessionID != parentID {
 			t.Fatalf("fork origin session_id = %q, want %q", origin.SessionID, parentID)
 		}
+	}
+
+	parent, err := store.Parent(ctx, childID)
+	if err != nil {
+		t.Fatalf("parent query failed: %v", err)
+	}
+	if parent == nil || parent.SessionID != parentID {
+		t.Fatalf("parent ancestry = %#v, want session %q", parent, parentID)
+	}
+
+	children, err := store.Children(ctx, parentID)
+	if err != nil {
+		t.Fatalf("children query failed: %v", err)
+	}
+	if len(children) != 1 || children[0].SessionID != childID {
+		t.Fatalf("children = %#v, want child %q", children, childID)
+	}
+	if children[0].ParentSessionID != parentID {
+		t.Fatalf("child parent_session_id = %q, want %q", children[0].ParentSessionID, parentID)
+	}
+	if children[0].Depth != 1 {
+		t.Fatalf("child depth = %d, want 1", children[0].Depth)
+	}
+	if children[0].ForkPointEventID != parentEvents[len(parentEvents)-1].ID.String() {
+		t.Fatalf(
+			"child fork_point_event_id = %q, want %q",
+			children[0].ForkPointEventID,
+			parentEvents[len(parentEvents)-1].ID,
+		)
+	}
+
+	lineage, err := store.Lineage(ctx, childID)
+	if err != nil {
+		t.Fatalf("lineage query failed: %v", err)
+	}
+	if len(lineage) != 2 || lineage[0].SessionID != parentID || lineage[1].SessionID != childID {
+		t.Fatalf("lineage = %#v, want [%q, %q]", lineage, parentID, childID)
 	}
 }
 
@@ -135,5 +177,33 @@ func TestSQLiteStoreLoadMaterializesMetadataOnEvents(t *testing.T) {
 	}
 	if got := events[0].Metadata["kind"]; got != "handoff" {
 		t.Fatalf("metadata kind = %#v, want %q", got, "handoff")
+	}
+}
+
+func TestSQLiteStoreLoadUsesMaxULIDBound(t *testing.T) {
+	dbFile := "test_canto_max_ulid.db"
+	defer os.Remove(dbFile)
+
+	store, err := NewSQLiteStore(dbFile)
+	if err != nil {
+		t.Fatalf("failed to create sqlite store: %v", err)
+	}
+	defer store.Close()
+
+	event := NewEvent("max-ulid-session", MessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "latest",
+	})
+	event.ID = maxULID()
+	if err := store.Save(t.Context(), event); err != nil {
+		t.Fatalf("save event: %v", err)
+	}
+
+	sess, err := store.Load(t.Context(), "max-ulid-session")
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+	if len(sess.Events()) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(sess.Events()))
 	}
 }

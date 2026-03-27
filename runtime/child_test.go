@@ -129,6 +129,23 @@ func TestChildRunnerSpawn_ForkCopiesParentHistory(t *testing.T) {
 	if messages[0].Content != "Original task" {
 		t.Fatalf("expected forked child to inherit parent history, got %#v", messages[0])
 	}
+
+	parentAncestry, err := store.Parent(t.Context(), ref.SessionID)
+	if err != nil {
+		t.Fatalf("load child parent ancestry: %v", err)
+	}
+	if parentAncestry == nil || parentAncestry.SessionID != parent.ID() {
+		t.Fatalf("child parent ancestry = %#v, want %q", parentAncestry, parent.ID())
+	}
+
+	lineage, err := store.Lineage(t.Context(), ref.SessionID)
+	if err != nil {
+		t.Fatalf("load child lineage: %v", err)
+	}
+	if len(lineage) != 2 || lineage[0].SessionID != parent.ID() ||
+		lineage[1].SessionID != ref.SessionID {
+		t.Fatalf("child lineage = %#v", lineage)
+	}
 }
 
 func TestChildRunnerWait_ReleasesHandle(t *testing.T) {

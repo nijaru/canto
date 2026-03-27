@@ -75,7 +75,10 @@ func decodeEventRow(
 	}
 	ts, err := time.Parse(time.RFC3339, timeStr)
 	if err != nil {
-		return Event{}, err
+		ts, err = time.Parse(time.RFC3339Nano, timeStr)
+		if err != nil {
+			return Event{}, err
+		}
 	}
 	return Event{
 		ID:          id,

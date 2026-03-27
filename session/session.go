@@ -413,3 +413,10 @@ type Store interface {
 	Fork(ctx context.Context, originalSessionID, newSessionID string) (*Session, error)
 	Search(ctx context.Context, sessionID string, query string) ([]Event, error)
 }
+
+var (
+	_ TreeStore        = (*SQLiteStore)(nil)
+	_ ForkOptionsStore = (*SQLiteStore)(nil)
+	_ TreeStore        = (*JSONLStore)(nil)
+	_ ForkOptionsStore = (*JSONLStore)(nil)
+)
