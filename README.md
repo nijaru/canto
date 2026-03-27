@@ -161,6 +161,11 @@ Use [`context.Builder.BuildPreview`](context/) when you need to inspect or shape
 
 This split exists so the framework can support dry-run inspection, tracing, and request planning without hiding stateful behavior behind one middleware hook.
 
+If your application wants to manually trigger Canto's built-in durable
+compaction path, use `context.CompactSession(...)`. It runs the standard
+offload-then-summarize pipeline and returns whether the session actually
+appended new compaction snapshots.
+
 ### Child Runs
 
 The parent/child subagent pattern in Canto is a framework capability, not a prescribed agent policy:

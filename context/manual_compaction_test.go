@@ -147,7 +147,7 @@ func TestCompactSessionValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := CompactSession(t.Context(), tt.provider, tt.model, tt.sess, tt.opts)
+			_, err := CompactSession(t.Context(), tt.provider, tt.model, tt.sess, tt.opts)
 			if err == nil {
 				t.Fatal("expected validation error")
 			}
@@ -176,12 +176,15 @@ func TestCompactSessionNoOpBelowThreshold(t *testing.T) {
 		},
 	}
 
-	err := CompactSession(t.Context(), provider, "mock-model", sess, CompactOptions{
+	result, err := CompactSession(t.Context(), provider, "mock-model", sess, CompactOptions{
 		MaxTokens:  1000,
 		OffloadDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("CompactSession: %v", err)
+	}
+	if result.Compacted {
+		t.Fatal("expected no-op compaction result")
 	}
 
 	if generateCalls != 0 {
@@ -221,13 +224,16 @@ func TestCompactSessionOffloadsBeforeSummarize(t *testing.T) {
 		},
 	}
 
-	err := CompactSession(t.Context(), provider, "mock-model", sess, CompactOptions{
+	result, err := CompactSession(t.Context(), provider, "mock-model", sess, CompactOptions{
 		MaxTokens:    200,
 		MinKeepTurns: 2,
 		OffloadDir:   t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("CompactSession: %v", err)
+	}
+	if !result.Compacted {
+		t.Fatal("expected compaction result to report durable compaction")
 	}
 
 	if got := compactionStrategies(t, sess); strings.Join(got, ",") != "offload,summarize" {
