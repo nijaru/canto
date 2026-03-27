@@ -5,13 +5,19 @@ import (
 	"fmt"
 	"strings"
 
+	agentskills "github.com/nijaru/agentskills"
 	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
 
 // ListProcessor injects a summary list of all available skills.
-func ListProcessor(reg *Registry) ccontext.Processor {
+func ListProcessor(reg *agentskills.Registry) ccontext.Processor {
+	if reg == nil {
+		return ccontext.ProcessorFunc(func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
+			return nil
+		})
+	}
 	return ccontext.ProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			skills := reg.List()

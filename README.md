@@ -189,6 +189,8 @@ Use [`tool.Registry`](tool/) for local tools. Use [`tool/mcp`](tool/mcp/) when y
 
 The framework uses the official Go MCP SDK for transport and session handling, while Canto still owns tool validation and registry adaptation.
 
+Reusable `SKILL.md` loading, validation, registry, and model types live in the standalone [`agentskills`](https://github.com/nijaru/agentskills) module. Canto's `skill/` package adds the runtime `read_skill` / `manage_skill` tools and the request-time skill summary processor on top of that shared core.
+
 ## History Semantics
 
 - `sess.Messages()` is transcript truth: the raw append-only messages exactly as they were emitted.

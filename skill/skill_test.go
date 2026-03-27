@@ -5,65 +5,43 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	agentskills "github.com/nijaru/agentskills"
+	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/session"
 )
 
-func TestLoader(t *testing.T) {
-	content := `---
-name: test-skill
-description: A test skill for testing.
-allowed-tools: [bash, read_file]
----
-# Instructions
-Use this skill for testing purposes.
-`
-	tmp := t.TempDir()
-	path := filepath.Join(tmp, "SKILL.md")
-	os.WriteFile(path, []byte(content), 0o644)
+func TestReadSkillTool(t *testing.T) {
+	reg := agentskills.NewRegistry()
+	reg.Register(&agentskills.Skill{
+		Name:         "hello",
+		Description:  "hello skill",
+		Instructions: "Use this skill for greetings.",
+	})
 
-	s, err := Load(path)
+	tool := &ReadSkillTool{Registry: reg}
+	out, err := tool.Execute(t.Context(), `{"name":"hello"}`)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("read: %v", err)
 	}
-
-	if s.Name != "test-skill" {
-		t.Errorf("expected name test-skill, got %s", s.Name)
+	if !strings.Contains(out, "# Skill: hello") {
+		t.Fatalf("read output missing heading: %q", out)
 	}
-	if s.Description != "A test skill for testing." {
-		t.Errorf("expected description, got %s", s.Description)
+	if !strings.Contains(out, "Use this skill for greetings.") {
+		t.Fatalf("read output missing instructions: %q", out)
 	}
-	if len(s.AllowedTools) != 2 || s.AllowedTools[0] != "bash" {
-		t.Errorf("expected allowed-tools [bash, read_file], got %v", s.AllowedTools)
-	}
-	if s.Instructions != "# Instructions\nUse this skill for testing purposes." {
-		t.Errorf("expected instructions, got %s", s.Instructions)
-	}
-}
-
-func TestRegisterDeregister(t *testing.T) {
-	reg := NewRegistry()
-	s := &Skill{Name: "my-skill", Description: "desc"}
-	reg.Register(s)
-	got, ok := reg.Get("my-skill")
-	if !ok || got != s {
-		t.Fatal("skill not found after Register")
-	}
-	reg.Deregister("my-skill")
-	if _, ok := reg.Get("my-skill"); ok {
-		t.Fatal("skill still present after Deregister")
-	}
-	reg.Deregister("my-skill") // no-op
 }
 
 func TestManageSkillTool(t *testing.T) {
 	tmp := t.TempDir()
-	reg := NewRegistry()
+	reg := agentskills.NewRegistry()
 	tool := &ManageSkillTool{Registry: reg, Path: tmp}
 
 	content := "---\nname: hello\ndescription: hello skill\n---\nDo things.\n"
 
 	// create
 	out, err := tool.Execute(
-		nil,
+		t.Context(),
 		`{"action":"create","name":"hello","content":"`+escapeJSON(content)+`"}`,
 	)
 	if err != nil {
@@ -72,11 +50,17 @@ func TestManageSkillTool(t *testing.T) {
 	if _, ok := reg.Get("hello"); !ok {
 		t.Fatal("skill not registered after create")
 	}
+	if _, err := os.Stat(filepath.Join(tmp, "hello", "SKILL.md")); err != nil {
+		t.Fatalf("skill file missing after create: %v", err)
+	}
 	t.Log(out)
 
 	// update
 	content2 := "---\nname: hello\ndescription: updated\n---\nUpdated.\n"
-	if _, err := tool.Execute(nil, `{"action":"update","name":"hello","content":"`+escapeJSON(content2)+`"}`); err != nil {
+	if _, err := tool.Execute(
+		t.Context(),
+		`{"action":"update","name":"hello","content":"`+escapeJSON(content2)+`"}`,
+	); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	s, _ := reg.Get("hello")
@@ -85,15 +69,18 @@ func TestManageSkillTool(t *testing.T) {
 	}
 
 	// delete
-	if _, err := tool.Execute(nil, `{"action":"delete","name":"hello"}`); err != nil {
+	if _, err := tool.Execute(t.Context(), `{"action":"delete","name":"hello"}`); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	if _, ok := reg.Get("hello"); ok {
 		t.Fatal("skill still present after delete")
 	}
+	if _, err := os.Stat(filepath.Join(tmp, "hello", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("skill file still present after delete: %v", err)
+	}
 }
 
-func TestValidateSkillName(t *testing.T) {
+func TestValidateName(t *testing.T) {
 	cases := []struct {
 		name string
 		ok   bool
@@ -103,14 +90,14 @@ func TestValidateSkillName(t *testing.T) {
 		{"a1b2", true},
 		{"a", true},
 		{"", false},
-		{"A-skill", false},    // uppercase
-		{"-start", false},     // starts with hyphen
-		{"end-", false},       // ends with hyphen
-		{"no--double", false}, // double hyphen
-		{"has space", false},  // space
+		{"A-skill", false},
+		{"-start", false},
+		{"end-", false},
+		{"no--double", false},
+		{"has space", false},
 	}
 	for _, c := range cases {
-		err := validateSkillName(c.name)
+		err := agentskills.ValidateName(c.name)
 		if c.ok && err != nil {
 			t.Errorf("name=%q: unexpected error: %v", c.name, err)
 		}
@@ -120,63 +107,34 @@ func TestValidateSkillName(t *testing.T) {
 	}
 }
 
+func TestListProcessor(t *testing.T) {
+	reg := agentskills.NewRegistry()
+	reg.Register(&agentskills.Skill{Name: "zeta", Description: "last"})
+	reg.Register(&agentskills.Skill{Name: "alpha", Description: "first"})
+
+	req := &llm.Request{}
+	if err := ListProcessor(reg).Process(t.Context(), nil, "", &session.Session{}, req); err != nil {
+		t.Fatalf("process: %v", err)
+	}
+	if len(req.Messages) == 0 {
+		t.Fatal("expected injected system message")
+	}
+	if req.Messages[0].Role != llm.RoleSystem {
+		t.Fatalf("first message role = %s, want system", req.Messages[0].Role)
+	}
+	if !strings.Contains(req.Messages[0].Content, "Available Skills") {
+		t.Fatalf("missing skills header: %q", req.Messages[0].Content)
+	}
+	if !strings.Contains(req.Messages[0].Content, "- alpha: first") ||
+		!strings.Contains(req.Messages[0].Content, "- zeta: last") {
+		t.Fatalf("missing skill summaries: %q", req.Messages[0].Content)
+	}
+}
+
 // escapeJSON escapes a string for embedding in a JSON string literal.
 func escapeJSON(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
 	s = strings.ReplaceAll(s, "\n", `\n`)
 	return s
-}
-
-func TestRegistry(t *testing.T) {
-	tmp := t.TempDir()
-	skillDir := filepath.Join(tmp, "skills", "test")
-	os.MkdirAll(skillDir, 0o755)
-
-	content := `---
-name: registry-test
-description: Testing registry discovery.
----
-Instructions here.
-`
-	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644)
-
-	reg := NewRegistry(tmp)
-	err := reg.Discover()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	skills := reg.List()
-	if len(skills) != 1 {
-		t.Errorf("expected 1 skill, got %d", len(skills))
-	}
-
-	s, ok := reg.Get("registry-test")
-	if !ok {
-		t.Fatal("skill not found in registry")
-	}
-	if s.Name != "registry-test" {
-		t.Errorf("expected name registry-test, got %s", s.Name)
-	}
-}
-
-func TestRegistryListSorted(t *testing.T) {
-	reg := NewRegistry()
-	reg.Register(&Skill{Name: "zeta", Description: "last"})
-	reg.Register(&Skill{Name: "alpha", Description: "first"})
-	reg.Register(&Skill{Name: "mid", Description: "middle"})
-
-	skills := reg.List()
-	if len(skills) != 3 {
-		t.Fatalf("len(skills) = %d, want 3", len(skills))
-	}
-	if skills[0].Name != "alpha" || skills[1].Name != "mid" || skills[2].Name != "zeta" {
-		t.Fatalf(
-			"skill order = [%s %s %s], want [alpha mid zeta]",
-			skills[0].Name,
-			skills[1].Name,
-			skills[2].Name,
-		)
-	}
 }

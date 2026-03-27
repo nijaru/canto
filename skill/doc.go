@@ -1,7 +1,7 @@
-// Package skill loads and registers SKILL.md capability bundles.
+// Package skill integrates the standalone github.com/nijaru/agentskills module
+// with Canto's tool and context surfaces.
 //
-// Registry discovers skills from configured paths and exposes deterministic
-// lookup and listing. The package also includes helpers that project skill
-// metadata into context and tool surfaces without making skills a hosted
-// product concern.
+// The reusable SKILL.md loader, registry, validation, and model types live in
+// the external agentskills module. This package owns the Canto-specific
+// runtime tools and context processors that operate on that shared core.
 package skill

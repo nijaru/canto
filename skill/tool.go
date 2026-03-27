@@ -5,19 +5,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 
 	"github.com/go-json-experiment/json"
 
+	agentskills "github.com/nijaru/agentskills"
 	"github.com/nijaru/canto/llm"
 )
 
-var skillNameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
-
 // ReadSkillTool allows an agent to read the full content of a skill.
 type ReadSkillTool struct {
-	Registry *Registry
+	Registry *agentskills.Registry
 }
 
 func (t *ReadSkillTool) Spec() llm.Spec {
@@ -38,6 +35,9 @@ func (t *ReadSkillTool) Spec() llm.Spec {
 }
 
 func (t *ReadSkillTool) Execute(ctx context.Context, args string) (string, error) {
+	if t.Registry == nil {
+		return "", fmt.Errorf("skill registry is nil")
+	}
 	var input struct {
 		Name string `json:"name"`
 	}
@@ -56,7 +56,7 @@ func (t *ReadSkillTool) Execute(ctx context.Context, args string) (string, error
 // ManageSkillTool allows an agent to create, update, or delete SKILL.md files
 // at runtime, enabling closed-loop skill refinement.
 type ManageSkillTool struct {
-	Registry *Registry
+	Registry *agentskills.Registry
 	// Path is the root directory where skill subdirectories are written.
 	// Each skill is stored at {Path}/{name}/SKILL.md.
 	Path string
@@ -89,6 +89,12 @@ func (t *ManageSkillTool) Spec() llm.Spec {
 }
 
 func (t *ManageSkillTool) Execute(_ context.Context, args string) (string, error) {
+	if t.Registry == nil {
+		return "", fmt.Errorf("skill registry is nil")
+	}
+	if t.Path == "" {
+		return "", fmt.Errorf("skill path is empty")
+	}
 	var input struct {
 		Action  string `json:"action"`
 		Name    string `json:"name"`
@@ -98,7 +104,7 @@ func (t *ManageSkillTool) Execute(_ context.Context, args string) (string, error
 		return "", fmt.Errorf("invalid args: %w", err)
 	}
 
-	if err := validateSkillName(input.Name); err != nil {
+	if err := agentskills.ValidateName(input.Name); err != nil {
 		return "", err
 	}
 
@@ -116,15 +122,24 @@ func (t *ManageSkillTool) Execute(_ context.Context, args string) (string, error
 }
 
 func (t *ManageSkillTool) write(name, content string) (string, error) {
-	dir := filepath.Join(t.Path, name)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(t.Path, 0o755); err != nil {
+		return "", fmt.Errorf("manage_skill: mkdir root: %w", err)
+	}
+	root, err := os.OpenRoot(t.Path)
+	if err != nil {
+		return "", fmt.Errorf("manage_skill: open root: %w", err)
+	}
+	defer root.Close()
+
+	if err := root.MkdirAll(name, 0o755); err != nil {
 		return "", fmt.Errorf("manage_skill: mkdir: %w", err)
 	}
-	path := filepath.Join(dir, "SKILL.md")
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	rel := filepath.Join(name, "SKILL.md")
+	if err := root.WriteFile(rel, []byte(content), 0o644); err != nil {
 		return "", fmt.Errorf("manage_skill: write: %w", err)
 	}
-	s, err := Load(path)
+	path := filepath.Join(t.Path, rel)
+	s, err := agentskills.Load(path)
 	if err != nil {
 		return "", fmt.Errorf("manage_skill: parse: %w", err)
 	}
@@ -133,23 +148,19 @@ func (t *ManageSkillTool) write(name, content string) (string, error) {
 }
 
 func (t *ManageSkillTool) delete(name string) (string, error) {
-	path := filepath.Join(t.Path, name, "SKILL.md")
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+	if _, err := os.Stat(t.Path); os.IsNotExist(err) {
+		t.Registry.Deregister(name)
+		return fmt.Sprintf("skill %q deleted", name), nil
+	}
+	root, err := os.OpenRoot(t.Path)
+	if err != nil {
+		return "", fmt.Errorf("manage_skill: open root: %w", err)
+	}
+	defer root.Close()
+
+	if err := root.Remove(filepath.Join(name, "SKILL.md")); err != nil && !os.IsNotExist(err) {
 		return "", fmt.Errorf("manage_skill: delete: %w", err)
 	}
 	t.Registry.Deregister(name)
 	return fmt.Sprintf("skill %q deleted", name), nil
-}
-
-func validateSkillName(name string) error {
-	if len(name) == 0 || len(name) > 64 {
-		return fmt.Errorf("skill name must be 1–64 characters, got %d", len(name))
-	}
-	if !skillNameRe.MatchString(name) {
-		return fmt.Errorf("skill name %q must match ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", name)
-	}
-	if strings.Contains(name, "--") {
-		return fmt.Errorf("skill name %q must not contain consecutive hyphens", name)
-	}
-	return nil
 }
