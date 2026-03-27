@@ -25,16 +25,16 @@ type ForkOptions struct {
 	ForkReason  string
 }
 
-// TreeStore exposes persisted session-tree queries.
-type TreeStore interface {
+// SessionTreeStore exposes persisted session-tree queries.
+type SessionTreeStore interface {
 	Parent(ctx context.Context, sessionID string) (*SessionAncestry, error)
 	Children(ctx context.Context, sessionID string) ([]SessionAncestry, error)
 	Lineage(ctx context.Context, sessionID string) ([]SessionAncestry, error)
 }
 
-// ForkOptionsStore materializes forked sessions with optional ancestry
-// metadata such as branch labels or fork reasons.
-type ForkOptionsStore interface {
+// ForkStore materializes forked sessions with optional ancestry metadata such
+// as branch labels or fork reasons.
+type ForkStore interface {
 	ForkWithOptions(
 		ctx context.Context,
 		originalSessionID, newSessionID string,

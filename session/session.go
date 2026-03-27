@@ -415,8 +415,8 @@ type Store interface {
 }
 
 var (
-	_ TreeStore        = (*SQLiteStore)(nil)
-	_ ForkOptionsStore = (*SQLiteStore)(nil)
-	_ TreeStore        = (*JSONLStore)(nil)
-	_ ForkOptionsStore = (*JSONLStore)(nil)
+	_ SessionTreeStore = (*SQLiteStore)(nil)
+	_ ForkStore        = (*SQLiteStore)(nil)
+	_ SessionTreeStore = (*JSONLStore)(nil)
+	_ ForkStore        = (*JSONLStore)(nil)
 )

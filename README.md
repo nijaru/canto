@@ -189,7 +189,7 @@ The framework uses the official Go MCP SDK for transport and session handling, w
 - `sess.EffectiveMessages()` is prompt truth: the model-visible history after the latest durable compaction snapshot plus any later messages.
 - `sess.EffectiveEntries()` returns prompt truth together with originating message-event IDs when known, which is useful for compaction and replay tooling.
 - Forks preserve lineage with fresh event IDs plus `fork_origin` metadata, so branches are durable without losing ancestry.
-- SQLite and JSONL stores now also expose first-class tree queries through `session.TreeStore`, so parent/children/lineage navigation does not require scanning copied fork events.
+- SQLite and JSONL stores now also expose first-class tree queries through `session.SessionTreeStore`, so parent/children/lineage navigation does not require scanning copied fork events.
 
 ## License
 

@@ -15,7 +15,7 @@
 // Compaction snapshots are persisted as append-only events, so replay and
 // resumed runs see the same effective prompt history the model saw.
 //
-// Stores may also expose first-class session-tree queries through TreeStore,
-// so callers can navigate parent/child/lineage relationships without scanning
-// copied event payloads.
+// Stores may also expose first-class session-tree queries through
+// SessionTreeStore, so callers can navigate parent/child/lineage
+// relationships without scanning copied event payloads.
 package session
