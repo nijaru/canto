@@ -97,3 +97,28 @@ func TestRun_WorkersDefaultsToTaskCount(t *testing.T) {
 		t.Fatalf("results len = %d, want 2", len(results))
 	}
 }
+
+func TestRun_ContextCancel(t *testing.T) {
+	tasks := make([]Task, 100)
+	for i := range tasks {
+		tasks[i] = Task{ID: "t"}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel immediately.
+	cancel()
+
+	results := Run(ctx, tasks, 10, func(task Task) agent.Agent {
+		p := xtest.NewMockProvider("mock", xtest.Step{Content: "ok"})
+		return agent.New(task.ID, "", "m", p, nil)
+	})
+
+	for i, r := range results {
+		if !errors.Is(r.Err, context.Canceled) {
+			t.Errorf("result[%d].Err = %v, want context.Canceled", i, r.Err)
+		}
+		if r.Episode != nil {
+			t.Errorf("result[%d]: expected nil episode on cancel", i)
+		}
+	}
+}

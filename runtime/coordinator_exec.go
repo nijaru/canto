@@ -29,6 +29,26 @@ func (r *Runner) executeUnderLease(
 	renewErrCh := make(chan error, 1)
 	stopRenew := make(chan struct{})
 
+	// Ensure lease is released/acknowledged even on panic.
+	defer func() {
+		if rec := recover(); rec != nil {
+			close(stopRenew)
+			leaseMu.Lock()
+			finalLease := currentLease
+			leaseMu.Unlock()
+
+			resultMeta := Result{
+				CompletedAt: time.Now().UTC(),
+				Status:      ResultStatusFailed,
+				Error:       "panic in agent execution",
+				Metadata:    map[string]any{"session_id": sess.ID()},
+			}
+			// Best effort release on panic.
+			_ = r.Coordinator.Nack(context.Background(), finalLease, resultMeta)
+			panic(rec) // re-throw after best-effort cleanup
+		}
+	}()
+
 	go func() {
 		for {
 			leaseMu.Lock()

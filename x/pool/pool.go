@@ -55,6 +55,10 @@ func Run(
 		go func() {
 			defer wg.Done()
 			for idx := range queue {
+				if ctx.Err() != nil {
+					results[idx] = Result{Task: tasks[idx], Err: ctx.Err()}
+					continue
+				}
 				task := tasks[idx]
 				results[idx] = run(ctx, task, agentFn(task))
 			}

@@ -43,6 +43,7 @@ type lane struct {
 	sessionID string
 	requests  chan queueRequest
 	lastUsed  time.Time
+	active    int
 	mu        sync.Mutex
 	done      chan struct{}
 	drain     chan struct{}
@@ -161,7 +162,13 @@ func (m *serialQueue) runLane(ctx context.Context, l *lane) {
 			}
 
 			// Process request
+			l.mu.Lock()
+			l.active++
+			l.mu.Unlock()
 			err := req.Fn(req.Ctx)
+			l.mu.Lock()
+			l.active--
+			l.mu.Unlock()
 			req.Result <- err
 
 			l.mu.Lock()
@@ -226,4 +233,19 @@ func (m *serialQueue) stop() {
 		})
 	}
 	wg.Wait()
+}
+
+// IsActive returns true if the session has an active execution lane.
+func (m *serialQueue) IsActive(sessionID string) bool {
+	m.mu.RLock()
+	l, ok := m.lanes[sessionID]
+	m.mu.RUnlock()
+
+	if !ok {
+		return false
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.active > 0 || len(l.requests) > 0
 }

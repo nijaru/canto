@@ -19,19 +19,31 @@ import (
 //	agent.Turn(ctx, sess)
 func AttachWriteThrough(ctx context.Context, sess *Session, store Store) func() {
 	wctx, cancel := context.WithCancel(ctx)
-	ch := sess.Subscribe(wctx)
+	ch := make(chan Event, 1024)
+	sess.SetWriterChannel(ch)
 
+	done := make(chan struct{})
 	go func() {
-		for e := range ch {
-			if err := store.Save(context.Background(), e); err != nil {
-				slog.Warn("write-through save failed",
-					"session_id", e.SessionID,
-					"event_id", e.ID,
-					"error", err,
-				)
+		defer close(done)
+		for {
+			select {
+			case e := <-ch:
+				if err := store.Save(context.Background(), e); err != nil {
+					slog.Warn("write-through save failed",
+						"session_id", e.SessionID,
+						"event_id", e.ID,
+						"error", err,
+					)
+				}
+			case <-wctx.Done():
+				return
 			}
 		}
 	}()
 
-	return cancel
+	return func() {
+		sess.UnsetWriterChannel()
+		cancel()
+		<-done
+	}
 }

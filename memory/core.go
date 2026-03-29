@@ -45,6 +45,12 @@ func NewCoreStore(dsn string) (*CoreStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	if strings.Contains(dsn, ":memory:") {
+		db.SetMaxOpenConns(1)
+	} else {
+		db.SetMaxOpenConns(16)
+		db.SetMaxIdleConns(4)
+	}
 	s := &CoreStore{db: db}
 	if err := s.init(); err != nil {
 		db.Close()

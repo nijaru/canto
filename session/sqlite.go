@@ -33,6 +33,11 @@ func NewSQLiteStore(dsn string) (*SQLiteStore, error) {
 		// SQLite in-memory databases are scoped per connection. Pinning the pool
 		// to a single connection keeps tests and ephemeral stores on one logical DB.
 		db.SetMaxOpenConns(1)
+	} else {
+		// WAL supports many readers but only 1 writer. Cap total connections
+		// to prevent thread/file-descriptor exhaustion and contention.
+		db.SetMaxOpenConns(16)
+		db.SetMaxIdleConns(4)
 	}
 
 	if err := db.Ping(); err != nil {

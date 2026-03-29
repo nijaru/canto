@@ -113,3 +113,25 @@ func TestAttachWriteThrough_EventsBeforeAttachNotSaved(t *testing.T) {
 		t.Fatalf("saved event type = %q, want message_added", saved[0].Type)
 	}
 }
+
+func TestAttachWriteThrough_CancelDuringConcurrentAppendDoesNotPanic(t *testing.T) {
+	sess := New("wt-race")
+	store := &memStore{}
+
+	cancel := AttachWriteThrough(context.Background(), sess, store)
+
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 50 {
+				_ = sess.Append(context.Background(), NewEvent("wt-race", MessageAdded, nil))
+			}
+		}()
+	}
+
+	time.Sleep(5 * time.Millisecond)
+	cancel()
+	wg.Wait()
+}

@@ -19,8 +19,9 @@ import (
 
 // JSONLStore is a file-backed store that saves events as JSON lines.
 type JSONLStore struct {
-	mu  sync.RWMutex
-	dir string
+	dir        string
+	ancestryMu sync.RWMutex
+	sessionMus sync.Map // map[string]*sync.RWMutex
 }
 
 // NewJSONLStore creates a new JSONL store.
@@ -31,10 +32,16 @@ func NewJSONLStore(dir string) (*JSONLStore, error) {
 	return &JSONLStore{dir: dir}, nil
 }
 
+func (s *JSONLStore) getSessionMu(sessionID string) *sync.RWMutex {
+	mu, _ := s.sessionMus.LoadOrStore(sessionID, &sync.RWMutex{})
+	return mu.(*sync.RWMutex)
+}
+
 // Save appends an event to the session file.
 func (s *JSONLStore) Save(ctx context.Context, e Event) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	mu := s.getSessionMu(e.SessionID)
+	mu.Lock()
+	defer mu.Unlock()
 
 	return s.saveLocked(e)
 }
@@ -59,8 +66,9 @@ func (s *JSONLStore) saveLocked(e Event) error {
 
 // Load reads all events for a session and reconstructs it.
 func (s *JSONLStore) Load(ctx context.Context, sessionID string) (*Session, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	mu := s.getSessionMu(sessionID)
+	mu.RLock()
+	defer mu.RUnlock()
 
 	path := filepath.Join(s.dir, fmt.Sprintf("%s.jsonl", sessionID))
 	f, err := os.Open(path)
@@ -109,8 +117,9 @@ func (s *JSONLStore) LoadUntil(
 	sessionID string,
 	eventID ulid.ULID,
 ) (*Session, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	mu := s.getSessionMu(sessionID)
+	mu.RLock()
+	defer mu.RUnlock()
 
 	path := filepath.Join(s.dir, fmt.Sprintf("%s.jsonl", sessionID))
 	f, err := os.Open(path)
@@ -184,8 +193,8 @@ func (s *JSONLStore) ForkWithOptions(
 	parentCreatedAt := sessionCreatedAt(sess)
 	childCreatedAt := time.Now().UTC()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.ancestryMu.Lock()
+	defer s.ancestryMu.Unlock()
 	parentDepth, err := s.ensureRootAncestryLocked(originalID, parentCreatedAt)
 	if err != nil {
 		return nil, err
@@ -217,8 +226,8 @@ func (s *JSONLStore) Search(ctx context.Context, sessionID string, query string)
 
 // Parent returns the persisted ancestry record for the parent of sessionID.
 func (s *JSONLStore) Parent(ctx context.Context, sessionID string) (*SessionAncestry, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.ancestryMu.RLock()
+	defer s.ancestryMu.RUnlock()
 
 	index, err := s.loadAncestryIndexLocked()
 	if err != nil {
@@ -240,8 +249,8 @@ func (s *JSONLStore) Parent(ctx context.Context, sessionID string) (*SessionAnce
 
 // Children lists the persisted ancestry records for direct children of sessionID.
 func (s *JSONLStore) Children(ctx context.Context, sessionID string) ([]SessionAncestry, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.ancestryMu.RLock()
+	defer s.ancestryMu.RUnlock()
 
 	index, err := s.loadAncestryIndexLocked()
 	if err != nil {
@@ -264,8 +273,8 @@ func (s *JSONLStore) Children(ctx context.Context, sessionID string) ([]SessionA
 
 // Lineage returns the root-to-current ancestry chain for sessionID.
 func (s *JSONLStore) Lineage(ctx context.Context, sessionID string) ([]SessionAncestry, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.ancestryMu.RLock()
+	defer s.ancestryMu.RUnlock()
 
 	index, err := s.loadAncestryIndexLocked()
 	if err != nil {

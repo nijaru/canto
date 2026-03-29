@@ -14,9 +14,11 @@ import (
 // ListProcessor injects a summary list of all available skills.
 func ListProcessor(reg *agentskills.Registry) ccontext.Processor {
 	if reg == nil {
-		return ccontext.ProcessorFunc(func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
-			return nil
-		})
+		return ccontext.ProcessorFunc(
+			func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
+				return nil
+			},
+		)
 	}
 	return ccontext.ProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {

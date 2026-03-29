@@ -165,6 +165,45 @@ func TestRunner_Evict(t *testing.T) {
 	}
 }
 
+func TestRunner_Evict_DoesNotDropActiveLane(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(store, &slowAgent{delay: 50 * time.Millisecond})
+	sessionID := "evict-active"
+
+	ctx := t.Context()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = runner.Send(ctx, sessionID, "ping")
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		runner.mu.Lock()
+		_, ok := runner.sessions[sessionID]
+		runner.mu.Unlock()
+		if ok && runner.queue.IsActive(sessionID) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	runner.Evict(sessionID)
+
+	runner.mu.Lock()
+	_, stillPresent := runner.sessions[sessionID]
+	runner.mu.Unlock()
+	if !stillPresent {
+		t.Fatal("Evict removed a session with active local execution")
+	}
+
+	<-done
+}
+
 type coordinatorBlockingAgent struct {
 	started chan<- string
 	release <-chan struct{}

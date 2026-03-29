@@ -111,29 +111,29 @@ func extractHandoff(s *session.Session, targetIDs []string) *Handoff {
 		known[id] = true
 	}
 
-	events := s.Events()
-	// Walk backward — handoff tool results are the most recent events.
-	for i := len(events) - 1; i >= 0; i-- {
-		e := events[i]
+	var found *Handoff
+	s.ForEachEventReverse(func(e session.Event) bool {
 		if e.Type != session.MessageAdded {
-			continue
+			return true
 		}
 		var msg llm.Message
 		if err := json.Unmarshal(e.Data, &msg); err != nil {
-			continue
+			return true
 		}
 		if msg.Role != llm.RoleTool {
-			break // moved past the tool result block; stop scanning
+			return false // moved past the tool result block; stop scanning
 		}
 		var h Handoff
 		if err := json.Unmarshal([]byte(msg.Content), &h); err != nil {
-			continue
+			return true
 		}
 		if h.TargetAgentID != "" && known[h.TargetAgentID] {
-			return &h
+			found = &h
+			return false
 		}
-	}
-	return nil
+		return true
+	})
+	return found
 }
 
 // RecordHandoff appends an Handoff event to the session log.

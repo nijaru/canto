@@ -92,6 +92,14 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 			wg.Add(1)
 			go func(idx int, ag agent.Agent, tasks []Task) {
 				defer wg.Done()
+				defer func() {
+					if r := recover(); r != nil {
+						outcomes[idx] = outcome{
+							agentID: ag.ID(),
+							err:     fmt.Errorf("agent %q panicked: %v", ag.ID(), r),
+						}
+					}
+				}()
 				out := outcome{agentID: ag.ID()}
 
 				// Try each task in order until one is successfully claimed.

@@ -55,6 +55,39 @@ type subscriber struct {
 	closed bool
 }
 
+type writerChannel struct {
+	mu     sync.RWMutex
+	ch     chan<- Event
+	closed bool
+	wg     sync.WaitGroup
+}
+
+func (w *writerChannel) send(ctx context.Context, e Event) error {
+	w.mu.RLock()
+	if w.closed {
+		w.mu.RUnlock()
+		return nil
+	}
+	w.wg.Add(1)
+	ch := w.ch
+	w.mu.RUnlock()
+
+	defer w.wg.Done()
+	select {
+	case ch <- e:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (w *writerChannel) close() {
+	w.mu.Lock()
+	w.closed = true
+	w.mu.Unlock()
+	w.wg.Wait()
+}
+
 // trySend delivers e to the subscriber without blocking.
 // Safe to call concurrently with close.
 func (sub *subscriber) trySend(e Event) {
@@ -97,7 +130,7 @@ type Session struct {
 	state       map[string]any
 	subscribers []*subscriber
 	writer      Writer
-	writerCh    chan<- Event
+	writerCh    *writerChannel
 	reducer     Reducer
 }
 
@@ -220,14 +253,19 @@ func (s *Session) ID() string {
 func (s *Session) SetWriterChannel(ch chan<- Event) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.writerCh = ch
+	s.writerCh = &writerChannel{ch: ch}
 }
 
 // UnsetWriterChannel removes the writer channel.
 func (s *Session) UnsetWriterChannel() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	writerCh := s.writerCh
 	s.writerCh = nil
+	s.mu.Unlock()
+
+	if writerCh != nil {
+		writerCh.close()
+	}
 }
 
 // Append adds a new event to the session and notifies all subscribers.
@@ -261,10 +299,8 @@ func (s *Session) Append(ctx context.Context, e Event) error {
 	}
 
 	if writerCh != nil {
-		select {
-		case writerCh <- e:
-		case <-ctx.Done():
-			return ctx.Err()
+		if err := writerCh.send(ctx, e); err != nil {
+			return err
 		}
 	}
 
