@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-json-experiment/json"
 
+	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
 )
 
@@ -82,4 +83,21 @@ func (c *CodeExecutionTool) Execute(ctx context.Context, args string) (string, e
 		return result.Combined, err
 	}
 	return result.Combined, nil
+}
+
+func (c *CodeExecutionTool) ApprovalRequirement(args string) (approval.Requirement, bool, error) {
+	var input struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal([]byte(args), &input); err != nil {
+		return approval.Requirement{}, false, err
+	}
+	return approval.Requirement{
+		Category:  "code",
+		Operation: "execute",
+		Resource:  c.Language,
+		Metadata: map[string]any{
+			"code_length": len(input.Code),
+		},
+	}, true, nil
 }

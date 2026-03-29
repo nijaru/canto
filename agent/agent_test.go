@@ -6,7 +6,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
@@ -617,6 +619,18 @@ func (t *panicTool) Execute(_ context.Context, _ string) (string, error) {
 	panic("tool boom")
 }
 
+type gatedTool struct {
+	simpleTool
+}
+
+func (t *gatedTool) ApprovalRequirement(args string) (approval.Requirement, bool, error) {
+	return approval.Requirement{
+		Category:  "workspace",
+		Operation: "write_file",
+		Resource:  "note.txt",
+	}, true, nil
+}
+
 func TestRunTools_PanicRecovery(t *testing.T) {
 	reg := tool.NewRegistry()
 	reg.Register(&panicTool{})
@@ -631,11 +645,96 @@ func TestRunTools_PanicRecovery(t *testing.T) {
 		}{Name: "panic", Arguments: `{}`},
 	}}
 
-	_, err := runTools(context.Background(), s, calls, reg, nil, nil, 10)
+	_, err := runTools(context.Background(), s, calls, reg, nil, nil, nil, 10)
 	if err == nil {
 		t.Fatal("expected error from panicking tool, got nil")
 	}
 	if !strings.Contains(err.Error(), "panicked") {
 		t.Errorf("expected panic error message, got: %v", err)
+	}
+}
+
+func TestRunTools_ApprovalAllow(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&gatedTool{simpleTool{name: "gated", output: "ok"}})
+	manager := approval.NewManager(nil)
+	s := session.New("s-approval-allow")
+	calls := []llm.Call{{
+		ID:   "c1",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "gated", Arguments: `{}`},
+	}}
+
+	done := make(chan StepResult, 1)
+	errs := make(chan error, 1)
+	go func() {
+		res, err := runTools(context.Background(), s, calls, reg, nil, manager, nil, 10)
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- res
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	pending := manager.Pending()
+	if len(pending) != 1 {
+		t.Fatalf("expected 1 pending approval, got %d", len(pending))
+	}
+	if err := manager.Resolve(pending[0], approval.DecisionAllow, "ok"); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	select {
+	case err := <-errs:
+		t.Fatalf("runTools: %v", err)
+	case res := <-done:
+		if len(res.ToolResults) != 1 || res.ToolResults[0].Content != "ok" {
+			t.Fatalf("unexpected tool results: %#v", res.ToolResults)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for approved tool")
+	}
+}
+
+func TestRunTools_ApprovalDeny(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&gatedTool{simpleTool{name: "gated", output: "ok"}})
+	manager := approval.NewManager(nil)
+	s := session.New("s-approval-deny")
+	calls := []llm.Call{{
+		ID:   "c1",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "gated", Arguments: `{}`},
+	}}
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := runTools(context.Background(), s, calls, reg, nil, manager, nil, 10)
+		errCh <- err
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	pending := manager.Pending()
+	if len(pending) != 1 {
+		t.Fatalf("expected 1 pending approval, got %d", len(pending))
+	}
+	if err := manager.Resolve(pending[0], approval.DecisionDeny, "unsafe"); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	select {
+	case err := <-errCh:
+		if err == nil || !strings.Contains(err.Error(), "approval denied: unsafe") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for denied tool")
 	}
 }

@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 
+	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
 )
 
@@ -22,4 +23,9 @@ type StreamingTool interface {
 	// the tool should ideally stop and return that error.
 	// It returns the final complete output.
 	ExecuteStreaming(ctx context.Context, args string, emit func(string) error) (string, error)
+}
+
+type ApprovalTool interface {
+	Tool
+	ApprovalRequirement(args string) (approval.Requirement, bool, error)
 }

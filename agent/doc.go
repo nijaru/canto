@@ -7,5 +7,7 @@
 // Step executes one model/tool iteration. Turn repeats Step until the agent
 // produces a final assistant message, hands off control, or reaches MaxSteps.
 //
-// Extend the default builder with WithRequestProcessors and WithMutators.
+// Extend the default builder with WithRequestProcessors and WithMutators, and
+// configure gated tool execution with WithApprovalManager when a host needs
+// pause/resume approval flow.
 package agent

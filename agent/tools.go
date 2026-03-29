@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -38,6 +39,7 @@ func runTools(
 	calls []llm.Call,
 	r *tool.Registry,
 	h *hook.Runner,
+	approvals *approval.Manager,
 	handoffTargets []string,
 	maxParallel int,
 ) (StepResult, error) {
@@ -70,7 +72,7 @@ func runTools(
 				return
 			}
 
-			results[i] = executeToolWithHooks(ctx, s, call, r, h)
+			results[i] = executeToolWithHooks(ctx, s, call, r, h, approvals)
 		}(i, call)
 	}
 	wg.Wait()
@@ -105,6 +107,7 @@ func executeToolWithHooks(
 	call llm.Call,
 	r *tool.Registry,
 	h *hook.Runner,
+	approvals *approval.Manager,
 ) toolResult {
 	var output string
 
@@ -148,6 +151,27 @@ func executeToolWithHooks(
 		if !ok {
 			output = fmt.Sprintf("Error: tool %q not found", call.Function.Name)
 		} else {
+			if approvals != nil {
+				if gated, ok := t.(tool.ApprovalTool); ok {
+					req, needsApproval, err := gated.ApprovalRequirement(call.Function.Arguments)
+					if err != nil {
+						return toolResult{
+							call: call,
+							err:  fmt.Errorf("approval requirement for %q: %w", call.Function.Name, err),
+						}
+					}
+					if needsApproval {
+						res, err := approvals.Request(ctx, s, call.Function.Name, call.Function.Arguments, req)
+						if err != nil {
+							return toolResult{call: call, err: err}
+						}
+						if denyErr := res.Error(); denyErr != nil {
+							return toolResult{call: call, err: denyErr}
+						}
+					}
+				}
+			}
+
 			var execErr error
 			if st, ok := t.(tool.StreamingTool); ok {
 				output, execErr = st.ExecuteStreaming(ctx, call.Function.Arguments, func(delta string) error {

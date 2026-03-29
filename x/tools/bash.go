@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-json-experiment/json"
 
+	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
 )
 
@@ -56,4 +57,18 @@ func (b *BashTool) Execute(ctx context.Context, args string) (string, error) {
 		return result.Combined, err
 	}
 	return result.Combined, nil
+}
+
+func (b *BashTool) ApprovalRequirement(args string) (approval.Requirement, bool, error) {
+	var input struct {
+		Command string `json:"command"`
+	}
+	if err := json.Unmarshal([]byte(args), &input); err != nil {
+		return approval.Requirement{}, false, err
+	}
+	return approval.Requirement{
+		Category:  "command",
+		Operation: "exec",
+		Resource:  input.Command,
+	}, true, nil
 }

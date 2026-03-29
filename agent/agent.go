@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 
+	"github.com/nijaru/canto/approval"
 	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
@@ -30,6 +31,7 @@ type BaseAgent struct {
 	tools            *tool.Registry
 	builder          *ccontext.Builder
 	hooks            *hook.Runner
+	approvals        *approval.Manager
 }
 
 // ID returns the agent's unique identifier.
@@ -46,6 +48,13 @@ func WithMaxParallelTools(n int) Option { return func(a *BaseAgent) { a.maxParal
 
 // WithHooks replaces the agent's hook runner.
 func WithHooks(h *hook.Runner) Option { return func(a *BaseAgent) { a.hooks = h } }
+
+// WithApprovalManager configures a reusable approval manager for gated tool execution.
+func WithApprovalManager(
+	m *approval.Manager,
+) Option {
+	return func(a *BaseAgent) { a.approvals = m }
+}
 
 // WithBuilder replaces the agent's context builder pipeline.
 func WithBuilder(b *ccontext.Builder) Option { return func(a *BaseAgent) { a.builder = b } }

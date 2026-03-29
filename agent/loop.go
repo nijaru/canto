@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/nijaru/canto/approval"
 	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
@@ -18,6 +19,7 @@ type stepConfig struct {
 	Builder          *ccontext.Builder
 	Tools            *tool.Registry
 	Hooks            *hook.Runner
+	Approvals        *approval.Manager
 	MaxParallelTools int
 }
 
@@ -30,6 +32,7 @@ func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, e
 		Builder:          a.builder,
 		Tools:            a.tools,
 		Hooks:            a.hooks,
+		Approvals:        a.approvals,
 		MaxParallelTools: a.maxParallelTools,
 	})
 }
@@ -90,6 +93,7 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 		resp.Calls,
 		cfg.Tools,
 		cfg.Hooks,
+		cfg.Approvals,
 		handoffTargets,
 		cfg.MaxParallelTools,
 	)

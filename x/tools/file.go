@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-json-experiment/json"
 
+	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/tool"
 	"github.com/nijaru/canto/workspace"
@@ -97,6 +98,20 @@ func (t *WriteFileTool) Execute(_ context.Context, args string) (string, error) 
 		return "", fmt.Errorf("write_file: %w", err)
 	}
 	return fmt.Sprintf("wrote %d bytes to %s", len(input.Content), input.Path), nil
+}
+
+func (t *WriteFileTool) ApprovalRequirement(args string) (approval.Requirement, bool, error) {
+	var input struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(args), &input); err != nil {
+		return approval.Requirement{}, false, err
+	}
+	return approval.Requirement{
+		Category:  "workspace",
+		Operation: "write_file",
+		Resource:  input.Path,
+	}, true, nil
 }
 
 // ListDirTool lists the contents of a directory within a sandboxed root.

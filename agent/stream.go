@@ -135,7 +135,16 @@ func (a *BaseAgent) StreamStep(
 
 	// Execute tool calls in parallel and append results to the session.
 	handoffTargets := getHandoffTargets(a.tools)
-	res, err = runTools(ctx, s, calls, a.tools, a.hooks, handoffTargets, a.maxParallelTools)
+	res, err = runTools(
+		ctx,
+		s,
+		calls,
+		a.tools,
+		a.hooks,
+		a.approvals,
+		handoffTargets,
+		a.maxParallelTools,
+	)
 	res.Usage = usage // Restore usage as RunTools only returns results/handoff
 
 	return
