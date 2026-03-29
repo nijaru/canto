@@ -21,14 +21,15 @@ type Agent interface {
 // BaseAgent is the default Agent implementation. It runs an LLM with a
 // context pipeline, tool registry, and lifecycle hooks.
 type BaseAgent struct {
-	agentID      string
-	Instructions string
-	Model        string
-	MaxSteps     int // Maximum tool-calling steps per turn
-	Provider     llm.Provider
-	Tools        *tool.Registry
-	Builder      *ccontext.Builder
-	Hooks        *hook.Runner
+	agentID          string
+	instructions     string
+	model            string
+	maxSteps         int // Maximum tool-calling steps per turn
+	maxParallelTools int // Maximum concurrent tool executions per step
+	provider         llm.Provider
+	tools            *tool.Registry
+	builder          *ccontext.Builder
+	hooks            *hook.Runner
 }
 
 // ID returns the agent's unique identifier.
@@ -38,20 +39,23 @@ func (a *BaseAgent) ID() string { return a.agentID }
 type Option func(*BaseAgent)
 
 // WithMaxSteps sets the maximum number of tool-calling steps per turn.
-func WithMaxSteps(n int) Option { return func(a *BaseAgent) { a.MaxSteps = n } }
+func WithMaxSteps(n int) Option { return func(a *BaseAgent) { a.maxSteps = n } }
+
+// WithMaxParallelTools sets the maximum concurrent tool executions per step.
+func WithMaxParallelTools(n int) Option { return func(a *BaseAgent) { a.maxParallelTools = n } }
 
 // WithHooks replaces the agent's hook runner.
-func WithHooks(h *hook.Runner) Option { return func(a *BaseAgent) { a.Hooks = h } }
+func WithHooks(h *hook.Runner) Option { return func(a *BaseAgent) { a.hooks = h } }
 
 // WithBuilder replaces the agent's context builder pipeline.
-func WithBuilder(b *ccontext.Builder) Option { return func(a *BaseAgent) { a.Builder = b } }
+func WithBuilder(b *ccontext.Builder) Option { return func(a *BaseAgent) { a.builder = b } }
 
 // WithProcessors inserts legacy context processors into the default builder
 // chain, placed before Capabilities (which must run last).
 // New code should prefer WithRequestProcessors and WithMutators when possible.
 func WithProcessors(ps ...ccontext.Processor) Option {
 	return func(a *BaseAgent) {
-		a.Builder.InsertBeforeLast(ps...)
+		a.builder.InsertBeforeLast(ps...)
 	}
 }
 
@@ -59,7 +63,7 @@ func WithProcessors(ps ...ccontext.Processor) Option {
 // default builder chain, placed before Capabilities (which must run last).
 func WithRequestProcessors(ps ...ccontext.RequestProcessor) Option {
 	return func(a *BaseAgent) {
-		a.Builder.InsertRequestProcessorsBeforeLast(ps...)
+		a.builder.InsertRequestProcessorsBeforeLast(ps...)
 	}
 }
 
@@ -67,12 +71,19 @@ func WithRequestProcessors(ps ...ccontext.RequestProcessor) Option {
 // placed before Capabilities (which must run last).
 func WithMutators(ms ...ccontext.ContextMutator) Option {
 	return func(a *BaseAgent) {
-		a.Builder.InsertMutatorsBeforeLast(ms...)
+		a.builder.InsertMutatorsBeforeLast(ms...)
 	}
 }
 
 // WithModel overrides the model used for LLM calls.
-func WithModel(m string) Option { return func(a *BaseAgent) { a.Model = m } }
+func WithModel(m string) Option { return func(a *BaseAgent) { a.model = m } }
+
+// RegisterHooks appends one or more hooks to the agent's hook runner.
+func (a *BaseAgent) RegisterHooks(hs ...hook.Hook) {
+	for _, h := range hs {
+		a.hooks.Register(h)
+	}
+}
 
 // New creates a BaseAgent with a default context builder chain.
 // Optional opts are applied after defaults are set.
@@ -83,16 +94,17 @@ func New(
 	opts ...Option,
 ) *BaseAgent {
 	a := &BaseAgent{
-		agentID:      id,
-		Instructions: instructions,
-		Model:        model,
-		MaxSteps:     10,
-		Provider:     p,
-		Tools:        t,
-		Hooks:        hook.NewRunner(),
+		agentID:          id,
+		instructions:     instructions,
+		model:            model,
+		maxSteps:         10,
+		maxParallelTools: 10,
+		provider:         p,
+		tools:            t,
+		hooks:            hook.NewRunner(),
 	}
 
-	a.Builder = ccontext.NewBuilder(
+	a.builder = ccontext.NewBuilder(
 		ccontext.Instructions(instructions),
 		ccontext.Tools(t),
 		ccontext.History(),

@@ -239,6 +239,36 @@ func TestStreamTurnMaxSteps_PreservesUsage(t *testing.T) {
 	}
 }
 
+func TestStreamStepThinkingBlocks(t *testing.T) {
+	p := &streamMockProvider{
+		chunks: [][]llm.Chunk{
+			{
+				{ThinkingBlocks: []llm.ThinkingBlock{{Type: "thinking", Thinking: "thinking "}}},
+				{ThinkingBlocks: []llm.ThinkingBlock{{Type: "thinking", Thinking: "harder"}}},
+				{Content: "result"},
+			},
+		},
+	}
+	a := New("a", "sys", "m", p, nil)
+	s := userSession("s-thinking", "q")
+
+	_, err := a.StreamStep(context.Background(), s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msgs := s.Messages()
+	last := msgs[len(msgs)-1]
+	if len(last.ThinkingBlocks) != 1 {
+		t.Fatalf("expected 1 thinking block, got %d", len(last.ThinkingBlocks))
+	}
+	got := last.ThinkingBlocks[0].Thinking
+	want := "thinking harder"
+	if got != want {
+		t.Errorf("expected thinking %q, got %q", want, got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Streamer interface satisfaction
 // ---------------------------------------------------------------------------
@@ -255,19 +285,19 @@ func TestBaseAgentImplementsStreamer(t *testing.T) {
 
 func TestWithProcessorsInsertsBeforeCapabilities(t *testing.T) {
 	a := New("a", "", "m", &mockProvider{}, nil)
-	origLen := len(a.Builder.Processors())
+	origLen := len(a.builder.Processors())
 
 	a2 := New("a2", "", "m", &mockProvider{}, nil,
 		WithProcessors(ccontext.ProcessorFunc(noopProcessor)),
 		WithProcessors(ccontext.ProcessorFunc(noopProcessor)),
 	)
-	if got := len(a2.Builder.Processors()); got != origLen+2 {
+	if got := len(a2.builder.Processors()); got != origLen+2 {
 		t.Errorf("expected %d processors, got %d", origLen+2, got)
 	}
 	// Last processor must still be Capabilities (not our sentinels).
 	// Capabilities is a ProcessorFunc — we can check the sentinels
 	// are NOT at position len-1 by verifying they are at len-3 and len-2.
-	ps := a2.Builder.Processors()
+	ps := a2.builder.Processors()
 	n := len(ps)
 	_ = ps[n-1] // Capabilities: just confirm no panic
 	_ = ps[n-2] // second sentinel
@@ -276,17 +306,17 @@ func TestWithProcessorsInsertsBeforeCapabilities(t *testing.T) {
 
 func TestWithRequestProcessorsAndMutatorsInsertBeforeCapabilities(t *testing.T) {
 	a := New("a", "", "m", &mockProvider{}, nil)
-	origLen := len(a.Builder.Processors())
+	origLen := len(a.builder.Processors())
 
 	a2 := New("a2", "", "m", &mockProvider{}, nil,
 		WithRequestProcessors(ccontext.RequestProcessorFunc(noopRequestProcessor)),
 		WithMutators(ccontext.ContextMutatorFunc(noopMutator)),
 	)
-	if got := len(a2.Builder.Processors()); got != origLen+2 {
+	if got := len(a2.builder.Processors()); got != origLen+2 {
 		t.Errorf("expected %d processors, got %d", origLen+2, got)
 	}
 
-	ps := a2.Builder.Processors()
+	ps := a2.builder.Processors()
 	n := len(ps)
 	_ = ps[n-1] // Capabilities
 	_ = ps[n-2] // mutator bridge

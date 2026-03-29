@@ -31,7 +31,7 @@ func (a *BaseAgent) StreamStep(
 ) (res StepResult, err error) {
 	if err := s.Append(ctx, session.NewEvent(s.ID(), session.StepStarted, map[string]any{
 		"agent_id": a.ID(),
-		"model":    a.Model,
+		"model":    a.model,
 	})); err != nil {
 		return StepResult{}, err
 	}
@@ -48,14 +48,14 @@ func (a *BaseAgent) StreamStep(
 	}()
 
 	req := &llm.Request{
-		Model: a.Model,
+		Model: a.model,
 	}
 
-	if err = a.Builder.Build(ctx, a.Provider, a.Model, s, req); err != nil {
+	if err = a.builder.Build(ctx, a.provider, a.model, s, req); err != nil {
 		return
 	}
 
-	stream, err := a.Provider.Stream(ctx, req)
+	stream, err := a.provider.Stream(ctx, req)
 	if err != nil {
 		return
 	}
@@ -82,9 +82,9 @@ func (a *BaseAgent) StreamStep(
 			reasoningBuilder.WriteString(chunk.Reasoning)
 		}
 		for _, block := range chunk.ThinkingBlocks {
-			if block.Signature != "" {
+			if len(thinkingBlocks) == 0 || block.Signature != "" {
 				thinkingBlocks = append(thinkingBlocks, block)
-			} else if len(thinkingBlocks) > 0 {
+			} else {
 				last := &thinkingBlocks[len(thinkingBlocks)-1]
 				last.Thinking += block.Thinking
 			}
@@ -134,8 +134,9 @@ func (a *BaseAgent) StreamStep(
 	llm.RecordUsage(ctx, req.Model, usage)
 
 	// Execute tool calls in parallel and append results to the session.
-	res, err = a.runTools(ctx, s, calls)
-	res.Usage = usage // Restore usage as runTools only returns results/handoff
+	handoffTargets := getHandoffTargets(a.tools)
+	res, err = runTools(ctx, s, calls, a.tools, a.hooks, handoffTargets, a.maxParallelTools)
+	res.Usage = usage // Restore usage as RunTools only returns results/handoff
 
 	return
 }
@@ -168,7 +169,7 @@ func (a *BaseAgent) StreamTurn(
 		_ = s.Append(ctx, session.NewEvent(s.ID(), session.TurnCompleted, data))
 	}()
 
-	for steps < a.MaxSteps {
+	for steps < a.maxSteps {
 		res, err = a.StreamStep(ctx, s, chunkFn)
 		if err != nil {
 			return
@@ -189,9 +190,9 @@ func (a *BaseAgent) StreamTurn(
 		}
 	}
 
-	if steps >= a.MaxSteps {
+	if steps >= a.maxSteps {
 		res.Usage = totalUsage
-		err = fmt.Errorf("%w (%d)", ErrMaxSteps, a.MaxSteps)
+		err = fmt.Errorf("%w (%d)", ErrMaxSteps, a.maxSteps)
 		return
 	}
 	res.Usage = totalUsage
@@ -200,8 +201,8 @@ func (a *BaseAgent) StreamTurn(
 		res.Content = msg.Content
 	}
 
-	if a.Hooks != nil {
-		a.Hooks.Run(ctx, hook.EventStop, hook.SessionMeta{ID: s.ID()}, nil)
+	if a.hooks != nil {
+		a.hooks.Run(ctx, hook.EventStop, hook.SessionMeta{ID: s.ID()}, nil)
 	}
 
 	return

@@ -430,7 +430,7 @@ func TestTurnMaxStepsReturnsError(t *testing.T) {
 	p := &mockProvider{responses: responses}
 
 	a := New("test-agent", "You are helpful.", "gpt-4", p, reg)
-	a.MaxSteps = maxSteps
+	a.maxSteps = maxSteps
 	s := userSession("s9", "loop forever")
 
 	_, err := a.Turn(context.Background(), s)
@@ -486,7 +486,7 @@ func TestTurnMaxSteps_PreservesUsage(t *testing.T) {
 	p := &mockProvider{responses: responses}
 
 	a := New("test-agent", "You are helpful.", "gpt-4", p, reg)
-	a.MaxSteps = maxSteps
+	a.maxSteps = maxSteps
 	s := userSession("s-maxsteps-usage", "loop forever")
 
 	result, err := a.Turn(context.Background(), s)
@@ -506,15 +506,15 @@ func TestTurnMaxSteps_PreservesUsage(t *testing.T) {
 
 func TestWithMaxSteps(t *testing.T) {
 	a := New("a", "", "m", &mockProvider{}, nil, WithMaxSteps(5))
-	if a.MaxSteps != 5 {
-		t.Fatalf("MaxSteps = %d, want 5", a.MaxSteps)
+	if a.maxSteps != 5 {
+		t.Fatalf("maxSteps = %d, want 5", a.maxSteps)
 	}
 }
 
 func TestWithModel(t *testing.T) {
 	a := New("a", "", "base", &mockProvider{}, nil, WithModel("gpt-4o"))
-	if a.Model != "gpt-4o" {
-		t.Fatalf("Model = %q, want gpt-4o", a.Model)
+	if a.model != "gpt-4o" {
+		t.Fatalf("model = %q, want gpt-4o", a.model)
 	}
 }
 
@@ -604,5 +604,38 @@ func TestAgentToolTurn(t *testing.T) {
 	}
 	if final.Content != "Tool called, result was: world" {
 		t.Errorf("unexpected final content: %s", final.Content)
+	}
+}
+
+type panicTool struct{}
+
+func (t *panicTool) Spec() llm.Spec {
+	return llm.Spec{Name: "panic", Parameters: map[string]any{}}
+}
+
+func (t *panicTool) Execute(_ context.Context, _ string) (string, error) {
+	panic("tool boom")
+}
+
+func TestRunTools_PanicRecovery(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&panicTool{})
+
+	s := session.New("s-panic")
+	calls := []llm.Call{{
+		ID:   "c1",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "panic", Arguments: `{}`},
+	}}
+
+	_, err := runTools(context.Background(), s, calls, reg, nil, nil, 10)
+	if err == nil {
+		t.Fatal("expected error from panicking tool, got nil")
+	}
+	if !strings.Contains(err.Error(), "panicked") {
+		t.Errorf("expected panic error message, got: %v", err)
 	}
 }

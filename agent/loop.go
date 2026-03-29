@@ -11,12 +11,7 @@ import (
 	"github.com/nijaru/canto/tool"
 )
 
-// StepConfig defines the components needed to execute a single agent step.
-//
-// This is an advanced API for custom Agent implementations. Most applications
-// should construct an agent with New and configure it with options instead of
-// assembling StepConfig directly.
-type StepConfig struct {
+type stepConfig struct {
 	ID               string
 	Model            string
 	Provider         llm.Provider
@@ -28,22 +23,18 @@ type StepConfig struct {
 
 // Step executes a single turn of the agentic loop and returns its result.
 func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, error) {
-	return RunStep(ctx, s, StepConfig{
+	return runStep(ctx, s, stepConfig{
 		ID:               a.agentID,
-		Model:            a.Model,
-		Provider:         a.Provider,
-		Builder:          a.Builder,
-		Tools:            a.Tools,
-		Hooks:            a.Hooks,
-		MaxParallelTools: a.MaxParallelTools,
+		Model:            a.model,
+		Provider:         a.provider,
+		Builder:          a.builder,
+		Tools:            a.tools,
+		Hooks:            a.hooks,
+		MaxParallelTools: a.maxParallelTools,
 	})
 }
 
-// RunStep executes a single step of the agentic loop using the provided config.
-//
-// This is an advanced helper for custom Agent implementations. Most callers
-// should prefer BaseAgent.Step, Turn, or StreamTurn.
-func RunStep(ctx context.Context, s *session.Session, cfg StepConfig) (res StepResult, err error) {
+func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepResult, err error) {
 	if err := s.Append(ctx, session.NewEvent(s.ID(), session.StepStarted, map[string]any{
 		"agent_id": cfg.ID,
 		"model":    cfg.Model,
@@ -93,7 +84,7 @@ func RunStep(ctx context.Context, s *session.Session, cfg StepConfig) (res StepR
 
 	// Execute tool calls in parallel and append results to the session.
 	handoffTargets := getHandoffTargets(cfg.Tools)
-	res, err = RunTools(
+	res, err = runTools(
 		ctx,
 		s,
 		resp.Calls,
@@ -109,7 +100,7 @@ func RunStep(ctx context.Context, s *session.Session, cfg StepConfig) (res StepR
 
 // Turn executes one or more steps until the agent finishes or a handoff is requested.
 func (a *BaseAgent) Turn(ctx context.Context, s *session.Session) (StepResult, error) {
-	return RunTurn(ctx, a, s, a.MaxSteps)
+	return RunTurn(ctx, a, s, a.maxSteps)
 }
 
 // RunTurn executes one or more steps until the agent finishes (no pending tool

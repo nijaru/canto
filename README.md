@@ -142,13 +142,27 @@ func main() {
 
 The executable quickstart lives at [examples/quickstart/main.go](examples/quickstart/main.go) and is compiled by `go test ./...`.
 
+This quickstart shows the lowest-level direct path (`Session` + `Agent`). If
+you are building a host/runtime integration rather than a one-off primitive
+example, prefer `runtime.Runner` with `Send` / `SendStream` as the default
+entry point.
+
 When you need a live feed of newly appended events, use `sess.Watch(ctx)` or
 `runner.Watch(ctx, sessionID)`. Those APIs return a first-class subscription
 handle with `Events()` and `Close()`.
 
 ## Common Paths
 
-### Single Durable Agent
+### Host-Facing Runtime Path
+
+Use this path when you are building an app/host around Canto:
+
+- create a `runtime.Runner`
+- send user input with `runner.Send(...)` or `runner.SendStream(...)`
+- watch live state with `runner.Watch(...)` when needed
+- treat direct store writes as advanced/manual flows, not the default host path
+
+### Low-Level Single Durable Agent
 
 Use this path when you want one agent with durable history:
 

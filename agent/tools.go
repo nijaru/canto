@@ -32,12 +32,7 @@ func getHandoffTargets(r *tool.Registry) []string {
 	return targets
 }
 
-// RunTools executes tool calls in parallel and persists results to the session.
-//
-// This is an advanced helper for custom Agent implementations. Most callers
-// should configure tools on BaseAgent and let Step, Turn, or StreamTurn invoke
-// it internally.
-func RunTools(
+func runTools(
 	ctx context.Context,
 	s *session.Session,
 	calls []llm.Call,

@@ -19,7 +19,6 @@ import (
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/hook"
-	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/llm/providers/openai"
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
@@ -45,16 +44,17 @@ and explore the codebase. Use execute_code for quick Python experiments.
 Always verify your changes work before reporting success.`
 
 	// 2. Initialize the agent
-	a := agent.New("codeagent", instructions, "gpt-4o", provider, reg)
-	a.MaxSteps = 30
+	a := agent.New("codeagent", instructions, "gpt-4o", provider, reg,
+		agent.WithMaxSteps(30),
+	)
 
 	// 3. Register a native Go hook to log tool executions to stderr
-	a.Hooks.Register(hook.NewFunc(
+	a.RegisterHooks(hook.NewFunc(
 		"log-tool-use",
 		[]hook.Event{hook.EventPreToolUse},
 		func(ctx context.Context, p *hook.Payload) *hook.Result {
-			toolName, _ := p.Data["tool_name"].(string)
-			args, _ := p.Data["tool_args"].(map[string]any)
+			toolName, _ := p.Data["tool"].(string)
+			args, _ := p.Data["args"].(string)
 			fmt.Fprintf(os.Stderr, "🔧 [Tool] %s(%v)\n", toolName, args)
 			return &hook.Result{Action: hook.ActionProceed}
 		},
@@ -84,28 +84,12 @@ Always verify your changes work before reporting success.`
 		os.Exit(1)
 	}
 
-	// 6. Append user message to the durable session
-	err = store.Save(ctx, session.NewEvent(sessionID, session.MessageAdded,
-		llm.Message{Role: llm.RoleUser, Content: input},
-	))
+	// 6. Append input and run the agent through the runner's canonical host API
+	result, err := runner.Send(ctx, sessionID, input)
 	if err != nil {
-		log.Fatalf("failed to save message: %v", err)
-	}
-
-	// 7. Run the agent
-	if _, err := runner.Run(ctx, sessionID); err != nil {
 		log.Fatalf("run failed: %v", err)
 	}
 
-	// 8. Output the final assistant response
-	sess, _ := store.Load(ctx, sessionID)
-	msgs := sess.Messages()
-	for i := len(msgs) - 1; i >= 0; i-- {
-		m := msgs[i]
-		// Find the last assistant message that wasn't just a tool call
-		if m.Role == llm.RoleAssistant && len(m.Calls) == 0 {
-			fmt.Println("\n" + m.Content)
-			break
-		}
-	}
+	// 7. Output the final assistant response
+	fmt.Println("\n" + result.Content)
 }

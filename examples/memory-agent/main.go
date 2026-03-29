@@ -19,7 +19,6 @@ import (
 
 	"github.com/nijaru/canto/agent"
 	cantoctx "github.com/nijaru/canto/context"
-	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/llm/providers/anthropic"
 	"github.com/nijaru/canto/memory"
 	"github.com/nijaru/canto/runtime"
@@ -113,29 +112,12 @@ When the user shares an important fact, use memorize_knowledge to store it.`
 		os.Exit(1)
 	}
 
-	// 7. Append message and run
-	if err := store.Save(ctx, session.NewEvent(sessionID, session.MessageAdded,
-		llm.Message{Role: llm.RoleUser, Content: input},
-	)); err != nil {
-		log.Fatalf("failed to save message: %v", err)
-	}
-
-	if _, err := runner.Run(ctx, sessionID); err != nil {
+	// 7. Append input and run through the runner's canonical host API
+	result, err := runner.Send(ctx, sessionID, input)
+	if err != nil {
 		log.Fatalf("run failed: %v", err)
 	}
 
 	// 8. Output final response
-	sess, err := store.Load(ctx, sessionID)
-	if err != nil {
-		log.Fatalf("failed to load session: %v", err)
-	}
-
-	msgs := sess.Messages()
-	for i := len(msgs) - 1; i >= 0; i-- {
-		m := msgs[i]
-		if m.Role == llm.RoleAssistant && len(m.Calls) == 0 {
-			fmt.Println("\n" + m.Content)
-			break
-		}
-	}
+	fmt.Println("\n" + result.Content)
 }
