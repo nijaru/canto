@@ -37,6 +37,9 @@ type BaseAgent struct {
 // ID returns the agent's unique identifier.
 func (a *BaseAgent) ID() string { return a.agentID }
 
+// Instructions returns the assembled system instructions for the agent.
+func (a *BaseAgent) Instructions() string { return a.instructions }
+
 // Option configures a BaseAgent after construction.
 type Option func(*BaseAgent)
 
