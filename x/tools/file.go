@@ -3,26 +3,23 @@ package tools
 import (
 	"context"
 	"fmt"
-	"io"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/canto/workspace"
 )
 
 // ReadFileTool reads a file within a sandboxed root directory.
 type ReadFileTool struct {
-	root *os.Root
+	root *workspace.Root
 }
 
 // NewReadFileTool creates a ReadFileTool sandboxed to root.
 // Paths outside root are rejected by the OS.
-func NewReadFileTool(root *os.Root) *ReadFileTool {
+func NewReadFileTool(root *workspace.Root) *ReadFileTool {
 	return &ReadFileTool{root: root}
 }
 
@@ -50,12 +47,7 @@ func (t *ReadFileTool) Execute(_ context.Context, args string) (string, error) {
 	if err := json.Unmarshal([]byte(args), &input); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
 	}
-	f, err := t.root.Open(input.Path)
-	if err != nil {
-		return "", fmt.Errorf("read_file: %w", err)
-	}
-	defer f.Close()
-	data, err := io.ReadAll(f)
+	data, err := t.root.ReadFile(input.Path)
 	if err != nil {
 		return "", fmt.Errorf("read_file: %w", err)
 	}
@@ -64,11 +56,11 @@ func (t *ReadFileTool) Execute(_ context.Context, args string) (string, error) {
 
 // WriteFileTool writes a file within a sandboxed root directory.
 type WriteFileTool struct {
-	root *os.Root
+	root *workspace.Root
 }
 
 // NewWriteFileTool creates a WriteFileTool sandboxed to root.
-func NewWriteFileTool(root *os.Root) *WriteFileTool {
+func NewWriteFileTool(root *workspace.Root) *WriteFileTool {
 	return &WriteFileTool{root: root}
 }
 
@@ -101,22 +93,7 @@ func (t *WriteFileTool) Execute(_ context.Context, args string) (string, error) 
 	if err := json.Unmarshal([]byte(args), &input); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
 	}
-
-	// Ensure parent directories exist within root.
-	dir := filepath.Dir(input.Path)
-	if dir != "." {
-		if err := t.root.MkdirAll(dir, 0o755); err != nil {
-			return "", fmt.Errorf("write_file mkdir: %w", err)
-		}
-	}
-
-	f, err := t.root.OpenFile(input.Path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return "", fmt.Errorf("write_file: %w", err)
-	}
-	defer f.Close()
-
-	if _, err := f.WriteString(input.Content); err != nil {
+	if err := t.root.WriteFile(input.Path, []byte(input.Content), 0o644); err != nil {
 		return "", fmt.Errorf("write_file: %w", err)
 	}
 	return fmt.Sprintf("wrote %d bytes to %s", len(input.Content), input.Path), nil
@@ -124,11 +101,11 @@ func (t *WriteFileTool) Execute(_ context.Context, args string) (string, error) 
 
 // ListDirTool lists the contents of a directory within a sandboxed root.
 type ListDirTool struct {
-	root *os.Root
+	root *workspace.Root
 }
 
 // NewListDirTool creates a ListDirTool sandboxed to root.
-func NewListDirTool(root *os.Root) *ListDirTool {
+func NewListDirTool(root *workspace.Root) *ListDirTool {
 	return &ListDirTool{root: root}
 }
 
@@ -156,14 +133,7 @@ func (t *ListDirTool) Execute(_ context.Context, args string) (string, error) {
 	if err := json.Unmarshal([]byte(args), &input); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
 	}
-
-	f, err := t.root.Open(input.Path)
-	if err != nil {
-		return "", fmt.Errorf("list_dir: %w", err)
-	}
-	defer f.Close()
-
-	entries, err := f.ReadDir(-1)
+	entries, err := t.root.ReadDir(input.Path)
 	if err != nil {
 		return "", fmt.Errorf("list_dir: %w", err)
 	}
@@ -181,11 +151,11 @@ func (t *ListDirTool) Execute(_ context.Context, args string) (string, error) {
 
 // GlobTool matches files by pattern within a sandboxed root.
 type GlobTool struct {
-	root *os.Root
+	root *workspace.Root
 }
 
 // NewGlobTool creates a GlobTool sandboxed to root.
-func NewGlobTool(root *os.Root) *GlobTool {
+func NewGlobTool(root *workspace.Root) *GlobTool {
 	return &GlobTool{root: root}
 }
 
@@ -213,27 +183,7 @@ func (t *GlobTool) Execute(ctx context.Context, args string) (string, error) {
 	if err := json.Unmarshal([]byte(args), &input); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
 	}
-
-	var matches []string
-	err := fs.WalkDir(t.root.FS(), ".", func(path string, d fs.DirEntry, err error) error {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if err != nil {
-			return nil // skip unreadable entries
-		}
-		if d.IsDir() {
-			return nil
-		}
-		ok, matchErr := filepath.Match(input.Pattern, path)
-		if matchErr != nil {
-			return fmt.Errorf("glob: invalid pattern %q: %w", input.Pattern, matchErr)
-		}
-		if ok {
-			matches = append(matches, path)
-		}
-		return nil
-	})
+	matches, err := t.root.Glob(ctx, input.Pattern)
 	if err != nil {
 		return "", err
 	}
@@ -246,7 +196,7 @@ func (t *GlobTool) Execute(ctx context.Context, args string) (string, error) {
 
 // FileTools returns ReadFile, WriteFile, ListDir, and Glob as a slice,
 // all sandboxed to root.
-func FileTools(root *os.Root) []tool.Tool {
+func FileTools(root *workspace.Root) []tool.Tool {
 	return []tool.Tool{
 		NewReadFileTool(root),
 		NewWriteFileTool(root),

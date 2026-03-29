@@ -6,16 +6,18 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nijaru/canto/workspace"
 )
 
-func openTestRoot(t *testing.T) *os.Root {
+func openTestRoot(t *testing.T) *workspace.Root {
 	t.Helper()
 	dir := t.TempDir()
-	root, err := os.OpenRoot(dir)
+	root, err := workspace.Open(dir)
 	if err != nil {
-		t.Fatalf("OpenRoot: %v", err)
+		t.Fatalf("workspace.Open: %v", err)
 	}
-	t.Cleanup(func() { root.Close() })
+	t.Cleanup(func() { _ = root.Close() })
 	return root
 }
 
@@ -63,12 +65,9 @@ func TestWriteFile_CreatesDirectories(t *testing.T) {
 func TestListDir(t *testing.T) {
 	root := openTestRoot(t)
 
-	// Create files via root.
-	f, err := root.Create("alpha.txt")
-	if err != nil {
+	if err := root.WriteFile("alpha.txt", nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
 
 	if err := root.MkdirAll("subdir", 0o755); err != nil {
 		t.Fatal(err)
@@ -101,7 +100,7 @@ func TestGlob(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	root, err := os.OpenRoot(dir)
+	root, err := workspace.Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

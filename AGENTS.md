@@ -15,6 +15,7 @@ Focus on session durability, context construction, tools, and orchestration. Not
 | `skill/`   | Layer 3d: Progressive disclosure skill packages (SKILL.md standard)  |
 | `runtime/` | Layer 3e: Session execution, lane queue, heartbeat, workspace config |
 | `memory/`  | Layer 3f: In-context + external memory, SQLite-backed, vector store  |
+| `workspace/` | Rooted, symlink-safe workspace filesystem capability               |
 | `x/`       | Extension packages: graph, swarm, eval, channel, rl, obs, guardrail  |
 | `ai/`      | Local-only AI session context — excluded via `.git/info/exclude`     |
 | `.tasks/`  | Local-only task tracker state — excluded via `.git/info/exclude`     |
