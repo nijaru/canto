@@ -9,5 +9,6 @@
 //
 // Extend the default builder with WithRequestProcessors and WithMutators, and
 // configure gated tool execution with WithApprovalManager when a host needs
-// pause/resume approval flow.
+// pause/resume approval flow. Use WithHooks for ordinary lifecycle hooks and
+// WithHookRunner only when replacing the hook runner wholesale.
 package agent

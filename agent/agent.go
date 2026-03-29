@@ -46,8 +46,17 @@ func WithMaxSteps(n int) Option { return func(a *BaseAgent) { a.maxSteps = n } }
 // WithMaxParallelTools sets the maximum concurrent tool executions per step.
 func WithMaxParallelTools(n int) Option { return func(a *BaseAgent) { a.maxParallelTools = n } }
 
-// WithHooks replaces the agent's hook runner.
-func WithHooks(h *hook.Runner) Option { return func(a *BaseAgent) { a.hooks = h } }
+// WithHooks appends one or more hooks to the agent's hook runner.
+func WithHooks(hs ...hook.Hook) Option {
+	return func(a *BaseAgent) {
+		for _, h := range hs {
+			a.hooks.Register(h)
+		}
+	}
+}
+
+// WithHookRunner replaces the agent's hook runner.
+func WithHookRunner(h *hook.Runner) Option { return func(a *BaseAgent) { a.hooks = h } }
 
 // WithApprovalManager configures a reusable approval manager for gated tool execution.
 func WithApprovalManager(
@@ -77,13 +86,6 @@ func WithMutators(ms ...ccontext.ContextMutator) Option {
 
 // WithModel overrides the model used for LLM calls.
 func WithModel(m string) Option { return func(a *BaseAgent) { a.model = m } }
-
-// RegisterHooks appends one or more hooks to the agent's hook runner.
-func (a *BaseAgent) RegisterHooks(hs ...hook.Hook) {
-	for _, h := range hs {
-		a.hooks.Register(h)
-	}
-}
 
 // New creates a BaseAgent with a default context builder chain.
 // Optional opts are applied after defaults are set.

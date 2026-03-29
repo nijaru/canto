@@ -46,21 +46,19 @@ Always verify your changes work before reporting success.`
 	// 2. Initialize the agent
 	a := agent.New("codeagent", instructions, "gpt-4o", provider, reg,
 		agent.WithMaxSteps(30),
+		agent.WithHooks(hook.NewFunc(
+			"log-tool-use",
+			[]hook.Event{hook.EventPreToolUse},
+			func(ctx context.Context, p *hook.Payload) *hook.Result {
+				toolName, _ := p.Data["tool"].(string)
+				args, _ := p.Data["args"].(string)
+				fmt.Fprintf(os.Stderr, "🔧 [Tool] %s(%v)\n", toolName, args)
+				return &hook.Result{Action: hook.ActionProceed}
+			},
+		)),
 	)
 
-	// 3. Register a native Go hook to log tool executions to stderr
-	a.RegisterHooks(hook.NewFunc(
-		"log-tool-use",
-		[]hook.Event{hook.EventPreToolUse},
-		func(ctx context.Context, p *hook.Payload) *hook.Result {
-			toolName, _ := p.Data["tool"].(string)
-			args, _ := p.Data["args"].(string)
-			fmt.Fprintf(os.Stderr, "🔧 [Tool] %s(%v)\n", toolName, args)
-			return &hook.Result{Action: hook.ActionProceed}
-		},
-	))
-
-	// 4. Initialize persistent storage
+	// 3. Initialize persistent storage
 	store, err := session.NewJSONLStore("./data/codeagent")
 	if err != nil {
 		log.Fatalf("failed to create store: %v", err)
@@ -68,7 +66,7 @@ Always verify your changes work before reporting success.`
 
 	runner := runtime.NewRunner(store, a)
 
-	// 5. Get input from user (args or prompt)
+	// 4. Get input from user (args or prompt)
 	var input string
 	if len(os.Args) > 1 {
 		input = strings.Join(os.Args[1:], " ")
