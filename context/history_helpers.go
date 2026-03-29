@@ -8,13 +8,12 @@ import (
 
 func lastMessageEventID(sess *session.Session) string {
 	var id string
-	sess.ForEachEventReverse(func(e session.Event) bool {
+	for e := range sess.Backward() {
 		if e.Type == session.MessageAdded {
 			id = e.ID.String()
-			return false
+			break
 		}
-		return true
-	})
+	}
 	return id
 }
 

@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"crypto/rand"
+	"iter"
 	"log/slog"
 	"sync"
 
@@ -354,30 +355,25 @@ func (s *Session) snapshotEvents() []Event {
 	return res
 }
 
-// ForEachEvent executes fn for each event in the session, from oldest to newest.
-// The iteration stops if fn returns false.
-func (s *Session) ForEachEvent(fn func(Event) bool) {
-	s.mu.RLock()
-	events := s.events
-	s.mu.RUnlock()
-
-	for _, e := range events {
-		if !fn(e) {
-			break
+// All returns an iterator over the full event log from oldest to newest.
+func (s *Session) All() iter.Seq[Event] {
+	return func(yield func(Event) bool) {
+		for _, e := range s.snapshotEvents() {
+			if !yield(e) {
+				return
+			}
 		}
 	}
 }
 
-// ForEachEventReverse executes fn for each event in the session, from newest to oldest.
-// The iteration stops if fn returns false.
-func (s *Session) ForEachEventReverse(fn func(Event) bool) {
-	s.mu.RLock()
-	events := s.events
-	s.mu.RUnlock()
-
-	for i := len(events) - 1; i >= 0; i-- {
-		if !fn(events[i]) {
-			break
+// Backward returns an iterator over the full event log from newest to oldest.
+func (s *Session) Backward() iter.Seq[Event] {
+	return func(yield func(Event) bool) {
+		events := s.snapshotEvents()
+		for i := len(events) - 1; i >= 0; i-- {
+			if !yield(events[i]) {
+				return
+			}
 		}
 	}
 }

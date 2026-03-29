@@ -88,11 +88,10 @@ func CompactSession(
 
 func compactionEventCount(sess *session.Session) int {
 	var count int
-	sess.ForEachEvent(func(e session.Event) bool {
+	for e := range sess.All() {
 		if e.Type == session.CompactionTriggered {
 			count++
 		}
-		return true
-	})
+	}
 	return count
 }

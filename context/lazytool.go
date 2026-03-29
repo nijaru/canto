@@ -97,19 +97,19 @@ func (p *LazyTools) ApplyRequest(
 func SearchUnlockedTools(sess *session.Session) (map[string]struct{}, error) {
 	unlocked := make(map[string]struct{})
 	var errOut error
-	sess.ForEachEvent(func(e session.Event) bool {
+	for e := range sess.All() {
 		result, ok, err := e.ToolCompletedData()
 		if err != nil {
 			errOut = err
-			return false
+			break
 		}
 		if !ok || result.Tool != searchToolName {
-			return true
+			continue
 		}
 
 		var specs []llm.Spec
 		if err := json.Unmarshal([]byte(result.Output), &specs); err != nil {
-			return true
+			continue
 		}
 		for _, spec := range specs {
 			if spec.Name == "" || spec.Name == searchToolName {
@@ -117,8 +117,7 @@ func SearchUnlockedTools(sess *session.Session) (map[string]struct{}, error) {
 			}
 			unlocked[spec.Name] = struct{}{}
 		}
-		return true
-	})
+	}
 	return unlocked, errOut
 }
 

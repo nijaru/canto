@@ -112,27 +112,26 @@ func extractHandoff(s *session.Session, targetIDs []string) *Handoff {
 	}
 
 	var found *Handoff
-	s.ForEachEventReverse(func(e session.Event) bool {
+	for e := range s.Backward() {
 		if e.Type != session.MessageAdded {
-			return true
+			continue
 		}
 		var msg llm.Message
 		if err := json.Unmarshal(e.Data, &msg); err != nil {
-			return true
+			continue
 		}
 		if msg.Role != llm.RoleTool {
-			return false // moved past the tool result block; stop scanning
+			break // moved past the tool result block; stop scanning
 		}
 		var h Handoff
 		if err := json.Unmarshal([]byte(msg.Content), &h); err != nil {
-			return true
+			continue
 		}
 		if h.TargetAgentID != "" && known[h.TargetAgentID] {
 			found = &h
-			return false
+			break
 		}
-		return true
-	})
+	}
 	return found
 }
 

@@ -220,15 +220,15 @@ func exportRunTree(
 	defer delete(seen, sess.ID())
 
 	childByID := make(map[string]*ChildRunLog)
-	sess.ForEachEvent(func(e Event) bool {
+	for e := range sess.All() {
 		switch e.Type {
 		case ChildRequested:
 			data, ok, err := e.ChildRequestedData()
 			if err != nil {
-				return false
+				return nil, err
 			}
 			if !ok {
-				return true
+				continue
 			}
 			childByID[data.ChildID] = &ChildRunLog{
 				ChildID:   data.ChildID,
@@ -241,10 +241,10 @@ func exportRunTree(
 		case ChildStarted:
 			data, ok, err := e.ChildStartedData()
 			if err != nil {
-				return false
+				return nil, err
 			}
 			if !ok {
-				return true
+				continue
 			}
 			child := ensureChildRun(childByID, data.ChildID, data.ChildSessionID)
 			child.AgentID = data.AgentID
@@ -252,20 +252,20 @@ func exportRunTree(
 		case ChildBlocked:
 			data, ok, err := e.ChildBlockedData()
 			if err != nil {
-				return false
+				return nil, err
 			}
 			if !ok {
-				return true
+				continue
 			}
 			child := ensureChildRun(childByID, data.ChildID, data.ChildSessionID)
 			child.Status = ChildStatusBlocked
 		case ChildCompleted:
 			data, ok, err := e.ChildCompletedData()
 			if err != nil {
-				return false
+				return nil, err
 			}
 			if !ok {
-				return true
+				continue
 			}
 			child := ensureChildRun(childByID, data.ChildID, data.ChildSessionID)
 			child.Status = ChildStatusCompleted
@@ -273,46 +273,45 @@ func exportRunTree(
 		case ChildFailed:
 			data, ok, err := e.ChildFailedData()
 			if err != nil {
-				return false
+				return nil, err
 			}
 			if !ok {
-				return true
+				continue
 			}
 			child := ensureChildRun(childByID, data.ChildID, data.ChildSessionID)
 			child.Status = ChildStatusFailed
 		case ChildCanceled:
 			data, ok, err := e.ChildCanceledData()
 			if err != nil {
-				return false
+				return nil, err
 			}
 			if !ok {
-				return true
+				continue
 			}
 			child := ensureChildRun(childByID, data.ChildID, data.ChildSessionID)
 			child.Status = ChildStatusCanceled
 		case ChildMerged:
 			data, ok, err := e.ChildMergedData()
 			if err != nil {
-				return false
+				return nil, err
 			}
 			if !ok {
-				return true
+				continue
 			}
 			child := ensureChildRun(childByID, data.ChildID, data.ChildSessionID)
 			child.Status = ChildStatusMerged
 		case ArtifactRecorded:
 			data, ok, err := e.ArtifactRecordedData()
 			if err != nil {
-				return false
+				return nil, err
 			}
 			if !ok || data.ChildID == "" {
-				return true
+				continue
 			}
 			child := ensureChildRun(childByID, data.ChildID, data.SessionID)
 			child.Artifacts = append(child.Artifacts, data.Artifact)
 		}
-		return true
-	})
+	}
 
 	childIDs := make([]string, 0, len(childByID))
 	for childID := range childByID {
