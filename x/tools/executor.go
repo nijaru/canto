@@ -127,8 +127,11 @@ func (e *Executor) Run(ctx context.Context, cmd Command) (Result, error) {
 		recordReadErr(collector.readStream(StderrStream, stderr))
 	}()
 
-	waitErr := execCmd.Wait()
+	// Drain both pipes before Wait. The exec package closes the parent's pipe
+	// descriptors during Wait, so waiting first can race with the readers and
+	// surface "file already closed" on fast-exiting commands.
 	wg.Wait()
+	waitErr := execCmd.Wait()
 
 	if readErr != nil {
 		return Result{}, fmt.Errorf("executor read output: %w", readErr)
