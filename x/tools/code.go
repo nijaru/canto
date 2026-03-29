@@ -74,5 +74,12 @@ func (c *CodeExecutionTool) Execute(ctx context.Context, args string) (string, e
 
 	// 2. Execute the code using the executor
 	// We use `python3` specifically to avoid potential Python 2 issues.
-	return c.Executor.Execute(ctx, "python3", tmpFile)
+	result, err := c.Executor.Run(ctx, Command{
+		Name: "python3",
+		Args: []string{tmpFile},
+	})
+	if err != nil {
+		return result.Combined, err
+	}
+	return result.Combined, nil
 }

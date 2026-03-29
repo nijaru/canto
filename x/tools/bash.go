@@ -9,7 +9,9 @@ import (
 )
 
 // BashTool executes shell commands.
-type BashTool struct{}
+type BashTool struct {
+	Executor *Executor
+}
 
 // Spec returns the tool specification.
 func (b *BashTool) Spec() llm.Spec {
@@ -42,6 +44,16 @@ func (b *BashTool) Execute(ctx context.Context, args string) (string, error) {
 		return "", err
 	}
 
-	executor := DefaultExecutor
-	return executor.Execute(ctx, "bash", "-c", input.Command)
+	executor := b.Executor
+	if executor == nil {
+		executor = DefaultExecutor
+	}
+	result, err := executor.Run(ctx, Command{
+		Name: "bash",
+		Args: []string{"-c", input.Command},
+	})
+	if err != nil {
+		return result.Combined, err
+	}
+	return result.Combined, nil
 }
