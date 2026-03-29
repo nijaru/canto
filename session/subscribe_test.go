@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestSubscribe_ReceivesEvents(t *testing.T) {
+func TestWatch_ReceivesEvents(t *testing.T) {
 	s := New("sess-1")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -28,7 +28,7 @@ func TestSubscribe_ReceivesEvents(t *testing.T) {
 	}
 }
 
-func TestSubscribe_MultipleSubscribers(t *testing.T) {
+func TestWatch_MultipleSubscribers(t *testing.T) {
 	s := New("sess-2")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -53,7 +53,7 @@ func TestSubscribe_MultipleSubscribers(t *testing.T) {
 	}
 }
 
-func TestSubscribe_CancelClosesChannel(t *testing.T) {
+func TestWatch_ContextCancelClosesChannel(t *testing.T) {
 	s := New("sess-3")
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -79,7 +79,7 @@ func TestSubscribe_CancelClosesChannel(t *testing.T) {
 	}
 }
 
-func TestSubscribe_SlowSubscriberDoesNotBlock(t *testing.T) {
+func TestWatch_SlowSubscriberDoesNotBlock(t *testing.T) {
 	s := New("sess-4")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -105,15 +105,15 @@ func TestSubscribe_SlowSubscriberDoesNotBlock(t *testing.T) {
 	}
 }
 
-func TestSubscribe_NoSubscribers(t *testing.T) {
+func TestWatch_NoSubscribers(t *testing.T) {
 	s := New("sess-5")
 	// Append with no subscribers must not panic.
 	_ = s.Append(context.Background(), NewEvent("sess-5", Handoff, nil))
 }
 
-// TestSubscribe_ConcurrentAppendCancel exercises the race between Append and
+// TestWatch_ConcurrentAppendCancel exercises the race between Append and
 // context cancellation. Run with -race to verify no data race or panic.
-func TestSubscribe_ConcurrentAppendCancel(t *testing.T) {
+func TestWatch_ConcurrentAppendCancel(t *testing.T) {
 	const goroutines = 8
 	const eventsPerWriter = 200
 
@@ -146,7 +146,7 @@ func TestSubscribe_ConcurrentAppendCancel(t *testing.T) {
 	wg.Wait()
 }
 
-func TestSubscribe_EventsBeforeSubscribeNotReceived(t *testing.T) {
+func TestWatch_EventsBeforeWatchNotReceived(t *testing.T) {
 	s := New("sess-6")
 
 	// Append before subscribe.
@@ -165,24 +165,9 @@ func TestSubscribe_EventsBeforeSubscribeNotReceived(t *testing.T) {
 	select {
 	case got := <-sub.Events():
 		if got.ID != e.ID {
-			t.Fatalf("got wrong event; want post-subscribe event")
+			t.Fatalf("got wrong event; want post-watch event")
 		}
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for post-subscribe event")
-	}
-}
-
-func TestSubscribe_CompatibilityWrapper(t *testing.T) {
-	s := New("sess-compat")
-	ch, cancel := s.Subscribe(context.Background())
-	cancel()
-
-	select {
-	case _, ok := <-ch:
-		if ok {
-			t.Fatal("expected closed channel after cancel")
-		}
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for compatibility wrapper close")
+		t.Fatal("timed out waiting for post-watch event")
 	}
 }

@@ -127,20 +127,6 @@ func (r *Runner) Watch(ctx context.Context, sessionID string) (*session.Subscrip
 	return sess.Watch(ctx), nil
 }
 
-// Subscribe returns a channel that receives all events for the given session.
-//
-// Deprecated: prefer Watch, which returns a first-class Subscription handle.
-func (r *Runner) Subscribe(
-	ctx context.Context,
-	sessionID string,
-) (<-chan session.Event, context.CancelFunc, error) {
-	sub, err := r.Watch(ctx, sessionID)
-	if err != nil {
-		return nil, nil, err
-	}
-	return sub.Events(), sub.Close, nil
-}
-
 // Search searches the session history for the given query.
 func (r *Runner) Search(ctx context.Context, sessionID, query string) ([]session.Event, error) {
 	return r.Store.Search(ctx, sessionID, query)

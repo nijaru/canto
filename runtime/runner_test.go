@@ -29,12 +29,12 @@ func (e *echoAgent) Turn(ctx context.Context, sess *session.Session) (agent.Step
 	return e.Step(ctx, sess)
 }
 
-// TestRunner_Subscribe_ReceivesEvents is a regression test for the bug where
-// Runner.Subscribe loaded a separate *session.Session object from the store,
+// TestRunner_Watch_ReceivesEvents is a regression test for the bug where
+// Runner.Watch loaded a separate *session.Session object from the store,
 // causing the subscriber channel to be permanently silent because events were
 // emitted on a different in-memory object. After the session registry fix,
-// Subscribe and Run share the same object, so events flow through correctly.
-func TestRunner_Subscribe_ReceivesEvents(t *testing.T) {
+// Watch and Run share the same object, so events flow through correctly.
+func TestRunner_Watch_ReceivesEvents(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ collect:
 	}
 
 	if len(events) == 0 {
-		t.Fatal("Subscribe received no events; session registry fix may be broken")
+		t.Fatal("Watch received no events; session registry fix may be broken")
 	}
 
 	// Confirm we saw the user message and the assistant reply.
@@ -103,16 +103,16 @@ collect:
 		}
 	}
 	if !sawUser {
-		t.Error("Subscribe did not receive the user MessageAdded event")
+		t.Error("Watch did not receive the user MessageAdded event")
 	}
 	if !sawAssistant {
-		t.Error("Subscribe did not receive the assistant MessageAdded event")
+		t.Error("Watch did not receive the assistant MessageAdded event")
 	}
 }
 
-// TestRunner_Subscribe_SharedObject verifies that the same *session.Session is
+// TestRunner_Watch_SharedObject verifies that the same *session.Session is
 // returned for repeated getOrLoad calls on the same sessionID.
-func TestRunner_Subscribe_SharedObject(t *testing.T) {
+func TestRunner_Watch_SharedObject(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {
 		t.Fatal(err)

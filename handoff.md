@@ -14,7 +14,7 @@ Canto is a Go-native framework for **durable agent backends**. It prioritizes ap
 Resolved 12 critical and architectural issues to harden the framework for the Alpha release. Key fixes:
 
 - **Logic Fixes**: Corrected thinking block assembly in `StreamStep` (was dropping reasoning content without signatures).
-- **Goroutine Leak Prevention**: Updated live session watching to support explicit cleanup. New code should prefer `Watch()` returning a `Subscription` handle with `Close()`, while `Subscribe()` remains as a compatibility wrapper.
+- **Goroutine Leak Prevention**: Live session watching now uses `Watch()` returning a `Subscription` handle with `Close()`.
 - **Data Durability**: Fixed a race/data-loss risk in `AttachWriteThrough` by introducing a dedicated, non-lossy persistent path (`SetWriterChannel`).
 - **Panic Safety**: Added `recover()` boundaries to `RunTools`, `x/swarm`, and `executeUnderLease` to prevent faulty tools or agents from crashing the entire orchestrator.
 - **Context Handling**: Fixed missing context cancellation propagation in `x/pool` workers.
@@ -25,8 +25,8 @@ Resolved 12 critical and architectural issues to harden the framework for the Al
 
 ### API Migration Guide (NEW)
 Documented breaking changes for consumers in `ai/review/API_CHANGES_2026_03_28.md`. Primary changes:
-- `Subscribe` now returns `(<-chan Event, CancelFunc)`, and new code should prefer `Watch()` returning `Subscription`.
-- `agent.StepConfig` and `agent.RunTools` now require concurrency limits.
+- live event subscriptions now use `Watch()` returning `Subscription`
+- `agent.StepConfig` and `agent.RunTools` now require concurrency limits
 
 ## Phase 4 Roadmap — Remaining Work
 - [x] Deep Architecture & Safety Audit (12 fixes landed)

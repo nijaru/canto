@@ -293,15 +293,6 @@ func (s *Session) removeSubscriber(target *subscriber) {
 	}
 }
 
-// Subscribe returns a channel that receives every event appended after this call.
-//
-// Deprecated: prefer Watch, which returns a first-class Subscription handle
-// with Close and clearer lossy live-stream semantics.
-func (s *Session) Subscribe(ctx context.Context) (<-chan Event, context.CancelFunc) {
-	sub := s.Watch(ctx)
-	return sub.Events(), sub.Close
-}
-
 // Events returns the full event log.
 func (s *Session) Events() []Event {
 	s.mu.RLock()
