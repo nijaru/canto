@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-json-experiment/json"
 	"github.com/go-json-experiment/json/jsontext"
@@ -24,9 +25,13 @@ func (t *RememberTool) Spec() llm.Spec {
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"content": map[string]any{"type": "string"},
-				"key":     map[string]any{"type": "string"},
-				"role":    map[string]any{"type": "string"},
+				"content":     map[string]any{"type": "string"},
+				"key":         map[string]any{"type": "string"},
+				"role":        map[string]any{"type": "string"},
+				"observed_at": map[string]any{"type": "string"},
+				"valid_from":  map[string]any{"type": "string"},
+				"valid_to":    map[string]any{"type": "string"},
+				"supersedes":  map[string]any{"type": "string"},
 				"metadata": map[string]any{
 					"type": "object",
 				},
@@ -43,6 +48,10 @@ func (t *RememberTool) Execute(ctx context.Context, args string) (string, error)
 		Content    string         `json:"content"`
 		Key        string         `json:"key"`
 		Role       string         `json:"role"`
+		ObservedAt string         `json:"observed_at"`
+		ValidFrom  string         `json:"valid_from"`
+		ValidTo    string         `json:"valid_to"`
+		Supersedes string         `json:"supersedes"`
 		Metadata   map[string]any `json:"metadata"`
 		Importance float64        `json:"importance"`
 		Mode       string         `json:"mode"`
@@ -54,12 +63,28 @@ func (t *RememberTool) Execute(ctx context.Context, args string) (string, error)
 	if input.Role != "" {
 		role = memory.Role(input.Role)
 	}
+	observedAt, err := parseOptionalTime(input.ObservedAt)
+	if err != nil {
+		return "", fmt.Errorf("invalid observed_at: %w", err)
+	}
+	validFrom, err := parseOptionalTime(input.ValidFrom)
+	if err != nil {
+		return "", fmt.Errorf("invalid valid_from: %w", err)
+	}
+	validTo, err := parseOptionalTime(input.ValidTo)
+	if err != nil {
+		return "", fmt.Errorf("invalid valid_to: %w", err)
+	}
 	mode := memory.WriteMode(input.Mode)
 	result, err := t.Writer.Write(ctx, memory.WriteInput{
 		Namespace:  t.Namespace,
 		Role:       role,
 		Key:        input.Key,
 		Content:    input.Content,
+		ObservedAt: observedAt,
+		ValidFrom:  validFrom,
+		ValidTo:    validTo,
+		Supersedes: input.Supersedes,
 		Metadata:   input.Metadata,
 		Importance: input.Importance,
 		Mode:       mode,
@@ -88,34 +113,63 @@ func (t *RecallTool) Spec() llm.Spec {
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"query":        map[string]any{"type": "string"},
-				"use_semantic": map[string]any{"type": "boolean"},
-				"limit":        map[string]any{"type": "integer"},
+				"query":              map[string]any{"type": "string"},
+				"use_semantic":       map[string]any{"type": "boolean"},
+				"include_recent":     map[string]any{"type": "boolean"},
+				"include_forgotten":  map[string]any{"type": "boolean"},
+				"include_superseded": map[string]any{"type": "boolean"},
+				"valid_at":           map[string]any{"type": "string"},
+				"observed_after":     map[string]any{"type": "string"},
+				"observed_before":    map[string]any{"type": "string"},
+				"limit":              map[string]any{"type": "integer"},
 			},
-			"required": []string{"query"},
 		},
 	}
 }
 
 func (t *RecallTool) Execute(ctx context.Context, args string) (string, error) {
 	var input struct {
-		Query       string `json:"query"`
-		UseSemantic bool   `json:"use_semantic"`
-		Limit       int    `json:"limit"`
+		Query             string `json:"query"`
+		UseSemantic       bool   `json:"use_semantic"`
+		IncludeRecent     bool   `json:"include_recent"`
+		IncludeForgotten  bool   `json:"include_forgotten"`
+		IncludeSuperseded bool   `json:"include_superseded"`
+		ValidAt           string `json:"valid_at"`
+		ObservedAfter     string `json:"observed_after"`
+		ObservedBefore    string `json:"observed_before"`
+		Limit             int    `json:"limit"`
 	}
 	if err := json.Unmarshal([]byte(args), &input); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
+	}
+	validAt, err := parseOptionalTime(input.ValidAt)
+	if err != nil {
+		return "", fmt.Errorf("invalid valid_at: %w", err)
+	}
+	observedAfter, err := parseOptionalTime(input.ObservedAfter)
+	if err != nil {
+		return "", fmt.Errorf("invalid observed_after: %w", err)
+	}
+	observedBefore, err := parseOptionalTime(input.ObservedBefore)
+	if err != nil {
+		return "", fmt.Errorf("invalid observed_before: %w", err)
 	}
 	limit := input.Limit
 	if limit <= 0 {
 		limit = t.Limit
 	}
 	results, err := t.Retriever.Retrieve(ctx, memory.Query{
-		Namespaces:  t.Namespaces,
-		Roles:       t.Roles,
-		Text:        input.Query,
-		UseSemantic: input.UseSemantic,
-		Limit:       limit,
+		Namespaces:        t.Namespaces,
+		Roles:             t.Roles,
+		Text:              input.Query,
+		UseSemantic:       input.UseSemantic,
+		IncludeRecent:     input.IncludeRecent,
+		IncludeForgotten:  input.IncludeForgotten,
+		IncludeSuperseded: input.IncludeSuperseded,
+		ValidAt:           validAt,
+		ObservedAfter:     observedAfter,
+		ObservedBefore:    observedBefore,
+		Limit:             limit,
 	})
 	if err != nil {
 		return "", err
@@ -125,4 +179,15 @@ func (t *RecallTool) Execute(ctx context.Context, args string) (string, error) {
 		return "", err
 	}
 	return string(out), nil
+}
+
+func parseOptionalTime(raw string) (*time.Time, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		return nil, err
+	}
+	return &value, nil
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/memory"
@@ -12,12 +13,17 @@ import (
 )
 
 type MemoryPromptOptions struct {
-	Namespaces    []memory.Namespace
-	Roles         []memory.Role
-	Limit         int
-	Query         string
-	UseSemantic   bool
-	IncludeRecent bool
+	Namespaces        []memory.Namespace
+	Roles             []memory.Role
+	Limit             int
+	Query             string
+	UseSemantic       bool
+	IncludeRecent     bool
+	ValidAt           *time.Time
+	ObservedAfter     *time.Time
+	ObservedBefore    *time.Time
+	IncludeForgotten  bool
+	IncludeSuperseded bool
 }
 
 func MemoryPrompt(retriever memory.Retriever, opts MemoryPromptOptions) RequestProcessor {
@@ -45,12 +51,17 @@ func MemoryPrompt(retriever memory.Retriever, opts MemoryPromptOptions) RequestP
 			}
 		}
 		results, err := retriever.Retrieve(ctx, memory.Query{
-			Namespaces:    opts.Namespaces,
-			Roles:         opts.Roles,
-			Text:          query,
-			Limit:         opts.Limit,
-			UseSemantic:   opts.UseSemantic,
-			IncludeRecent: opts.IncludeRecent,
+			Namespaces:        opts.Namespaces,
+			Roles:             opts.Roles,
+			Text:              query,
+			Limit:             opts.Limit,
+			UseSemantic:       opts.UseSemantic,
+			IncludeRecent:     opts.IncludeRecent,
+			ValidAt:           opts.ValidAt,
+			ObservedAfter:     opts.ObservedAfter,
+			ObservedBefore:    opts.ObservedBefore,
+			IncludeForgotten:  opts.IncludeForgotten,
+			IncludeSuperseded: opts.IncludeSuperseded,
 		})
 		if err != nil {
 			return err

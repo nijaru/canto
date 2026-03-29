@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/memory"
@@ -12,9 +13,11 @@ import (
 
 type stubRetriever struct {
 	results []memory.Memory
+	last    memory.Query
 }
 
-func (s stubRetriever) Retrieve(context.Context, memory.Query) ([]memory.Memory, error) {
+func (s *stubRetriever) Retrieve(_ context.Context, query memory.Query) ([]memory.Memory, error) {
+	s.last = query
 	return s.results, nil
 }
 
@@ -173,7 +176,7 @@ func TestMemoryPrompt_NilManager(t *testing.T) {
 func TestMemoryPrompt_UsesRetrieverInterface(t *testing.T) {
 	sess := session.New("thread-stub")
 	req := &llm.Request{}
-	proc := MemoryPrompt(stubRetriever{
+	proc := MemoryPrompt(&stubRetriever{
 		results: []memory.Memory{
 			{
 				ID:        "m1",
@@ -188,6 +191,45 @@ func TestMemoryPrompt_UsesRetrieverInterface(t *testing.T) {
 	}
 	if len(req.Messages) != 1 || !strings.Contains(req.Messages[0].Content, "Stubbed memory") {
 		t.Fatalf("expected injected stub memory, got %#v", req.Messages)
+	}
+}
+
+func TestMemoryPrompt_PassesLifecycleOptions(t *testing.T) {
+	sess := session.New("thread-lifecycle")
+	req := &llm.Request{}
+	validAt := time.Date(2026, 3, 29, 10, 0, 0, 0, time.UTC)
+	observedAfter := time.Date(2026, 3, 29, 8, 0, 0, 0, time.UTC)
+	observedBefore := time.Date(2026, 3, 29, 12, 0, 0, 0, time.UTC)
+	retriever := &stubRetriever{
+		results: []memory.Memory{
+			{
+				ID:        "m1",
+				Namespace: memory.Namespace{Scope: memory.ScopeUser, ID: "u1"},
+				Role:      memory.RoleSemantic,
+				Content:   "Stubbed memory",
+			},
+		},
+	}
+	proc := MemoryPrompt(retriever, MemoryPromptOptions{
+		Limit:             5,
+		Query:             "tea",
+		IncludeRecent:     true,
+		ValidAt:           &validAt,
+		ObservedAfter:     &observedAfter,
+		ObservedBefore:    &observedBefore,
+		IncludeForgotten:  true,
+		IncludeSuperseded: true,
+	})
+	if err := proc.ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatalf("ApplyRequest: %v", err)
+	}
+	if !retriever.last.IncludeRecent || !retriever.last.IncludeForgotten ||
+		!retriever.last.IncludeSuperseded {
+		t.Fatalf("expected lifecycle flags in query: %#v", retriever.last)
+	}
+	if retriever.last.ValidAt == nil || retriever.last.ObservedAfter == nil ||
+		retriever.last.ObservedBefore == nil {
+		t.Fatalf("expected lifecycle times in query: %#v", retriever.last)
 	}
 }
 

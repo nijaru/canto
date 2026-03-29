@@ -19,9 +19,11 @@ func (s *stubWriter) Write(_ context.Context, input memory.WriteInput) (memory.W
 
 type stubRetriever struct {
 	results []memory.Memory
+	last    memory.Query
 }
 
-func (s stubRetriever) Retrieve(context.Context, memory.Query) ([]memory.Memory, error) {
+func (s *stubRetriever) Retrieve(_ context.Context, query memory.Query) ([]memory.Memory, error) {
+	s.last = query
 	return s.results, nil
 }
 
@@ -105,23 +107,84 @@ func TestRememberTool_UsesWriterInterface(t *testing.T) {
 	}
 }
 
+func TestRememberTool_ParsesLifecycleFields(t *testing.T) {
+	writer := &stubWriter{}
+	tool := &RememberTool{
+		Writer:    writer,
+		Namespace: memory.Namespace{Scope: memory.ScopeUser, ID: "u1"},
+		Role:      memory.RoleSemantic,
+	}
+	out, err := tool.Execute(
+		t.Context(),
+		`{"content":"fresh","observed_at":"2026-03-29T08:00:00Z","valid_from":"2026-03-29T09:00:00Z","valid_to":"2026-03-29T10:00:00Z","supersedes":"old-id"}`,
+	)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if writer.last.ObservedAt == nil || writer.last.ValidFrom == nil || writer.last.ValidTo == nil {
+		t.Fatalf("expected lifecycle times to be parsed: %#v", writer.last)
+	}
+	if writer.last.Supersedes != "old-id" {
+		t.Fatalf("expected supersedes to be captured: %#v", writer.last)
+	}
+	if !strings.Contains(out, "\"Stored\": 1") {
+		t.Fatalf("unexpected output: %s", out)
+	}
+}
+
 func TestRecallTool_UsesRetrieverInterface(t *testing.T) {
-	tool := &RecallTool{
-		Retriever: stubRetriever{
-			results: []memory.Memory{
-				{
-					ID:        "m1",
-					Namespace: memory.Namespace{Scope: memory.ScopeUser, ID: "u1"},
-					Role:      memory.RoleSemantic,
-					Content:   "stubbed memory",
-				},
+	retriever := &stubRetriever{
+		results: []memory.Memory{
+			{
+				ID:        "m1",
+				Namespace: memory.Namespace{Scope: memory.ScopeUser, ID: "u1"},
+				Role:      memory.RoleSemantic,
+				Content:   "stubbed memory",
 			},
 		},
-		Limit: 5,
+	}
+	tool := &RecallTool{
+		Retriever: retriever,
+		Limit:     5,
 	}
 	out, err := tool.Execute(t.Context(), `{"query":"stubbed"}`)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(out, "stubbed memory") {
+		t.Fatalf("unexpected output: %s", out)
+	}
+}
+
+func TestRecallTool_ParsesLifecycleFilters(t *testing.T) {
+	retriever := &stubRetriever{
+		results: []memory.Memory{
+			{
+				ID:        "m1",
+				Namespace: memory.Namespace{Scope: memory.ScopeUser, ID: "u1"},
+				Role:      memory.RoleSemantic,
+				Content:   "stubbed memory",
+			},
+		},
+	}
+	tool := &RecallTool{
+		Retriever: retriever,
+		Limit:     5,
+	}
+	out, err := tool.Execute(
+		t.Context(),
+		`{"include_recent":true,"include_forgotten":true,"include_superseded":true,"valid_at":"2026-03-29T10:00:00Z","observed_after":"2026-03-29T08:00:00Z","observed_before":"2026-03-29T12:00:00Z"}`,
+	)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !retriever.last.IncludeRecent || !retriever.last.IncludeForgotten ||
+		!retriever.last.IncludeSuperseded {
+		t.Fatalf("expected lifecycle flags in query: %#v", retriever.last)
+	}
+	if retriever.last.ValidAt == nil || retriever.last.ObservedAfter == nil ||
+		retriever.last.ObservedBefore == nil {
+		t.Fatalf("expected lifecycle times in query: %#v", retriever.last)
 	}
 	if !strings.Contains(out, "stubbed memory") {
 		t.Fatalf("unexpected output: %s", out)
