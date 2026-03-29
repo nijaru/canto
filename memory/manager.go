@@ -46,14 +46,20 @@ type Block struct {
 }
 
 type Memory struct {
-	ID        string         `json:"id"`
-	Namespace Namespace      `json:"namespace"`
-	Role      Role           `json:"role"`
-	Key       string         `json:"key,omitzero"`
-	Content   string         `json:"content"`
-	Metadata  map[string]any `json:"metadata,omitzero"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	Score     float32        `json:"score,omitzero"`
+	ID           string         `json:"id"`
+	Namespace    Namespace      `json:"namespace"`
+	Role         Role           `json:"role"`
+	Key          string         `json:"key,omitzero"`
+	Content      string         `json:"content"`
+	Metadata     map[string]any `json:"metadata,omitzero"`
+	ObservedAt   *time.Time     `json:"observed_at,omitzero"`
+	ValidFrom    *time.Time     `json:"valid_from,omitzero"`
+	ValidTo      *time.Time     `json:"valid_to,omitzero"`
+	Supersedes   string         `json:"supersedes,omitzero"`
+	SupersededBy string         `json:"superseded_by,omitzero"`
+	ForgottenAt  *time.Time     `json:"forgotten_at,omitzero"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	Score        float32        `json:"score,omitzero"`
 }
 
 type ConflictMode string
@@ -77,6 +83,10 @@ type Candidate struct {
 	Key        string         `json:"key,omitzero"`
 	Content    string         `json:"content"`
 	Metadata   map[string]any `json:"metadata,omitzero"`
+	ObservedAt *time.Time     `json:"observed_at,omitzero"`
+	ValidFrom  *time.Time     `json:"valid_from,omitzero"`
+	ValidTo    *time.Time     `json:"valid_to,omitzero"`
+	Supersedes string         `json:"supersedes,omitzero"`
 	Importance float64        `json:"importance,omitzero"`
 }
 
@@ -95,6 +105,10 @@ type WriteInput struct {
 	Key        string
 	Content    string
 	Metadata   map[string]any
+	ObservedAt *time.Time
+	ValidFrom  *time.Time
+	ValidTo    *time.Time
+	Supersedes string
 	Importance float64
 	Mode       WriteMode
 }
@@ -106,14 +120,19 @@ type WriteResult struct {
 }
 
 type Query struct {
-	Namespaces    []Namespace
-	Roles         []Role
-	Text          string
-	Limit         int
-	Filters       map[string]any
-	UseSemantic   bool
-	IncludeCore   bool
-	IncludeRecent bool
+	Namespaces        []Namespace
+	Roles             []Role
+	Text              string
+	Limit             int
+	Filters           map[string]any
+	UseSemantic       bool
+	IncludeCore       bool
+	IncludeRecent     bool
+	ValidAt           *time.Time
+	ObservedAfter     *time.Time
+	ObservedBefore    *time.Time
+	IncludeForgotten  bool
+	IncludeSuperseded bool
 }
 
 type Manager struct {
@@ -160,6 +179,10 @@ func (m *Manager) Write(ctx context.Context, input WriteInput) (WriteResult, err
 		Key:        input.Key,
 		Content:    input.Content,
 		Metadata:   cloneMap(input.Metadata),
+		ObservedAt: cloneTime(input.ObservedAt),
+		ValidFrom:  cloneTime(input.ValidFrom),
+		ValidTo:    cloneTime(input.ValidTo),
+		Supersedes: input.Supersedes,
 		Importance: input.Importance,
 	}
 	candidates, err := m.extract(ctx, candidate)
@@ -215,6 +238,31 @@ func (m *Manager) UpsertBlock(
 	})
 }
 
+func (m *Manager) Forget(ctx context.Context, id, reason string) error {
+	if m == nil || m.store == nil {
+		return fmt.Errorf("memory manager: store is required")
+	}
+	record, err := m.store.GetMemory(ctx, id)
+	if err != nil {
+		return err
+	}
+	if record == nil {
+		return fmt.Errorf("memory manager: memory %q not found", id)
+	}
+	now := time.Now().UTC()
+	record.ForgottenAt = &now
+	record.UpdatedAt = now
+	if reason != "" {
+		record.Metadata = mergeMaps(record.Metadata, map[string]any{
+			"forgotten_reason": reason,
+		})
+	}
+	if err := m.store.UpsertMemory(ctx, *record); err != nil {
+		return err
+	}
+	return m.syncVectorMemory(ctx, *record)
+}
+
 func (m *Manager) Retrieve(ctx context.Context, query Query) ([]Memory, error) {
 	if m == nil || m.store == nil {
 		return nil, fmt.Errorf("memory manager: store is required")
@@ -249,15 +297,19 @@ func (m *Manager) Retrieve(ctx context.Context, query Query) ([]Memory, error) {
 
 	ftsRoles := filterRoles(roles, func(role Role) bool { return role != RoleCore })
 	if query.Text != "" || query.IncludeRecent {
-		ftsHits, err := m.store.SearchMemories(
-			ctx,
-			query.Namespaces,
-			ftsRoles,
-			query.Text,
-			limit,
-			query.Filters,
-			query.IncludeRecent,
-		)
+		ftsHits, err := m.store.SearchMemories(ctx, SearchInput{
+			Namespaces:        query.Namespaces,
+			Roles:             ftsRoles,
+			Text:              query.Text,
+			Limit:             limit,
+			Filters:           query.Filters,
+			IncludeRecent:     query.IncludeRecent,
+			ValidAt:           query.ValidAt,
+			ObservedAfter:     query.ObservedAfter,
+			ObservedBefore:    query.ObservedBefore,
+			IncludeForgotten:  query.IncludeForgotten,
+			IncludeSuperseded: query.IncludeSuperseded,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -293,6 +345,7 @@ func (m *Manager) Retrieve(ctx context.Context, query Query) ([]Memory, error) {
 		}
 	}
 
+	results = filterMemories(results, query)
 	results = dedupeMemories(results)
 	slices.SortFunc(results, func(a, b Memory) int {
 		if a.Score > b.Score {
@@ -351,13 +404,17 @@ func (m *Manager) storeCandidate(
 	}
 
 	record := Memory{
-		ID:        id,
-		Namespace: candidate.Namespace,
-		Role:      candidate.Role,
-		Key:       candidate.Key,
-		Content:   candidate.Content,
-		Metadata:  cloneMap(candidate.Metadata),
-		UpdatedAt: time.Now().UTC(),
+		ID:         id,
+		Namespace:  candidate.Namespace,
+		Role:       candidate.Role,
+		Key:        candidate.Key,
+		Content:    candidate.Content,
+		Metadata:   cloneMap(candidate.Metadata),
+		ObservedAt: cloneTime(candidate.ObservedAt),
+		ValidFrom:  cloneTime(candidate.ValidFrom),
+		ValidTo:    cloneTime(candidate.ValidTo),
+		Supersedes: candidate.Supersedes,
+		UpdatedAt:  time.Now().UTC(),
 	}
 	existing, err := m.store.GetMemory(ctx, id)
 	if err != nil {
@@ -376,32 +433,86 @@ func (m *Manager) storeCandidate(
 			record.Metadata = mergeMaps(existing.Metadata, candidate.Metadata)
 		case ConflictReplace:
 		}
+		inheritMemoryLifecycle(&record, existing)
 	}
 
 	if err := m.store.UpsertMemory(ctx, record); err != nil {
 		return false, err
 	}
-	if m.vector != nil && m.embedder != nil &&
-		(candidate.Role == RoleSemantic || candidate.Role == RoleProcedural) {
-		vector, err := m.embedder.EmbedContent(ctx, record.Content)
-		if err != nil {
-			return false, err
-		}
-		metadata := cloneMap(record.Metadata)
-		if metadata == nil {
-			metadata = map[string]any{}
-		}
-		metadata["id"] = record.ID
-		metadata["content"] = record.Content
-		metadata["scope"] = string(record.Namespace.Scope)
-		metadata["scope_id"] = record.Namespace.ID
-		metadata["role"] = string(record.Role)
-		metadata["updated_at"] = record.UpdatedAt.Format(time.RFC3339Nano)
-		if err := m.vector.Upsert(ctx, record.ID, vector, metadata); err != nil {
+	if err := m.syncVectorMemory(ctx, record); err != nil {
+		return false, err
+	}
+	if candidate.Supersedes != "" {
+		if err := m.markSuperseded(ctx, candidate.Supersedes, record); err != nil {
 			return false, err
 		}
 	}
 	return true, nil
+}
+
+func (m *Manager) markSuperseded(
+	ctx context.Context,
+	predecessorID string,
+	successor Memory,
+) error {
+	predecessor, err := m.store.GetMemory(ctx, predecessorID)
+	if err != nil {
+		return err
+	}
+	if predecessor == nil {
+		return nil
+	}
+	predecessor.SupersededBy = successor.ID
+	predecessor.UpdatedAt = successor.UpdatedAt
+	if predecessor.ValidTo == nil && successor.ValidFrom != nil {
+		predecessor.ValidTo = cloneTime(successor.ValidFrom)
+	}
+	if err := m.store.UpsertMemory(ctx, *predecessor); err != nil {
+		return err
+	}
+	return m.syncVectorMemory(ctx, *predecessor)
+}
+
+func (m *Manager) syncVectorMemory(ctx context.Context, record Memory) error {
+	if m.vector == nil || m.embedder == nil {
+		return nil
+	}
+	if record.Role != RoleSemantic && record.Role != RoleProcedural {
+		return nil
+	}
+	vector, err := m.embedder.EmbedContent(ctx, record.Content)
+	if err != nil {
+		return err
+	}
+	metadata := cloneMap(record.Metadata)
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	metadata["id"] = record.ID
+	metadata["content"] = record.Content
+	metadata["scope"] = string(record.Namespace.Scope)
+	metadata["scope_id"] = record.Namespace.ID
+	metadata["role"] = string(record.Role)
+	metadata["updated_at"] = record.UpdatedAt.Format(time.RFC3339Nano)
+	if record.ObservedAt != nil {
+		metadata["observed_at"] = record.ObservedAt.Format(time.RFC3339Nano)
+	}
+	if record.ValidFrom != nil {
+		metadata["valid_from"] = record.ValidFrom.Format(time.RFC3339Nano)
+	}
+	if record.ValidTo != nil {
+		metadata["valid_to"] = record.ValidTo.Format(time.RFC3339Nano)
+	}
+	if record.Supersedes != "" {
+		metadata["supersedes"] = record.Supersedes
+	}
+	if record.SupersededBy != "" {
+		metadata["superseded_by"] = record.SupersededBy
+	}
+	if record.ForgottenAt != nil {
+		metadata["forgotten_at"] = record.ForgottenAt.Format(time.RFC3339Nano)
+	}
+	return m.vector.Upsert(ctx, record.ID, vector, metadata)
 }
 
 func filterRoles(roles []Role, keep func(Role) bool) []Role {
@@ -457,6 +568,74 @@ func mergeMaps(base, extra map[string]any) map[string]any {
 	return out
 }
 
+func cloneTime(src *time.Time) *time.Time {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
+}
+
+func inheritMemoryLifecycle(dst *Memory, existing *Memory) {
+	if dst.ObservedAt == nil {
+		dst.ObservedAt = cloneTime(existing.ObservedAt)
+	}
+	if dst.ValidFrom == nil {
+		dst.ValidFrom = cloneTime(existing.ValidFrom)
+	}
+	if dst.ValidTo == nil {
+		dst.ValidTo = cloneTime(existing.ValidTo)
+	}
+	if dst.Supersedes == "" {
+		dst.Supersedes = existing.Supersedes
+	}
+	if dst.SupersededBy == "" {
+		dst.SupersededBy = existing.SupersededBy
+	}
+	if dst.ForgottenAt == nil {
+		dst.ForgottenAt = cloneTime(existing.ForgottenAt)
+	}
+}
+
+func filterMemories(memories []Memory, query Query) []Memory {
+	out := memories[:0]
+	for _, memory := range memories {
+		if !matchesLifecycle(memory, query) {
+			continue
+		}
+		out = append(out, memory)
+	}
+	return out
+}
+
+func matchesLifecycle(memory Memory, query Query) bool {
+	if !query.IncludeForgotten && memory.ForgottenAt != nil {
+		return false
+	}
+	if !query.IncludeSuperseded && memory.SupersededBy != "" {
+		return false
+	}
+	if query.ValidAt != nil {
+		if memory.ValidFrom != nil && memory.ValidFrom.After(*query.ValidAt) {
+			return false
+		}
+		if memory.ValidTo != nil && memory.ValidTo.Before(*query.ValidAt) {
+			return false
+		}
+	}
+	if query.ObservedAfter != nil {
+		if memory.ObservedAt == nil || memory.ObservedAt.Before(*query.ObservedAfter) {
+			return false
+		}
+	}
+	if query.ObservedBefore != nil {
+		if memory.ObservedAt == nil || memory.ObservedAt.After(*query.ObservedBefore) {
+			return false
+		}
+	}
+	return true
+}
+
 func dedupeMemories(memories []Memory) []Memory {
 	byID := make(map[string]Memory, len(memories))
 	for _, memory := range memories {
@@ -493,16 +672,40 @@ func memoryFromVector(hit SearchResult) (Memory, bool) {
 	if raw, ok := hit.Metadata["updated_at"].(string); ok {
 		updatedAt, _ = time.Parse(time.RFC3339Nano, raw)
 	}
+	observedAt := parseMetadataTime(hit.Metadata, "observed_at")
+	validFrom := parseMetadataTime(hit.Metadata, "valid_from")
+	validTo := parseMetadataTime(hit.Metadata, "valid_to")
+	forgottenAt := parseMetadataTime(hit.Metadata, "forgotten_at")
+	supersedes, _ := hit.Metadata["supersedes"].(string)
+	supersededBy, _ := hit.Metadata["superseded_by"].(string)
 	return Memory{
 		ID: hit.ID,
 		Namespace: Namespace{
 			Scope: Scope(scope),
 			ID:    scopeID,
 		},
-		Role:      Role(role),
-		Content:   content,
-		Metadata:  cloneMap(hit.Metadata),
-		UpdatedAt: updatedAt,
-		Score:     hit.Score,
+		Role:         Role(role),
+		Content:      content,
+		Metadata:     cloneMap(hit.Metadata),
+		ObservedAt:   observedAt,
+		ValidFrom:    validFrom,
+		ValidTo:      validTo,
+		Supersedes:   supersedes,
+		SupersededBy: supersededBy,
+		ForgottenAt:  forgottenAt,
+		UpdatedAt:    updatedAt,
+		Score:        hit.Score,
 	}, true
+}
+
+func parseMetadataTime(metadata map[string]any, key string) *time.Time {
+	raw, ok := metadata[key].(string)
+	if !ok || raw == "" {
+		return nil
+	}
+	value, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		return nil
+	}
+	return &value
 }

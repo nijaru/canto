@@ -113,3 +113,38 @@ func ExcludeNamespaces(namespaces ...memory.Namespace) MemoryAssertion {
 		return nil
 	}
 }
+
+func ExcludeIDs(ids ...string) MemoryAssertion {
+	return func(hits []memory.Memory) error {
+		for _, hit := range hits {
+			for _, id := range ids {
+				if hit.ID == id {
+					return fmt.Errorf("unexpected memory id %q in results", id)
+				}
+			}
+		}
+		return nil
+	}
+}
+
+func RequireNoForgotten() MemoryAssertion {
+	return func(hits []memory.Memory) error {
+		for _, hit := range hits {
+			if hit.ForgottenAt != nil {
+				return fmt.Errorf("unexpected forgotten memory %q in results", hit.ID)
+			}
+		}
+		return nil
+	}
+}
+
+func RequireNoSuperseded() MemoryAssertion {
+	return func(hits []memory.Memory) error {
+		for _, hit := range hits {
+			if hit.SupersededBy != "" {
+				return fmt.Errorf("unexpected superseded memory %q in results", hit.ID)
+			}
+		}
+		return nil
+	}
+}

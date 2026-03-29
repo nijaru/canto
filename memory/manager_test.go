@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 type testEmbedder struct{}
@@ -287,5 +288,244 @@ func TestManager_RetrievePolicyError(t *testing.T) {
 	})
 	if !errors.Is(err, want) {
 		t.Fatalf("expected %v, got %v", want, err)
+	}
+}
+
+func TestManager_ForgetExcludesByDefault(t *testing.T) {
+	store, err := NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	manager := NewManager(store)
+	ns := Namespace{Scope: ScopeUser, ID: "user-forget"}
+	result, err := manager.Write(t.Context(), WriteInput{
+		Namespace: ns,
+		Role:      RoleSemantic,
+		Content:   "User likes genmaicha",
+	})
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if len(result.IDs) != 1 {
+		t.Fatalf("expected 1 stored id, got %#v", result)
+	}
+	if err := manager.Forget(t.Context(), result.IDs[0], "stale"); err != nil {
+		t.Fatalf("Forget: %v", err)
+	}
+
+	hits, err := manager.Retrieve(t.Context(), Query{
+		Namespaces: []Namespace{ns},
+		Roles:      []Role{RoleSemantic},
+		Text:       "genmaicha",
+		Limit:      5,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve default: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("expected forgotten memory to be hidden by default, got %#v", hits)
+	}
+
+	hits, err = manager.Retrieve(t.Context(), Query{
+		Namespaces:       []Namespace{ns},
+		Roles:            []Role{RoleSemantic},
+		Text:             "genmaicha",
+		IncludeForgotten: true,
+		Limit:            5,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve include forgotten: %v", err)
+	}
+	if len(hits) != 1 || hits[0].ForgottenAt == nil {
+		t.Fatalf("expected forgotten memory when explicitly included, got %#v", hits)
+	}
+}
+
+func TestManager_SupersededMemoriesAreHiddenByDefault(t *testing.T) {
+	store, err := NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	manager := NewManager(store)
+	ns := Namespace{Scope: ScopeUser, ID: "user-supersede"}
+	first, err := manager.Write(t.Context(), WriteInput{
+		Namespace: ns,
+		Role:      RoleSemantic,
+		Key:       "tea_pref_v1",
+		Content:   "User likes green tea",
+	})
+	if err != nil {
+		t.Fatalf("Write first: %v", err)
+	}
+	second, err := manager.Write(t.Context(), WriteInput{
+		Namespace:  ns,
+		Role:       RoleSemantic,
+		Key:        "tea_pref_v2",
+		Content:    "User prefers oolong tea",
+		Supersedes: first.IDs[0],
+	})
+	if err != nil {
+		t.Fatalf("Write second: %v", err)
+	}
+	if len(second.IDs) != 1 {
+		t.Fatalf("expected second write id, got %#v", second)
+	}
+
+	hits, err := manager.Retrieve(t.Context(), Query{
+		Namespaces: []Namespace{ns},
+		Roles:      []Role{RoleSemantic},
+		Text:       "tea",
+		Limit:      10,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve default: %v", err)
+	}
+	if len(hits) != 1 || hits[0].ID != second.IDs[0] {
+		t.Fatalf("expected only the successor by default, got %#v", hits)
+	}
+
+	hits, err = manager.Retrieve(t.Context(), Query{
+		Namespaces:        []Namespace{ns},
+		Roles:             []Role{RoleSemantic},
+		Text:              "tea",
+		IncludeSuperseded: true,
+		Limit:             10,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve include superseded: %v", err)
+	}
+	if len(hits) != 2 {
+		t.Fatalf("expected both memories when including superseded, got %#v", hits)
+	}
+}
+
+func TestManager_TemporalFiltering(t *testing.T) {
+	store, err := NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	manager := NewManager(store)
+	ns := Namespace{Scope: ScopeWorkspace, ID: "repo-temporal"}
+	observed := time.Date(2026, 3, 29, 8, 0, 0, 0, time.UTC)
+	validFrom := time.Date(2026, 3, 29, 9, 0, 0, 0, time.UTC)
+	validTo := time.Date(2026, 3, 29, 11, 0, 0, 0, time.UTC)
+	if _, err := manager.Write(t.Context(), WriteInput{
+		Namespace:  ns,
+		Role:       RoleSemantic,
+		Content:    "Deployment window is 9-11 UTC.",
+		ObservedAt: &observed,
+		ValidFrom:  &validFrom,
+		ValidTo:    &validTo,
+	}); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	inside := time.Date(2026, 3, 29, 10, 0, 0, 0, time.UTC)
+	hits, err := manager.Retrieve(t.Context(), Query{
+		Namespaces: []Namespace{ns},
+		Roles:      []Role{RoleSemantic},
+		Text:       "deployment window",
+		ValidAt:    &inside,
+		Limit:      5,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve inside window: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("expected hit inside validity window, got %#v", hits)
+	}
+
+	outside := time.Date(2026, 3, 29, 12, 0, 0, 0, time.UTC)
+	hits, err = manager.Retrieve(t.Context(), Query{
+		Namespaces: []Namespace{ns},
+		Roles:      []Role{RoleSemantic},
+		Text:       "deployment window",
+		ValidAt:    &outside,
+		Limit:      5,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve outside window: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("expected no hits outside validity window, got %#v", hits)
+	}
+
+	afterObserved := observed.Add(time.Hour)
+	hits, err = manager.Retrieve(t.Context(), Query{
+		Namespaces:    []Namespace{ns},
+		Roles:         []Role{RoleSemantic},
+		Text:          "deployment window",
+		ObservedAfter: &afterObserved,
+		Limit:         5,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve observed-after: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("expected observed-after filter to exclude hit, got %#v", hits)
+	}
+}
+
+func TestManager_SemanticRetrievalRespectsLifecycle(t *testing.T) {
+	store, err := NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	vector, err := NewSQLiteVectorStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewSQLiteVectorStore: %v", err)
+	}
+	t.Cleanup(func() { _ = vector.Close() })
+
+	manager := NewManager(store, WithVectorStore(vector), WithEmbedder(testEmbedder{}))
+	ns := Namespace{Scope: ScopeWorkspace, ID: "repo-semantic-lifecycle"}
+	result, err := manager.Write(t.Context(), WriteInput{
+		Namespace: ns,
+		Role:      RoleSemantic,
+		Key:       "tooling",
+		Content:   "The repo uses Bun for TypeScript tasks",
+	})
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := manager.Forget(t.Context(), result.IDs[0], "obsolete"); err != nil {
+		t.Fatalf("Forget: %v", err)
+	}
+
+	hits, err := manager.Retrieve(t.Context(), Query{
+		Namespaces:  []Namespace{ns},
+		Roles:       []Role{RoleSemantic},
+		Text:        "TypeScript tasks use Bun",
+		UseSemantic: true,
+		Limit:       5,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve default: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("expected forgotten semantic memory to be hidden by default, got %#v", hits)
+	}
+
+	hits, err = manager.Retrieve(t.Context(), Query{
+		Namespaces:       []Namespace{ns},
+		Roles:            []Role{RoleSemantic},
+		Text:             "TypeScript tasks use Bun",
+		UseSemantic:      true,
+		IncludeForgotten: true,
+		Limit:            5,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve include forgotten: %v", err)
+	}
+	if len(hits) != 1 || hits[0].ForgottenAt == nil {
+		t.Fatalf("expected forgotten semantic hit when explicitly included, got %#v", hits)
 	}
 }

@@ -1,6 +1,12 @@
 // Package memory provides long-term memory orchestration plus the underlying
 // storage implementations used to persist it.
 //
+// Status: experimental within v0. The current Manager-based surface is the
+// default entrypoint for Canto consumers today, but it is not yet the final
+// long-term public center of gravity. Future memory-shaped contracts may move
+// toward operations like remember/search/forget with optional link/context
+// capabilities.
+//
 // Manager is the main entry point for framework-facing memory behavior. It
 // coordinates scoped core blocks and durable long-term memories across
 // thread/user/agent/workspace/app namespaces, with option-based configuration
@@ -9,6 +15,8 @@
 // Small interfaces such as Writer, Retriever, and Store keep the higher-level
 // helpers decoupled from any one concrete implementation. CoreStore is the
 // built-in SQLite/FTS5 store, not the only supported backing store shape.
+// Vector-store details, block layout, and future graph/context capabilities are
+// intentionally not stable consumer-facing commitments yet.
 //
 // CoreStore persists durable memory blocks and text-searchable memories in
 // SQLite/FTS5. VectorStore implementations add optional semantic retrieval.

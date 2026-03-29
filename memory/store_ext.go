@@ -80,36 +80,84 @@ func (s *CoreStore) UpsertMemory(ctx context.Context, memory Memory) error {
 		updatedAt = time.Now().UTC()
 	}
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO memories (id, scope, scope_id, role, memory_key, content, metadata, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO memories (
+			id, scope, scope_id, role, memory_key, content, metadata,
+			observed_at, valid_from, valid_to, supersedes, superseded_by, forgotten_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			role=excluded.role,
 			memory_key=excluded.memory_key,
 			content=excluded.content,
 			metadata=excluded.metadata,
+			observed_at=excluded.observed_at,
+			valid_from=excluded.valid_from,
+			valid_to=excluded.valid_to,
+			supersedes=excluded.supersedes,
+			superseded_by=excluded.superseded_by,
+			forgotten_at=excluded.forgotten_at,
 			updated_at=excluded.updated_at
-	`, memory.ID, string(memory.Namespace.Scope), memory.Namespace.ID, string(memory.Role), memory.Key, memory.Content, string(metadata), updatedAt.Format(time.RFC3339Nano))
+	`,
+		memory.ID,
+		string(memory.Namespace.Scope),
+		memory.Namespace.ID,
+		string(memory.Role),
+		memory.Key,
+		memory.Content,
+		string(metadata),
+		formatOptionalTime(memory.ObservedAt),
+		formatOptionalTime(memory.ValidFrom),
+		formatOptionalTime(memory.ValidTo),
+		emptyToNil(memory.Supersedes),
+		emptyToNil(memory.SupersededBy),
+		formatOptionalTime(memory.ForgottenAt),
+		updatedAt.Format(time.RFC3339Nano),
+	)
 	return err
 }
 
 func (s *CoreStore) GetMemory(ctx context.Context, id string) (*Memory, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT scope, scope_id, role, memory_key, content, metadata, updated_at
+		SELECT scope, scope_id, role, memory_key, content, metadata,
+		       observed_at, valid_from, valid_to, supersedes, superseded_by, forgotten_at,
+		       updated_at
 		FROM memories WHERE id = ?
 	`, id)
 	var scope, scopeID, role, key, content, metadata, updatedAt string
-	if err := row.Scan(&scope, &scopeID, &role, &key, &content, &metadata, &updatedAt); err != nil {
+	var observedAt, validFrom, validTo, supersedes, supersededBy, forgottenAt sql.NullString
+	if err := row.Scan(
+		&scope,
+		&scopeID,
+		&role,
+		&key,
+		&content,
+		&metadata,
+		&observedAt,
+		&validFrom,
+		&validTo,
+		&supersedes,
+		&supersededBy,
+		&forgottenAt,
+		&updatedAt,
+	); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
 	mem := &Memory{
-		ID:        id,
-		Namespace: Namespace{Scope: Scope(scope), ID: scopeID},
-		Role:      Role(role),
-		Key:       key,
-		Content:   content,
+		ID:           id,
+		Namespace:    Namespace{Scope: Scope(scope), ID: scopeID},
+		Role:         Role(role),
+		Key:          key,
+		Content:      content,
+		ObservedAt:   parseNullTime(observedAt),
+		ValidFrom:    parseNullTime(validFrom),
+		ValidTo:      parseNullTime(validTo),
+		Supersedes:   nullStringValue(supersedes),
+		SupersededBy: nullStringValue(supersededBy),
+		ForgottenAt:  parseNullTime(forgottenAt),
 	}
 	if metadata != "" {
 		if err := json.Unmarshal([]byte(metadata), &mem.Metadata); err != nil {
@@ -120,53 +168,68 @@ func (s *CoreStore) GetMemory(ctx context.Context, id string) (*Memory, error) {
 	return mem, nil
 }
 
-func (s *CoreStore) SearchMemories(
-	ctx context.Context,
-	namespaces []Namespace,
-	roles []Role,
-	query string,
-	limit int,
-	filters map[string]any,
-	includeRecent bool,
-) ([]Memory, error) {
-	if limit <= 0 {
-		limit = 5
+func (s *CoreStore) SearchMemories(ctx context.Context, input SearchInput) ([]Memory, error) {
+	if input.Limit <= 0 {
+		input.Limit = 5
 	}
 	args := []any{}
 	base := `
-		SELECT m.id, m.scope, m.scope_id, m.role, m.memory_key, m.content, m.metadata, m.updated_at
+		SELECT m.id, m.scope, m.scope_id, m.role, m.memory_key, m.content, m.metadata,
+		       m.observed_at, m.valid_from, m.valid_to, m.supersedes, m.superseded_by, m.forgotten_at,
+		       m.updated_at
 		FROM memories m
 	`
-	if query != "" {
+	if input.Text != "" {
 		base += `JOIN memories_fts f ON f.rowid = m.rowid `
 	}
 
 	var where []string
-	if query != "" {
+	if input.Text != "" {
 		where = append(where, "f.content MATCH ?")
-		args = append(args, escapeFTS(query))
+		args = append(args, escapeFTS(input.Text))
 	}
-	if len(namespaces) > 0 {
+	if len(input.Namespaces) > 0 {
 		var parts []string
-		for _, ns := range namespaces {
+		for _, ns := range input.Namespaces {
 			parts = append(parts, "(m.scope = ? AND m.scope_id = ?)")
 			args = append(args, string(ns.Scope), ns.ID)
 		}
 		where = append(where, "("+strings.Join(parts, " OR ")+")")
 	}
-	if len(roles) > 0 {
-		placeholders := make([]string, len(roles))
-		for i, role := range roles {
+	if len(input.Roles) > 0 {
+		placeholders := make([]string, len(input.Roles))
+		for i, role := range input.Roles {
 			placeholders[i] = "?"
 			args = append(args, string(role))
 		}
 		where = append(where, "m.role IN ("+strings.Join(placeholders, ",")+")")
 	}
+	if !input.IncludeForgotten {
+		where = append(where, "m.forgotten_at IS NULL")
+	}
+	if !input.IncludeSuperseded {
+		where = append(where, "(m.superseded_by IS NULL OR m.superseded_by = '')")
+	}
+	if input.ValidAt != nil {
+		when := input.ValidAt.UTC().Format(time.RFC3339Nano)
+		where = append(where, "(m.valid_from IS NULL OR m.valid_from <= ?)")
+		args = append(args, when)
+		where = append(where, "(m.valid_to IS NULL OR m.valid_to >= ?)")
+		args = append(args, when)
+	}
+	if input.ObservedAfter != nil {
+		where = append(where, "m.observed_at IS NOT NULL AND m.observed_at >= ?")
+		args = append(args, input.ObservedAfter.UTC().Format(time.RFC3339Nano))
+	}
+	if input.ObservedBefore != nil {
+		where = append(where, "m.observed_at IS NOT NULL AND m.observed_at <= ?")
+		args = append(args, input.ObservedBefore.UTC().Format(time.RFC3339Nano))
+	}
 	if len(where) > 0 {
 		base += " WHERE " + strings.Join(where, " AND ")
 	}
 	base += " ORDER BY m.updated_at DESC LIMIT ?"
-	args = append(args, limit)
+	args = append(args, input.Limit)
 
 	rows, err := s.db.QueryContext(ctx, base, args...)
 	if err != nil {
@@ -179,12 +242,12 @@ func (s *CoreStore) SearchMemories(
 		if err != nil {
 			return nil, err
 		}
-		if !matchesFilters(memory.Metadata, filters) {
+		if !matchesFilters(memory.Metadata, input.Filters) {
 			continue
 		}
-		if query == "" && includeRecent {
+		if input.Text == "" && input.IncludeRecent {
 			memory.Score = 0.6
-		} else if query != "" {
+		} else if input.Text != "" {
 			memory.Score = 0.8
 		}
 		memories = append(memories, memory)
@@ -195,12 +258,34 @@ func (s *CoreStore) SearchMemories(
 func scanMemory(scanner interface{ Scan(dest ...any) error }) (Memory, error) {
 	var memory Memory
 	var scope, scopeID, role, key, metadata, updatedAt string
-	if err := scanner.Scan(&memory.ID, &scope, &scopeID, &role, &key, &memory.Content, &metadata, &updatedAt); err != nil {
+	var observedAt, validFrom, validTo, supersedes, supersededBy, forgottenAt sql.NullString
+	if err := scanner.Scan(
+		&memory.ID,
+		&scope,
+		&scopeID,
+		&role,
+		&key,
+		&memory.Content,
+		&metadata,
+		&observedAt,
+		&validFrom,
+		&validTo,
+		&supersedes,
+		&supersededBy,
+		&forgottenAt,
+		&updatedAt,
+	); err != nil {
 		return Memory{}, err
 	}
 	memory.Namespace = Namespace{Scope: Scope(scope), ID: scopeID}
 	memory.Role = Role(role)
 	memory.Key = key
+	memory.ObservedAt = parseNullTime(observedAt)
+	memory.ValidFrom = parseNullTime(validFrom)
+	memory.ValidTo = parseNullTime(validTo)
+	memory.Supersedes = nullStringValue(supersedes)
+	memory.SupersededBy = nullStringValue(supersededBy)
+	memory.ForgottenAt = parseNullTime(forgottenAt)
 	if metadata != "" {
 		if err := json.Unmarshal([]byte(metadata), &memory.Metadata); err != nil {
 			return Memory{}, err
@@ -221,4 +306,36 @@ func matchesFilters(metadata map[string]any, filters map[string]any) bool {
 		}
 	}
 	return true
+}
+
+func formatOptionalTime(value *time.Time) any {
+	if value == nil {
+		return nil
+	}
+	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func parseNullTime(value sql.NullString) *time.Time {
+	if !value.Valid || value.String == "" {
+		return nil
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, value.String)
+	if err != nil {
+		return nil
+	}
+	return &parsed
+}
+
+func nullStringValue(value sql.NullString) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.String
+}
+
+func emptyToNil(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }

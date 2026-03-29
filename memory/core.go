@@ -87,6 +87,12 @@ func (s *CoreStore) init() error {
 			memory_key TEXT,
 			content TEXT NOT NULL,
 			metadata TEXT,
+			observed_at TEXT,
+			valid_from TEXT,
+			valid_to TEXT,
+			supersedes TEXT,
+			superseded_by TEXT,
+			forgotten_at TEXT,
 			updated_at TEXT NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_memories_scope_role ON memories(scope, scope_id, role)`,
@@ -109,6 +115,48 @@ func (s *CoreStore) init() error {
 	}
 	for _, q := range queries {
 		if _, err := s.db.Exec(q); err != nil {
+			return err
+		}
+	}
+	return s.ensureMemoryColumns()
+}
+
+func (s *CoreStore) ensureMemoryColumns() error {
+	required := map[string]string{
+		"observed_at":   "TEXT",
+		"valid_from":    "TEXT",
+		"valid_to":      "TEXT",
+		"supersedes":    "TEXT",
+		"superseded_by": "TEXT",
+		"forgotten_at":  "TEXT",
+	}
+	rows, err := s.db.Query("PRAGMA table_info(memories)")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	existing := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull, pk int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		existing[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for name, dataType := range required {
+		if existing[name] {
+			continue
+		}
+		if _, err := s.db.Exec(
+			"ALTER TABLE memories ADD COLUMN " + name + " " + dataType,
+		); err != nil {
 			return err
 		}
 	}

@@ -1,7 +1,7 @@
 # Canto
 
 > [!WARNING]
-> **Status: Pre-release.** `v0.0.x` is not a compatibility guarantee. The intended first-alpha base is a semi-stable core for Ion and similar agent backends: `llm`, `agent`, `artifact`, `session`, `tool`, and `hook`, with `context`, `runtime`, `tool/mcp`, `memory`, and `skill` included but newer. `x/` packages and `examples/` remain experimental.
+> **Status: Pre-release.** `v0.0.x` is not a compatibility guarantee. The intended first-alpha base is a semi-stable core for Ion and similar agent backends: `llm`, `agent`, `artifact`, `session`, `tool`, and `hook`, with `context`, `runtime`, `tool/mcp`, `memory`, and `skill` included but newer. `memory` is especially experimental while its long-term public contract is being designed. `x/` packages and `examples/` remain experimental.
 
 Canto is a Go framework for durable agent backends.
 
@@ -21,6 +21,7 @@ If you are new to the framework, use this order:
 3. Learn the context split in [`context`](context/): preview-safe request shaping vs commit-time mutation.
 4. Learn orchestration in [`runtime`](runtime/) and [examples/subagents/main.go](examples/subagents/main.go): attached vs detached child runs, default local coordination vs custom coordinator-backed execution.
 5. Learn tool integration in [`tool`](tool/) and [`tool/mcp`](tool/mcp/): local tools plus MCP-backed tools and servers.
+6. Treat [`memory`](memory/) as the current experimental entrypoint for long-term memory. Use `memory.Manager`, `memory.Writer`, `memory.Retriever`, `context.MemoryPrompt`, and the memory tools if you need it today; do not couple to storage layout or vector-store details.
 
 ## What Canto Is
 
