@@ -117,7 +117,7 @@ type Query struct {
 }
 
 type Manager struct {
-	store    *CoreStore
+	store    Store
 	vector   VectorStore
 	embedder llm.Embedder
 	policy   WritePolicy
@@ -126,7 +126,7 @@ type Manager struct {
 }
 
 func NewManager(
-	store *CoreStore,
+	store Store,
 	vector VectorStore,
 	embedder llm.Embedder,
 	policy WritePolicy,

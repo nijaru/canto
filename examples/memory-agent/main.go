@@ -71,12 +71,12 @@ Directives: Always search memory before answering. Memorize important new facts.
 	// 3. Register manager-based memory tools
 	reg := tool.NewRegistry()
 	reg.Register(&tools.RememberTool{
-		Manager:   manager,
+		Writer:    manager,
 		Namespace: namespace,
 		Role:      memory.RoleSemantic,
 	})
 	reg.Register(&tools.RecallTool{
-		Manager:    manager,
+		Retriever:  manager,
 		Namespaces: []memory.Namespace{namespace},
 		Roles:      []memory.Role{memory.RoleCore, memory.RoleSemantic, memory.RoleEpisodic},
 		Limit:      5,

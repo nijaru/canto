@@ -19,7 +19,7 @@ type MemoryPromptOptions struct {
 	UseSemantic bool
 }
 
-func MemoryPrompt(manager *memory.Manager, opts MemoryPromptOptions) RequestProcessor {
+func MemoryPrompt(retriever memory.Retriever, opts MemoryPromptOptions) RequestProcessor {
 	return RequestProcessorFunc(func(
 		ctx context.Context,
 		p llm.Provider,
@@ -27,7 +27,7 @@ func MemoryPrompt(manager *memory.Manager, opts MemoryPromptOptions) RequestProc
 		sess *session.Session,
 		req *llm.Request,
 	) error {
-		if manager == nil {
+		if retriever == nil {
 			return nil
 		}
 		query := opts.Query
@@ -43,7 +43,7 @@ func MemoryPrompt(manager *memory.Manager, opts MemoryPromptOptions) RequestProc
 				}
 			}
 		}
-		results, err := manager.Retrieve(ctx, memory.Query{
+		results, err := retriever.Retrieve(ctx, memory.Query{
 			Namespaces:    opts.Namespaces,
 			Roles:         opts.Roles,
 			Text:          query,

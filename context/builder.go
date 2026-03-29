@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"strings"
 
 	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/memory"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
 )
@@ -255,81 +253,4 @@ func injectSystemBlock(req *llm.Request, blockRegex *regexp.Regexp, block string
 	req.Messages = append(req.Messages, llm.Message{})
 	copy(req.Messages[1:], req.Messages)
 	req.Messages[0] = sys
-}
-
-// coreMemoryRegex matches an existing core_memory block and any trailing newlines.
-var coreMemoryRegex = regexp.MustCompile(`(?s)<core_memory>.*?</core_memory>\n*`)
-
-// CoreMemory retrieves the core memory persona and injects it.
-func CoreMemory(store *memory.CoreStore) RequestProcessor {
-	return RequestProcessorFunc(
-		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
-			if store == nil {
-				return nil
-			}
-			persona, err := store.GetPersona(ctx, sess.ID())
-			if err != nil {
-				return err
-			}
-			if persona == nil {
-				return nil
-			}
-			memBlock := fmt.Sprintf(
-				"<core_memory>\nAgent Name: %s\nPersona Context: %s\nDirectives: %s\n</core_memory>",
-				persona.Name,
-				persona.Description,
-				persona.Directives,
-			)
-			injectSystemBlock(req, coreMemoryRegex, memBlock)
-			return nil
-		},
-	)
-}
-
-// knowledgeMemoryRegex matches an existing knowledge_memory block and any trailing newlines.
-var knowledgeMemoryRegex = regexp.MustCompile(`(?s)<knowledge_memory>.*?</knowledge_memory>\n*`)
-
-// KnowledgeMemory retrieves and injects matching knowledge items from the store based on a query.
-// If query is empty, it uses the text of the last message in the effective session history.
-func KnowledgeMemory(store *memory.CoreStore, query string, limit int) RequestProcessor {
-	return RequestProcessorFunc(
-		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
-			if store == nil {
-				return nil
-			}
-			q := query
-			if q == "" {
-				messages, err := sess.EffectiveMessages()
-				if err != nil {
-					return err
-				}
-				for i := len(messages) - 1; i >= 0; i-- {
-					if messages[i].Content != "" {
-						q = messages[i].Content
-						break
-					}
-				}
-			}
-			if q == "" {
-				return nil
-			}
-
-			items, err := store.SearchKnowledge(ctx, q, limit)
-			if err != nil {
-				return err
-			}
-			if len(items) == 0 {
-				return nil
-			}
-
-			var sb strings.Builder
-			sb.WriteString("<knowledge_memory>\n")
-			for _, item := range items {
-				fmt.Fprintf(&sb, "---\n%s\n", item.Content)
-			}
-			sb.WriteString("</knowledge_memory>")
-			injectSystemBlock(req, knowledgeMemoryRegex, sb.String())
-			return nil
-		},
-	)
 }

@@ -6,6 +6,10 @@
 // thread/user/agent/workspace/app namespaces, with pluggable write policy and
 // retrieval planning.
 //
+// Small interfaces such as Writer, Retriever, and Store keep the higher-level
+// helpers decoupled from any one concrete implementation. CoreStore is the
+// built-in SQLite/FTS5 store, not the only supported backing store shape.
+//
 // CoreStore persists durable memory blocks and text-searchable memories in
 // SQLite/FTS5. VectorStore implementations add optional semantic retrieval.
 // SQLiteVectorStore is the simplest brute-force option for small collections,

@@ -8,7 +8,7 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-func TestCoreStore_Persona(t *testing.T) {
+func TestCoreStore_Blocks(t *testing.T) {
 	store, err := NewCoreStore(filepath.Join(t.TempDir(), "core.sqlite"))
 	if err != nil {
 		t.Fatal(err)
@@ -17,23 +17,28 @@ func TestCoreStore_Persona(t *testing.T) {
 
 	ctx := t.Context()
 
-	// nil when not set
-	p, err := store.GetPersona(ctx, "sess-1")
-	if err != nil || p != nil {
-		t.Fatalf("expected nil persona, got %v %v", p, err)
-	}
-
-	want := &Persona{Name: "Aria", Description: "Research agent", Directives: "Be concise."}
-	if err := store.SetPersona(ctx, "sess-1", want); err != nil {
+	ns := Namespace{Scope: ScopeAgent, ID: "agent-1"}
+	if err := store.UpsertBlock(ctx, Block{
+		Namespace: ns,
+		Name:      "persona",
+		Content:   "Be concise.",
+		Metadata:  map[string]any{"source": "seed"},
+	}); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := store.GetPersona(ctx, "sess-1")
+	blocks, err := store.ListBlocks(ctx, []Namespace{ns})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != want.Name || got.Description != want.Description {
-		t.Errorf("persona mismatch: got %+v", got)
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+	if blocks[0].Name != "persona" || blocks[0].Content != "Be concise." {
+		t.Fatalf("unexpected block: %+v", blocks[0])
+	}
+	if blocks[0].Metadata["source"] != "seed" {
+		t.Fatalf("unexpected block metadata: %+v", blocks[0].Metadata)
 	}
 }
 
