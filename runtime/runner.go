@@ -174,7 +174,12 @@ func (r *Runner) SendStream(
 	return r.run(ctx, sess, chunkFn)
 }
 
-// Run executes the agent on the given session.
+// Run executes the agent on an existing session without appending a new user
+// message first.
+//
+// This is an advanced/manual entry point. Host applications should usually
+// prefer Send or SendStream so session mutation and execution go through one
+// canonical path.
 func (r *Runner) Run(ctx context.Context, sessionID string) (agent.StepResult, error) {
 	sess, err := r.getOrLoad(ctx, sessionID)
 	if err != nil {
@@ -183,7 +188,11 @@ func (r *Runner) Run(ctx context.Context, sessionID string) (agent.StepResult, e
 	return r.run(ctx, sess, nil)
 }
 
-// RunStream executes the agent with streaming.
+// RunStream executes the agent with streaming on an existing session without
+// appending a new user message first.
+//
+// This is an advanced/manual entry point. Host applications should usually
+// prefer SendStream.
 func (r *Runner) RunStream(
 	ctx context.Context,
 	sessionID string,

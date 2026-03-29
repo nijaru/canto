@@ -101,21 +101,10 @@ func main() {
 		Kept:      true,
 	})
 
-	// Seed initial message if the session is new
-	sess, _ := store.Load(ctx, sessionID)
-	if len(sess.Messages()) == 0 {
-		store.Save(ctx, session.NewEvent(
-			sessionID,
-			session.MessageAdded,
-			map[string]string{
-				"role": "user",
-				"content": fmt.Sprintf(
-					"The current baseline score is %.2f ns/op. Please modify the target.go file to improve performance.",
-					bestScore,
-				),
-			},
-		))
-	}
+	feedback := fmt.Sprintf(
+		"The current baseline score is %.2f ns/op. Please modify the target.go file to improve performance.",
+		bestScore,
+	)
 
 	// 3. The Autonomous Loop
 	for i := 1; i <= 10; i++ {
@@ -129,7 +118,7 @@ func main() {
 
 		// Let the agent act (it will modify target.go)
 		fmt.Println("Agent is thinking and modifying code...")
-		if _, err := runner.Run(ctx, sessionID); err != nil {
+		if _, err := runner.Send(ctx, sessionID, feedback); err != nil {
 			log.Printf("Agent run failed: %v", err)
 		}
 
@@ -197,10 +186,8 @@ func main() {
 		}
 		jsonEncoder.Encode(record)
 
-		// Feed the outcome back to the agent so it learns
-		store.Save(ctx, session.NewEvent(sessionID, session.MessageAdded,
-			map[string]string{"role": "user", "content": outcomeMessage},
-		))
+		// Feed the outcome into the next iteration through the canonical host path.
+		feedback = outcomeMessage
 	}
 
 	fmt.Println(
