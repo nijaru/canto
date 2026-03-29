@@ -32,8 +32,6 @@ func (m *memStore) Fork(_ context.Context, _, _ string) (*Session, error) {
 	return nil, nil
 }
 
-func (m *memStore) Search(_ context.Context, _, _ string) ([]Event, error) { return nil, nil }
-
 func (m *memStore) saved() []Event {
 	m.mu.Lock()
 	defer m.mu.Unlock()

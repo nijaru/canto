@@ -463,6 +463,11 @@ type Store interface {
 	LoadUntil(ctx context.Context, sessionID string, eventID ulid.ULID) (*Session, error)
 	// Fork creates a new session by copying all events from an existing session.
 	Fork(ctx context.Context, originalSessionID, newSessionID string) (*Session, error)
+}
+
+// SearchStore exposes full-text search over persisted session events.
+// Not every store implements this capability.
+type SearchStore interface {
 	Search(ctx context.Context, sessionID string, query string) ([]Event, error)
 }
 

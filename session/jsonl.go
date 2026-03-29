@@ -218,12 +218,6 @@ func (s *JSONLStore) ForkWithOptions(
 	return forked, nil
 }
 
-// Search implements the Store interface for JSONLStore.
-// For now, it returns an error as Search is optimized for SQLite.
-func (s *JSONLStore) Search(ctx context.Context, sessionID string, query string) ([]Event, error) {
-	return nil, fmt.Errorf("search not implemented for JSONLStore; use SQLiteStore")
-}
-
 // Parent returns the persisted ancestry record for the parent of sessionID.
 func (s *JSONLStore) Parent(ctx context.Context, sessionID string) (*SessionAncestry, error) {
 	s.ancestryMu.RLock()

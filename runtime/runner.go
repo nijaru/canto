@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -129,7 +130,11 @@ func (r *Runner) Watch(ctx context.Context, sessionID string) (*session.Subscrip
 
 // Search searches the session history for the given query.
 func (r *Runner) Search(ctx context.Context, sessionID, query string) ([]session.Event, error) {
-	return r.Store.Search(ctx, sessionID, query)
+	searchStore, ok := r.Store.(session.SearchStore)
+	if !ok {
+		return nil, fmt.Errorf("session store does not support search")
+	}
+	return searchStore.Search(ctx, sessionID, query)
 }
 
 // Send appends a user message to the session and runs the agent.
