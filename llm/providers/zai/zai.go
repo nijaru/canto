@@ -2,12 +2,10 @@ package zai
 
 import (
 	"context"
-	"os"
 
 	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/llm/providers/openai"
-	sashaoai "github.com/sashabaranov/go-openai"
 )
 
 const defaultAPIEndpoint = "https://api.z.ai/api/coding/paas/v4"
@@ -28,28 +26,13 @@ func New(apiKey string) *Provider {
 
 // NewProvider creates a new Z.ai provider from a catwalk configuration.
 func NewProvider(cfg catwalk.Provider) *Provider {
-	apiKey := cfg.APIKey
-	if apiKey == "$ZAI_API_KEY" {
-		apiKey = os.Getenv("ZAI_API_KEY")
-	}
-
-	if cfg.ID == "" {
-		cfg.ID = "zai"
-	}
-	if cfg.APIEndpoint == "" {
-		cfg.APIEndpoint = defaultAPIEndpoint
-	}
-
-	config := sashaoai.DefaultConfig(apiKey)
-	config.BaseURL = cfg.APIEndpoint
-
-	return &Provider{
-		Base: openai.Base{
-			Client:    sashaoai.NewClientWithConfig(config),
-			Config:    cfg,
-			ModelCaps: openai.DefaultModelCaps(),
-		},
-	}
+	p := openai.NewCompatibleProvider(cfg, openai.CompatibleSpec{
+		ID:                 "zai",
+		DefaultAPIEndpoint: defaultAPIEndpoint,
+		APIKeyEnvVars:      []string{"ZAI_API_KEY"},
+		ModelCaps:          openai.DefaultModelCaps(),
+	})
+	return &Provider{Base: p.Base}
 }
 
 func (p *Provider) Generate(ctx context.Context, req *llm.Request) (*llm.Response, error) {

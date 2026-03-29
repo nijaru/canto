@@ -2,12 +2,10 @@ package ollama
 
 import (
 	"context"
-	"os"
 
 	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/llm/providers/openai"
-	sashaoai "github.com/sashabaranov/go-openai"
 )
 
 // Provider implements the llm.Provider interface for Ollama.
@@ -24,28 +22,13 @@ func New() *Provider {
 
 // NewProvider creates a new Ollama provider from a catwalk configuration.
 func NewProvider(cfg catwalk.Provider) *Provider {
-	apiKey := cfg.APIKey
-	if apiKey == "" || apiKey == "$OLLAMA_API_KEY" {
-		apiKey = os.Getenv("OLLAMA_API_KEY")
-		if apiKey == "" {
-			apiKey = "ollama" // Dummy key since Ollama doesn't require one by default
-		}
-	}
-
-	config := sashaoai.DefaultConfig(apiKey)
-	if cfg.APIEndpoint != "" {
-		config.BaseURL = cfg.APIEndpoint
-	} else {
-		// Default to local Ollama with OpenAI compatibility path
-		config.BaseURL = "http://localhost:11434/v1"
-	}
-
-	return &Provider{
-		Base: openai.Base{
-			Client: sashaoai.NewClientWithConfig(config),
-			Config: cfg,
-		},
-	}
+	p := openai.NewCompatibleProvider(cfg, openai.CompatibleSpec{
+		ID:                 "ollama",
+		DefaultAPIEndpoint: "http://localhost:11434/v1",
+		APIKeyEnvVars:      []string{"OLLAMA_API_KEY"},
+		DefaultAPIKey:      "ollama",
+	})
+	return &Provider{Base: p.Base}
 }
 
 func (p *Provider) Generate(ctx context.Context, req *llm.Request) (*llm.Response, error) {

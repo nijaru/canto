@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm/providers/openai"
+	"github.com/nijaru/canto/llm/providers"
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
@@ -53,7 +53,10 @@ func main() {
 	reg := tool.NewRegistry()
 	reg.Register(&tools.BashTool{})
 
-	provider := openai.New(os.Getenv("OPENAI_API_KEY"))
+	provider, err := providers.New("openai")
+	if err != nil {
+		log.Fatalf("failed to create provider: %v", err)
+	}
 
 	instructionsBytes, err := os.ReadFile("program.md")
 	if err != nil {

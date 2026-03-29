@@ -48,8 +48,11 @@ func DefaultModelCaps() map[string]llm.Capabilities {
 // NewProvider creates a new Anthropic provider from a catwalk configuration.
 func NewProvider(cfg catwalk.Provider) *Provider {
 	apiKey := cfg.APIKey
-	if apiKey == "$ANTHROPIC_API_KEY" {
+	if apiKey == "" || apiKey == "$ANTHROPIC_API_KEY" {
 		apiKey = os.Getenv("ANTHROPIC_API_KEY")
+	}
+	if cfg.ID == "" {
+		cfg.ID = "anthropic"
 	}
 
 	opts := []option.RequestOption{

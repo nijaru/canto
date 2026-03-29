@@ -19,7 +19,7 @@ import (
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/llm/providers/openai"
+	"github.com/nijaru/canto/llm/providers"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
 	"github.com/nijaru/canto/x/tools"
@@ -90,7 +90,10 @@ func main() {
 	reg := tool.NewRegistry()
 	reg.Register(&tools.BashTool{})
 
-	provider := openai.New(os.Getenv("OPENAI_API_KEY"))
+	provider, err := providers.New("openai")
+	if err != nil {
+		log.Fatalf("failed to create provider: %v", err)
+	}
 
 	instructions := fmt.Sprintf(`You are working on a long task tracked in %s.
 Each session: read the plan, complete the next unchecked task, mark it done, write back.

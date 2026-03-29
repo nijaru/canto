@@ -10,11 +10,10 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/llm/providers/openai"
+	"github.com/nijaru/canto/llm/providers"
 	"github.com/nijaru/canto/session"
 )
 
@@ -22,7 +21,10 @@ func main() {
 	ctx := context.Background()
 
 	// 1. Initialize the LLM provider
-	provider := openai.New(os.Getenv("OPENAI_API_KEY"))
+	provider, err := providers.New("openai")
+	if err != nil {
+		log.Fatalf("failed to create provider: %v", err)
+	}
 
 	// 2. Create the agent with an empty tool registry (nil)
 	a := agent.New("assistant", "You are a concise and helpful assistant.", "gpt-4o", provider, nil)

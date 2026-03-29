@@ -39,7 +39,10 @@ func TestNewProvider_UsesEnvironmentAPIKey(t *testing.T) {
 			t.Fatalf("request body missing model: %s", body)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"id":"resp_1","object":"chat.completion","created":1,"model":"glm-5","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`)
+		_, _ = io.WriteString(
+			w,
+			`{"id":"resp_1","object":"chat.completion","created":1,"model":"glm-5","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+		)
 	}))
 	defer server.Close()
 

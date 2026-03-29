@@ -19,7 +19,7 @@ import (
 
 	"github.com/nijaru/canto/agent"
 	cantoctx "github.com/nijaru/canto/context"
-	"github.com/nijaru/canto/llm/providers/anthropic"
+	"github.com/nijaru/canto/llm/providers"
 	"github.com/nijaru/canto/memory"
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
@@ -104,7 +104,10 @@ Before answering any question, use recall_memory to search what you know.
 When the user shares an important fact, use remember_memory to store it.`
 
 	// 5. Initialize the Agent
-	provider := anthropic.New(os.Getenv("ANTHROPIC_API_KEY"))
+	provider, err := providers.New("anthropic")
+	if err != nil {
+		log.Fatalf("failed to create provider: %v", err)
+	}
 	a := agent.New("memory-agent", instructions, model, provider, reg,
 		agent.WithBuilder(builder),
 		agent.WithMaxSteps(20),
