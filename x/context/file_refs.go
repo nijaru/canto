@@ -18,7 +18,10 @@ type FileReferenceOptions struct {
 	Prefix   string
 }
 
-func FileReferencePrompt(root *workspace.Root, opts FileReferenceOptions) ccontext.RequestProcessor {
+func FileReferencePrompt(
+	root *workspace.Root,
+	opts FileReferenceOptions,
+) ccontext.RequestProcessor {
 	prefix := opts.Prefix
 	if prefix == "" {
 		prefix = "@"

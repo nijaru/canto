@@ -50,7 +50,8 @@ func TestMemoryPrompt_InjectsRetrievedMemory(t *testing.T) {
 	if req.Messages[0].Role != llm.RoleSystem {
 		t.Fatalf("expected system role, got %s", req.Messages[0].Role)
 	}
-	if req.Messages[0].Content == "" || !containsAll(req.Messages[0].Content, "Archivist", "User likes tea") {
+	if req.Messages[0].Content == "" ||
+		!containsAll(req.Messages[0].Content, "Archivist", "User likes tea") {
 		t.Fatalf("unexpected memory prompt: %q", req.Messages[0].Content)
 	}
 }

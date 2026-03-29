@@ -124,10 +124,13 @@ func (m *Manager) Request(
 		m.mu.Lock()
 		delete(m.pending, req.ID)
 		m.mu.Unlock()
-		_ = sess.Append(context.Background(), session.NewEvent(sess.ID(), session.ApprovalCanceled, map[string]any{
-			"id":   req.ID,
-			"tool": toolName,
-		}))
+		_ = sess.Append(
+			context.Background(),
+			session.NewEvent(sess.ID(), session.ApprovalCanceled, map[string]any{
+				"id":   req.ID,
+				"tool": toolName,
+			}),
+		)
 		return Result{}, ctx.Err()
 	}
 }

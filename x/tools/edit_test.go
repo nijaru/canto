@@ -25,7 +25,10 @@ func TestEditTool_Success(t *testing.T) {
 	}
 
 	tool := NewEditTool(root)
-	out, err := tool.Execute(context.Background(), `{"path":"a.txt","before":"world","after":"team"}`)
+	out, err := tool.Execute(
+		context.Background(),
+		`{"path":"a.txt","before":"world","after":"team"}`,
+	)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -65,7 +68,10 @@ func TestMultiEditTool_AllOrNothing(t *testing.T) {
 		t.Fatalf("WriteFile b: %v", err)
 	}
 	tool := NewMultiEditTool(root)
-	_, err := tool.Execute(context.Background(), `{"edits":[{"path":"a.txt","before":"alpha","after":"A"},{"path":"b.txt","before":"missing","after":"B"}]}`)
+	_, err := tool.Execute(
+		context.Background(),
+		`{"edits":[{"path":"a.txt","before":"alpha","after":"A"},{"path":"b.txt","before":"missing","after":"B"}]}`,
+	)
 	if err == nil {
 		t.Fatal("expected multi_edit to fail")
 	}

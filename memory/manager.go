@@ -106,13 +106,13 @@ type WriteResult struct {
 }
 
 type Query struct {
-	Namespaces   []Namespace
-	Roles        []Role
-	Text         string
-	Limit        int
-	Filters      map[string]any
-	UseSemantic  bool
-	IncludeCore  bool
+	Namespaces    []Namespace
+	Roles         []Role
+	Text          string
+	Limit         int
+	Filters       map[string]any
+	UseSemantic   bool
+	IncludeCore   bool
 	IncludeRecent bool
 }
 
@@ -125,7 +125,12 @@ type Manager struct {
 	asyncWG sync.WaitGroup
 }
 
-func NewManager(store *CoreStore, vector VectorStore, embedder llm.Embedder, policy WritePolicy) *Manager {
+func NewManager(
+	store *CoreStore,
+	vector VectorStore,
+	embedder llm.Embedder,
+	policy WritePolicy,
+) *Manager {
 	if policy.ConflictMode == "" {
 		policy.ConflictMode = ConflictReplace
 	}
@@ -243,7 +248,15 @@ func (m *Manager) Retrieve(ctx context.Context, query Query) ([]Memory, error) {
 	}
 
 	ftsRoles := filterRoles(roles, func(role Role) bool { return role != RoleCore })
-	ftsHits, err := m.store.SearchMemories(ctx, query.Namespaces, ftsRoles, query.Text, limit, query.Filters, query.IncludeRecent)
+	ftsHits, err := m.store.SearchMemories(
+		ctx,
+		query.Namespaces,
+		ftsRoles,
+		query.Text,
+		limit,
+		query.Filters,
+		query.IncludeRecent,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +320,11 @@ func (m *Manager) extract(ctx context.Context, candidate Candidate) ([]Candidate
 	return m.policy.Extractor(ctx, candidate)
 }
 
-func (m *Manager) storeCandidate(ctx context.Context, id string, candidate Candidate) (bool, error) {
+func (m *Manager) storeCandidate(
+	ctx context.Context,
+	id string,
+	candidate Candidate,
+) (bool, error) {
 	if candidate.Role == RoleCore {
 		name := candidate.Key
 		if name == "" {
@@ -352,7 +369,8 @@ func (m *Manager) storeCandidate(ctx context.Context, id string, candidate Candi
 	if err := m.store.UpsertMemory(ctx, record); err != nil {
 		return false, err
 	}
-	if m.vector != nil && m.embedder != nil && (candidate.Role == RoleSemantic || candidate.Role == RoleProcedural) {
+	if m.vector != nil && m.embedder != nil &&
+		(candidate.Role == RoleSemantic || candidate.Role == RoleProcedural) {
 		vector, err := m.embedder.EmbedContent(ctx, record.Content)
 		if err != nil {
 			return false, err
@@ -393,7 +411,11 @@ func memoryID(candidate Candidate) string {
 		key = candidate.Content
 	}
 	sum := sha256.Sum256([]byte(
-		string(candidate.Namespace.Scope) + ":" + candidate.Namespace.ID + ":" + string(candidate.Role) + ":" + key,
+		string(
+			candidate.Namespace.Scope,
+		) + ":" + candidate.Namespace.ID + ":" + string(
+			candidate.Role,
+		) + ":" + key,
 	))
 	return hex.EncodeToString(sum[:])
 }

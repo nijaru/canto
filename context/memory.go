@@ -44,12 +44,12 @@ func MemoryPrompt(manager *memory.Manager, opts MemoryPromptOptions) RequestProc
 			}
 		}
 		results, err := manager.Retrieve(ctx, memory.Query{
-			Namespaces:   opts.Namespaces,
-			Roles:        opts.Roles,
-			Text:         query,
-			Limit:        opts.Limit,
-			UseSemantic:  opts.UseSemantic,
-			IncludeCore:  true,
+			Namespaces:    opts.Namespaces,
+			Roles:         opts.Roles,
+			Text:          query,
+			Limit:         opts.Limit,
+			UseSemantic:   opts.UseSemantic,
+			IncludeCore:   true,
 			IncludeRecent: true,
 		})
 		if err != nil {

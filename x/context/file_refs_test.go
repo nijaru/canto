@@ -38,7 +38,8 @@ func TestFileReferencePrompt(t *testing.T) {
 	if req.Messages[0].Role != llm.RoleSystem {
 		t.Fatalf("expected system role, got %s", req.Messages[0].Role)
 	}
-	if req.Messages[0].Content == "" || !contains(req.Messages[0].Content, "notes.txt", "hello from file") {
+	if req.Messages[0].Content == "" ||
+		!contains(req.Messages[0].Content, "notes.txt", "hello from file") {
 		t.Fatalf("unexpected file reference content: %q", req.Messages[0].Content)
 	}
 }

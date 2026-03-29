@@ -32,7 +32,8 @@ func EvaluateApprovalCases(
 		if err != nil {
 			got = err.Error()
 		}
-		passed := (testCase.ExpectError == "" && got == "") || (testCase.ExpectError != "" && got == testCase.ExpectError)
+		passed := (testCase.ExpectError == "" && got == "") ||
+			(testCase.ExpectError != "" && got == testCase.ExpectError)
 		results = append(results, ApprovalCaseResult{
 			Name:   testCase.Name,
 			Passed: passed,

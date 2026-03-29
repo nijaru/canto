@@ -111,13 +111,13 @@ func (t *RecallTool) Execute(ctx context.Context, args string) (string, error) {
 		limit = t.Limit
 	}
 	results, err := t.Manager.Retrieve(ctx, memory.Query{
-		Namespaces:   t.Namespaces,
-		Roles:        t.Roles,
-		Text:         input.Query,
-		UseSemantic:  input.UseSemantic,
-		IncludeCore:  true,
+		Namespaces:    t.Namespaces,
+		Roles:         t.Roles,
+		Text:          input.Query,
+		UseSemantic:   input.UseSemantic,
+		IncludeCore:   true,
 		IncludeRecent: true,
-		Limit:        limit,
+		Limit:         limit,
 	})
 	if err != nil {
 		return "", err
