@@ -103,3 +103,42 @@ func TestArchivalMemorySearchTool(t *testing.T) {
 		t.Errorf("expected source in result, got: %s", res)
 	}
 }
+
+func TestRememberAndRecallTool(t *testing.T) {
+	ctx := context.Background()
+	store, err := memory.NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	manager := memory.NewManager(store, nil, nil, memory.WritePolicy{})
+	namespace := memory.Namespace{Scope: memory.ScopeUser, ID: "u1"}
+
+	remember := &RememberTool{
+		Manager:   manager,
+		Namespace: namespace,
+		Role:      memory.RoleSemantic,
+	}
+	if _, err := remember.Execute(ctx, `{"content":"user likes tea","key":"pref"}`); err != nil {
+		t.Fatalf("remember: %v", err)
+	}
+
+	if err := manager.UpsertBlock(ctx, namespace, "persona", "Be concise", nil); err != nil {
+		t.Fatalf("UpsertBlock: %v", err)
+	}
+
+	recall := &RecallTool{
+		Manager:    manager,
+		Namespaces: []memory.Namespace{namespace},
+		Roles:      []memory.Role{memory.RoleCore, memory.RoleSemantic},
+		Limit:      5,
+	}
+	out, err := recall.Execute(ctx, `{"query":"tea"}`)
+	if err != nil {
+		t.Fatalf("recall: %v", err)
+	}
+	if !strings.Contains(out, "user likes tea") {
+		t.Fatalf("expected semantic memory in output: %s", out)
+	}
+}

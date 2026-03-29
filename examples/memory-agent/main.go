@@ -2,9 +2,9 @@
 
 // memory-agent demonstrates Canto's multi-layer memory system:
 //
-//   - CoreStore persona: the agent's identity injected into every turn
-//   - KnowledgeMemory prompt: FTS5 RAG auto-injected from the last user message
-//   - memorize_knowledge / recall_knowledge tools: explicit FTS5 read/write
+//   - memory.Manager with scoped core + semantic memory
+//   - MemoryPrompt request processor for manager-driven retrieval
+//   - remember_memory / recall_memory tools for explicit durable memory I/O
 //
 // Usage: ANTHROPIC_API_KEY=... go run examples/memory-agent/main.go [message]
 package main
@@ -54,41 +54,54 @@ func main() {
 	}
 	defer coreStore.Close()
 
-	// 2. Configure the Persona
-	// Overwrites on each run; remove this block to persist across runs
-	// once you have a management interface.
-	err = coreStore.SetPersona(ctx, sessionID, &memory.Persona{
-		Name:        "Archivist",
-		Description: "A helpful research assistant with persistent long-term memory.",
-		Directives:  "Always search memory before answering. Memorize important new facts.",
+	namespace := memory.Namespace{Scope: memory.ScopeUser, ID: "memory-agent-user"}
+	manager := memory.NewManager(coreStore, nil, nil, memory.WritePolicy{
+		ConflictMode: memory.ConflictMerge,
 	})
+	defer manager.Close()
+
+	// 2. Configure durable core memory blocks
+	err = manager.UpsertBlock(ctx, namespace, "persona", `Agent Name: Archivist
+Persona Context: A helpful research assistant with persistent long-term memory.
+Directives: Always search memory before answering. Memorize important new facts.`, nil)
 	if err != nil {
-		log.Fatalf("failed to set persona: %v", err)
+		log.Fatalf("failed to seed core memory: %v", err)
 	}
 
-	// 3. Register FTS5 semantic memory tools
+	// 3. Register manager-based memory tools
 	reg := tool.NewRegistry()
-	reg.Register(&tools.MemorizeKnowledgeTool{Store: coreStore, SessionID: sessionID})
-	reg.Register(&tools.RecallKnowledgeTool{Store: coreStore, Limit: 5})
+	reg.Register(&tools.RememberTool{
+		Manager:   manager,
+		Namespace: namespace,
+		Role:      memory.RoleSemantic,
+	})
+	reg.Register(&tools.RecallTool{
+		Manager:    manager,
+		Namespaces: []memory.Namespace{namespace},
+		Roles:      []memory.Role{memory.RoleCore, memory.RoleSemantic, memory.RoleEpisodic},
+		Limit:      5,
+	})
 
 	// 4. Build the Context Pipeline
 	// Pipeline ordering is critical:
-	//  1. CoreMemory         — <core_memory> persona block
-	//  2. KnowledgeMemory     — <knowledge_memory> FTS5 RAG (query from last user msg)
-	//  3. History             — model-visible conversation transcript
-	//  4. Tools               — tool specs
-	//  5. Capabilities        — MUST be last; adapts system/temp for reasoning models
+	//  1. MemoryPrompt       — manager-driven retrieval (core + long-term memory)
+	//  2. History            — model-visible conversation transcript
+	//  3. Tools              — tool specs
+	//  4. Capabilities       — MUST be last; adapts system/temp for reasoning models
 	builder := cantoctx.NewBuilder(
-		cantoctx.CoreMemory(coreStore),
-		cantoctx.KnowledgeMemory(coreStore, "", 5),
+		cantoctx.MemoryPrompt(manager, cantoctx.MemoryPromptOptions{
+			Namespaces: []memory.Namespace{namespace},
+			Roles:      []memory.Role{memory.RoleCore, memory.RoleSemantic, memory.RoleEpisodic},
+			Limit:      5,
+		}),
 		cantoctx.History(),
 		cantoctx.Tools(reg),
 		cantoctx.Capabilities(),
 	)
 
 	const instructions = `You are a research assistant with persistent memory across sessions.
-Before answering any question, use recall_knowledge to search what you know.
-When the user shares an important fact, use memorize_knowledge to store it.`
+Before answering any question, use recall_memory to search what you know.
+When the user shares an important fact, use remember_memory to store it.`
 
 	// 5. Initialize the Agent
 	provider := anthropic.New(os.Getenv("ANTHROPIC_API_KEY"))
