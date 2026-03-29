@@ -136,9 +136,12 @@ func (s *HNSWStore) Upsert(
 		return fmt.Errorf("hnsw: sqlite insert: %w", err)
 	}
 
-	// Update in-memory graph (delete old node if present, then add updated one)
-	s.graph.Delete(id)
-	s.graph.Add(hnsw.MakeNode(id, vector))
+	// The github.com/coder/hnsw library has a bug in Delete() that corrupts the graph
+	// and causes panics during Search. As a workaround, we rebuild the graph from SQLite.
+	s.graph = hnsw.NewGraph[string]()
+	if err := s.load(ctx); err != nil {
+		return fmt.Errorf("reload graph after upsert: %w", err)
+	}
 
 	return nil
 }
@@ -151,12 +154,16 @@ func (s *HNSWStore) Search(
 	k int,
 	filter map[string]any,
 ) ([]SearchResult, error) {
-	s.mu.RLock()
 	// Request more nodes than k to allow for filtering downstream and to improve
 	// approximate search quality for large k.
 	searchK := int(float64(k) * s.OverfetchFactor)
-	nodes := s.graph.Search(queryVector, searchK)
-	s.mu.RUnlock()
+
+	var nodes []hnsw.Node[string]
+	func() {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		nodes = s.graph.Search(queryVector, searchK)
+	}()
 
 	if len(nodes) == 0 {
 		return nil, nil
@@ -253,7 +260,13 @@ func (s *HNSWStore) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	s.graph.Delete(id)
+	// The github.com/coder/hnsw library has a bug in Delete() that corrupts the graph
+	// and causes panics during Search. As a workaround, we rebuild the graph from SQLite.
+	s.graph = hnsw.NewGraph[string]()
+	if err := s.load(ctx); err != nil {
+		return fmt.Errorf("reload graph after delete: %w", err)
+	}
+
 	return nil
 }
 
