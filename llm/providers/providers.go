@@ -12,10 +12,16 @@ import (
 	"github.com/nijaru/canto/llm/providers/openrouter"
 )
 
-type Option func(*catwalk.Provider)
+type Config struct {
+	APIKey   string
+	Endpoint string
+	Headers  map[string]string
+	Models   []catwalk.Model
+}
 
 type OpenAICompatibleConfig struct {
 	ID            string
+	APIKey        string
 	Endpoint      string
 	APIKeyEnvVars []string
 	Headers       map[string]string
@@ -24,69 +30,57 @@ type OpenAICompatibleConfig struct {
 	DefaultAPIKey string
 }
 
-func WithAPIKey(apiKey string) Option {
-	return func(cfg *catwalk.Provider) {
-		cfg.APIKey = apiKey
-	}
+func Anthropic() llm.Provider {
+	return NewAnthropic(Config{})
 }
 
-func WithEndpoint(endpoint string) Option {
-	return func(cfg *catwalk.Provider) {
-		cfg.APIEndpoint = endpoint
-	}
+func NewAnthropic(config Config) llm.Provider {
+	return anthropic.NewProvider(buildConfig("anthropic", config))
 }
 
-func WithHeader(key, value string) Option {
-	return func(cfg *catwalk.Provider) {
-		if cfg.DefaultHeaders == nil {
-			cfg.DefaultHeaders = make(map[string]string)
-		}
-		cfg.DefaultHeaders[key] = value
-	}
+func OpenAI() llm.Provider {
+	return NewOpenAI(Config{})
 }
 
-func WithModels(models ...catwalk.Model) Option {
-	return func(cfg *catwalk.Provider) {
-		cfg.Models = append([]catwalk.Model(nil), models...)
-	}
+func NewOpenAI(config Config) llm.Provider {
+	return openaipkg.NewProvider(buildConfig("openai", config))
 }
 
-func NewAnthropic(opts ...Option) llm.Provider {
-	return anthropic.NewProvider(buildConfig("anthropic", opts))
+func OpenRouter() llm.Provider {
+	return NewOpenRouter(Config{})
 }
 
-func NewOpenAI(opts ...Option) llm.Provider {
-	return openaipkg.NewProvider(buildConfig("openai", opts))
+func NewOpenRouter(config Config) llm.Provider {
+	return openrouter.NewProvider(buildConfig("openrouter", config))
 }
 
-func NewOpenRouter(opts ...Option) llm.Provider {
-	return openrouter.NewProvider(buildConfig("openrouter", opts))
+func Gemini() llm.Provider {
+	return NewGemini(Config{})
 }
 
-func NewGemini(opts ...Option) llm.Provider {
-	return gemini.NewProvider(buildConfig("gemini", opts))
+func NewGemini(config Config) llm.Provider {
+	return gemini.NewProvider(buildConfig("gemini", config))
 }
 
-func NewOllama(opts ...Option) llm.Provider {
-	return ollama.NewProvider(buildConfig("ollama", opts))
+func Ollama() llm.Provider {
+	return NewOllama(Config{})
 }
 
-func NewOpenAICompatible(
-	config OpenAICompatibleConfig,
-	opts ...Option,
-) (llm.Provider, error) {
+func NewOllama(config Config) llm.Provider {
+	return ollama.NewProvider(buildConfig("ollama", config))
+}
+
+func NewOpenAICompatible(config OpenAICompatibleConfig) (llm.Provider, error) {
 	if config.ID == "" {
 		return nil, fmt.Errorf("provider id is required")
 	}
 
 	cfg := catwalk.Provider{
 		ID:             catwalk.InferenceProvider(config.ID),
+		APIKey:         config.APIKey,
 		APIEndpoint:    config.Endpoint,
 		DefaultHeaders: cloneHeaders(config.Headers),
 		Models:         append([]catwalk.Model(nil), config.Models...),
-	}
-	for _, opt := range opts {
-		opt(&cfg)
 	}
 
 	return openaipkg.NewCompatibleProvider(cfg, openaipkg.CompatibleSpec{
@@ -99,12 +93,14 @@ func NewOpenAICompatible(
 	}), nil
 }
 
-func buildConfig(id string, opts []Option) catwalk.Provider {
-	cfg := catwalk.Provider{ID: catwalk.InferenceProvider(id)}
-	for _, opt := range opts {
-		opt(&cfg)
+func buildConfig(id string, config Config) catwalk.Provider {
+	return catwalk.Provider{
+		ID:             catwalk.InferenceProvider(id),
+		APIKey:         config.APIKey,
+		APIEndpoint:    config.Endpoint,
+		DefaultHeaders: cloneHeaders(config.Headers),
+		Models:         append([]catwalk.Model(nil), config.Models...),
 	}
-	return cfg
 }
 
 func cloneHeaders(src map[string]string) map[string]string {

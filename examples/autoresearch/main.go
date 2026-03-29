@@ -53,7 +53,7 @@ func main() {
 	reg := tool.NewRegistry()
 	reg.Register(&tools.BashTool{})
 
-	provider := providers.NewOpenAI()
+	provider := providers.OpenAI()
 
 	instructionsBytes, err := os.ReadFile("program.md")
 	if err != nil {

@@ -90,7 +90,7 @@ func main() {
 	reg := tool.NewRegistry()
 	reg.Register(&tools.BashTool{})
 
-	provider := providers.NewOpenAI()
+	provider := providers.OpenAI()
 
 	instructions := fmt.Sprintf(`You are working on a long task tracked in %s.
 Each session: read the plan, complete the next unchecked task, mark it done, write back.

@@ -24,9 +24,10 @@ func TestNewOpenAICompatible_CustomProvider(t *testing.T) {
 
 	p, err := NewOpenAICompatible(OpenAICompatibleConfig{
 		ID:            "custom-gateway",
+		APIKey:        "secret",
 		Endpoint:      server.URL,
 		APIKeyEnvVars: []string{"CUSTOM_GATEWAY_API_KEY"},
-	}, WithAPIKey("secret"))
+	})
 	if err != nil {
 		t.Fatalf("NewOpenAICompatible: %v", err)
 	}

@@ -21,7 +21,7 @@ func main() {
 	ctx := context.Background()
 
 	// 1. Initialize the LLM provider
-	provider := providers.NewOpenAI()
+	provider := providers.OpenAI()
 
 	// 2. Create the agent with an empty tool registry (nil)
 	a := agent.New("assistant", "You are a concise and helpful assistant.", "gpt-4o", provider, nil)
