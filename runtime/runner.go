@@ -21,22 +21,17 @@ const (
 // By default it uses built-in local coordination to serialize execution within
 // a session while allowing concurrent execution across different sessions.
 //
-// Runner maintains an in-memory session registry so that Subscribe, Send,
+// Runner maintains an in-memory session registry so that Watch, Send,
 // Run, and execute all share the same *session.Session object for a given
-// session ID. This is required for Subscribe to receive events emitted by
+// session ID. This is required for Watch to receive events emitted by
 // execute — without a shared object the channel is permanently silent.
 type Runner struct {
-	Store session.Store
-	Agent agent.Agent
-
-	// WaitTimeout is the maximum time to wait in the local queue or custom
-	// coordinator for a session run to start.
-	WaitTimeout time.Duration
-	// ExecutionTimeout is the maximum time to spend running the agent turn.
-	ExecutionTimeout time.Duration
-
-	Coordinator Coordinator
-	Hooks       *hook.Runner
+	store            session.Store
+	agent            agent.Agent
+	waitTimeout      time.Duration
+	executionTimeout time.Duration
+	coordinator      Coordinator
+	hooks            *hook.Runner
 
 	queue    *serialQueue
 	mu       sync.Mutex
@@ -44,14 +39,16 @@ type Runner struct {
 }
 
 // NewRunner creates a Runner with per-session coordination enabled.
-func NewRunner(s session.Store, a agent.Agent) *Runner {
+func NewRunner(s session.Store, a agent.Agent, opts ...Option) *Runner {
+	cfg := applyOptions(opts)
 	return &Runner{
-		Store:            s,
-		Agent:            a,
-		WaitTimeout:      defaultWaitTimeout,
-		ExecutionTimeout: defaultExecutionTimeout,
+		store:            s,
+		agent:            a,
+		waitTimeout:      cfg.waitTimeout,
+		executionTimeout: cfg.executionTimeout,
+		coordinator:      cfg.coordinator,
 		queue:            newSerialQueue(),
-		Hooks:            hook.NewRunner(),
+		hooks:            cfg.hooks,
 		sessions:         make(map[string]*session.Session),
 	}
 }
@@ -64,7 +61,7 @@ func (r *Runner) Close() {
 }
 
 // getOrLoad returns the cached session for sessionID, loading it from the
-// store on first access. All Runner methods use this so that Subscribe and
+// store on first access. All Runner methods use this so that Watch and
 // execute always operate on the same in-memory object.
 func (r *Runner) getOrLoad(ctx context.Context, sessionID string) (*session.Session, error) {
 	r.mu.Lock()
@@ -75,7 +72,7 @@ func (r *Runner) getOrLoad(ctx context.Context, sessionID string) (*session.Sess
 	r.mu.Unlock()
 
 	// Load outside the lock; Store.Load may involve I/O.
-	sess, err := r.Store.Load(ctx, sessionID)
+	sess, err := r.store.Load(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -130,11 +127,32 @@ func (r *Runner) Watch(ctx context.Context, sessionID string) (*session.Subscrip
 
 // Search searches the session history for the given query.
 func (r *Runner) Search(ctx context.Context, sessionID, query string) ([]session.Event, error) {
-	searchStore, ok := r.Store.(session.SearchStore)
+	searchStore, ok := r.store.(session.SearchStore)
 	if !ok {
 		return nil, fmt.Errorf("session store does not support search")
 	}
 	return searchStore.Search(ctx, sessionID, query)
+}
+
+// ChildRunner creates a child-run helper that inherits this runner's store,
+// timeout, coordinator, and hook settings. Additional opts override the
+// inherited defaults for the child runner only.
+func (r *Runner) ChildRunner(opts ...Option) *ChildRunner {
+	if r == nil {
+		return nil
+	}
+	inherited := []Option{
+		WithWaitTimeout(r.waitTimeout),
+		WithExecutionTimeout(r.executionTimeout),
+	}
+	if r.coordinator != nil {
+		inherited = append(inherited, WithCoordinator(r.coordinator))
+	}
+	if r.hooks != nil {
+		inherited = append(inherited, WithHooks(r.hooks))
+	}
+	inherited = append(inherited, opts...)
+	return NewChildRunner(r.store, inherited...)
 }
 
 // Send appends a user message to the session and runs the agent.
@@ -217,7 +235,7 @@ func (r *Runner) run(
 	sess *session.Session,
 	chunkFn func(*llm.Chunk),
 ) (agent.StepResult, error) {
-	if r.Coordinator != nil {
+	if r.coordinator != nil {
 		return r.executeWithCoordinator(ctx, sess, chunkFn)
 	}
 	if r.queue == nil {
@@ -225,18 +243,18 @@ func (r *Runner) run(
 	}
 
 	waitCtx := ctx
-	if r.WaitTimeout > 0 {
+	if r.waitTimeout > 0 {
 		var cancel context.CancelFunc
-		waitCtx, cancel = context.WithTimeout(ctx, r.WaitTimeout)
+		waitCtx, cancel = context.WithTimeout(ctx, r.waitTimeout)
 		defer cancel()
 	}
 
 	var result agent.StepResult
 	errCh := r.queue.execute(waitCtx, sess.ID(), func(laneCtx context.Context) error {
 		execCtx := laneCtx
-		if r.ExecutionTimeout > 0 {
+		if r.executionTimeout > 0 {
 			var cancel context.CancelFunc
-			execCtx, cancel = context.WithTimeout(laneCtx, r.ExecutionTimeout)
+			execCtx, cancel = context.WithTimeout(laneCtx, r.executionTimeout)
 			defer cancel()
 		}
 
@@ -252,30 +270,30 @@ func (r *Runner) executeWithCoordinator(
 	sess *session.Session,
 	chunkFn func(*llm.Chunk),
 ) (agent.StepResult, error) {
-	if r.Coordinator == nil {
+	if r.coordinator == nil {
 		return r.execute(ctx, sess, chunkFn)
 	}
 
 	waitCtx := ctx
-	if r.WaitTimeout > 0 {
+	if r.waitTimeout > 0 {
 		var cancel context.CancelFunc
-		waitCtx, cancel = context.WithTimeout(ctx, r.WaitTimeout)
+		waitCtx, cancel = context.WithTimeout(ctx, r.waitTimeout)
 		defer cancel()
 	}
 
-	ticket, err := r.Coordinator.Enqueue(waitCtx, sess.ID())
+	ticket, err := r.coordinator.Enqueue(waitCtx, sess.ID())
 	if err != nil {
 		return agent.StepResult{}, err
 	}
-	lease, err := r.Coordinator.Await(waitCtx, ticket)
+	lease, err := r.coordinator.Await(waitCtx, ticket)
 	if err != nil {
 		return agent.StepResult{}, err
 	}
 
 	execCtx := ctx
-	if r.ExecutionTimeout > 0 {
+	if r.executionTimeout > 0 {
 		var cancel context.CancelFunc
-		execCtx, cancel = context.WithTimeout(ctx, r.ExecutionTimeout)
+		execCtx, cancel = context.WithTimeout(ctx, r.executionTimeout)
 		defer cancel()
 	}
 
@@ -289,11 +307,11 @@ func (r *Runner) execute(
 	chunkFn func(*llm.Chunk),
 ) (agent.StepResult, error) {
 	meta := hook.SessionMeta{ID: sess.ID()}
-	if _, err := r.Hooks.Run(ctx, hook.EventSessionStart, meta, nil); err != nil {
+	if _, err := r.hooks.Run(ctx, hook.EventSessionStart, meta, nil); err != nil {
 		return agent.StepResult{}, err
 	}
 	defer func() {
-		r.Hooks.Run(context.Background(), hook.EventSessionEnd, meta, nil)
+		r.hooks.Run(context.Background(), hook.EventSessionEnd, meta, nil)
 	}()
 
 	// Execute agent turn.
@@ -303,13 +321,13 @@ func (r *Runner) execute(
 		err    error
 	)
 	if chunkFn != nil {
-		if s, ok := r.Agent.(agent.Streamer); ok {
+		if s, ok := r.agent.(agent.Streamer); ok {
 			result, err = s.StreamTurn(ctx, sess, chunkFn)
 		} else {
-			result, err = r.Agent.Turn(ctx, sess)
+			result, err = r.agent.Turn(ctx, sess)
 		}
 	} else {
-		result, err = r.Agent.Turn(ctx, sess)
+		result, err = r.agent.Turn(ctx, sess)
 	}
 	if err != nil {
 		return agent.StepResult{}, err

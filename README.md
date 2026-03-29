@@ -196,10 +196,10 @@ See [examples/subagents/main.go](examples/subagents/main.go) for a bounded orche
 By default, child runs are attached to the spawn context and are canceled with it. Set `runtime.ChildSpec.Detached` only for background work that should outlive the caller.
 
 If your host wants one obvious way to share runtime settings across foreground
-and background execution, use `runtime.ExecutionConfig`,
-`runtime.NewRunnerWithConfig(...)`, `runtime.NewChildRunnerWithConfig(...)`, or
-`runner.ChildRunner()` to carry the same coordinator, hook, and timeout posture
-through both paths.
+and background execution, use option-based construction like
+`runtime.NewRunner(store, agent, runtime.WithCoordinator(...), ...)` and
+`runner.ChildRunner(...)` to carry the same coordinator, hook, and timeout
+posture through both paths.
 
 ### MCP Tools
 

@@ -14,10 +14,9 @@
 // and execute the child agent asynchronously. Child runs inherit spawn-context
 // cancellation by default. Detached execution is explicit via ChildSpec.
 //
-// ExecutionConfig, NewRunnerWithConfig, NewChildRunnerWithConfig, and
-// Runner.ChildRunner provide the small "worker helper" layer for hosts that
-// want one obvious way to share timeouts, hooks, and coordinator settings
-// across foreground and background execution paths.
+// Option-based constructors plus Runner.ChildRunner provide the small worker
+// helper layer for hosts that want one obvious way to share timeouts, hooks,
+// and coordinator settings across foreground and background execution paths.
 //
 // The framework owns execution semantics, lifecycle recording, and concurrency
 // boundaries. Applications still decide decomposition policy, model selection,

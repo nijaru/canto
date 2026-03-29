@@ -94,8 +94,7 @@ func runExample(ctx context.Context) (orchestrationResult, error) {
 		},
 	}
 
-	childRunner := runtime.NewChildRunner(store)
-	childRunner.MaxConcurrent = 2
+	childRunner := runtime.NewChildRunner(store, runtime.WithMaxConcurrent(2))
 	defer childRunner.Close()
 
 	refs := make([]runtime.ChildRef, 0, len(tasks))

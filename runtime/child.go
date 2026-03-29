@@ -56,12 +56,12 @@ type childHandle struct {
 // ChildRunner materializes child sessions, records lifecycle facts in the
 // parent session, and executes child agents with bounded concurrency.
 type ChildRunner struct {
-	Store            session.Store
-	WaitTimeout      time.Duration
-	ExecutionTimeout time.Duration
-	Coordinator      Coordinator
-	Hooks            *hook.Runner
-	MaxConcurrent    int
+	store            session.Store
+	waitTimeout      time.Duration
+	executionTimeout time.Duration
+	coordinator      Coordinator
+	hooks            *hook.Runner
+	maxConcurrent    int
 
 	queue   *serialQueue
 	mu      sync.Mutex
@@ -70,14 +70,17 @@ type ChildRunner struct {
 }
 
 // NewChildRunner creates a child-runner using the same timeout defaults as Runner.
-func NewChildRunner(store session.Store) *ChildRunner {
+func NewChildRunner(store session.Store, opts ...Option) *ChildRunner {
+	cfg := applyOptions(opts)
 	return &ChildRunner{
-		Store:            store,
-		WaitTimeout:      defaultWaitTimeout,
-		ExecutionTimeout: defaultExecutionTimeout,
+		store:            store,
+		waitTimeout:      cfg.waitTimeout,
+		executionTimeout: cfg.executionTimeout,
+		coordinator:      cfg.coordinator,
 		queue:            newSerialQueue(),
-		Hooks:            hook.NewRunner(),
+		hooks:            cfg.hooks,
 		handles:          make(map[string]*childHandle),
+		maxConcurrent:    cfg.maxConcurrent,
 	}
 }
 
@@ -189,15 +192,15 @@ func (r *ChildRunner) materializeChildSession(
 
 	switch spec.Mode {
 	case session.ChildModeFork:
-		if r.Store == nil {
+		if r.store == nil {
 			return nil, errors.New("materialize forked child session: nil store")
 		}
-		child, err = r.Store.Fork(ctx, parent.ID(), childSessionID)
+		child, err = r.store.Fork(ctx, parent.ID(), childSessionID)
 		if err != nil {
 			return nil, fmt.Errorf("materialize forked child session: %w", err)
 		}
 	default:
-		child = session.New(childSessionID).WithWriter(r.Store)
+		child = session.New(childSessionID).WithWriter(r.store)
 	}
 
 	for _, msg := range spec.InitialMessages {
@@ -231,12 +234,12 @@ func (r *ChildRunner) runChild(
 		AgentID:        ref.AgentID,
 	}))
 
-	childRuntime := NewRunner(r.Store, childAgent)
+	childRuntime := NewRunner(r.store, childAgent)
 	childRuntime.queue = r.queue
-	childRuntime.Coordinator = r.Coordinator
-	childRuntime.Hooks = r.Hooks
-	childRuntime.WaitTimeout = r.WaitTimeout
-	childRuntime.ExecutionTimeout = r.ExecutionTimeout
+	childRuntime.coordinator = r.coordinator
+	childRuntime.hooks = r.hooks
+	childRuntime.waitTimeout = r.waitTimeout
+	childRuntime.executionTimeout = r.executionTimeout
 	childRuntime.sessions[childSess.ID()] = childSess
 
 	// Propagate metadata to the child execution context
@@ -282,11 +285,11 @@ func (r *ChildRunner) runChild(
 func (r *ChildRunner) ensureSemaphore() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.MaxConcurrent <= 0 {
+	if r.maxConcurrent <= 0 {
 		r.sem = nil
 		return
 	}
-	if r.sem == nil || cap(r.sem) != r.MaxConcurrent {
-		r.sem = make(chan struct{}, r.MaxConcurrent)
+	if r.sem == nil || cap(r.sem) != r.maxConcurrent {
+		r.sem = make(chan struct{}, r.maxConcurrent)
 	}
 }

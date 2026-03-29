@@ -241,8 +241,7 @@ func TestChildRunnerSpawn_MaxConcurrent(t *testing.T) {
 	defer store.Close()
 
 	parent := session.New("parent").WithWriter(store)
-	childRunner := NewChildRunner(store)
-	childRunner.MaxConcurrent = 2
+	childRunner := NewChildRunner(store, WithMaxConcurrent(2))
 	defer childRunner.Close()
 
 	started := make(chan string, 3)

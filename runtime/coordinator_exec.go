@@ -17,7 +17,7 @@ func (r *Runner) executeUnderLease(
 	chunkFn func(*llm.Chunk),
 	lease Lease,
 ) (agent.StepResult, error) {
-	if r.Coordinator == nil {
+	if r.coordinator == nil {
 		return r.execute(ctx, sess, chunkFn)
 	}
 
@@ -44,7 +44,7 @@ func (r *Runner) executeUnderLease(
 				Metadata:    map[string]any{"session_id": sess.ID()},
 			}
 			// Best effort release on panic.
-			_ = r.Coordinator.Nack(context.Background(), finalLease, resultMeta)
+			_ = r.coordinator.Nack(context.Background(), finalLease, resultMeta)
 			panic(rec) // re-throw after best-effort cleanup
 		}
 	}()
@@ -70,7 +70,7 @@ func (r *Runner) executeUnderLease(
 			}
 
 			leaseMu.Lock()
-			renewed, err := r.Coordinator.Renew(context.WithoutCancel(execCtx), currentLease)
+			renewed, err := r.coordinator.Renew(context.WithoutCancel(execCtx), currentLease)
 			if err == nil {
 				currentLease = renewed
 			}
@@ -114,7 +114,7 @@ func (r *Runner) executeUnderLease(
 		resultMeta.Error = execErr.Error()
 	}
 
-	ackErr := r.Coordinator.Ack(context.WithoutCancel(ctx), finalLease, resultMeta)
+	ackErr := r.coordinator.Ack(context.WithoutCancel(ctx), finalLease, resultMeta)
 	if renewErr != nil && execErr == nil {
 		return result, errors.Join(renewErr, ackErr)
 	}

@@ -291,8 +291,7 @@ func TestRunnerCoordinator_SerializesPerSession(t *testing.T) {
 		release: release,
 		current: &current,
 		maxSeen: &maxSeen,
-	})
-	runner.Coordinator = NewLocalCoordinator()
+	}, WithCoordinator(NewLocalCoordinator()))
 
 	ctx := t.Context()
 	sessionID := "coord-session"
@@ -342,8 +341,7 @@ func TestRunnerCoordinator_RenewsLeaseForLongRunningWork(t *testing.T) {
 	coord := NewLocalCoordinator()
 	coord.SetLeaseTTL(20 * time.Millisecond)
 
-	runner := NewRunner(store, &slowAgent{delay: 80 * time.Millisecond})
-	runner.Coordinator = coord
+	runner := NewRunner(store, &slowAgent{delay: 80 * time.Millisecond}, WithCoordinator(coord))
 
 	result, err := runner.Run(t.Context(), "coord-renew")
 	if err != nil {

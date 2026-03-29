@@ -11,6 +11,5 @@
 //	coord := redis.NewRedisCoordinator(client)
 //	defer coord.Stop()
 //
-//	runner := runtime.NewRunner(store, agent)
-//	runner.Coordinator = coord
+//	runner := runtime.NewRunner(store, agent, runtime.WithCoordinator(coord))
 package redis
