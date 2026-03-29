@@ -10,39 +10,22 @@ import (
 	"github.com/nijaru/canto/llm"
 )
 
-func TestLookup_Alias(t *testing.T) {
-	def, ok := Lookup("z-ai")
-	if !ok {
-		t.Fatal("expected z-ai alias to resolve")
-	}
-	if def.ID != "zai" {
-		t.Fatalf("ID = %q, want zai", def.ID)
-	}
-}
-
-func TestNew_UsesPresetDefinition(t *testing.T) {
-	p, err := New("zai")
-	if err != nil {
-		t.Fatalf("New(zai): %v", err)
-	}
-	if got, want := p.ID(), "zai"; got != want {
-		t.Fatalf("ID() = %q, want %q", got, want)
-	}
-}
-
 func TestNewOpenAICompatible_CustomProvider(t *testing.T) {
 	var authHeader string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"id":"resp_1","object":"chat.completion","created":1,"model":"custom-1","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+		_, _ = io.WriteString(
+			w,
+			`{"id":"resp_1","object":"chat.completion","created":1,"model":"custom-1","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`,
+		)
 	}))
 	defer server.Close()
 
-	p, err := NewOpenAICompatible(Definition{
-		ID:              "custom-gateway",
-		DefaultEnvVar:   "CUSTOM_GATEWAY_API_KEY",
-		DefaultEndpoint: server.URL,
+	p, err := NewOpenAICompatible(OpenAICompatibleConfig{
+		ID:            "custom-gateway",
+		Endpoint:      server.URL,
+		APIKeyEnvVars: []string{"CUSTOM_GATEWAY_API_KEY"},
 	}, WithAPIKey("secret"))
 	if err != nil {
 		t.Fatalf("NewOpenAICompatible: %v", err)
@@ -62,5 +45,12 @@ func TestNewOpenAICompatible_CustomProvider(t *testing.T) {
 	}
 	if resp.Content != "ok" {
 		t.Fatalf("Content = %q, want ok", resp.Content)
+	}
+}
+
+func TestNewOpenAICompatible_RequiresID(t *testing.T) {
+	_, err := NewOpenAICompatible(OpenAICompatibleConfig{})
+	if err == nil {
+		t.Fatal("expected missing ID to fail")
 	}
 }

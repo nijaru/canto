@@ -104,10 +104,7 @@ Before answering any question, use recall_memory to search what you know.
 When the user shares an important fact, use remember_memory to store it.`
 
 	// 5. Initialize the Agent
-	provider, err := providers.New("anthropic")
-	if err != nil {
-		log.Fatalf("failed to create provider: %v", err)
-	}
+	provider := providers.NewAnthropic()
 	a := agent.New("memory-agent", instructions, model, provider, reg,
 		agent.WithBuilder(builder),
 		agent.WithMaxSteps(20),

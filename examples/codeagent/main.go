@@ -36,10 +36,7 @@ func main() {
 	reg.Register(&tools.BashTool{})
 	reg.Register(tools.NewCodeExecutionTool("python"))
 
-	provider, err := providers.New("openai")
-	if err != nil {
-		log.Fatalf("failed to create provider: %v", err)
-	}
+	provider := providers.NewOpenAI()
 
 	instructions := `You are a coding assistant with access to bash and a Python REPL.
 You help users write, debug, and run code. Use bash to read files, run tests,

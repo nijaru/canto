@@ -53,10 +53,7 @@ func main() {
 	reg := tool.NewRegistry()
 	reg.Register(&tools.BashTool{})
 
-	provider, err := providers.New("openai")
-	if err != nil {
-		log.Fatalf("failed to create provider: %v", err)
-	}
+	provider := providers.NewOpenAI()
 
 	instructionsBytes, err := os.ReadFile("program.md")
 	if err != nil {
