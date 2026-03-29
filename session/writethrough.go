@@ -20,7 +20,7 @@ import (
 func AttachWriteThrough(ctx context.Context, sess *Session, store Store) func() {
 	wctx, cancel := context.WithCancel(ctx)
 	ch := make(chan Event, 1024)
-	sess.SetWriterChannel(ch)
+	sess.setWriterChannel(ch)
 
 	done := make(chan struct{})
 	go func() {
@@ -42,7 +42,7 @@ func AttachWriteThrough(ctx context.Context, sess *Session, store Store) func() 
 	}()
 
 	return func() {
-		sess.UnsetWriterChannel()
+		sess.unsetWriterChannel()
 		cancel()
 		<-done
 	}

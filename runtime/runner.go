@@ -104,7 +104,7 @@ func (r *Runner) Evict(sessionID string) {
 		return
 	}
 
-	if sess.HasSubscribers() {
+	if sess.HasWatchers() {
 		return
 	}
 

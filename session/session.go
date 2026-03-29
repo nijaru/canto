@@ -247,17 +247,13 @@ func (s *Session) ID() string {
 	return s.id
 }
 
-// SetWriterChannel registers a channel that receives every event appended to the session.
-// Unlike Subscribe, this channel is non-lossy: Append will block until the event
-// is accepted by the channel.
-func (s *Session) SetWriterChannel(ch chan<- Event) {
+func (s *Session) setWriterChannel(ch chan<- Event) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.writerCh = &writerChannel{ch: ch}
 }
 
-// UnsetWriterChannel removes the writer channel.
-func (s *Session) UnsetWriterChannel() {
+func (s *Session) unsetWriterChannel() {
 	s.mu.Lock()
 	writerCh := s.writerCh
 	s.writerCh = nil
@@ -343,8 +339,8 @@ func (s *Session) Events() []Event {
 	return res
 }
 
-// HasSubscribers returns true if the session has any active subscribers.
-func (s *Session) HasSubscribers() bool {
+// HasWatchers returns true if the session has any active Watch subscriptions.
+func (s *Session) HasWatchers() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.subscribers) > 0
