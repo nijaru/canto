@@ -12,11 +12,12 @@ import (
 )
 
 type MemoryPromptOptions struct {
-	Namespaces  []memory.Namespace
-	Roles       []memory.Role
-	Limit       int
-	Query       string
-	UseSemantic bool
+	Namespaces    []memory.Namespace
+	Roles         []memory.Role
+	Limit         int
+	Query         string
+	UseSemantic   bool
+	IncludeRecent bool
 }
 
 func MemoryPrompt(retriever memory.Retriever, opts MemoryPromptOptions) RequestProcessor {
@@ -49,8 +50,7 @@ func MemoryPrompt(retriever memory.Retriever, opts MemoryPromptOptions) RequestP
 			Text:          query,
 			Limit:         opts.Limit,
 			UseSemantic:   opts.UseSemantic,
-			IncludeCore:   true,
-			IncludeRecent: true,
+			IncludeRecent: opts.IncludeRecent,
 		})
 		if err != nil {
 			return err

@@ -127,3 +127,42 @@ func TestRecallTool_UsesRetrieverInterface(t *testing.T) {
 		t.Fatalf("unexpected output: %s", out)
 	}
 }
+
+func TestRecallTool_RespectsConfiguredRoles(t *testing.T) {
+	ctx := context.Background()
+	store, err := memory.NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	manager := memory.NewManager(store, nil, nil, memory.WritePolicy{})
+	namespace := memory.Namespace{Scope: memory.ScopeUser, ID: "u-role-filter"}
+	if err := manager.UpsertBlock(ctx, namespace, "persona", "Should not appear", nil); err != nil {
+		t.Fatalf("UpsertBlock: %v", err)
+	}
+	if _, err := manager.Write(ctx, memory.WriteInput{
+		Namespace: namespace,
+		Role:      memory.RoleSemantic,
+		Content:   "User likes hojicha",
+	}); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	recall := &RecallTool{
+		Retriever:  manager,
+		Namespaces: []memory.Namespace{namespace},
+		Roles:      []memory.Role{memory.RoleSemantic},
+		Limit:      5,
+	}
+	out, err := recall.Execute(ctx, `{"query":"hojicha"}`)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if strings.Contains(out, "Should not appear") {
+		t.Fatalf("expected recall output to respect configured roles: %s", out)
+	}
+	if !strings.Contains(out, "User likes hojicha") {
+		t.Fatalf("expected semantic memory in output: %s", out)
+	}
+}

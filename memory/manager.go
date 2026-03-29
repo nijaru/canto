@@ -248,19 +248,21 @@ func (m *Manager) Retrieve(ctx context.Context, query Query) ([]Memory, error) {
 	}
 
 	ftsRoles := filterRoles(roles, func(role Role) bool { return role != RoleCore })
-	ftsHits, err := m.store.SearchMemories(
-		ctx,
-		query.Namespaces,
-		ftsRoles,
-		query.Text,
-		limit,
-		query.Filters,
-		query.IncludeRecent,
-	)
-	if err != nil {
-		return nil, err
+	if query.Text != "" || query.IncludeRecent {
+		ftsHits, err := m.store.SearchMemories(
+			ctx,
+			query.Namespaces,
+			ftsRoles,
+			query.Text,
+			limit,
+			query.Filters,
+			query.IncludeRecent,
+		)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, ftsHits...)
 	}
-	results = append(results, ftsHits...)
 
 	if query.UseSemantic && query.Text != "" && m.vector != nil && m.embedder != nil {
 		vector, err := m.embedder.EmbedContent(ctx, query.Text)

@@ -2,10 +2,13 @@ package eval
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/nijaru/canto/memory"
 )
+
+type MemoryAssertion func([]memory.Memory) error
 
 type MemoryExpectation struct {
 	Contains []string
@@ -16,24 +19,26 @@ type MemoryCase struct {
 	Name   string
 	Query  memory.Query
 	Expect MemoryExpectation
+	Assert MemoryAssertion
 }
 
 type MemoryCaseResult struct {
-	Name       string
-	Passed     bool
-	Missing    []string
-	Unexpected []string
-	Hits       []memory.Memory
+	Name           string
+	Passed         bool
+	Missing        []string
+	Unexpected     []string
+	AssertionError string
+	Hits           []memory.Memory
 }
 
 func EvaluateMemoryCases(
 	ctx context.Context,
-	manager *memory.Manager,
+	retriever memory.Retriever,
 	cases []MemoryCase,
 ) ([]MemoryCaseResult, error) {
 	results := make([]MemoryCaseResult, 0, len(cases))
 	for _, testCase := range cases {
-		hits, err := manager.Retrieve(ctx, testCase.Query)
+		hits, err := retriever.Retrieve(ctx, testCase.Query)
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +57,14 @@ func EvaluateMemoryCases(
 				result.Unexpected = append(result.Unexpected, needle)
 			}
 		}
-		result.Passed = len(result.Missing) == 0 && len(result.Unexpected) == 0
+		if testCase.Assert != nil {
+			if err := testCase.Assert(hits); err != nil {
+				result.AssertionError = err.Error()
+			}
+		}
+		result.Passed = len(result.Missing) == 0 &&
+			len(result.Unexpected) == 0 &&
+			result.AssertionError == ""
 		results = append(results, result)
 	}
 	return results, nil
@@ -65,4 +77,39 @@ func memoryBlob(hits []memory.Memory) string {
 		sb.WriteByte('\n')
 	}
 	return sb.String()
+}
+
+func RequireRoles(roles ...memory.Role) MemoryAssertion {
+	return func(hits []memory.Memory) error {
+		for _, role := range roles {
+			found := false
+			for _, hit := range hits {
+				if hit.Role == role {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("missing role %q", role)
+			}
+		}
+		return nil
+	}
+}
+
+func ExcludeNamespaces(namespaces ...memory.Namespace) MemoryAssertion {
+	return func(hits []memory.Memory) error {
+		for _, hit := range hits {
+			for _, namespace := range namespaces {
+				if hit.Namespace == namespace {
+					return fmt.Errorf(
+						"unexpected namespace %q/%q in results",
+						namespace.Scope,
+						namespace.ID,
+					)
+				}
+			}
+		}
+		return nil
+	}
 }

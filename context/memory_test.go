@@ -191,6 +191,52 @@ func TestMemoryPrompt_UsesRetrieverInterface(t *testing.T) {
 	}
 }
 
+func TestMemoryPrompt_RespectsRoleSelection(t *testing.T) {
+	store := newTestCoreStore(t)
+	manager := memory.NewManager(store, nil, nil, memory.WritePolicy{})
+	namespace := memory.Namespace{Scope: memory.ScopeThread, ID: "thread-role-filter"}
+	if err := manager.UpsertBlock(t.Context(), namespace, "persona", "Do not leak me", nil); err != nil {
+		t.Fatalf("UpsertBlock: %v", err)
+	}
+	if _, err := manager.Write(t.Context(), memory.WriteInput{
+		Namespace: namespace,
+		Role:      memory.RoleSemantic,
+		Content:   "User prefers black tea",
+	}); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	sess := session.New("thread-role-filter")
+	if err := sess.Append(t.Context(), session.NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "tea",
+	})); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	req := &llm.Request{}
+	proc := MemoryPrompt(manager, MemoryPromptOptions{
+		Namespaces: []memory.Namespace{namespace},
+		Roles:      []memory.Role{memory.RoleSemantic},
+		Limit:      5,
+	})
+	if err := proc.ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatalf("ApplyRequest: %v", err)
+	}
+	if len(req.Messages) != 1 {
+		t.Fatalf("expected 1 injected system message, got %d", len(req.Messages))
+	}
+	if strings.Contains(req.Messages[0].Content, "Do not leak me") {
+		t.Fatalf(
+			"expected core block to stay out of semantic-only recall: %q",
+			req.Messages[0].Content,
+		)
+	}
+	if !strings.Contains(req.Messages[0].Content, "User prefers black tea") {
+		t.Fatalf("expected semantic memory to be present: %q", req.Messages[0].Content)
+	}
+}
+
 func containsAll(s string, parts ...string) bool {
 	for _, part := range parts {
 		if !strings.Contains(s, part) {

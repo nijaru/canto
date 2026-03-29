@@ -165,3 +165,46 @@ func TestManager_AsyncWrite(t *testing.T) {
 		t.Fatalf("expected async memory to persist, got %#v", results)
 	}
 }
+
+func TestManager_IncludeRecentControlsQuerylessRecall(t *testing.T) {
+	store, err := NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	manager := NewManager(store, nil, nil, WritePolicy{})
+	ns := Namespace{Scope: ScopeUser, ID: "user-recent"}
+	if _, err := manager.Write(t.Context(), WriteInput{
+		Namespace: ns,
+		Role:      RoleEpisodic,
+		Content:   "User finished onboarding yesterday.",
+	}); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	results, err := manager.Retrieve(t.Context(), Query{
+		Namespaces: []Namespace{ns},
+		Roles:      []Role{RoleEpisodic},
+		Limit:      5,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve without recent: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected no queryless recall without IncludeRecent, got %#v", results)
+	}
+
+	results, err = manager.Retrieve(t.Context(), Query{
+		Namespaces:    []Namespace{ns},
+		Roles:         []Role{RoleEpisodic},
+		IncludeRecent: true,
+		Limit:         5,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve with recent: %v", err)
+	}
+	if len(results) != 1 || results[0].Content != "User finished onboarding yesterday." {
+		t.Fatalf("expected recent recall when IncludeRecent is true, got %#v", results)
+	}
+}
