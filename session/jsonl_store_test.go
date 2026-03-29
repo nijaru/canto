@@ -1,6 +1,8 @@
 package session
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/nijaru/canto/llm"
@@ -93,5 +95,37 @@ func TestJSONLStoreRootSessionHasNilParent(t *testing.T) {
 	}
 	if len(lineage) != 1 || lineage[0].SessionID != sessionID || lineage[0].Depth != 0 {
 		t.Fatalf("lineage = %#v, want only root session", lineage)
+	}
+}
+
+func TestJSONLStoreLoadMissingSessionKeepsWriter(t *testing.T) {
+	store, err := NewJSONLStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new jsonl store: %v", err)
+	}
+
+	sess, err := store.Load(t.Context(), "missing-jsonl")
+	if err != nil {
+		t.Fatalf("load missing session: %v", err)
+	}
+
+	if err := sess.Append(t.Context(), NewEvent("missing-jsonl", MessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "hello",
+	})); err != nil {
+		t.Fatalf("append missing session: %v", err)
+	}
+
+	path := filepath.Join(store.dir, "missing-jsonl.jsonl")
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("stat missing session file: %v", err)
+	}
+
+	loaded, err := store.Load(t.Context(), "missing-jsonl")
+	if err != nil {
+		t.Fatalf("reload missing session: %v", err)
+	}
+	if got := len(loaded.Messages()); got != 1 {
+		t.Fatalf("loaded messages = %d, want 1", got)
 	}
 }

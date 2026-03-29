@@ -1,4 +1,4 @@
-.PHONY: fmt test build check
+.PHONY: fmt test test-redis build check
 
 fmt:
 	@files="$$(git ls-files '*.go')"; \
@@ -12,7 +12,10 @@ fmt:
 test:
 	go test ./...
 
+test-redis:
+	go test -tags redis ./x/redis
+
 build:
 	go build ./...
 
-check: test build
+check: fmt test build

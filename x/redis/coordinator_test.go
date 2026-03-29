@@ -5,63 +5,59 @@ package redis
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/redis"
 
 	"github.com/nijaru/canto/runtime"
 )
 
-// redisContainer spins up a disposable Redis container and returns a connected
-// client. The container is torn down automatically when the test ends.
-func redisContainer(t *testing.T) (*goredis.Client, func()) {
+const testRedisURLVar = "CANTO_TEST_REDIS_URL"
+
+// redisClient connects to an externally managed Redis instance for integration
+// testing. CI provides Redis as a service; local runs can point at any
+// disposable instance by setting CANTO_TEST_REDIS_URL.
+func redisClient(t *testing.T) *goredis.Client {
 	t.Helper()
-	ctx := context.Background()
-
-	container, err := redis.Run(ctx, "redis:7-alpine")
-	if err != nil {
-		t.Fatalf("start redis container: %v", err)
+	redisURL := os.Getenv(testRedisURLVar)
+	if redisURL == "" {
+		t.Skipf("%s is not set", testRedisURLVar)
 	}
 
-	connStr, err := container.ConnectionString(ctx)
+	opts, err := goredis.ParseURL(redisURL)
 	if err != nil {
-		t.Fatalf("redis connection string: %v", err)
-	}
-
-	opts, err := goredis.ParseURL(connStr)
-	if err != nil {
-		t.Fatalf("parse redis url: %v", err)
+		t.Fatalf("parse %s: %v", testRedisURLVar, err)
 	}
 
 	client := goredis.NewClient(opts)
-	if err := client.Ping(ctx).Err(); err != nil {
+	if err := client.Ping(t.Context()).Err(); err != nil {
 		t.Fatalf("ping redis: %v", err)
 	}
 
-	cleanup := func() {
-		client.Close()
-		if err := testcontainers.TerminateContainer(container); err != nil {
-			t.Logf("terminate redis container: %v", err)
-		}
-	}
-	return client, cleanup
+	t.Cleanup(func() {
+		_ = client.Close()
+	})
+	return client
 }
 
 func newTestCoord(t *testing.T) *RedisCoordinator {
 	t.Helper()
-	client, cleanup := redisContainer(t)
-	t.Cleanup(cleanup)
+	client := redisClient(t)
 
 	prefix := "test:coord:" + t.Name() + ":"
-	// Flush any keys from a prior run (shouldn't happen with fresh container).
-	ctx := context.Background()
+	ctx := t.Context()
 	keys, _ := client.Keys(ctx, prefix+"*").Result()
 	if len(keys) > 0 {
-		client.Del(ctx, keys...)
+		_ = client.Del(ctx, keys...).Err()
 	}
+	t.Cleanup(func() {
+		keys, _ := client.Keys(ctx, prefix+"*").Result()
+		if len(keys) > 0 {
+			_ = client.Del(ctx, keys...).Err()
+		}
+	})
 
 	coord := NewRedisCoordinator(client,
 		WithKeyPrefix(prefix),

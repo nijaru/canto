@@ -74,7 +74,7 @@ func (s *JSONLStore) Load(ctx context.Context, sessionID string) (*Session, erro
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return New(sessionID), nil
+			return New(sessionID).WithWriter(s), nil
 		}
 		return nil, err
 	}
