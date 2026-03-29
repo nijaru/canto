@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/artifact"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -35,7 +34,7 @@ func (p *compactTestProvider) Stream(ctx context.Context, req *llm.Request) (llm
 	return nil, nil
 }
 
-func (p *compactTestProvider) Models(ctx context.Context) ([]catwalk.Model, error) {
+func (p *compactTestProvider) Models(ctx context.Context) ([]llm.Model, error) {
 	return nil, nil
 }
 

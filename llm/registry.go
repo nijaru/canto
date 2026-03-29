@@ -5,23 +5,21 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-
-	"charm.land/catwalk/pkg/catwalk"
 )
 
 // Registry manages the available LLM providers and models.
 type Registry struct {
 	mu        sync.RWMutex
 	providers map[string]Provider
-	models    map[string]catwalk.Model // modelID -> Model
-	resolver  map[string][]string      // modelID -> []providerID
+	models    map[string]Model    // modelID -> Model
+	resolver  map[string][]string // modelID -> []providerID
 }
 
 // NewRegistry creates a new registry.
 func NewRegistry() *Registry {
 	r := &Registry{
 		providers: make(map[string]Provider),
-		models:    make(map[string]catwalk.Model),
+		models:    make(map[string]Model),
 		resolver:  make(map[string][]string),
 	}
 	return r
@@ -73,31 +71,6 @@ func (r *Registry) AllProviders() []Provider {
 		res = append(res, p)
 	}
 	return res
-}
-
-// Sync fetches models and provider configurations from catwalk.
-// This updates the internal model registry.
-func (r *Registry) Sync(ctx context.Context) error {
-	client := catwalk.New()
-	providers, err := client.GetProviders(ctx, "")
-	if err != nil {
-		return err
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	for _, p := range providers {
-		for _, m := range p.Models {
-			r.models[m.ID] = m
-			// Only update resolver if we have the provider registered
-			if _, ok := r.providers[string(p.ID)]; ok {
-				r.addResolver(m.ID, string(p.ID))
-			}
-		}
-	}
-
-	return nil
 }
 
 // ResolveModel finds which provider(s) can handle the given model ID.

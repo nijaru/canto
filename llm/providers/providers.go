@@ -3,7 +3,6 @@ package providers
 import (
 	"fmt"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/llm/providers/anthropic"
 	"github.com/nijaru/canto/llm/providers/gemini"
@@ -16,7 +15,7 @@ type Config struct {
 	APIKey   string
 	Endpoint string
 	Headers  map[string]string
-	Models   []catwalk.Model
+	Models   []llm.Model
 }
 
 type OpenAICompatibleConfig struct {
@@ -25,7 +24,7 @@ type OpenAICompatibleConfig struct {
 	Endpoint      string
 	APIKeyEnvVars []string
 	Headers       map[string]string
-	Models        []catwalk.Model
+	Models        []llm.Model
 	ModelCaps     map[string]llm.Capabilities
 	DefaultAPIKey string
 }
@@ -75,16 +74,16 @@ func NewOpenAICompatible(config OpenAICompatibleConfig) (llm.Provider, error) {
 		return nil, fmt.Errorf("provider id is required")
 	}
 
-	cfg := catwalk.Provider{
-		ID:             catwalk.InferenceProvider(config.ID),
+	cfg := llm.ProviderConfig{
+		ID:             config.ID,
 		APIKey:         config.APIKey,
 		APIEndpoint:    config.Endpoint,
 		DefaultHeaders: cloneHeaders(config.Headers),
-		Models:         append([]catwalk.Model(nil), config.Models...),
+		Models:         append([]llm.Model(nil), config.Models...),
 	}
 
 	return openaipkg.NewCompatibleProvider(cfg, openaipkg.CompatibleSpec{
-		ID:                 catwalk.InferenceProvider(config.ID),
+		ID:                 config.ID,
 		DefaultAPIEndpoint: config.Endpoint,
 		APIKeyEnvVars:      append([]string(nil), config.APIKeyEnvVars...),
 		DefaultHeaders:     cloneHeaders(config.Headers),
@@ -93,13 +92,13 @@ func NewOpenAICompatible(config OpenAICompatibleConfig) (llm.Provider, error) {
 	}), nil
 }
 
-func buildConfig(id string, config Config) catwalk.Provider {
-	return catwalk.Provider{
-		ID:             catwalk.InferenceProvider(id),
+func buildConfig(id string, config Config) llm.ProviderConfig {
+	return llm.ProviderConfig{
+		ID:             id,
 		APIKey:         config.APIKey,
 		APIEndpoint:    config.Endpoint,
 		DefaultHeaders: cloneHeaders(config.Headers),
-		Models:         append([]catwalk.Model(nil), config.Models...),
+		Models:         append([]llm.Model(nil), config.Models...),
 	}
 }
 

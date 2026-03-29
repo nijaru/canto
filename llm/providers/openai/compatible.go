@@ -4,13 +4,12 @@ import (
 	"net/http"
 	"os"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/llm"
 	sashaoai "github.com/sashabaranov/go-openai"
 )
 
 type CompatibleSpec struct {
-	ID                 catwalk.InferenceProvider
+	ID                 string
 	DefaultAPIEndpoint string
 	APIKeyEnvVars      []string
 	DefaultHeaders     map[string]string
@@ -30,7 +29,7 @@ func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.RoundTripper.RoundTrip(req)
 }
 
-func NewCompatibleProvider(cfg catwalk.Provider, spec CompatibleSpec) *Provider {
+func NewCompatibleProvider(cfg llm.ProviderConfig, spec CompatibleSpec) *Provider {
 	if cfg.ID == "" {
 		cfg.ID = spec.ID
 	}

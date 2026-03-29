@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"github.com/go-json-experiment/json"
 	"github.com/nijaru/canto/llm"
 	"github.com/sashabaranov/go-openai"
@@ -16,7 +15,7 @@ import (
 // Providers like Ollama, OpenRouter, and OpenAI itself can embed or wrap this.
 type Base struct {
 	Client *openai.Client
-	Config catwalk.Provider
+	Config llm.ProviderConfig
 	// ModelCaps holds per-model capability overrides. Capabilities(model) looks
 	// up this map before falling back to DefaultCapabilities. Populate with
 	// DefaultModelCaps() to get known reasoning model entries.
@@ -29,7 +28,7 @@ func (b *Base) ID() string {
 }
 
 // Models returns the list of models supported by this provider.
-func (b *Base) Models(ctx context.Context) ([]catwalk.Model, error) {
+func (b *Base) Models(ctx context.Context) ([]llm.Model, error) {
 	return b.Config.Models, nil
 }
 

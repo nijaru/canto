@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 
-	"charm.land/catwalk/pkg/catwalk"
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
@@ -16,16 +15,16 @@ import (
 // Provider implements the llm.Provider interface for Anthropic.
 type Provider struct {
 	client sdk.Client
-	config catwalk.Provider
+	config llm.ProviderConfig
 	// modelCaps holds per-model capability overrides. Capabilities(model) looks
 	// up this map before falling back to DefaultCapabilities.
 	modelCaps map[string]llm.Capabilities
 }
 
 // New creates an Anthropic provider with the given API key.
-// Use NewProvider for full catwalk configuration control.
+// Use NewProvider for full configuration control.
 func New(apiKey string) *Provider {
-	return NewProvider(catwalk.Provider{ID: "anthropic", APIKey: apiKey})
+	return NewProvider(llm.ProviderConfig{ID: "anthropic", APIKey: apiKey})
 }
 
 // DefaultModelCaps returns capability entries for Anthropic models that
@@ -45,8 +44,8 @@ func DefaultModelCaps() map[string]llm.Capabilities {
 	}
 }
 
-// NewProvider creates a new Anthropic provider from a catwalk configuration.
-func NewProvider(cfg catwalk.Provider) *Provider {
+// NewProvider creates a new Anthropic provider from a provider configuration.
+func NewProvider(cfg llm.ProviderConfig) *Provider {
 	apiKey := cfg.APIKey
 	if apiKey == "" || apiKey == "$ANTHROPIC_API_KEY" {
 		apiKey = os.Getenv("ANTHROPIC_API_KEY")
@@ -171,7 +170,7 @@ func (p *Provider) Stream(ctx context.Context, req *llm.Request) (llm.Stream, er
 	}, nil
 }
 
-func (p *Provider) Models(ctx context.Context) ([]catwalk.Model, error) {
+func (p *Provider) Models(ctx context.Context) ([]llm.Model, error) {
 	return p.config.Models, nil
 }
 

@@ -104,7 +104,6 @@ import (
 	"fmt"
 	"os"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/llm/providers/openai"
@@ -113,7 +112,7 @@ import (
 
 func main() {
 	ctx := context.Background()
-	provider := openai.NewProvider(catwalk.Provider{
+	provider := openai.NewProvider(llm.ProviderConfig{
 		ID:     "openai",
 		APIKey: os.Getenv("OPENAI_API_KEY"),
 	})

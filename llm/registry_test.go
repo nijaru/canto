@@ -2,8 +2,6 @@ package llm
 
 import (
 	"testing"
-
-	"charm.land/catwalk/pkg/catwalk"
 )
 
 func TestRegistry_ResolveMulti(t *testing.T) {
@@ -11,13 +9,13 @@ func TestRegistry_ResolveMulti(t *testing.T) {
 
 	p1 := &mockProvider{
 		id: "p1",
-		models: []catwalk.Model{
+		models: []Model{
 			{ID: "gpt-4o"},
 		},
 	}
 	p2 := &mockProvider{
 		id: "p2",
-		models: []catwalk.Model{
+		models: []Model{
 			{ID: "gpt-4o"},
 		},
 	}

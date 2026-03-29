@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -33,7 +32,7 @@ func (m *mockProvider) CountTokens(_ context.Context, _ string, _ []llm.Message)
 	return 0, nil
 }
 func (m *mockProvider) Cost(_ context.Context, _ string, _ llm.Usage) float64 { return 0 }
-func (m *mockProvider) Models(_ context.Context) ([]catwalk.Model, error)     { return nil, nil }
+func (m *mockProvider) Models(_ context.Context) ([]llm.Model, error)         { return nil, nil }
 
 func TestGraphConditionalRouting(t *testing.T) {
 	ctx := context.Background()

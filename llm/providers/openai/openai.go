@@ -3,7 +3,6 @@ package openai
 import (
 	"context"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/llm"
 )
 
@@ -13,13 +12,13 @@ type Provider struct {
 }
 
 // New creates an OpenAI provider with the given API key.
-// Use NewProvider for full catwalk configuration control.
+// Use NewProvider for full configuration control.
 func New(apiKey string) *Provider {
-	return NewProvider(catwalk.Provider{ID: "openai", APIKey: apiKey})
+	return NewProvider(llm.ProviderConfig{ID: "openai", APIKey: apiKey})
 }
 
-// NewProvider creates a new OpenAI provider from a catwalk configuration.
-func NewProvider(cfg catwalk.Provider) *Provider {
+// NewProvider creates a new OpenAI provider from a provider configuration.
+func NewProvider(cfg llm.ProviderConfig) *Provider {
 	return NewCompatibleProvider(cfg, CompatibleSpec{
 		ID:                 "openai",
 		DefaultAPIEndpoint: "https://api.openai.com/v1",

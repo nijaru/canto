@@ -7,8 +7,6 @@ import (
 	"sync"
 	"testing"
 
-	"charm.land/catwalk/pkg/catwalk"
-
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -126,7 +124,7 @@ func (s *MockStream) Err() error   { return s.err }
 func (s *MockStream) Close() error { return nil }
 
 // Models returns an empty list.
-func (m *MockProvider) Models(_ context.Context) ([]catwalk.Model, error) {
+func (m *MockProvider) Models(_ context.Context) ([]llm.Model, error) {
 	return nil, nil
 }
 

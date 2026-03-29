@@ -20,7 +20,6 @@ package obs
 import (
 	"context"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -199,7 +198,7 @@ func (w *wrappedStream) Close() error {
 	return err
 }
 
-func (w *wrappedProvider) Models(ctx context.Context) ([]catwalk.Model, error) {
+func (w *wrappedProvider) Models(ctx context.Context) ([]llm.Model, error) {
 	return w.inner.Models(ctx)
 }
 

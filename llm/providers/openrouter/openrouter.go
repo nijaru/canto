@@ -3,7 +3,6 @@ package openrouter
 import (
 	"context"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/llm/providers/openai"
 )
@@ -13,8 +12,8 @@ type Provider struct {
 	openai.Base
 }
 
-// NewProvider creates a new OpenRouter provider from a catwalk configuration.
-func NewProvider(cfg catwalk.Provider) *Provider {
+// NewProvider creates a new OpenRouter provider from a provider configuration.
+func NewProvider(cfg llm.ProviderConfig) *Provider {
 	p := openai.NewCompatibleProvider(cfg, openai.CompatibleSpec{
 		ID:                 "openrouter",
 		DefaultAPIEndpoint: "https://openrouter.ai/api/v1",

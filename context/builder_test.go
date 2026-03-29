@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
@@ -474,7 +473,7 @@ func (p *capProvider) Generate(_ context.Context, _ *llm.Request) (*llm.Response
 func (p *capProvider) Stream(_ context.Context, _ *llm.Request) (llm.Stream, error) {
 	return nil, nil
 }
-func (p *capProvider) Models(_ context.Context) ([]catwalk.Model, error) { return nil, nil }
+func (p *capProvider) Models(_ context.Context) ([]llm.Model, error) { return nil, nil }
 func (p *capProvider) CountTokens(_ context.Context, _ string, _ []llm.Message) (int, error) {
 	return 0, nil
 }

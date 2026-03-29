@@ -3,7 +3,6 @@ package ollama
 import (
 	"context"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/llm/providers/openai"
 )
@@ -15,13 +14,13 @@ type Provider struct {
 }
 
 // New creates an Ollama provider pointing at the default local endpoint.
-// Use NewProvider for custom base URL or catwalk configuration.
+// Use NewProvider for custom base URL or configuration.
 func New() *Provider {
-	return NewProvider(catwalk.Provider{ID: "ollama", APIEndpoint: "http://localhost:11434/v1"})
+	return NewProvider(llm.ProviderConfig{ID: "ollama", APIEndpoint: "http://localhost:11434/v1"})
 }
 
-// NewProvider creates a new Ollama provider from a catwalk configuration.
-func NewProvider(cfg catwalk.Provider) *Provider {
+// NewProvider creates a new Ollama provider from a provider configuration.
+func NewProvider(cfg llm.ProviderConfig) *Provider {
 	p := openai.NewCompatibleProvider(cfg, openai.CompatibleSpec{
 		ID:                 "ollama",
 		DefaultAPIEndpoint: "http://localhost:11434/v1",

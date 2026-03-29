@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"charm.land/catwalk/pkg/catwalk"
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/sashabaranov/go-openai"
 )
@@ -139,9 +138,9 @@ func (r *SmartResolver) Stream(ctx context.Context, req *Request) (Stream, error
 	return nil, fmt.Errorf("all healthy providers exhausted or rate limited")
 }
 
-func (r *SmartResolver) Models(ctx context.Context) ([]catwalk.Model, error) {
+func (r *SmartResolver) Models(ctx context.Context) ([]Model, error) {
 	seen := make(map[string]bool)
-	var all []catwalk.Model
+	var all []Model
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, p := range r.providers {
@@ -297,9 +296,9 @@ func (p *FailoverProvider) Stream(ctx context.Context, req *Request) (Stream, er
 	return nil, fmt.Errorf("failover failed to start stream: %w", lastErr)
 }
 
-func (p *FailoverProvider) Models(ctx context.Context) ([]catwalk.Model, error) {
+func (p *FailoverProvider) Models(ctx context.Context) ([]Model, error) {
 	seen := make(map[string]bool)
-	var all []catwalk.Model
+	var all []Model
 	for _, sub := range p.providers {
 		models, err := sub.Models(ctx)
 		if err != nil {

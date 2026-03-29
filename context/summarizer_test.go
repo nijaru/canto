@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -27,7 +26,7 @@ func (m *mockProvider) Stream(ctx context.Context, req *llm.Request) (llm.Stream
 	return nil, nil
 }
 
-func (m *mockProvider) Models(ctx context.Context) ([]catwalk.Model, error) {
+func (m *mockProvider) Models(ctx context.Context) ([]llm.Model, error) {
 	return nil, nil
 }
 

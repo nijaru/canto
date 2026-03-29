@@ -6,14 +6,13 @@ import (
 	"net/http"
 	"testing"
 
-	"charm.land/catwalk/pkg/catwalk"
 	"github.com/sashabaranov/go-openai"
 )
 
 type mockProvider struct {
 	id     string
 	genFn  func(ctx context.Context, req *Request) (*Response, error)
-	models []catwalk.Model
+	models []Model
 }
 
 func (m *mockProvider) ID() string { return m.id }
@@ -25,7 +24,7 @@ func (m *mockProvider) Stream(ctx context.Context, req *Request) (Stream, error)
 	return nil, errors.New("not implemented")
 }
 
-func (m *mockProvider) Models(ctx context.Context) ([]catwalk.Model, error) {
+func (m *mockProvider) Models(ctx context.Context) ([]Model, error) {
 	return m.models, nil
 }
 

@@ -3,8 +3,6 @@ package llm
 import (
 	"context"
 	"time"
-
-	"charm.land/catwalk/pkg/catwalk"
 )
 
 // Role defines the role of a message in the conversation.
@@ -112,6 +110,24 @@ type Usage struct {
 	Cost         float64 `json:"cost,omitzero"` // USD
 }
 
+// Model describes an LLM model exposed by a provider.
+type Model struct {
+	ID            string  `json:"id"`
+	ContextWindow int     `json:"context_window,omitzero"`
+	CostPer1MIn   float64 `json:"cost_per_1m_in,omitzero"`
+	CostPer1MOut  float64 `json:"cost_per_1m_out,omitzero"`
+}
+
+// ProviderConfig captures the shared endpoint/auth/model metadata used by
+// Canto's built-in provider adapters.
+type ProviderConfig struct {
+	ID             string
+	APIKey         string
+	APIEndpoint    string
+	DefaultHeaders map[string]string
+	Models         []Model
+}
+
 // Capabilities describes what features a model supports.
 // The pipeline uses these to adapt requests before they reach the provider.
 type Capabilities struct {
@@ -215,7 +231,7 @@ type Provider interface {
 	Stream(ctx context.Context, req *Request) (Stream, error)
 
 	// Models returns the list of models supported by this provider.
-	Models(ctx context.Context) ([]catwalk.Model, error)
+	Models(ctx context.Context) ([]Model, error)
 
 	// CountTokens returns the number of tokens in the given messages for a specific model.
 	CountTokens(ctx context.Context, model string, messages []Message) (int, error)
