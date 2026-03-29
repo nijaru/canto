@@ -55,7 +55,7 @@ func TestRememberAndRecallTool(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	manager := memory.NewManager(store, nil, nil, memory.WritePolicy{})
+	manager := memory.NewManager(store)
 	namespace := memory.Namespace{Scope: memory.ScopeUser, ID: "u1"}
 
 	remember := &RememberTool{
@@ -136,7 +136,7 @@ func TestRecallTool_RespectsConfiguredRoles(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	manager := memory.NewManager(store, nil, nil, memory.WritePolicy{})
+	manager := memory.NewManager(store)
 	namespace := memory.Namespace{Scope: memory.ScopeUser, ID: "u-role-filter"}
 	if err := manager.UpsertBlock(ctx, namespace, "persona", "Should not appear", nil); err != nil {
 		t.Fatalf("UpsertBlock: %v", err)

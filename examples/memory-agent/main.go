@@ -55,9 +55,9 @@ func main() {
 	defer coreStore.Close()
 
 	namespace := memory.Namespace{Scope: memory.ScopeUser, ID: "memory-agent-user"}
-	manager := memory.NewManager(coreStore, nil, nil, memory.WritePolicy{
+	manager := memory.NewManager(coreStore, memory.WithWritePolicy(memory.WritePolicy{
 		ConflictMode: memory.ConflictMerge,
-	})
+	}))
 	defer manager.Close()
 
 	// 2. Configure durable core memory blocks

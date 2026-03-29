@@ -117,32 +117,32 @@ type Query struct {
 }
 
 type Manager struct {
-	store    Store
-	vector   VectorStore
-	embedder llm.Embedder
-	policy   WritePolicy
+	store          Store
+	vector         VectorStore
+	embedder       llm.Embedder
+	policy         WritePolicy
+	retrievePolicy RetrievePolicy
 
 	asyncWG sync.WaitGroup
 }
 
-func NewManager(
-	store Store,
-	vector VectorStore,
-	embedder llm.Embedder,
-	policy WritePolicy,
-) *Manager {
-	if policy.ConflictMode == "" {
-		policy.ConflictMode = ConflictReplace
+// NewManager builds a memory manager around the provided durable store.
+func NewManager(store Store, opts ...ManagerOption) *Manager {
+	manager := &Manager{
+		store: store,
 	}
-	if policy.DefaultMode == "" {
-		policy.DefaultMode = WriteSync
+	for _, opt := range opts {
+		if opt != nil {
+			opt(manager)
+		}
 	}
-	return &Manager{
-		store:    store,
-		vector:   vector,
-		embedder: embedder,
-		policy:   policy,
+	if manager.policy.ConflictMode == "" {
+		manager.policy.ConflictMode = ConflictReplace
 	}
+	if manager.policy.DefaultMode == "" {
+		manager.policy.DefaultMode = WriteSync
+	}
+	return manager
 }
 
 func (m *Manager) Close() error {
@@ -311,6 +311,16 @@ func (m *Manager) Retrieve(ctx context.Context, query Query) ([]Memory, error) {
 	})
 	if len(results) > limit {
 		results = results[:limit]
+	}
+	if m.retrievePolicy.Postprocess != nil {
+		var err error
+		results, err = m.retrievePolicy.Postprocess(query, slices.Clone(results))
+		if err != nil {
+			return nil, err
+		}
+		if len(results) > limit {
+			results = results[:limit]
+		}
 	}
 	return results, nil
 }

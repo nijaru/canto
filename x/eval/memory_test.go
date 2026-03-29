@@ -12,7 +12,7 @@ func TestEvaluateMemoryCases(t *testing.T) {
 		t.Fatalf("NewCoreStore: %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	manager := memory.NewManager(store, nil, nil, memory.WritePolicy{})
+	manager := memory.NewManager(store)
 	ns := memory.Namespace{Scope: memory.ScopeUser, ID: "u1"}
 	if _, err := manager.Write(t.Context(), memory.WriteInput{
 		Namespace: ns,
@@ -50,7 +50,7 @@ func TestEvaluateMemoryCases_UsesAssertions(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	manager := memory.NewManager(store, nil, nil, memory.WritePolicy{})
+	manager := memory.NewManager(store)
 	userNS := memory.Namespace{Scope: memory.ScopeUser, ID: "u-assert"}
 	otherNS := memory.Namespace{Scope: memory.ScopeUser, ID: "u-other"}
 

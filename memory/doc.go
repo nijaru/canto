@@ -3,8 +3,8 @@
 //
 // Manager is the main entry point for framework-facing memory behavior. It
 // coordinates scoped core blocks and durable long-term memories across
-// thread/user/agent/workspace/app namespaces, with pluggable write policy and
-// retrieval planning.
+// thread/user/agent/workspace/app namespaces, with option-based configuration
+// for pluggable write policy, retrieval policy, vectors, and embeddings.
 //
 // Small interfaces such as Writer, Retriever, and Store keep the higher-level
 // helpers decoupled from any one concrete implementation. CoreStore is the

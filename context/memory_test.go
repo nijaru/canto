@@ -31,7 +31,7 @@ func newTestCoreStore(t *testing.T) *memory.CoreStore {
 
 func TestMemoryPrompt_InjectsRetrievedMemory(t *testing.T) {
 	store := newTestCoreStore(t)
-	manager := memory.NewManager(store, nil, nil, memory.WritePolicy{})
+	manager := memory.NewManager(store)
 	namespace := memory.Namespace{Scope: memory.ScopeThread, ID: "thread-1"}
 	if err := manager.UpsertBlock(t.Context(), namespace, "persona", "Agent Name: Archivist", nil); err != nil {
 		t.Fatalf("UpsertBlock: %v", err)
@@ -74,7 +74,7 @@ func TestMemoryPrompt_InjectsRetrievedMemory(t *testing.T) {
 
 func TestMemoryPrompt_ReplacesExistingBlock(t *testing.T) {
 	store := newTestCoreStore(t)
-	manager := memory.NewManager(store, nil, nil, memory.WritePolicy{})
+	manager := memory.NewManager(store)
 	namespace := memory.Namespace{Scope: memory.ScopeThread, ID: "thread-2"}
 	if err := manager.UpsertBlock(t.Context(), namespace, "persona", "Agent Name: Updated", nil); err != nil {
 		t.Fatalf("UpsertBlock: %v", err)
@@ -111,7 +111,7 @@ func TestMemoryPrompt_ReplacesExistingBlock(t *testing.T) {
 
 func TestMemoryPrompt_UsesEffectiveMessagesAfterCompaction(t *testing.T) {
 	store := newTestCoreStore(t)
-	manager := memory.NewManager(store, nil, nil, memory.WritePolicy{})
+	manager := memory.NewManager(store)
 	namespace := memory.Namespace{Scope: memory.ScopeThread, ID: "km-compacted"}
 	if _, err := manager.Write(t.Context(), memory.WriteInput{
 		Namespace: namespace,
@@ -193,7 +193,7 @@ func TestMemoryPrompt_UsesRetrieverInterface(t *testing.T) {
 
 func TestMemoryPrompt_RespectsRoleSelection(t *testing.T) {
 	store := newTestCoreStore(t)
-	manager := memory.NewManager(store, nil, nil, memory.WritePolicy{})
+	manager := memory.NewManager(store)
 	namespace := memory.Namespace{Scope: memory.ScopeThread, ID: "thread-role-filter"}
 	if err := manager.UpsertBlock(t.Context(), namespace, "persona", "Do not leak me", nil); err != nil {
 		t.Fatalf("UpsertBlock: %v", err)

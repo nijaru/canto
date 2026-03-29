@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -22,7 +23,7 @@ func TestManager_ScopeIsolationAndBlocks(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	manager := NewManager(store, nil, nil, WritePolicy{})
+	manager := NewManager(store)
 	threadA := Namespace{Scope: ScopeThread, ID: "thread-a"}
 	threadB := Namespace{Scope: ScopeThread, ID: "thread-b"}
 
@@ -55,7 +56,7 @@ func TestManager_WriteConflictModesAndRetrieve(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	ns := Namespace{Scope: ScopeUser, ID: "user-1"}
-	manager := NewManager(store, nil, nil, WritePolicy{ConflictMode: ConflictMerge})
+	manager := NewManager(store, WithWritePolicy(WritePolicy{ConflictMode: ConflictMerge}))
 	if _, err := manager.Write(t.Context(), WriteInput{
 		Namespace: ns,
 		Role:      RoleSemantic,
@@ -103,7 +104,7 @@ func TestManager_SemanticRetrieval(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = vector.Close() })
 
-	manager := NewManager(store, vector, testEmbedder{}, WritePolicy{})
+	manager := NewManager(store, WithVectorStore(vector), WithEmbedder(testEmbedder{}))
 	ns := Namespace{Scope: ScopeWorkspace, ID: "repo"}
 	if _, err := manager.Write(t.Context(), WriteInput{
 		Namespace: ns,
@@ -136,7 +137,7 @@ func TestManager_AsyncWrite(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	manager := NewManager(store, nil, nil, WritePolicy{DefaultMode: WriteAsync})
+	manager := NewManager(store, WithWritePolicy(WritePolicy{DefaultMode: WriteAsync}))
 	ns := Namespace{Scope: ScopeAgent, ID: "agent-1"}
 	result, err := manager.Write(t.Context(), WriteInput{
 		Namespace: ns,
@@ -173,7 +174,7 @@ func TestManager_IncludeRecentControlsQuerylessRecall(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	manager := NewManager(store, nil, nil, WritePolicy{})
+	manager := NewManager(store)
 	ns := Namespace{Scope: ScopeUser, ID: "user-recent"}
 	if _, err := manager.Write(t.Context(), WriteInput{
 		Namespace: ns,
@@ -206,5 +207,85 @@ func TestManager_IncludeRecentControlsQuerylessRecall(t *testing.T) {
 	}
 	if len(results) != 1 || results[0].Content != "User finished onboarding yesterday." {
 		t.Fatalf("expected recent recall when IncludeRecent is true, got %#v", results)
+	}
+}
+
+func TestManager_RetrievePolicyPostprocess(t *testing.T) {
+	store, err := NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	ns := Namespace{Scope: ScopeUser, ID: "user-postprocess"}
+	manager := NewManager(store, WithRetrievePolicy(RetrievePolicy{
+		Postprocess: func(query Query, results []Memory) ([]Memory, error) {
+			if query.Text != "tea" {
+				t.Fatalf("unexpected query: %#v", query)
+			}
+			filtered := results[:0]
+			for _, result := range results {
+				if result.Role == RoleSemantic {
+					filtered = append(filtered, result)
+				}
+			}
+			return filtered, nil
+		},
+	}))
+	if err := manager.UpsertBlock(t.Context(), ns, "persona", "Should be filtered", nil); err != nil {
+		t.Fatalf("UpsertBlock: %v", err)
+	}
+	if _, err := manager.Write(t.Context(), WriteInput{
+		Namespace: ns,
+		Role:      RoleSemantic,
+		Content:   "User likes tea",
+	}); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	results, err := manager.Retrieve(t.Context(), Query{
+		Namespaces:  []Namespace{ns},
+		Roles:       []Role{RoleCore, RoleSemantic},
+		IncludeCore: true,
+		Text:        "tea",
+		Limit:       5,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	if len(results) != 1 || results[0].Role != RoleSemantic {
+		t.Fatalf("expected semantic-only results after postprocess, got %#v", results)
+	}
+}
+
+func TestManager_RetrievePolicyError(t *testing.T) {
+	store, err := NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	want := errors.New("boom")
+	manager := NewManager(store, WithRetrievePolicy(RetrievePolicy{
+		Postprocess: func(Query, []Memory) ([]Memory, error) {
+			return nil, want
+		},
+	}))
+	if _, err := manager.Write(t.Context(), WriteInput{
+		Namespace: Namespace{Scope: ScopeUser, ID: "u-err"},
+		Role:      RoleSemantic,
+		Content:   "User likes tea",
+	}); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	_, err = manager.Retrieve(t.Context(), Query{
+		Namespaces: []Namespace{{Scope: ScopeUser, ID: "u-err"}},
+		Roles:      []Role{RoleSemantic},
+		Text:       "tea",
+		Limit:      5,
+	})
+	if !errors.Is(err, want) {
+		t.Fatalf("expected %v, got %v", want, err)
 	}
 }
