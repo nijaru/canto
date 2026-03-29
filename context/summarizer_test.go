@@ -2,7 +2,6 @@ package context
 
 import (
 	"context"
-	"slices"
 	"testing"
 
 	"charm.land/catwalk/pkg/catwalk"
@@ -59,20 +58,16 @@ func TestSummarizer(t *testing.T) {
 		{Role: llm.RoleUser, Content: "Hello 4"},   // recent 3
 	}
 
-	req := &llm.Request{
-		Messages: slices.Clone(history),
-	}
-
 	// Expand content to trigger threshold
 	longStr := ""
 	for i := 0; i < 100; i++ {
 		longStr += "word "
 	}
-	for i := 1; i < len(req.Messages); i++ {
-		req.Messages[i].Content += longStr
-	}
 	for i := range history {
-		history[i].Content = req.Messages[i].Content
+		if i == 0 {
+			continue
+		}
+		history[i].Content += longStr
 	}
 	for _, msg := range history {
 		if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), msg)); err != nil {
@@ -88,9 +83,13 @@ func TestSummarizer(t *testing.T) {
 	}
 
 	processor := NewSummarizer(100, provider, "mock-model")
-	err := processor.Process(context.Background(), nil, "", sess, req)
-	if err != nil {
+	if err := processor.Mutate(context.Background(), nil, "", sess); err != nil {
 		t.Fatalf("processor failed: %v", err)
+	}
+
+	req := &llm.Request{Messages: []llm.Message{}}
+	if err := History().ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
+		t.Fatalf("history rebuild failed: %v", err)
 	}
 
 	if len(req.Messages) != 5 { // 1 system + 1 summary + 3 recent
@@ -122,7 +121,7 @@ func TestSummarizer(t *testing.T) {
 	}
 
 	historyReq := &llm.Request{}
-	if err := History().Process(context.Background(), nil, "", sess, historyReq); err != nil {
+	if err := History().ApplyRequest(context.Background(), nil, "", sess, historyReq); err != nil {
 		t.Fatalf("history rebuild failed: %v", err)
 	}
 	if len(historyReq.Messages) != 5 {

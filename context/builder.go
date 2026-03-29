@@ -14,20 +14,26 @@ import (
 
 // Builder implements the context engineering pipeline.
 type Builder struct {
-	processors []Processor
+	requestProcessors []RequestProcessor
+	mutators          []ContextMutator
 }
 
-// NewBuilder creates a new builder with the default processor chain.
-func NewBuilder(processors ...Processor) *Builder {
-	return &Builder{
-		processors: processors,
-	}
+// NewBuilder creates a new builder with the default request-shaping chain.
+func NewBuilder(processors ...RequestProcessor) *Builder {
+	return &Builder{requestProcessors: append([]RequestProcessor(nil), processors...)}
 }
 
-// Processors returns a copy of the current processor chain.
-func (b *Builder) Processors() []Processor {
-	res := make([]Processor, len(b.processors))
-	copy(res, b.processors)
+// RequestProcessors returns a copy of the current request-shaping chain.
+func (b *Builder) RequestProcessors() []RequestProcessor {
+	res := make([]RequestProcessor, len(b.requestProcessors))
+	copy(res, b.requestProcessors)
+	return res
+}
+
+// Mutators returns a copy of the current commit-time mutator chain.
+func (b *Builder) Mutators() []ContextMutator {
+	res := make([]ContextMutator, len(b.mutators))
+	copy(res, b.mutators)
 	return res
 }
 
@@ -50,21 +56,11 @@ func (b *Builder) BuildPreview(
 	sess *session.Session,
 	req *llm.Request,
 ) error {
-	pipeline, err := b.previewPipeline()
-	if err != nil {
-		return err
-	}
-	return pipeline.BuildPreview(ctx, p, model, sess, req)
+	return b.previewPipeline().BuildPreview(ctx, p, model, sess, req)
 }
 
 // BuildCommit runs commit-time mutation first and then rebuilds the request
 // from the updated session state.
-//
-// Processor ordering note: processors are classified by their declared effects.
-// Side-effecting processors (session or external mutations) always run before
-// request processors, regardless of the order they were registered. If your
-// pipeline depends on a specific interleaved order of mutators and request
-// processors, use Pipeline directly instead of Builder.
 func (b *Builder) BuildCommit(
 	ctx context.Context,
 	p llm.Provider,
@@ -79,230 +75,119 @@ func (b *Builder) BuildCommit(
 	return pipeline.BuildCommit(ctx, p, model, sess, req)
 }
 
-// Effects returns the aggregate side effects of the current processor chain.
-func (b *Builder) Effects() ProcessorEffects {
-	var effects ProcessorEffects
-	for _, p := range b.processors {
-		effects = effects.merge(EffectsOf(p))
+// Effects returns the aggregate side effects of the current mutator chain.
+func (b *Builder) Effects() SideEffects {
+	var effects SideEffects
+	for _, proc := range b.requestProcessors {
+		effects = effects.merge(requestProcessorEffects(proc))
+	}
+	for _, m := range b.mutators {
+		effects = effects.merge(mutatorEffects(m))
 	}
 	return effects
 }
 
-// Prepend inserts p at the front of the processor chain.
-func (b *Builder) Prepend(p Processor) {
-	b.processors = append([]Processor{p}, b.processors...)
+// PrependRequestProcessors inserts preview-safe request processors at the
+// front of the request-shaping chain.
+func (b *Builder) PrependRequestProcessors(processors ...RequestProcessor) {
+	if len(processors) == 0 {
+		return
+	}
+	b.requestProcessors = append(
+		append([]RequestProcessor(nil), processors...),
+		b.requestProcessors...)
 }
 
-// PrependRequestProcessor inserts a preview-safe request processor at the
-// front of the processor chain.
-func (b *Builder) PrependRequestProcessor(r RequestProcessor) {
-	b.Prepend(wrapRequestProcessor(r))
-}
-
-// PrependMutator inserts a commit-time mutator at the front of the processor
-// chain. Mutators default to session-side effects unless they expose a more
-// specific effect description.
-func (b *Builder) PrependMutator(m ContextMutator) {
-	b.Prepend(wrapContextMutator(m))
-}
-
-// Append adds p at the end of the processor chain.
-func (b *Builder) Append(p Processor) {
-	b.processors = append(b.processors, p)
-}
-
-// AppendRequestProcessor adds a preview-safe request processor to the end of
-// the processor chain.
-func (b *Builder) AppendRequestProcessor(r RequestProcessor) {
-	b.Append(wrapRequestProcessor(r))
-}
-
-// AppendMutator adds a commit-time mutator to the end of the processor chain.
-// Mutators default to session-side effects unless they expose a more specific
-// effect description.
-func (b *Builder) AppendMutator(m ContextMutator) {
-	b.Append(wrapContextMutator(m))
+// AppendRequestProcessors adds preview-safe request processors to the end of
+// the request-shaping chain.
+func (b *Builder) AppendRequestProcessors(processors ...RequestProcessor) {
+	b.requestProcessors = append(b.requestProcessors, processors...)
 }
 
 // InsertRequestProcessorsBeforeLast inserts preview-safe request processors
-// immediately before the last processor. If the chain is empty, it appends
-// them.
-func (b *Builder) InsertRequestProcessorsBeforeLast(rs ...RequestProcessor) {
-	if len(rs) == 0 {
+// immediately before the last request processor. If the chain is empty, it
+// appends them.
+func (b *Builder) InsertRequestProcessorsBeforeLast(processors ...RequestProcessor) {
+	if len(processors) == 0 {
 		return
 	}
-	ps := make([]Processor, 0, len(rs))
-	for _, r := range rs {
-		ps = append(ps, wrapRequestProcessor(r))
-	}
-	b.InsertBeforeLast(ps...)
-}
-
-// InsertMutatorsBeforeLast inserts commit-time mutators immediately before the
-// last processor. If the chain is empty, it appends them.
-func (b *Builder) InsertMutatorsBeforeLast(ms ...ContextMutator) {
-	if len(ms) == 0 {
+	if len(b.requestProcessors) == 0 {
+		b.AppendRequestProcessors(processors...)
 		return
 	}
-	ps := make([]Processor, 0, len(ms))
-	for _, m := range ms {
-		ps = append(ps, wrapContextMutator(m))
-	}
-	b.InsertBeforeLast(ps...)
-}
-
-// InsertBeforeLast inserts processors into the chain immediately before the
-// last processor. If the chain is empty, it appends them.
-func (b *Builder) InsertBeforeLast(ps ...Processor) {
-	if len(b.processors) == 0 {
-		b.processors = append(b.processors, ps...)
-		return
-	}
-	// Insert before the last processor (e.g. Capabilities).
-	n := len(b.processors)
-	tail := b.processors[n-1]
-	merged := make([]Processor, 0, n-1+len(ps)+1)
-	merged = append(merged, b.processors[:n-1]...)
-	merged = append(merged, ps...)
+	n := len(b.requestProcessors)
+	tail := b.requestProcessors[n-1]
+	merged := make([]RequestProcessor, 0, n-1+len(processors)+1)
+	merged = append(merged, b.requestProcessors[:n-1]...)
+	merged = append(merged, processors...)
 	merged = append(merged, tail)
-	b.processors = merged
+	b.requestProcessors = merged
 }
 
-type requestProcessorBridge struct {
-	request RequestProcessor
-}
-
-func wrapRequestProcessor(r RequestProcessor) Processor {
-	return requestProcessorBridge{request: r}
-}
-
-func (b requestProcessorBridge) Process(
-	ctx context.Context,
-	p llm.Provider,
-	model string,
-	sess *session.Session,
-	req *llm.Request,
-) error {
-	return b.request.ApplyRequest(ctx, p, model, sess, req)
-}
-
-func (b requestProcessorBridge) Effects() ProcessorEffects {
-	if b.request == nil {
-		return ProcessorEffects{}
+// PrependMutators inserts commit-time mutators at the front of the mutator chain.
+func (b *Builder) PrependMutators(mutators ...ContextMutator) {
+	if len(mutators) == 0 {
+		return
 	}
-	if d, ok := b.request.(EffectDescriber); ok {
-		return d.Effects()
+	b.mutators = append(append([]ContextMutator(nil), mutators...), b.mutators...)
+}
+
+// AppendMutators adds commit-time mutators to the end of the mutator chain.
+func (b *Builder) AppendMutators(mutators ...ContextMutator) {
+	b.mutators = append(b.mutators, mutators...)
+}
+
+func (b *Builder) previewPipeline() *Pipeline {
+	return NewPipeline(b.requestProcessors...)
+}
+
+func (b *Builder) commitPipeline() (*Pipeline, error) {
+	if err := validateCompactionOrder(b.mutators); err != nil {
+		return nil, err
 	}
-	return ProcessorEffects{}
-}
 
-type contextMutatorBridge struct {
-	mutator ContextMutator
-}
-
-func wrapContextMutator(m ContextMutator) Processor {
-	return contextMutatorBridge{mutator: m}
-}
-
-func (b contextMutatorBridge) Process(
-	ctx context.Context,
-	p llm.Provider,
-	model string,
-	sess *session.Session,
-	req *llm.Request,
-) error {
-	if b.mutator == nil {
-		return nil
-	}
-	return b.mutator.Mutate(ctx, p, model, sess)
-}
-
-func (b contextMutatorBridge) Effects() ProcessorEffects {
-	if b.mutator == nil {
-		return ProcessorEffects{}
-	}
-	if d, ok := b.mutator.(EffectDescriber); ok {
-		return d.Effects()
-	}
-	return ProcessorEffects{Session: true}
-}
-
-func (b *Builder) previewPipeline() (*Pipeline, error) {
-	pipeline := NewPipeline()
-	for _, proc := range b.processors {
-		if EffectsOf(proc).HasSideEffects() {
-			continue // Skip mutators for preview-safe path
-		}
-		rp, err := adaptRequestProcessor(proc)
-		if err != nil {
-			return nil, fmt.Errorf("preview pipeline: %w", err)
-		}
-		pipeline.AddRequestProcessor(rp)
+	pipeline := NewPipeline(b.requestProcessors...)
+	for _, m := range b.mutators {
+		pipeline.AddMutator(m)
 	}
 	return pipeline, nil
 }
 
-func unwrapProcessor(p any) any {
-	if b, ok := p.(contextMutatorBridge); ok {
-		return b.mutator
-	}
-	if b, ok := p.(requestProcessorBridge); ok {
-		return b.request
-	}
-	if m, ok := p.(legacyProcessorMutator); ok {
-		return m.processor
-	}
-	return p
-}
-
-func (b *Builder) commitPipeline() (*Pipeline, error) {
-	pipeline := NewPipeline()
+func validateCompactionOrder(mutators []ContextMutator) error {
 	var hasOffloader bool
 	var hasSummarizer bool
 	offloaderBeforeSummarizer := true
 	var seenSummarizer bool
 
-	for _, proc := range b.processors {
-		if EffectsOf(proc).HasSideEffects() {
-			pipeline.AddMutator(adaptMutator(proc))
-
-			unwrapped := unwrapProcessor(proc)
-			switch unwrapped.(type) {
-			case *Offloader:
-				hasOffloader = true
-				if seenSummarizer {
-					offloaderBeforeSummarizer = false
-				}
-			case *Summarizer:
-				hasSummarizer = true
-				seenSummarizer = true
+	for _, mutator := range mutators {
+		switch mutator.(type) {
+		case *Offloader:
+			hasOffloader = true
+			if seenSummarizer {
+				offloaderBeforeSummarizer = false
 			}
-			continue
+		case *Summarizer:
+			hasSummarizer = true
+			seenSummarizer = true
 		}
-		rp, err := adaptRequestProcessor(proc)
-		if err != nil {
-			return nil, fmt.Errorf("commit pipeline: %w", err)
-		}
-		pipeline.AddRequestProcessor(rp)
 	}
 
 	if hasSummarizer && !hasOffloader {
-		return nil, fmt.Errorf(
+		return fmt.Errorf(
 			"commit pipeline: compaction requires offloader before summarizer (never skip to summarize)",
 		)
 	}
 	if hasSummarizer && hasOffloader && !offloaderBeforeSummarizer {
-		return nil, fmt.Errorf(
+		return fmt.Errorf(
 			"commit pipeline: compaction requires offloader to run before summarizer",
 		)
 	}
-
-	return pipeline, nil
+	return nil
 }
 
 // History appends the effective model-visible session history to the request.
-func History() Processor {
-	return ProcessorFunc(
+func History() RequestProcessor {
+	return RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			messages, err := sess.EffectiveMessages()
 			if err != nil {
@@ -315,8 +200,8 @@ func History() Processor {
 }
 
 // Tools appends tool definitions to the LLM request.
-func Tools(reg *tool.Registry) Processor {
-	return ProcessorFunc(
+func Tools(reg *tool.Registry) RequestProcessor {
+	return RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			if reg == nil {
 				return nil
@@ -328,15 +213,13 @@ func Tools(reg *tool.Registry) Processor {
 }
 
 // Instructions prepends instructions as a system message.
-func Instructions(instructions string) Processor {
-	return ProcessorFunc(
+func Instructions(instructions string) RequestProcessor {
+	return RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			if instructions == "" {
 				return nil
 			}
 
-			// Prepend system instruction if not already there
-			// Find first system message or prepend new one
 			for i, m := range req.Messages {
 				if m.Role == llm.RoleSystem {
 					req.Messages[i].Content = instructions + "\n\n" + m.Content
@@ -344,7 +227,6 @@ func Instructions(instructions string) Processor {
 				}
 			}
 
-			// Prepend new system message
 			sys := llm.Message{Role: llm.RoleSystem, Content: instructions}
 			req.Messages = append(req.Messages, llm.Message{})
 			copy(req.Messages[1:], req.Messages)
@@ -378,9 +260,9 @@ func injectSystemBlock(req *llm.Request, blockRegex *regexp.Regexp, block string
 // coreMemoryRegex matches an existing core_memory block and any trailing newlines.
 var coreMemoryRegex = regexp.MustCompile(`(?s)<core_memory>.*?</core_memory>\n*`)
 
-// CoreMemoryProcessor retrieves the core memory persona and injects it.
-func CoreMemoryProcessor(store *memory.CoreStore) Processor {
-	return ProcessorFunc(
+// CoreMemory retrieves the core memory persona and injects it.
+func CoreMemory(store *memory.CoreStore) RequestProcessor {
+	return RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			if store == nil {
 				return nil
@@ -409,8 +291,8 @@ var knowledgeMemoryRegex = regexp.MustCompile(`(?s)<knowledge_memory>.*?</knowle
 
 // KnowledgeMemory retrieves and injects matching knowledge items from the store based on a query.
 // If query is empty, it uses the text of the last message in the effective session history.
-func KnowledgeMemory(store *memory.CoreStore, query string, limit int) Processor {
-	return ProcessorFunc(
+func KnowledgeMemory(store *memory.CoreStore, query string, limit int) RequestProcessor {
+	return RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			if store == nil {
 				return nil

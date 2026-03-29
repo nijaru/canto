@@ -3,5 +3,5 @@
 //
 // The reusable SKILL.md loader, registry, validation, and model types live in
 // the external agentskills module. This package owns the Canto-specific
-// runtime tools and context processors that operate on that shared core.
+// runtime tools and request-time prompt helpers that operate on that shared core.
 package skill

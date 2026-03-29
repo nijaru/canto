@@ -23,8 +23,8 @@ type Summarizer struct {
 
 // Effects reports that summarization appends durable compaction facts to the
 // session log.
-func (p *Summarizer) Effects() ProcessorEffects {
-	return ProcessorEffects{Session: true}
+func (p *Summarizer) Effects() SideEffects {
+	return SideEffects{Session: true}
 }
 
 // NewSummarizer creates a new summarize processor.
@@ -46,29 +46,6 @@ func (p *Summarizer) Mutate(
 	sess *session.Session,
 ) error {
 	return p.summarize(ctx, pr, model, sess)
-}
-
-func (p *Summarizer) Process(
-	ctx context.Context,
-	pr llm.Provider,
-	model string,
-	sess *session.Session,
-	req *llm.Request,
-) error {
-	before, err := sess.EffectiveMessages()
-	if err != nil {
-		return err
-	}
-	prefix := historyPrefix(req, len(before))
-	if err := p.summarize(ctx, pr, model, sess); err != nil {
-		return err
-	}
-	after, err := sess.EffectiveMessages()
-	if err != nil {
-		return err
-	}
-	req.Messages = append(prefix, after...)
-	return nil
 }
 
 func (p *Summarizer) summarize(

@@ -2,19 +2,9 @@ package context
 
 import (
 	"fmt"
-	"slices"
 
-	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
-
-func historyPrefix(req *llm.Request, historyLen int) []llm.Message {
-	prefixLen := len(req.Messages) - historyLen
-	if prefixLen <= 0 {
-		return nil
-	}
-	return slices.Clone(req.Messages[:prefixLen])
-}
 
 func lastMessageEventID(sess *session.Session) string {
 	var id string

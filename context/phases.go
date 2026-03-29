@@ -2,14 +2,10 @@ package context
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
-
-var ErrPreviewUnsafeProcessor = errors.New("context preview requires request-only processors")
 
 // RequestProcessor shapes the in-flight request without mutating durable state.
 type RequestProcessor interface {
@@ -116,48 +112,4 @@ func (p *Pipeline) BuildCommit(
 		}
 	}
 	return p.BuildPreview(ctx, provider, model, sess, req)
-}
-
-func adaptRequestProcessor(p Processor) (RequestProcessor, error) {
-	if effects := EffectsOf(p); effects.HasSideEffects() {
-		return nil, fmt.Errorf("%w: %T", ErrPreviewUnsafeProcessor, p)
-	}
-	if rp, ok := p.(RequestProcessor); ok {
-		return rp, nil
-	}
-	return requestProcessorAdapter{processor: p}, nil
-}
-
-func adaptMutator(p Processor) ContextMutator {
-	if m, ok := p.(ContextMutator); ok {
-		return m
-	}
-	return legacyProcessorMutator{processor: p}
-}
-
-type requestProcessorAdapter struct {
-	processor Processor
-}
-
-func (a requestProcessorAdapter) ApplyRequest(
-	ctx context.Context,
-	p llm.Provider,
-	model string,
-	sess *session.Session,
-	req *llm.Request,
-) error {
-	return a.processor.Process(ctx, p, model, sess, req)
-}
-
-type legacyProcessorMutator struct {
-	processor Processor
-}
-
-func (m legacyProcessorMutator) Mutate(
-	ctx context.Context,
-	p llm.Provider,
-	model string,
-	sess *session.Session,
-) error {
-	return m.processor.Process(ctx, p, model, sess, &llm.Request{})
 }

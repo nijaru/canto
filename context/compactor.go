@@ -29,8 +29,8 @@ type Offloader struct {
 
 // Effects reports that offloading mutates both session state and external
 // filesystem state.
-func (p *Offloader) Effects() ProcessorEffects {
-	return ProcessorEffects{
+func (p *Offloader) Effects() SideEffects {
+	return SideEffects{
 		Session:  true,
 		External: true,
 	}
@@ -64,29 +64,6 @@ func (p *Offloader) Mutate(
 	sess *session.Session,
 ) error {
 	return p.compact(ctx, pr, model, sess)
-}
-
-func (p *Offloader) Process(
-	ctx context.Context,
-	pr llm.Provider,
-	model string,
-	sess *session.Session,
-	req *llm.Request,
-) error {
-	before, err := sess.EffectiveMessages()
-	if err != nil {
-		return err
-	}
-	prefix := historyPrefix(req, len(before))
-	if err := p.compact(ctx, pr, model, sess); err != nil {
-		return err
-	}
-	after, err := sess.EffectiveMessages()
-	if err != nil {
-		return err
-	}
-	req.Messages = append(prefix, after...)
-	return nil
 }
 
 func (p *Offloader) compact(

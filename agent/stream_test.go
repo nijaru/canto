@@ -283,21 +283,21 @@ func TestBaseAgentImplementsStreamer(t *testing.T) {
 // Builder options
 // ---------------------------------------------------------------------------
 
-func TestWithProcessorsInsertsBeforeCapabilities(t *testing.T) {
+func TestWithRequestProcessorsInsertBeforeCapabilities(t *testing.T) {
 	a := New("a", "", "m", &mockProvider{}, nil)
-	origLen := len(a.builder.Processors())
+	origLen := len(a.builder.RequestProcessors())
 
 	a2 := New("a2", "", "m", &mockProvider{}, nil,
-		WithProcessors(ccontext.ProcessorFunc(noopProcessor)),
-		WithProcessors(ccontext.ProcessorFunc(noopProcessor)),
+		WithRequestProcessors(ccontext.RequestProcessorFunc(noopRequestProcessor)),
+		WithRequestProcessors(ccontext.RequestProcessorFunc(noopRequestProcessor)),
 	)
-	if got := len(a2.builder.Processors()); got != origLen+2 {
-		t.Errorf("expected %d processors, got %d", origLen+2, got)
+	if got := len(a2.builder.RequestProcessors()); got != origLen+2 {
+		t.Errorf("expected %d request processors, got %d", origLen+2, got)
 	}
 	// Last processor must still be Capabilities (not our sentinels).
-	// Capabilities is a ProcessorFunc — we can check the sentinels
+	// We can check the sentinels
 	// are NOT at position len-1 by verifying they are at len-3 and len-2.
-	ps := a2.builder.Processors()
+	ps := a2.builder.RequestProcessors()
 	n := len(ps)
 	_ = ps[n-1] // Capabilities: just confirm no panic
 	_ = ps[n-2] // second sentinel
@@ -306,31 +306,24 @@ func TestWithProcessorsInsertsBeforeCapabilities(t *testing.T) {
 
 func TestWithRequestProcessorsAndMutatorsInsertBeforeCapabilities(t *testing.T) {
 	a := New("a", "", "m", &mockProvider{}, nil)
-	origLen := len(a.builder.Processors())
+	origLen := len(a.builder.RequestProcessors())
+	origMutators := len(a.builder.Mutators())
 
 	a2 := New("a2", "", "m", &mockProvider{}, nil,
 		WithRequestProcessors(ccontext.RequestProcessorFunc(noopRequestProcessor)),
 		WithMutators(ccontext.ContextMutatorFunc(noopMutator)),
 	)
-	if got := len(a2.builder.Processors()); got != origLen+2 {
-		t.Errorf("expected %d processors, got %d", origLen+2, got)
+	if got := len(a2.builder.RequestProcessors()); got != origLen+1 {
+		t.Errorf("expected %d request processors, got %d", origLen+1, got)
+	}
+	if got := len(a2.builder.Mutators()); got != origMutators+1 {
+		t.Errorf("expected %d mutators, got %d", origMutators+1, got)
 	}
 
-	ps := a2.builder.Processors()
+	ps := a2.builder.RequestProcessors()
 	n := len(ps)
 	_ = ps[n-1] // Capabilities
-	_ = ps[n-2] // mutator bridge
-	_ = ps[n-3] // request processor bridge
-}
-
-func noopProcessor(
-	_ context.Context,
-	_ llm.Provider,
-	_ string,
-	_ *session.Session,
-	_ *llm.Request,
-) error {
-	return nil
+	_ = ps[n-2] // request processor
 }
 
 func noopRequestProcessor(

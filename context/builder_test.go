@@ -82,20 +82,20 @@ func TestOffloadProcessor(t *testing.T) {
 		}
 	}
 
-	req := &llm.Request{
-		Messages: append(
-			[]llm.Message{{Role: llm.RoleSystem, Content: "instructions"}},
-			history...),
-	}
-
 	// Threshold is 60%, MaxTokens = 1000.
 	// largeContent is ~3000 tokens (chars/4 heuristic).
 	offloader := NewOffloader(1000, tempDir)
 	offloader.MinKeepTurns = 2 // Keep last 2 messages
 
-	err = offloader.Process(context.Background(), nil, "", sess, req)
-	if err != nil {
+	if err := offloader.Mutate(context.Background(), nil, "", sess); err != nil {
 		t.Fatalf("offload failed: %v", err)
+	}
+
+	req := &llm.Request{
+		Messages: []llm.Message{{Role: llm.RoleSystem, Content: "instructions"}},
+	}
+	if err := History().ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
+		t.Fatalf("history rebuild failed: %v", err)
 	}
 
 	// Message 3 (RoleTool) should be offloaded because it's older than last 2.
@@ -123,7 +123,7 @@ func TestOffloadProcessor(t *testing.T) {
 	}
 
 	historyReq := &llm.Request{}
-	if err := History().Process(context.Background(), nil, "", sess, historyReq); err != nil {
+	if err := History().ApplyRequest(context.Background(), nil, "", sess, historyReq); err != nil {
 		t.Fatalf("history rebuild failed: %v", err)
 	}
 	if len(historyReq.Messages) != len(history) {
@@ -163,16 +163,17 @@ func TestOffloadProcessor_DuplicateToolOutputsGetDistinctArtifacts(t *testing.T)
 		}
 	}
 
-	req := &llm.Request{
-		Messages: append(
-			[]llm.Message{{Role: llm.RoleSystem, Content: "instructions"}},
-			history...),
-	}
-
 	offloader := NewOffloader(1000, tempDir)
 	offloader.MinKeepTurns = 2
-	if err := offloader.Process(context.Background(), nil, "", sess, req); err != nil {
+	if err := offloader.Mutate(context.Background(), nil, "", sess); err != nil {
 		t.Fatalf("offload failed: %v", err)
+	}
+
+	req := &llm.Request{
+		Messages: []llm.Message{{Role: llm.RoleSystem, Content: "instructions"}},
+	}
+	if err := History().ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
+		t.Fatalf("history rebuild failed: %v", err)
 	}
 
 	files, err := filepath.Glob(filepath.Join(tempDir, "objects", "*", "body"))
@@ -224,7 +225,7 @@ func TestHistoryUsesLatestCompactionSnapshot(t *testing.T) {
 	}
 
 	req := &llm.Request{}
-	if err := History().Process(context.Background(), nil, "", sess, req); err != nil {
+	if err := History().ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("history process: %v", err)
 	}
 
@@ -239,23 +240,23 @@ func TestHistoryUsesLatestCompactionSnapshot(t *testing.T) {
 	}
 }
 
-func TestEffectsOfProcessorFuncIsRequestOnly(t *testing.T) {
-	proc := ProcessorFunc(
+func TestRequestProcessorFuncIsRequestOnly(t *testing.T) {
+	proc := RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			req.Messages = append(req.Messages, llm.Message{Role: llm.RoleSystem, Content: "hi"})
 			return nil
 		},
 	)
 
-	effects := EffectsOf(proc)
+	effects := requestProcessorEffects(proc)
 	if effects.HasSideEffects() {
 		t.Fatalf("expected request-only processor, got %#v", effects)
 	}
 }
 
 func TestBuilderEffectsAggregatesProcessorSideEffects(t *testing.T) {
-	builder := NewBuilder(
-		Instructions("system"),
+	builder := NewBuilder(Instructions("system"))
+	builder.AppendMutators(
 		NewOffloader(1000, t.TempDir()),
 		NewSummarizer(1000, &mockProvider{id: "mock"}, "mock-model"),
 	)
@@ -270,10 +271,8 @@ func TestBuilderEffectsAggregatesProcessorSideEffects(t *testing.T) {
 }
 
 func TestBuilderBuildPreviewSkipsSideEffects(t *testing.T) {
-	builder := NewBuilder(
-		Instructions("system"),
-		NewOffloader(1000, t.TempDir()),
-	)
+	builder := NewBuilder(Instructions("system"))
+	builder.AppendMutators(NewOffloader(1000, t.TempDir()))
 
 	err := builder.BuildPreview(t.Context(), nil, "", session.New("preview"), &llm.Request{})
 	if err != nil {
@@ -314,7 +313,7 @@ func TestPipelineBuildCommitRunsMutatorsBeforeRequestProcessors(t *testing.T) {
 func TestBuilderPhasedHelpersSupportRequestProcessorsAndMutators(t *testing.T) {
 	sess := session.New("builder-phases")
 	builder := NewBuilder()
-	builder.AppendMutator(ContextMutatorFunc(
+	builder.AppendMutators(ContextMutatorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session) error {
 			return sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
 				Role:    llm.RoleUser,
@@ -322,7 +321,7 @@ func TestBuilderPhasedHelpersSupportRequestProcessorsAndMutators(t *testing.T) {
 			}))
 		},
 	))
-	builder.AppendRequestProcessor(RequestProcessorFunc(
+	builder.AppendRequestProcessors(RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			msgs, err := sess.EffectiveMessages()
 			if err != nil {
@@ -346,7 +345,7 @@ func TestBuilderPhasedHelpersSupportRequestProcessorsAndMutators(t *testing.T) {
 	}
 }
 
-// --- CoreMemoryProcessor ---
+// --- CoreMemory ---
 
 func newTestCoreStore(t *testing.T) *memory.CoreStore {
 	t.Helper()
@@ -359,13 +358,13 @@ func newTestCoreStore(t *testing.T) *memory.CoreStore {
 	return store
 }
 
-func TestCoreMemoryProcessor_NoPersona(t *testing.T) {
+func TestCoreMemory_NoPersona(t *testing.T) {
 	store := newTestCoreStore(t)
 	sess := session.New("sess-no-persona")
 	req := &llm.Request{}
 
-	proc := CoreMemoryProcessor(store)
-	if err := proc.Process(context.Background(), nil, "", sess, req); err != nil {
+	proc := CoreMemory(store)
+	if err := proc.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// No persona set — messages should remain empty.
@@ -374,7 +373,7 @@ func TestCoreMemoryProcessor_NoPersona(t *testing.T) {
 	}
 }
 
-func TestCoreMemoryProcessor_InjectsBlock(t *testing.T) {
+func TestCoreMemory_InjectsBlock(t *testing.T) {
 	store := newTestCoreStore(t)
 	ctx := context.Background()
 	sessID := "sess-with-persona"
@@ -390,8 +389,8 @@ func TestCoreMemoryProcessor_InjectsBlock(t *testing.T) {
 	sess := session.New(sessID)
 	req := &llm.Request{}
 
-	proc := CoreMemoryProcessor(store)
-	if err := proc.Process(ctx, nil, "", sess, req); err != nil {
+	proc := CoreMemory(store)
+	if err := proc.ApplyRequest(ctx, nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -410,7 +409,7 @@ func TestCoreMemoryProcessor_InjectsBlock(t *testing.T) {
 	}
 }
 
-func TestCoreMemoryProcessor_PrependToExistingSystemMessage(t *testing.T) {
+func TestCoreMemory_PrependToExistingSystemMessage(t *testing.T) {
 	store := newTestCoreStore(t)
 	ctx := context.Background()
 	sessID := "sess-prepend"
@@ -430,8 +429,8 @@ func TestCoreMemoryProcessor_PrependToExistingSystemMessage(t *testing.T) {
 		},
 	}
 
-	proc := CoreMemoryProcessor(store)
-	if err := proc.Process(ctx, nil, "", sess, req); err != nil {
+	proc := CoreMemory(store)
+	if err := proc.ApplyRequest(ctx, nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -453,7 +452,7 @@ func TestCoreMemoryProcessor_PrependToExistingSystemMessage(t *testing.T) {
 	}
 }
 
-func TestCoreMemoryProcessor_ReplacesExistingBlock(t *testing.T) {
+func TestCoreMemory_ReplacesExistingBlock(t *testing.T) {
 	store := newTestCoreStore(t)
 	ctx := context.Background()
 	sessID := "sess-replace"
@@ -474,8 +473,8 @@ func TestCoreMemoryProcessor_ReplacesExistingBlock(t *testing.T) {
 		},
 	}
 
-	proc := CoreMemoryProcessor(store)
-	if err := proc.Process(ctx, nil, "", sess, req); err != nil {
+	proc := CoreMemory(store)
+	if err := proc.ApplyRequest(ctx, nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -531,8 +530,8 @@ func TestKnowledgeMemory_UsesEffectiveMessagesAfterCompaction(t *testing.T) {
 	// the effective history — "uniqueeffectivetoken" — and find the item.
 	proc := KnowledgeMemory(store, "", 5)
 	req := &llm.Request{}
-	if err := proc.Process(ctx, nil, "", sess, req); err != nil {
-		t.Fatalf("KnowledgeMemory.Process: %v", err)
+	if err := proc.ApplyRequest(ctx, nil, "", sess, req); err != nil {
+		t.Fatalf("KnowledgeMemory.ApplyRequest: %v", err)
 	}
 
 	found := false
@@ -549,11 +548,11 @@ func TestKnowledgeMemory_UsesEffectiveMessagesAfterCompaction(t *testing.T) {
 	}
 }
 
-func TestCoreMemoryProcessor_NilStore(t *testing.T) {
+func TestCoreMemory_NilStore(t *testing.T) {
 	sess := session.New("sess-nil-store")
 	req := &llm.Request{}
-	proc := CoreMemoryProcessor(nil)
-	if err := proc.Process(context.Background(), nil, "", sess, req); err != nil {
+	proc := CoreMemory(nil)
+	if err := proc.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error with nil store: %v", err)
 	}
 	if len(req.Messages) != 0 {
@@ -571,7 +570,7 @@ func TestTokenGuard_PassingCase(t *testing.T) {
 			{Role: llm.RoleUser, Content: "hello"},
 		},
 	}
-	if err := guard.Process(context.Background(), nil, "", sess, req); err != nil {
+	if err := guard.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -587,7 +586,7 @@ func TestTokenGuard_Exceeded(t *testing.T) {
 			},
 		},
 	}
-	err := guard.Process(context.Background(), nil, "", sess, req)
+	err := guard.ApplyRequest(context.Background(), nil, "", sess, req)
 	if err == nil {
 		t.Fatal("expected token budget error, got nil")
 	}
@@ -606,7 +605,7 @@ func TestTokenGuard_ZeroMaxTokensSkips(t *testing.T) {
 			{Role: llm.RoleUser, Content: big},
 		},
 	}
-	if err := guard.Process(context.Background(), nil, "", sess, req); err != nil {
+	if err := guard.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("expected no error with zero limit, got: %v", err)
 	}
 }
@@ -622,7 +621,7 @@ func TestBudgetGuard_PassingCase(t *testing.T) {
 	_ = sess.Append(context.Background(), e)
 
 	req := &llm.Request{}
-	if err := guard.Process(context.Background(), nil, "", sess, req); err != nil {
+	if err := guard.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -636,7 +635,7 @@ func TestBudgetGuard_Exceeded(t *testing.T) {
 	_ = sess.Append(context.Background(), e)
 
 	req := &llm.Request{}
-	err := guard.Process(context.Background(), nil, "", sess, req)
+	err := guard.ApplyRequest(context.Background(), nil, "", sess, req)
 	if err == nil {
 		t.Fatal("expected budget exceeded error, got nil")
 	}
@@ -654,7 +653,7 @@ func TestBudgetGuard_ZeroLimitSkips(t *testing.T) {
 	_ = sess.Append(context.Background(), e)
 
 	req := &llm.Request{}
-	if err := guard.Process(context.Background(), nil, "", sess, req); err != nil {
+	if err := guard.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("expected no error with zero limit, got: %v", err)
 	}
 }
@@ -668,7 +667,7 @@ func TestBudgetGuard_ExactlyAtLimit(t *testing.T) {
 	_ = sess.Append(context.Background(), e)
 
 	req := &llm.Request{}
-	err := guard.Process(context.Background(), nil, "", sess, req)
+	err := guard.ApplyRequest(context.Background(), nil, "", sess, req)
 	// >= limit triggers error
 	if err == nil {
 		t.Fatal("expected budget exceeded error at exact limit, got nil")
@@ -710,7 +709,7 @@ func TestCapabilitiesProcessor_StandardModel(t *testing.T) {
 			{Role: llm.RoleUser, Content: "Hello"},
 		},
 	}
-	if err := proc.Process(context.Background(), p, "gpt-4o", sess, req); err != nil {
+	if err := proc.ApplyRequest(context.Background(), p, "gpt-4o", sess, req); err != nil {
 		t.Fatal(err)
 	}
 	if req.Temperature != 0.7 {
@@ -738,7 +737,7 @@ func TestCapabilitiesProcessor_ReasoningModel_SystemToUser(t *testing.T) {
 			{Role: llm.RoleUser, Content: "What is 2+2?"},
 		},
 	}
-	if err := proc.Process(context.Background(), p, "model", sess, req); err != nil {
+	if err := proc.ApplyRequest(context.Background(), p, "model", sess, req); err != nil {
 		t.Fatal(err)
 	}
 	if req.Temperature != 0 {
@@ -775,7 +774,7 @@ func TestCapabilitiesProcessor_ReasoningModel_SystemToDeveloper(t *testing.T) {
 			{Role: llm.RoleUser, Content: "What is 2+2?"},
 		},
 	}
-	if err := proc.Process(context.Background(), p, "model", sess, req); err != nil {
+	if err := proc.ApplyRequest(context.Background(), p, "model", sess, req); err != nil {
 		t.Fatal(err)
 	}
 	if req.Messages[0].Role != llm.RoleDeveloper {
@@ -789,7 +788,7 @@ func TestCapabilitiesProcessor_ReasoningModel_SystemToDeveloper(t *testing.T) {
 func TestCapabilitiesProcessor_NilProvider(t *testing.T) {
 	proc := Capabilities()
 	req := &llm.Request{Temperature: 0.5}
-	err := proc.Process(context.Background(), nil, "any-model", session.New("caps-3"), req)
+	err := proc.ApplyRequest(context.Background(), nil, "any-model", session.New("caps-3"), req)
 	if err != nil {
 		t.Fatal(err)
 	}

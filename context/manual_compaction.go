@@ -77,7 +77,8 @@ func CompactSession(
 	summarizer.MinKeepTurns = minKeepTurns
 
 	before := compactionEventCount(sess)
-	builder := NewBuilder(offloader, summarizer)
+	builder := NewBuilder()
+	builder.AppendMutators(offloader, summarizer)
 	if err := builder.BuildCommit(ctx, provider, model, sess, &llm.Request{Model: model}); err != nil {
 		return CompactResult{}, err
 	}

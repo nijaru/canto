@@ -37,7 +37,7 @@ func NewLazyTools(reg *tool.Registry) *LazyTools {
 	return &LazyTools{Registry: reg, Threshold: DefaultLazyThreshold}
 }
 
-func (p *LazyTools) Process(
+func (p *LazyTools) ApplyRequest(
 	ctx context.Context,
 	pr llm.Provider,
 	model string,

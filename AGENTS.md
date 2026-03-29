@@ -86,7 +86,7 @@ Commands that must pass before shipping:
 | Architecture   | Layers depend downward only; extensions depend on Layer 3, never reverse                     |
 | State          | Session event log is append-only — never mutate or delete events                             |
 | Interfaces     | Keep the 5 core interfaces small; compose from them                                          |
-| Context        | `Processor` always rewrites the request; some processors also emit durable session facts or artifacts, and should declare `ProcessorEffects` |
+| Context        | `RequestProcessor` shapes the in-flight request; `ContextMutator` records durable session or external changes and may declare `SideEffects` |
 | Orchestration  | Graph routing and coordination are Go functions; agent behavior within a turn is LLM-decided |
 | Compaction     | Offload (reversible) before summarize (lossy); never skip to summarize                       |
 | Tool loading   | Lazy when > 20 tools; present `search_tools` meta-tool first                                 |

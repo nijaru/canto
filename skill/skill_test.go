@@ -107,13 +107,13 @@ func TestValidateName(t *testing.T) {
 	}
 }
 
-func TestListProcessor(t *testing.T) {
+func TestListPrompt(t *testing.T) {
 	reg := agentskills.NewRegistry()
 	reg.Register(&agentskills.Skill{Name: "zeta", Description: "last"})
 	reg.Register(&agentskills.Skill{Name: "alpha", Description: "first"})
 
 	req := &llm.Request{}
-	if err := ListProcessor(reg).Process(t.Context(), nil, "", &session.Session{}, req); err != nil {
+	if err := ListPrompt(reg).ApplyRequest(t.Context(), nil, "", &session.Session{}, req); err != nil {
 		t.Fatalf("process: %v", err)
 	}
 	if len(req.Messages) == 0 {

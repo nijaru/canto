@@ -11,16 +11,16 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-// ListProcessor injects a summary list of all available skills.
-func ListProcessor(reg *agentskills.Registry) ccontext.Processor {
+// ListPrompt injects a summary list of all available skills.
+func ListPrompt(reg *agentskills.Registry) ccontext.RequestProcessor {
 	if reg == nil {
-		return ccontext.ProcessorFunc(
+		return ccontext.RequestProcessorFunc(
 			func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 				return nil
 			},
 		)
 	}
-	return ccontext.ProcessorFunc(
+	return ccontext.RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			skills := reg.List()
 			if len(skills) == 0 {
@@ -34,7 +34,7 @@ func ListProcessor(reg *agentskills.Registry) ccontext.Processor {
 			}
 
 			instructions := sb.String()
-			return ccontext.Instructions(instructions).Process(ctx, p, model, sess, req)
+			return ccontext.Instructions(instructions).ApplyRequest(ctx, p, model, sess, req)
 		},
 	)
 }

@@ -3,7 +3,7 @@
 // memory-agent demonstrates Canto's multi-layer memory system:
 //
 //   - CoreStore persona: the agent's identity injected into every turn
-//   - KnowledgeMemory processor: FTS5 RAG auto-injected from the last user message
+//   - KnowledgeMemory prompt: FTS5 RAG auto-injected from the last user message
 //   - memorize_knowledge / recall_knowledge tools: explicit FTS5 read/write
 //
 // Usage: ANTHROPIC_API_KEY=... go run examples/memory-agent/main.go [message]
@@ -73,13 +73,13 @@ func main() {
 
 	// 4. Build the Context Pipeline
 	// Pipeline ordering is critical:
-	//  1. CoreMemoryProcessor — <core_memory> persona block
+	//  1. CoreMemory         — <core_memory> persona block
 	//  2. KnowledgeMemory     — <knowledge_memory> FTS5 RAG (query from last user msg)
 	//  3. History             — model-visible conversation transcript
 	//  4. Tools               — tool specs
 	//  5. Capabilities        — MUST be last; adapts system/temp for reasoning models
 	builder := cantoctx.NewBuilder(
-		cantoctx.CoreMemoryProcessor(coreStore),
+		cantoctx.CoreMemory(coreStore),
 		cantoctx.KnowledgeMemory(coreStore, "", 5),
 		cantoctx.History(),
 		cantoctx.Tools(reg),

@@ -175,7 +175,7 @@ The quickest reference is [examples/quickstart/main.go](examples/quickstart/main
 
 ### Context Preview vs Commit
 
-Use [`context.Builder.BuildPreview`](context/) when you need to inspect or shape the next request without mutating durable state. Use `Build` or `BuildCommit` when processors may compact, offload, or otherwise record new durable facts before the request is sent.
+Use [`context.Builder.BuildPreview`](context/) when you need to inspect or shape the next request without mutating durable state. Use `Build` or `BuildCommit` when mutators may compact, offload, or otherwise record new durable facts before the request is sent.
 
 This split exists so the framework can support dry-run inspection, tracing, and request planning without hiding stateful behavior behind one middleware hook.
 
@@ -207,7 +207,7 @@ Use [`tool.Registry`](tool/) for local tools. Use [`tool/mcp`](tool/mcp/) when y
 
 The framework uses the official Go MCP SDK for transport and session handling, while Canto still owns tool validation and registry adaptation.
 
-Reusable `SKILL.md` loading, validation, registry, and model types live in the standalone [`agentskills`](https://github.com/nijaru/agentskills) module. Canto's `skill/` package adds the runtime `read_skill` / `manage_skill` tools and the request-time skill summary processor on top of that shared core.
+Reusable `SKILL.md` loading, validation, registry, and model types live in the standalone [`agentskills`](https://github.com/nijaru/agentskills) module. Canto's `skill/` package adds the runtime `read_skill` / `manage_skill` tools and the request-time skill summary prompt on top of that shared core.
 
 ## History Semantics
 

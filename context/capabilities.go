@@ -9,16 +9,16 @@ import (
 )
 
 // Capabilities adapts Request fields to match the model's
-// capability constraints. It must run last in the processor chain, after
-// all other processors have populated the request.
+// capability constraints. It must run last in the request-shaping chain, after
+// all other request processors have populated the request.
 //
 // Handles:
 //   - SystemRole != RoleSystem: rewrites system messages to the declared role.
 //     RoleUser: injects an "Instructions:" prefix (models with no system role).
 //     Any other role (e.g. RoleDeveloper): converts role directly, no prefix.
 //   - Temperature=false: zeroes the temperature field.
-func Capabilities() Processor {
-	return ProcessorFunc(
+func Capabilities() RequestProcessor {
+	return RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, _ *session.Session, req *llm.Request) error {
 			if p == nil {
 				return nil

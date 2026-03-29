@@ -23,7 +23,7 @@ func NewTokenGuard(maxTokens int) *TokenGuard {
 	}
 }
 
-func (p *TokenGuard) Process(
+func (p *TokenGuard) ApplyRequest(
 	ctx context.Context,
 	pr llm.Provider,
 	model string,
@@ -51,7 +51,7 @@ func NewBudgetGuard(limit float64) *BudgetGuard {
 	return &BudgetGuard{Limit: limit}
 }
 
-func (p *BudgetGuard) Process(
+func (p *BudgetGuard) ApplyRequest(
 	ctx context.Context,
 	pr llm.Provider,
 	model string,

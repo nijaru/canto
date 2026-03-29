@@ -35,7 +35,7 @@ func TestLazyToolProcessor_BelowThreshold(t *testing.T) {
 
 	sess := session.New("s1")
 	req := &llm.Request{}
-	if err := p.Process(context.Background(), nil, "", sess, req); err != nil {
+	if err := p.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatal(err)
 	}
 	if len(req.Tools) != 5 {
@@ -52,7 +52,7 @@ func TestLazyToolProcessor_AboveThreshold_OnlySearchTool(t *testing.T) {
 
 	sess := session.New("s2")
 	req := &llm.Request{}
-	if err := p.Process(context.Background(), nil, "", sess, req); err != nil {
+	if err := p.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatal(err)
 	}
 	// Only search_tools should be in req.Tools (no prior history).
@@ -107,7 +107,7 @@ func TestLazyToolProcessor_UnlocksFromSessionState(t *testing.T) {
 	}
 
 	req := &llm.Request{}
-	if err := p.Process(context.Background(), nil, "", sess, req); err != nil {
+	if err := p.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatal(err)
 	}
 
@@ -153,7 +153,7 @@ func TestLazyToolProcessor_UnlockedToolsAreSorted(t *testing.T) {
 	}
 
 	req := &llm.Request{}
-	if err := p.Process(context.Background(), nil, "", sess, req); err != nil {
+	if err := p.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatal(err)
 	}
 	if len(req.Tools) != 3 {

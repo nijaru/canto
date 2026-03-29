@@ -7,7 +7,5 @@
 // Step executes one model/tool iteration. Turn repeats Step until the agent
 // produces a final assistant message, hands off control, or reaches MaxSteps.
 //
-// New code should prefer WithRequestProcessors and WithMutators when extending
-// the default builder. WithProcessors remains available for legacy
-// context.Processor integrations.
+// Extend the default builder with WithRequestProcessors and WithMutators.
 package agent

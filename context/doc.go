@@ -6,10 +6,8 @@
 //   - Builder.Build and Builder.BuildCommit run commit-time mutation first and
 //     then rebuild the request from the updated session state.
 //
-// New code should prefer RequestProcessor for preview-safe shaping and
-// ContextMutator for durable changes such as compaction or artifact recording.
-// Legacy Processor implementations remain supported and still declare side
-// effects through ProcessorEffects.
+// RequestProcessor handles preview-safe shaping and ContextMutator handles
+// durable changes such as compaction or artifact recording.
 //
 // History is always derived from session.EffectiveMessages rather than the raw
 // transcript, so compaction stays durable across future turns. Offloader and
