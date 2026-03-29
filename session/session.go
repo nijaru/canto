@@ -97,6 +97,7 @@ type Session struct {
 	state       map[string]any
 	subscribers []*subscriber
 	writer      Writer
+	writerCh    chan<- Event
 	reducer     Reducer
 }
 
@@ -213,6 +214,22 @@ func (s *Session) ID() string {
 	return s.id
 }
 
+// SetWriterChannel registers a channel that receives every event appended to the session.
+// Unlike Subscribe, this channel is non-lossy: Append will block until the event
+// is accepted by the channel.
+func (s *Session) SetWriterChannel(ch chan<- Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.writerCh = ch
+}
+
+// UnsetWriterChannel removes the writer channel.
+func (s *Session) UnsetWriterChannel() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.writerCh = nil
+}
+
 // Append adds a new event to the session and notifies all subscribers.
 // If a writer is attached, the event is persisted to the store immediately.
 // If the context contains metadata (via WithMetadata), it is merged into the event's metadata.
@@ -232,14 +249,26 @@ func (s *Session) Append(ctx context.Context, e Event) error {
 		e.Metadata = newMd
 	}
 
-	s.mu.Lock()
+	s.mu.RLock()
 	writer := s.writer
+	writerCh := s.writerCh
+	s.mu.RUnlock()
+
 	if writer != nil {
 		if err := writer.Save(ctx, e); err != nil {
-			s.mu.Unlock()
 			return err
 		}
 	}
+
+	if writerCh != nil {
+		select {
+		case writerCh <- e:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	s.mu.Lock()
 	s.events = append(s.events, e)
 	if s.reducer != nil {
 		s.state = s.reducer(s.state, e)
@@ -253,31 +282,24 @@ func (s *Session) Append(ctx context.Context, e Event) error {
 	return nil
 }
 
-// Subscribe returns a channel that receives every event appended after this call.
-// The channel is buffered and closed when ctx is done.
-// Slow subscribers drop events rather than blocking Append.
-func (s *Session) Subscribe(ctx context.Context) <-chan Event {
-	ch := make(chan Event, subscriberBufSize)
-	sub := &subscriber{ch: ch}
-
+func (s *Session) removeSubscriber(target *subscriber) {
 	s.mu.Lock()
-	s.subscribers = append(s.subscribers, sub)
-	s.mu.Unlock()
-
-	go func() {
-		<-ctx.Done()
-		s.mu.Lock()
-		for i, ss := range s.subscribers {
-			if ss == sub {
-				s.subscribers = append(s.subscribers[:i], s.subscribers[i+1:]...)
-				break
-			}
+	defer s.mu.Unlock()
+	for i, sub := range s.subscribers {
+		if sub == target {
+			s.subscribers = append(s.subscribers[:i], s.subscribers[i+1:]...)
+			return
 		}
-		s.mu.Unlock()
-		sub.close() // safe: mu prevents race with concurrent trySend
-	}()
+	}
+}
 
-	return ch
+// Subscribe returns a channel that receives every event appended after this call.
+//
+// Deprecated: prefer Watch, which returns a first-class Subscription handle
+// with Close and clearer lossy live-stream semantics.
+func (s *Session) Subscribe(ctx context.Context) (<-chan Event, context.CancelFunc) {
+	sub := s.Watch(ctx)
+	return sub.Events(), sub.Close
 }
 
 // Events returns the full event log.
@@ -292,6 +314,13 @@ func (s *Session) Events() []Event {
 		}
 	}
 	return res
+}
+
+// HasSubscribers returns true if the session has any active subscribers.
+func (s *Session) HasSubscribers() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.subscribers) > 0
 }
 
 func (s *Session) snapshotEvents() []Event {

@@ -61,7 +61,9 @@ func (i *Indexer) Watch(ctx context.Context, sess *session.Session) {
 			i.mu.Unlock()
 		}()
 
-		events := sess.Subscribe(watchCtx)
+		sub := sess.Watch(watchCtx)
+		defer sub.Close()
+		events := sub.Events()
 		for {
 			select {
 			case <-watchCtx.Done():

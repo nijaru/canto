@@ -92,21 +92,53 @@ func (r *Runner) getOrLoad(ctx context.Context, sessionID string) (*session.Sess
 // Evict removes sessionID from the in-memory registry. The session remains
 // in the persistent store; the next access reloads it from there. Use this
 // to release memory for idle sessions.
+//
+// Eviction is a no-op if the session has an active execution lane or
+// live subscribers.
 func (r *Runner) Evict(sessionID string) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	sess, ok := r.sessions[sessionID]
+	if !ok {
+		return
+	}
+
+	if sess.HasSubscribers() {
+		return
+	}
+
+	if r.queue != nil && r.queue.IsActive(sessionID) {
+		return
+	}
+
 	delete(r.sessions, sessionID)
-	r.mu.Unlock()
 }
 
-// Subscribe returns a channel that receives all events for the given session.
-// Events emitted by Run/Send on the same Runner are delivered to this channel
-// because both share the same in-memory session object.
-func (r *Runner) Subscribe(ctx context.Context, sessionID string) (<-chan session.Event, error) {
+// Watch returns a live, lossy stream of events for the given session.
+//
+// Events emitted by Run/Send on the same Runner are delivered to this
+// subscription because both share the same in-memory session object.
+func (r *Runner) Watch(ctx context.Context, sessionID string) (*session.Subscription, error) {
 	sess, err := r.getOrLoad(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
-	return sess.Subscribe(ctx), nil
+	return sess.Watch(ctx), nil
+}
+
+// Subscribe returns a channel that receives all events for the given session.
+//
+// Deprecated: prefer Watch, which returns a first-class Subscription handle.
+func (r *Runner) Subscribe(
+	ctx context.Context,
+	sessionID string,
+) (<-chan session.Event, context.CancelFunc, error) {
+	sub, err := r.Watch(ctx, sessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return sub.Events(), sub.Close, nil
 }
 
 // Search searches the session history for the given query.

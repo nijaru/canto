@@ -19,18 +19,6 @@ type toolResult struct {
 	err    error
 }
 
-// runTools executes tool calls in parallel, appends their results to the
-// session, and returns a StepResult with any detected handoff.
-// It is the shared implementation used by both Step and StreamStep.
-func (a *BaseAgent) runTools(
-	ctx context.Context,
-	s *session.Session,
-	calls []llm.Call,
-) (StepResult, error) {
-	handoffTargets := getHandoffTargets(a.Tools)
-	return RunTools(ctx, s, calls, a.Tools, a.Hooks, handoffTargets)
-}
-
 func getHandoffTargets(r *tool.Registry) []string {
 	if r == nil {
 		return nil
@@ -45,6 +33,10 @@ func getHandoffTargets(r *tool.Registry) []string {
 }
 
 // RunTools executes tool calls in parallel and persists results to the session.
+//
+// This is an advanced helper for custom Agent implementations. Most callers
+// should configure tools on BaseAgent and let Step, Turn, or StreamTurn invoke
+// it internally.
 func RunTools(
 	ctx context.Context,
 	s *session.Session,
@@ -52,13 +44,37 @@ func RunTools(
 	r *tool.Registry,
 	h *hook.Runner,
 	handoffTargets []string,
+	maxParallel int,
 ) (StepResult, error) {
+	if maxParallel <= 0 {
+		maxParallel = 10
+	}
+
 	results := make([]toolResult, len(calls))
 	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxParallel)
+
 	for i, call := range calls {
 		wg.Add(1)
 		go func(i int, call llm.Call) {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					results[i] = toolResult{
+						call: call,
+						err:  fmt.Errorf("tool %q panicked: %v", call.Function.Name, r),
+					}
+				}
+			}()
+
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				results[i] = toolResult{call: call, err: ctx.Err()}
+				return
+			}
+
 			results[i] = executeToolWithHooks(ctx, s, call, r, h)
 		}(i, call)
 	}

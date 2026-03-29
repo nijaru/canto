@@ -12,29 +12,37 @@ import (
 )
 
 // StepConfig defines the components needed to execute a single agent step.
+//
+// This is an advanced API for custom Agent implementations. Most applications
+// should construct an agent with New and configure it with options instead of
+// assembling StepConfig directly.
 type StepConfig struct {
-	ID       string
-	Model    string
-	Provider llm.Provider
-	Builder  *ccontext.Builder
-	Tools    *tool.Registry
-	Hooks    *hook.Runner
+	ID               string
+	Model            string
+	Provider         llm.Provider
+	Builder          *ccontext.Builder
+	Tools            *tool.Registry
+	Hooks            *hook.Runner
+	MaxParallelTools int
 }
 
 // Step executes a single turn of the agentic loop and returns its result.
 func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, error) {
 	return RunStep(ctx, s, StepConfig{
-		ID:       a.agentID,
-		Model:    a.Model,
-		Provider: a.Provider,
-		Builder:  a.Builder,
-		Tools:    a.Tools,
-		Hooks:    a.Hooks,
+		ID:               a.agentID,
+		Model:            a.Model,
+		Provider:         a.Provider,
+		Builder:          a.Builder,
+		Tools:            a.Tools,
+		Hooks:            a.Hooks,
+		MaxParallelTools: a.MaxParallelTools,
 	})
 }
 
 // RunStep executes a single step of the agentic loop using the provided config.
-// It builds the context, generates a response, and executes any requested tools.
+//
+// This is an advanced helper for custom Agent implementations. Most callers
+// should prefer BaseAgent.Step, Turn, or StreamTurn.
 func RunStep(ctx context.Context, s *session.Session, cfg StepConfig) (res StepResult, err error) {
 	if err := s.Append(ctx, session.NewEvent(s.ID(), session.StepStarted, map[string]any{
 		"agent_id": cfg.ID,
@@ -85,7 +93,15 @@ func RunStep(ctx context.Context, s *session.Session, cfg StepConfig) (res StepR
 
 	// Execute tool calls in parallel and append results to the session.
 	handoffTargets := getHandoffTargets(cfg.Tools)
-	res, err = RunTools(ctx, s, resp.Calls, cfg.Tools, cfg.Hooks, handoffTargets)
+	res, err = RunTools(
+		ctx,
+		s,
+		resp.Calls,
+		cfg.Tools,
+		cfg.Hooks,
+		handoffTargets,
+		cfg.MaxParallelTools,
+	)
 	res.Usage = resp.Usage // Restore usage as RunTools only returns results/handoff
 
 	return

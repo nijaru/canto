@@ -12,13 +12,14 @@ func TestSubscribe_ReceivesEvents(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ch := s.Subscribe(ctx)
+	sub := s.Watch(ctx)
+	defer sub.Close()
 
 	e := NewEvent("sess-1", MessageAdded, map[string]string{"role": "user"})
 	_ = s.Append(context.Background(), e)
 
 	select {
-	case got := <-ch:
+	case got := <-sub.Events():
 		if got.ID != e.ID {
 			t.Fatalf("got event ID %v, want %v", got.ID, e.ID)
 		}
@@ -32,13 +33,15 @@ func TestSubscribe_MultipleSubscribers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ch1 := s.Subscribe(ctx)
-	ch2 := s.Subscribe(ctx)
+	sub1 := s.Watch(ctx)
+	defer sub1.Close()
+	sub2 := s.Watch(ctx)
+	defer sub2.Close()
 
 	e := NewEvent("sess-2", MessageAdded, nil)
 	_ = s.Append(context.Background(), e)
 
-	for _, ch := range []<-chan Event{ch1, ch2} {
+	for _, ch := range []<-chan Event{sub1.Events(), sub2.Events()} {
 		select {
 		case got := <-ch:
 			if got.ID != e.ID {
@@ -54,12 +57,12 @@ func TestSubscribe_CancelClosesChannel(t *testing.T) {
 	s := New("sess-3")
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ch := s.Subscribe(ctx)
+	sub := s.Watch(ctx)
 	cancel()
 
 	// Channel should close shortly after cancel.
 	select {
-	case _, ok := <-ch:
+	case _, ok := <-sub.Events():
 		if ok {
 			t.Fatal("expected closed channel, got value")
 		}
@@ -82,7 +85,8 @@ func TestSubscribe_SlowSubscriberDoesNotBlock(t *testing.T) {
 	defer cancel()
 
 	// Subscribe but never read.
-	_ = s.Subscribe(ctx)
+	sub := s.Watch(ctx)
+	defer sub.Close()
 
 	done := make(chan struct{})
 	go func() {
@@ -116,7 +120,8 @@ func TestSubscribe_ConcurrentAppendCancel(t *testing.T) {
 	s := New("sess-race")
 	ctx, cancel := context.WithCancel(context.Background())
 
-	_ = s.Subscribe(ctx)
+	sub := s.Watch(ctx)
+	defer sub.Close()
 
 	var wg sync.WaitGroup
 	for range goroutines {
@@ -150,18 +155,34 @@ func TestSubscribe_EventsBeforeSubscribeNotReceived(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ch := s.Subscribe(ctx)
+	sub := s.Watch(ctx)
+	defer sub.Close()
 
 	// Append after subscribe.
 	e := NewEvent("sess-6", MessageAdded, nil)
 	_ = s.Append(context.Background(), e)
 
 	select {
-	case got := <-ch:
+	case got := <-sub.Events():
 		if got.ID != e.ID {
 			t.Fatalf("got wrong event; want post-subscribe event")
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for post-subscribe event")
+	}
+}
+
+func TestSubscribe_CompatibilityWrapper(t *testing.T) {
+	s := New("sess-compat")
+	ch, cancel := s.Subscribe(context.Background())
+	cancel()
+
+	select {
+	case _, ok := <-ch:
+		if ok {
+			t.Fatal("expected closed channel after cancel")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for compatibility wrapper close")
 	}
 }

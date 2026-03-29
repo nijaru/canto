@@ -46,10 +46,11 @@ func TestRunner_Subscribe_ReceivesEvents(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	ch, err := runner.Subscribe(ctx, sessionID)
+	sub, err := runner.Watch(ctx, sessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer sub.Close()
 
 	result, err := runner.Send(ctx, sessionID, "ping")
 	if err != nil {
@@ -66,7 +67,7 @@ func TestRunner_Subscribe_ReceivesEvents(t *testing.T) {
 collect:
 	for {
 		select {
-		case e, ok := <-ch:
+		case e, ok := <-sub.Events():
 			if !ok {
 				break collect
 			}

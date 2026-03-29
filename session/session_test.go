@@ -26,7 +26,8 @@ func TestSessionAppend_DoesNotMutateStateWhenWriterFails(t *testing.T) {
 
 	subCtx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	sub := sess.Subscribe(subCtx)
+	sub := sess.Watch(subCtx)
+	defer sub.Close()
 
 	err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
 		Role:    llm.RoleUser,
@@ -43,7 +44,7 @@ func TestSessionAppend_DoesNotMutateStateWhenWriterFails(t *testing.T) {
 	}
 
 	select {
-	case e := <-sub:
+	case e := <-sub.Events():
 		t.Fatalf("unexpected subscriber event after failed append: %#v", e)
 	default:
 	}

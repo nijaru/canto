@@ -142,6 +142,11 @@ func main() {
 
 The executable quickstart lives at [examples/quickstart/main.go](examples/quickstart/main.go) and is compiled by `go test ./...`.
 
+When you need a live feed of newly appended events, prefer `sess.Watch(ctx)` or
+`runner.Watch(ctx, sessionID)`. Those APIs return a first-class subscription
+handle with `Events()` and `Close()`, which is clearer than managing a bare
+channel plus cancel function.
+
 ## Common Paths
 
 ### Single Durable Agent
