@@ -17,6 +17,9 @@ type Summarizer struct {
 	MinKeepTurns int
 	Provider     llm.Provider
 	Model        string
+	// Message is an optional instruction appended to the summarization prompt.
+	// The summarizer LLM treats it as guidance on what to preserve or emphasize.
+	Message string
 	// OnPreCompact is called before summarization begins, if non-nil.
 	OnPreCompact func(ctx context.Context, sess *session.Session)
 }
@@ -144,18 +147,25 @@ func (p *Summarizer) summarize(
 	}
 
 	// Generate summary
-	summarizeReq := &llm.Request{
-		Model: p.Model,
-		Messages: []llm.Message{
-			{
-				Role:    llm.RoleSystem,
-				Content: "You are a helpful assistant that summarizes conversations. Summarize the following conversation history concisely but comprehensively, retaining key facts, decisions, and tool execution outcomes.",
-			},
-			{
-				Role:    llm.RoleUser,
-				Content: sb.String(),
-			},
+	summarizeMessages := []llm.Message{
+		{
+			Role:    llm.RoleSystem,
+			Content: "You are a helpful assistant that summarizes conversations. Summarize the following conversation history concisely but comprehensively, retaining key facts, decisions, and tool execution outcomes.",
 		},
+	}
+	if p.Message != "" {
+		summarizeMessages = append(summarizeMessages, llm.Message{
+			Role:    llm.RoleUser,
+			Content: p.Message,
+		})
+	}
+	summarizeMessages = append(summarizeMessages, llm.Message{
+		Role:    llm.RoleUser,
+		Content: sb.String(),
+	})
+	summarizeReq := &llm.Request{
+		Model:       p.Model,
+		Messages:    summarizeMessages,
 		Temperature: 0.0,
 	}
 

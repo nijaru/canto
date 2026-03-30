@@ -14,6 +14,8 @@ type CompactOptions struct {
 	MaxTokens    int
 	ThresholdPct float64
 	MinKeepTurns int
+	// Message is an optional instruction passed to the summarizer LLM.
+	Message string
 
 	OffloadDir string
 	Artifacts  artifact.Store
@@ -75,6 +77,7 @@ func CompactSession(
 	summarizer := NewSummarizer(opts.MaxTokens, provider, model)
 	summarizer.ThresholdPct = thresholdPct
 	summarizer.MinKeepTurns = minKeepTurns
+	summarizer.Message = opts.Message
 
 	before := compactionEventCount(sess)
 	builder := NewBuilder()
