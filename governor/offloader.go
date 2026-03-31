@@ -1,4 +1,4 @@
-package context
+package governor
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/nijaru/canto/artifact"
+	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -29,11 +30,16 @@ type Offloader struct {
 
 // Effects reports that offloading mutates both session state and external
 // filesystem state.
-func (p *Offloader) Effects() SideEffects {
-	return SideEffects{
+func (p *Offloader) Effects() ccontext.SideEffects {
+	return ccontext.SideEffects{
 		Session:  true,
 		External: true,
 	}
+}
+
+// CompactionStrategy returns "offload".
+func (p *Offloader) CompactionStrategy() string {
+	return "offload"
 }
 
 // NewOffloader creates a new offload processor.
@@ -88,10 +94,10 @@ func (p *Offloader) compact(
 	}
 
 	// 1. Calculate usage
-	currentTokens := EstimateMessagesTokens(ctx, pr, model, messages)
+	currentTokens := ccontext.EstimateMessagesTokens(ctx, pr, model, messages)
 
 	// 2. If usage <= Threshold, do nothing
-	if !exceedsThreshold(currentTokens, p.MaxTokens, p.ThresholdPct) {
+	if !ccontext.ExceedsThreshold(currentTokens, p.MaxTokens, p.ThresholdPct) {
 		return nil
 	}
 

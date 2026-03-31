@@ -10,6 +10,7 @@ import (
 
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/safety"
 	"github.com/nijaru/canto/tool"
 	"github.com/nijaru/canto/workspace"
 )
@@ -75,7 +76,7 @@ func (t *EditTool) ApprovalRequirement(args string) (approval.Requirement, bool,
 		return approval.Requirement{}, false, err
 	}
 	return approval.Requirement{
-		Category:  "workspace",
+		Category:  string(safety.CategoryWrite),
 		Operation: "edit",
 		Resource:  input.Path,
 	}, true, nil

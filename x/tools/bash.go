@@ -7,6 +7,7 @@ import (
 
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/safety"
 )
 
 // BashTool executes shell commands.
@@ -67,7 +68,7 @@ func (b *BashTool) ApprovalRequirement(args string) (approval.Requirement, bool,
 		return approval.Requirement{}, false, err
 	}
 	return approval.Requirement{
-		Category:  "command",
+		Category:  string(safety.CategoryExecute),
 		Operation: "exec",
 		Resource:  input.Command,
 	}, true, nil

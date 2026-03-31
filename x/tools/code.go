@@ -10,6 +10,7 @@ import (
 
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/safety"
 )
 
 // CodeExecutionTool executes arbitrary code in a sandboxed environment.
@@ -93,7 +94,7 @@ func (c *CodeExecutionTool) ApprovalRequirement(args string) (approval.Requireme
 		return approval.Requirement{}, false, err
 	}
 	return approval.Requirement{
-		Category:  "code",
+		Category:  string(safety.CategoryExecute),
 		Operation: "execute",
 		Resource:  c.Language,
 		Metadata: map[string]any{

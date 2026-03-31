@@ -1,9 +1,10 @@
-package context
+package governor
 
 import (
 	"context"
 	"fmt"
 
+	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -31,7 +32,7 @@ func (p *TokenGuard) ApplyRequest(
 	req *llm.Request,
 ) error {
 	// 1. Calculate current token usage
-	currentTokens := EstimateMessagesTokens(ctx, pr, model, req.Messages)
+	currentTokens := ccontext.EstimateMessagesTokens(ctx, pr, model, req.Messages)
 
 	// 2. Check against budget
 	if p.MaxTokens > 0 && currentTokens > p.MaxTokens {

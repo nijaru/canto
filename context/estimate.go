@@ -66,7 +66,7 @@ func EstimateMessagesTokens(
 }
 
 // exceedsThreshold checks if the current token count exceeds the threshold.
-func exceedsThreshold(current, max int, thresholdPct float64) bool {
+func ExceedsThreshold(current, max int, thresholdPct float64) bool {
 	if max <= 0 {
 		return false
 	}

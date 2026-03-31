@@ -1,9 +1,10 @@
-package context
+package governor
 
 import (
 	"context"
 	"testing"
 
+	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -87,7 +88,7 @@ func TestSummarizer(t *testing.T) {
 	}
 
 	req := &llm.Request{Messages: []llm.Message{}}
-	if err := History().ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
+	if err := ccontext.History().ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("history rebuild failed: %v", err)
 	}
 
@@ -120,7 +121,7 @@ func TestSummarizer(t *testing.T) {
 	}
 
 	historyReq := &llm.Request{}
-	if err := History().ApplyRequest(context.Background(), nil, "", sess, historyReq); err != nil {
+	if err := ccontext.History().ApplyRequest(context.Background(), nil, "", sess, historyReq); err != nil {
 		t.Fatalf("history rebuild failed: %v", err)
 	}
 	if len(historyReq.Messages) != 5 {

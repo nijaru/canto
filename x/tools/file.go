@@ -9,6 +9,7 @@ import (
 
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/safety"
 	"github.com/nijaru/canto/tool"
 	"github.com/nijaru/canto/workspace"
 )
@@ -108,7 +109,7 @@ func (t *WriteFileTool) ApprovalRequirement(args string) (approval.Requirement, 
 		return approval.Requirement{}, false, err
 	}
 	return approval.Requirement{
-		Category:  "workspace",
+		Category:  string(safety.CategoryWrite),
 		Operation: "write_file",
 		Resource:  input.Path,
 	}, true, nil

@@ -1,10 +1,11 @@
-package context
+package governor
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
+	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -26,8 +27,13 @@ type Summarizer struct {
 
 // Effects reports that summarization appends durable compaction facts to the
 // session log.
-func (p *Summarizer) Effects() SideEffects {
-	return SideEffects{Session: true}
+func (p *Summarizer) Effects() ccontext.SideEffects {
+	return ccontext.SideEffects{Session: true}
+}
+
+// CompactionStrategy returns "summarize".
+func (p *Summarizer) CompactionStrategy() string {
+	return "summarize"
 }
 
 // NewSummarizer creates a new summarize processor.
@@ -74,10 +80,10 @@ func (p *Summarizer) summarize(
 	}
 
 	// 1. Calculate usage
-	currentTokens := EstimateMessagesTokens(ctx, pr, model, messages)
+	currentTokens := ccontext.EstimateMessagesTokens(ctx, pr, model, messages)
 
 	// 2. If usage <= Threshold, do nothing
-	if !exceedsThreshold(currentTokens, p.MaxTokens, p.ThresholdPct) {
+	if !ccontext.ExceedsThreshold(currentTokens, p.MaxTokens, p.ThresholdPct) {
 		return nil
 	}
 

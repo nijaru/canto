@@ -2,9 +2,6 @@ package context
 
 import (
 	"context"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/nijaru/canto/llm"
@@ -50,142 +47,6 @@ func TestBuilder_Build(t *testing.T) {
 	}
 	if req.Messages[1].Content != "Hello world" {
 		t.Errorf("expected second message to be 'Hello world', got %s", req.Messages[1].Content)
-	}
-}
-
-func TestOffloadProcessor(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "canto-offload-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	sess := session.New("test-session")
-
-	// Large tool result
-	largeContent := ""
-	for i := 0; i < 2000; i++ {
-		largeContent += "large content "
-	}
-	history := []llm.Message{
-		{Role: llm.RoleUser, Content: "request"},
-		{Role: llm.RoleAssistant, Content: "calling tool..."},
-		{Role: llm.RoleTool, Content: largeContent, ToolID: "t1"},
-		{Role: llm.RoleAssistant, Content: "done"},
-		{Role: llm.RoleUser, Content: "next"},
-	}
-	for _, msg := range history {
-		if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), msg)); err != nil {
-			t.Fatalf("append history: %v", err)
-		}
-	}
-
-	// Threshold is 60%, MaxTokens = 1000.
-	// largeContent is ~3000 tokens (chars/4 heuristic).
-	offloader := NewOffloader(1000, tempDir)
-	offloader.MinKeepTurns = 2 // Keep last 2 messages
-
-	if err := offloader.Mutate(context.Background(), nil, "", sess); err != nil {
-		t.Fatalf("offload failed: %v", err)
-	}
-
-	req := &llm.Request{
-		Messages: []llm.Message{{Role: llm.RoleSystem, Content: "instructions"}},
-	}
-	if err := History().ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
-		t.Fatalf("history rebuild failed: %v", err)
-	}
-
-	// Message 3 (RoleTool) should be offloaded because it's older than last 2.
-	if len(req.Messages[3].Content) > 1000 {
-		t.Errorf(
-			"expected message to be offloaded, but still have %d chars",
-			len(req.Messages[3].Content),
-		)
-	}
-
-	// Verify file exists
-	files, err := filepath.Glob(filepath.Join(tempDir, "objects", "*", "body"))
-	if err != nil || len(files) == 0 {
-		t.Errorf("expected offload file to be created")
-	}
-
-	var artifactEvents int
-	for _, event := range sess.Events() {
-		if event.Type == session.ArtifactRecorded {
-			artifactEvents++
-		}
-	}
-	if artifactEvents == 0 {
-		t.Fatalf("expected offload to record artifact descriptors")
-	}
-
-	historyReq := &llm.Request{}
-	if err := History().ApplyRequest(context.Background(), nil, "", sess, historyReq); err != nil {
-		t.Fatalf("history rebuild failed: %v", err)
-	}
-	if len(historyReq.Messages) != len(history) {
-		t.Fatalf(
-			"expected %d rebuilt history messages, got %d",
-			len(history),
-			len(historyReq.Messages),
-		)
-	}
-	if len(historyReq.Messages[2].Content) > 1000 {
-		t.Fatalf(
-			"expected rebuilt tool result to stay offloaded, got %d chars",
-			len(historyReq.Messages[2].Content),
-		)
-	}
-}
-
-func TestOffloadProcessor_DuplicateToolOutputsGetDistinctArtifacts(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "canto-offload-dupe-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	sess := session.New("dupe-session")
-	largeContent := strings.Repeat("same large content ", 200)
-	history := []llm.Message{
-		{Role: llm.RoleUser, Content: "request"},
-		{Role: llm.RoleTool, Content: largeContent, ToolID: "t1"},
-		{Role: llm.RoleTool, Content: largeContent, ToolID: "t2"},
-		{Role: llm.RoleAssistant, Content: "done"},
-		{Role: llm.RoleUser, Content: "next"},
-	}
-	for _, msg := range history {
-		if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), msg)); err != nil {
-			t.Fatalf("append history: %v", err)
-		}
-	}
-
-	offloader := NewOffloader(1000, tempDir)
-	offloader.MinKeepTurns = 2
-	if err := offloader.Mutate(context.Background(), nil, "", sess); err != nil {
-		t.Fatalf("offload failed: %v", err)
-	}
-
-	req := &llm.Request{
-		Messages: []llm.Message{{Role: llm.RoleSystem, Content: "instructions"}},
-	}
-	if err := History().ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
-		t.Fatalf("history rebuild failed: %v", err)
-	}
-
-	files, err := filepath.Glob(filepath.Join(tempDir, "objects", "*", "body"))
-	if err != nil {
-		t.Fatalf("glob offload files: %v", err)
-	}
-	if len(files) != 2 {
-		t.Fatalf("expected 2 distinct offload artifacts, got %d", len(files))
-	}
-	if req.Messages[2].Content == req.Messages[3].Content {
-		t.Fatalf(
-			"expected distinct placeholders for duplicate outputs, got %q",
-			req.Messages[2].Content,
-		)
 	}
 }
 
@@ -255,8 +116,8 @@ func TestRequestProcessorFuncIsRequestOnly(t *testing.T) {
 func TestBuilderEffectsAggregatesProcessorSideEffects(t *testing.T) {
 	builder := NewBuilder(Instructions("system"))
 	builder.AppendMutators(
-		NewOffloader(1000, t.TempDir()),
-		NewSummarizer(1000, &mockProvider{id: "mock"}, "mock-model"),
+		&dummyMutator{strategy: "offload"},
+		&dummyMutator{strategy: "summarize"},
 	)
 
 	effects := builder.Effects()
@@ -270,7 +131,7 @@ func TestBuilderEffectsAggregatesProcessorSideEffects(t *testing.T) {
 
 func TestBuilderBuildPreviewSkipsSideEffects(t *testing.T) {
 	builder := NewBuilder(Instructions("system"))
-	builder.AppendMutators(NewOffloader(1000, t.TempDir()))
+	builder.AppendMutators(&dummyMutator{strategy: "offload"})
 
 	err := builder.BuildPreview(t.Context(), nil, "", session.New("preview"), &llm.Request{})
 	if err != nil {
@@ -343,240 +204,18 @@ func TestBuilderPhasedHelpersSupportRequestProcessorsAndMutators(t *testing.T) {
 	}
 }
 
-// --- TokenGuard ---
+type dummyMutator struct{ strategy string }
 
-func TestTokenGuard_PassingCase(t *testing.T) {
-	guard := NewTokenGuard(10000)
-	sess := session.New("sess-tg-pass")
-	req := &llm.Request{
-		Messages: []llm.Message{
-			{Role: llm.RoleUser, Content: "hello"},
-		},
-	}
-	if err := guard.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+func (m *dummyMutator) Mutate(ctx context.Context, pr llm.Provider, model string, sess *session.Session) error {
+	return nil
 }
-
-func TestTokenGuard_Exceeded(t *testing.T) {
-	guard := NewTokenGuard(1) // 1 token max — trivially exceeded
-	sess := session.New("sess-tg-exceed")
-	req := &llm.Request{
-		Messages: []llm.Message{
-			{
-				Role:    llm.RoleUser,
-				Content: "This is a message with plenty of content to exceed the limit.",
-			},
-		},
+func (m *dummyMutator) Effects() SideEffects {
+	if m.strategy == "offload" {
+		return SideEffects{Session: true, External: true}
 	}
-	err := guard.ApplyRequest(context.Background(), nil, "", sess, req)
-	if err == nil {
-		t.Fatal("expected token budget error, got nil")
+	if m.strategy == "summarize" {
+		return SideEffects{Session: true, External: false}
 	}
-	if !strings.Contains(err.Error(), "token budget exceeded") {
-		t.Errorf("unexpected error message: %v", err)
-	}
+	return SideEffects{}
 }
-
-func TestTokenGuard_ZeroMaxTokensSkips(t *testing.T) {
-	guard := NewTokenGuard(0)
-	sess := session.New("sess-tg-zero")
-	// Even enormous content should pass when MaxTokens == 0.
-	big := strings.Repeat("x", 100_000)
-	req := &llm.Request{
-		Messages: []llm.Message{
-			{Role: llm.RoleUser, Content: big},
-		},
-	}
-	if err := guard.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
-		t.Fatalf("expected no error with zero limit, got: %v", err)
-	}
-}
-
-// --- BudgetGuard ---
-
-func TestBudgetGuard_PassingCase(t *testing.T) {
-	guard := NewBudgetGuard(10.0)
-	sess := session.New("sess-bg-pass")
-
-	e := session.NewEvent(sess.ID(), session.MessageAdded, nil)
-	e.Cost = 0.50
-	_ = sess.Append(context.Background(), e)
-
-	req := &llm.Request{}
-	if err := guard.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestBudgetGuard_Exceeded(t *testing.T) {
-	guard := NewBudgetGuard(1.0)
-	sess := session.New("sess-bg-exceed")
-
-	e := session.NewEvent(sess.ID(), session.MessageAdded, nil)
-	e.Cost = 1.50
-	_ = sess.Append(context.Background(), e)
-
-	req := &llm.Request{}
-	err := guard.ApplyRequest(context.Background(), nil, "", sess, req)
-	if err == nil {
-		t.Fatal("expected budget exceeded error, got nil")
-	}
-	if !strings.Contains(err.Error(), "budget exceeded") {
-		t.Errorf("unexpected error message: %v", err)
-	}
-}
-
-func TestBudgetGuard_ZeroLimitSkips(t *testing.T) {
-	guard := NewBudgetGuard(0)
-	sess := session.New("sess-bg-zero")
-
-	e := session.NewEvent(sess.ID(), session.MessageAdded, nil)
-	e.Cost = 999.99
-	_ = sess.Append(context.Background(), e)
-
-	req := &llm.Request{}
-	if err := guard.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
-		t.Fatalf("expected no error with zero limit, got: %v", err)
-	}
-}
-
-func TestBudgetGuard_ExactlyAtLimit(t *testing.T) {
-	guard := NewBudgetGuard(1.0)
-	sess := session.New("sess-bg-exact")
-
-	e := session.NewEvent(sess.ID(), session.MessageAdded, nil)
-	e.Cost = 1.0
-	_ = sess.Append(context.Background(), e)
-
-	req := &llm.Request{}
-	err := guard.ApplyRequest(context.Background(), nil, "", sess, req)
-	// >= limit triggers error
-	if err == nil {
-		t.Fatal("expected budget exceeded error at exact limit, got nil")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Capabilities
-// ---------------------------------------------------------------------------
-
-type capProvider struct {
-	caps llm.Capabilities
-}
-
-func (p *capProvider) ID() string { return "cap" }
-func (p *capProvider) Generate(_ context.Context, _ *llm.Request) (*llm.Response, error) {
-	return &llm.Response{}, nil
-}
-
-func (p *capProvider) Stream(_ context.Context, _ *llm.Request) (llm.Stream, error) {
-	return nil, nil
-}
-func (p *capProvider) Models(_ context.Context) ([]llm.Model, error) { return nil, nil }
-func (p *capProvider) CountTokens(_ context.Context, _ string, _ []llm.Message) (int, error) {
-	return 0, nil
-}
-func (p *capProvider) Cost(_ context.Context, _ string, _ llm.Usage) float64 { return 0 }
-func (p *capProvider) Capabilities(_ string) llm.Capabilities                { return p.caps }
-func (p *capProvider) IsTransient(err error) bool                            { return false }
-
-func TestCapabilitiesProcessor_StandardModel(t *testing.T) {
-	proc := Capabilities()
-	p := &capProvider{caps: llm.DefaultCapabilities()}
-	sess := session.New("caps-1")
-	req := &llm.Request{
-		Temperature: 0.7,
-		Messages: []llm.Message{
-			{Role: llm.RoleSystem, Content: "You are helpful."},
-			{Role: llm.RoleUser, Content: "Hello"},
-		},
-	}
-	if err := proc.ApplyRequest(context.Background(), p, "gpt-4o", sess, req); err != nil {
-		t.Fatal(err)
-	}
-	if req.Temperature != 0.7 {
-		t.Errorf("standard model: temperature should be unchanged, got %v", req.Temperature)
-	}
-	if req.Messages[0].Role != llm.RoleSystem {
-		t.Errorf("standard model: system message should remain, got %s", req.Messages[0].Role)
-	}
-}
-
-func TestCapabilitiesProcessor_ReasoningModel_SystemToUser(t *testing.T) {
-	proc := Capabilities()
-	caps := llm.Capabilities{
-		SystemRole:  llm.RoleUser,
-		Temperature: false,
-		Streaming:   true,
-		Tools:       true,
-	}
-	p := &capProvider{caps: caps}
-	sess := session.New("caps-2")
-	req := &llm.Request{
-		Temperature: 1.0,
-		Messages: []llm.Message{
-			{Role: llm.RoleSystem, Content: "Be concise."},
-			{Role: llm.RoleUser, Content: "What is 2+2?"},
-		},
-	}
-	if err := proc.ApplyRequest(context.Background(), p, "model", sess, req); err != nil {
-		t.Fatal(err)
-	}
-	if req.Temperature != 0 {
-		t.Errorf("reasoning model: temperature should be zeroed, got %v", req.Temperature)
-	}
-	if req.Messages[0].Role != llm.RoleUser {
-		t.Errorf(
-			"reasoning model: system message should be converted to user, got %s",
-			req.Messages[0].Role,
-		)
-	}
-	if !strings.HasPrefix(req.Messages[0].Content, "Instructions:") {
-		t.Errorf(
-			"reasoning model: converted message should start with Instructions:, got %q",
-			req.Messages[0].Content,
-		)
-	}
-}
-
-func TestCapabilitiesProcessor_ReasoningModel_SystemToDeveloper(t *testing.T) {
-	proc := Capabilities()
-	caps := llm.Capabilities{
-		SystemRole:  llm.RoleDeveloper,
-		Temperature: false,
-		Streaming:   true,
-		Tools:       true,
-	}
-	p := &capProvider{caps: caps}
-	sess := session.New("caps-4")
-	req := &llm.Request{
-		Temperature: 1.0,
-		Messages: []llm.Message{
-			{Role: llm.RoleSystem, Content: "Be concise."},
-			{Role: llm.RoleUser, Content: "What is 2+2?"},
-		},
-	}
-	if err := proc.ApplyRequest(context.Background(), p, "model", sess, req); err != nil {
-		t.Fatal(err)
-	}
-	if req.Messages[0].Role != llm.RoleDeveloper {
-		t.Errorf("expected developer role, got %s", req.Messages[0].Role)
-	}
-	if req.Messages[0].Content != "Be concise." {
-		t.Errorf("developer role should not add prefix, got %q", req.Messages[0].Content)
-	}
-}
-
-func TestCapabilitiesProcessor_NilProvider(t *testing.T) {
-	proc := Capabilities()
-	req := &llm.Request{Temperature: 0.5}
-	err := proc.ApplyRequest(context.Background(), nil, "any-model", session.New("caps-3"), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// nil provider: no-op, temperature unchanged
-	if req.Temperature != 0.5 {
-		t.Errorf("nil provider: temperature should be unchanged, got %v", req.Temperature)
-	}
-}
+func (m *dummyMutator) CompactionStrategy() string { return m.strategy }

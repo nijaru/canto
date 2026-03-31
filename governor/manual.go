@@ -1,10 +1,11 @@
-package context
+package governor
 
 import (
 	"context"
 	"errors"
 
 	"github.com/nijaru/canto/artifact"
+	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -80,7 +81,7 @@ func CompactSession(
 	summarizer.Message = opts.Message
 
 	before := compactionEventCount(sess)
-	builder := NewBuilder()
+	builder := ccontext.NewBuilder()
 	builder.AppendMutators(offloader, summarizer)
 	if err := builder.BuildCommit(ctx, provider, model, sess, &llm.Request{Model: model}); err != nil {
 		return CompactResult{}, err

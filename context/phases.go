@@ -43,6 +43,12 @@ type ContextMutator interface {
 	Mutate(ctx context.Context, p llm.Provider, model string, sess *session.Session) error
 }
 
+// Compactor indicates that the mutator performs compaction.
+// It returns "offload" for reversible compaction and "summarize" for lossy compaction.
+type Compactor interface {
+	CompactionStrategy() string
+}
+
 // ContextMutatorFunc adapts a function to ContextMutator.
 type ContextMutatorFunc func(
 	ctx context.Context,

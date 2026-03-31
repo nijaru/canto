@@ -154,19 +154,21 @@ func (b *Builder) commitPipeline() (*Pipeline, error) {
 func validateCompactionOrder(mutators []ContextMutator) error {
 	var hasOffloader bool
 	var hasSummarizer bool
-	offloaderBeforeSummarizer := true
 	var seenSummarizer bool
+	var offloaderBeforeSummarizer = true
 
 	for _, mutator := range mutators {
-		switch mutator.(type) {
-		case *Offloader:
-			hasOffloader = true
-			if seenSummarizer {
-				offloaderBeforeSummarizer = false
+		if c, ok := mutator.(Compactor); ok {
+			strategy := c.CompactionStrategy()
+			if strategy == "offload" {
+				hasOffloader = true
+				if seenSummarizer {
+					offloaderBeforeSummarizer = false
+				}
+			} else if strategy == "summarize" {
+				hasSummarizer = true
+				seenSummarizer = true
 			}
-		case *Summarizer:
-			hasSummarizer = true
-			seenSummarizer = true
 		}
 	}
 
