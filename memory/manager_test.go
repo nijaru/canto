@@ -259,6 +259,69 @@ func TestManager_RetrievePolicyPostprocess(t *testing.T) {
 	}
 }
 
+func TestManagerMemoryContractAliases(t *testing.T) {
+	store, err := NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	manager := NewManager(store)
+	ns := Namespace{Scope: ScopeAgent, ID: "agent-contract"}
+
+	if _, err := manager.Remember(t.Context(), WriteInput{
+		Namespace: ns,
+		Role:      RoleEpisodic,
+		Content:   "agent remembered this",
+	}); err != nil {
+		t.Fatalf("Remember: %v", err)
+	}
+
+	results, err := manager.Search(t.Context(), Query{
+		Namespaces: []Namespace{ns},
+		Roles:      []Role{RoleEpisodic},
+		Text:       "remembered",
+		Limit:      5,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(results) != 1 || results[0].Content != "agent remembered this" {
+		t.Fatalf("unexpected search results: %#v", results)
+	}
+}
+
+func TestManagerCapabilities(t *testing.T) {
+	store, err := NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	manager := NewManager(store)
+	caps := manager.Capabilities()
+	if !caps.Namespaced || !caps.Blocks || !caps.Memories || !caps.Search || !caps.Forget ||
+		!caps.Temporal ||
+		!caps.AsyncWrite {
+		t.Fatalf("expected core memory capabilities, got %#v", caps)
+	}
+	if caps.SemanticSearch {
+		t.Fatalf("expected semantic search to be disabled without vector store, got %#v", caps)
+	}
+
+	vector, err := NewSQLiteVectorStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewSQLiteVectorStore: %v", err)
+	}
+	t.Cleanup(func() { _ = vector.Close() })
+
+	semanticManager := NewManager(store, WithVectorStore(vector), WithEmbedder(testEmbedder{}))
+	semanticCaps := semanticManager.Capabilities()
+	if !semanticCaps.SemanticSearch {
+		t.Fatalf("expected semantic search capability with vector store, got %#v", semanticCaps)
+	}
+}
+
 func TestManager_RetrievePolicyError(t *testing.T) {
 	store, err := NewCoreStore("file::memory:?cache=shared")
 	if err != nil {

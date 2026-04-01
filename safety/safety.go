@@ -41,19 +41,34 @@ func NewPolicy(mode Mode) *Policy {
 func (p *Policy) Decide(ctx context.Context, req approval.Request) (approval.Result, bool, error) {
 	switch p.mode {
 	case ModeAuto:
-		return approval.Result{Decision: approval.DecisionAllow, Reason: "Auto mode enabled"}, true, nil
+		return approval.Result{
+			Decision: approval.DecisionAllow,
+			Reason:   "Auto mode enabled",
+		}, true, nil
 	case ModeRead:
 		if Category(req.Category) == CategoryRead {
-			return approval.Result{Decision: approval.DecisionAllow, Reason: "Read operation allowed in read mode"}, true, nil
+			return approval.Result{
+				Decision: approval.DecisionAllow,
+				Reason:   "Read operation allowed in read mode",
+			}, true, nil
 		}
-		return approval.Result{Decision: approval.DecisionDeny, Reason: "Only read operations allowed in read mode"}, true, nil
+		return approval.Result{
+			Decision: approval.DecisionDeny,
+			Reason:   "Only read operations allowed in read mode",
+		}, true, nil
 	case ModeEdit:
 		if Category(req.Category) == CategoryRead {
-			return approval.Result{Decision: approval.DecisionAllow, Reason: "Read operation allowed in edit mode"}, true, nil
+			return approval.Result{
+				Decision: approval.DecisionAllow,
+				Reason:   "Read operation allowed in edit mode",
+			}, true, nil
 		}
 		// Write and execute operations require manual approval (not handled by this policy automatically).
 		return approval.Result{}, false, nil
 	default:
-		return approval.Result{Decision: approval.DecisionDeny, Reason: "Unknown safety mode"}, true, nil
+		return approval.Result{
+			Decision: approval.DecisionDeny,
+			Reason:   "Unknown safety mode",
+		}, true, nil
 	}
 }

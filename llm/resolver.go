@@ -357,8 +357,26 @@ func (r *SmartResolver) IsTransient(err error) bool {
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if len(r.providers) > 0 {
-		return r.providers[0].provider.IsTransient(err)
+	for _, p := range r.providers {
+		if p.provider.IsTransient(err) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsContextOverflow returns true if any underlying provider reports a context
+// overflow error.
+func (r *SmartResolver) IsContextOverflow(err error) bool {
+	if err == nil {
+		return false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, p := range r.providers {
+		if p.provider.IsContextOverflow(err) {
+			return true
+		}
 	}
 	return false
 }
@@ -368,8 +386,24 @@ func (p *FailoverProvider) IsTransient(err error) bool {
 	if err == nil {
 		return false
 	}
-	if len(p.providers) > 0 {
-		return p.providers[0].IsTransient(err)
+	for _, sub := range p.providers {
+		if sub.IsTransient(err) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsContextOverflow returns true if any underlying provider reports a context
+// overflow error.
+func (p *FailoverProvider) IsContextOverflow(err error) bool {
+	if err == nil {
+		return false
+	}
+	for _, sub := range p.providers {
+		if sub.IsContextOverflow(err) {
+			return true
+		}
 	}
 	return false
 }

@@ -12,11 +12,11 @@ func TestPolicy_Decide(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name           string
-		mode           safety.Mode
-		req            approval.Request
-		wantDecision   approval.Decision
-		wantHandled    bool
+		name         string
+		mode         safety.Mode
+		req          approval.Request
+		wantDecision approval.Decision
+		wantHandled  bool
 	}{
 		{
 			name: "Auto mode handles everything",
@@ -69,7 +69,7 @@ func TestPolicy_Decide(t *testing.T) {
 			req: approval.Request{
 				Category: string(safety.CategoryWrite),
 			},
-			wantHandled:  false, // Requires manual approval
+			wantHandled: false, // Requires manual approval
 		},
 		{
 			name: "Edit mode defers execute",
@@ -77,7 +77,7 @@ func TestPolicy_Decide(t *testing.T) {
 			req: approval.Request{
 				Category: string(safety.CategoryExecute),
 			},
-			wantHandled:  false, // Requires manual approval
+			wantHandled: false, // Requires manual approval
 		},
 	}
 

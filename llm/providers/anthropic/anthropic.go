@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -482,6 +483,24 @@ func (p *Provider) IsTransient(err error) bool {
 		switch sdkErr.StatusCode {
 		case 429, 500, 502, 503, 504:
 			return true
+		}
+	}
+	return false
+}
+
+// IsContextOverflow returns true if the error indicates the model's context
+// window was exceeded.
+func (p *Provider) IsContextOverflow(err error) bool {
+	if err == nil {
+		return false
+	}
+	var sdkErr *sdk.Error
+	if errors.As(err, &sdkErr) {
+		if sdkErr.StatusCode == 400 {
+			msg := sdkErr.Error()
+			if strings.Contains(msg, "prompt") && strings.Contains(msg, "token") {
+				return true
+			}
 		}
 	}
 	return false

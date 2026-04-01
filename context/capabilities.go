@@ -3,6 +3,7 @@ package context
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -17,6 +18,10 @@ import (
 //     RoleUser: injects an "Instructions:" prefix (models with no system role).
 //     Any other role (e.g. RoleDeveloper): converts role directly, no prefix.
 //   - Temperature=false: zeroes the temperature field.
+//   - Thinking=false: preserves unsupported thinking as text instead of
+//     dropping it, so conversations can be replayed across providers.
+//   - Tool IDs: normalizes tool-call IDs deterministically so tool results
+//     stay aligned when conversations move between providers.
 func Capabilities() RequestProcessor {
 	return RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, _ *session.Session, req *llm.Request) error {
@@ -31,15 +36,7 @@ func Capabilities() RequestProcessor {
 			if !caps.Temperature {
 				req.Temperature = 0
 			}
-			// Strip reasoning from history for models that don't support extended
-			// thinking. Reasoning is preserved in the session log for observability;
-			// it is only filtered here at request-build time.
-			if !caps.Thinking {
-				for i := range req.Messages {
-					req.Messages[i].Reasoning = ""
-					req.Messages[i].ThinkingBlocks = nil
-				}
-			}
+			normalizeMessagesForCapabilities(req, caps)
 			return nil
 		},
 	)
@@ -60,4 +57,134 @@ func rewriteSystemMessages(req *llm.Request, targetRole llm.Role) {
 		}
 		req.Messages[i] = llm.Message{Role: targetRole, Content: content}
 	}
+}
+
+func normalizeMessagesForCapabilities(req *llm.Request, caps llm.Capabilities) {
+	if req == nil {
+		return
+	}
+
+	normalizeToolIDs(req.Messages)
+
+	if caps.Thinking {
+		return
+	}
+
+	for i := range req.Messages {
+		msg := &req.Messages[i]
+		if msg.Reasoning == "" && len(msg.ThinkingBlocks) == 0 {
+			continue
+		}
+		msg.Content = appendThinkingText(msg.Content, msg.Reasoning, msg.ThinkingBlocks)
+		msg.Reasoning = ""
+		msg.ThinkingBlocks = nil
+	}
+}
+
+func appendThinkingText(content, reasoning string, blocks []llm.ThinkingBlock) string {
+	var parts []string
+	if reasoning != "" {
+		parts = append(parts, reasoning)
+	}
+	for _, block := range blocks {
+		switch block.Type {
+		case "thinking":
+			if block.Thinking != "" {
+				parts = append(parts, "<thinking>\n"+block.Thinking+"\n</thinking>")
+			}
+		case "redacted_thinking":
+			parts = append(parts, "<redacted_thinking />")
+		}
+	}
+	if len(parts) == 0 {
+		return content
+	}
+	if content == "" {
+		return strings.Join(parts, "\n\n")
+	}
+	return content + "\n\n" + strings.Join(parts, "\n\n")
+}
+
+func normalizeToolIDs(messages []llm.Message) {
+	assigned := make(map[string]string)
+	used := make(map[string]int)
+
+	for _, msg := range messages {
+		for _, call := range msg.Calls {
+			if _, ok := assigned[call.ID]; ok {
+				continue
+			}
+			assigned[call.ID] = uniqueToolCallID(call.ID, used)
+		}
+	}
+
+	for i := range messages {
+		msg := &messages[i]
+		for j := range msg.Calls {
+			msg.Calls[j].ID = assigned[msg.Calls[j].ID]
+		}
+		if msg.Role == llm.RoleTool && msg.ToolID != "" {
+			if normalized, ok := assigned[msg.ToolID]; ok {
+				msg.ToolID = normalized
+				continue
+			}
+			normalized := uniqueToolCallID(msg.ToolID, used)
+			assigned[msg.ToolID] = normalized
+			msg.ToolID = normalized
+		}
+	}
+}
+
+func uniqueToolCallID(id string, used map[string]int) string {
+	base := normalizeToolCallID(id)
+	if base == "" {
+		base = "tool"
+	}
+
+	n := used[base]
+	if n == 0 {
+		used[base] = 1
+		return base
+	}
+
+	for {
+		n++
+		suffix := fmt.Sprintf("-%d", n)
+		trimmed := base
+		if len(trimmed)+len(suffix) > 64 {
+			trimmed = trimmed[:64-len(suffix)]
+		}
+		candidate := trimmed + suffix
+		if used[candidate] == 0 {
+			used[base] = n
+			used[candidate] = 1
+			return candidate
+		}
+	}
+}
+
+func normalizeToolCallID(id string) string {
+	if id == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(id))
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-' || r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+		if b.Len() >= 64 {
+			break
+		}
+	}
+	return strings.Trim(b.String(), "_")
 }

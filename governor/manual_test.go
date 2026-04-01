@@ -57,7 +57,8 @@ func (p *compactTestProvider) Capabilities(model string) llm.Capabilities {
 	return llm.DefaultCapabilities()
 }
 
-func (p *compactTestProvider) IsTransient(err error) bool { return false }
+func (p *compactTestProvider) IsTransient(err error) bool       { return false }
+func (p *compactTestProvider) IsContextOverflow(err error) bool { return false }
 
 type noopArtifactStore struct{}
 
@@ -191,6 +192,39 @@ func TestCompactSessionNoOpBelowThreshold(t *testing.T) {
 	}
 	if got := compactionStrategies(t, sess); len(got) != 0 {
 		t.Fatalf("expected no compaction events, got %v", got)
+	}
+}
+
+func TestOffloaderSkipsPreCompactWhenTooFewTurns(t *testing.T) {
+	sess := session.New("offload-short")
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: strings.Repeat("alpha ", 80)},
+		{Role: llm.RoleAssistant, Content: strings.Repeat("beta ", 80)},
+	} {
+		if err := sess.Append(t.Context(), session.NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append history: %v", err)
+		}
+	}
+
+	compactCalled := false
+	provider := &compactTestProvider{
+		id: "mock",
+		countFn: func(ctx context.Context, model string, messages []llm.Message) (int, error) {
+			return 1000, nil
+		},
+	}
+	offloader := NewOffloader(100, t.TempDir())
+	offloader.ThresholdPct = 0.50
+	offloader.MinKeepTurns = 3
+	offloader.OnPreCompact = func(ctx context.Context, sess *session.Session) {
+		compactCalled = true
+	}
+
+	if err := offloader.Mutate(t.Context(), provider, "mock-model", sess); err != nil {
+		t.Fatalf("offloader mutate: %v", err)
+	}
+	if compactCalled {
+		t.Fatal("expected OnPreCompact to stay idle when offloader has no candidates")
 	}
 }
 

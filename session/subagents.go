@@ -1,8 +1,6 @@
 package session
 
 import (
-	"fmt"
-
 	"github.com/nijaru/canto/artifact"
 	"github.com/nijaru/canto/llm"
 )
@@ -187,17 +185,4 @@ func (e Event) ChildMergedData() (ChildMergedData, bool, error) {
 
 func (e Event) ArtifactRecordedData() (ArtifactRecordedData, bool, error) {
 	return decodeEventData[ArtifactRecordedData](e, ArtifactRecorded, "artifact recorded")
-}
-
-func decodeEventData[T any](e Event, want EventType, label string) (T, bool, error) {
-	if e.Type != want {
-		var zero T
-		return zero, false, nil
-	}
-
-	var data T
-	if err := e.UnmarshalData(&data); err != nil {
-		return data, true, fmt.Errorf("decode %s event %s: %w", label, e.ID, err)
-	}
-	return data, true, nil
 }

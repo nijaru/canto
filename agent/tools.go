@@ -20,6 +20,14 @@ type toolResult struct {
 	err    error
 }
 
+// preflightResult holds the outcome of sequential validation for one tool call.
+type preflightResult struct {
+	call        llm.Call
+	output      string // non-empty if preflight produced output (error or hook context)
+	err         error  // non-nil if preflight blocked execution
+	skipExecute bool   // true if execution should be skipped (preflight handled it)
+}
+
 func getHandoffTargets(r *tool.Registry) []string {
 	if r == nil {
 		return nil
@@ -47,35 +55,11 @@ func runTools(
 		maxParallel = 10
 	}
 
-	results := make([]toolResult, len(calls))
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, maxParallel)
+	// Phase 1: sequential preflight — validate, run PreToolUse hooks, check approvals.
+	preflight := preflightTools(ctx, s, calls, r, h, approvals)
 
-	for i, call := range calls {
-		wg.Add(1)
-		go func(i int, call llm.Call) {
-			defer wg.Done()
-			defer func() {
-				if r := recover(); r != nil {
-					results[i] = toolResult{
-						call: call,
-						err:  fmt.Errorf("tool %q panicked: %v", call.Function.Name, r),
-					}
-				}
-			}()
-
-			select {
-			case sem <- struct{}{}:
-				defer func() { <-sem }()
-			case <-ctx.Done():
-				results[i] = toolResult{call: call, err: ctx.Err()}
-				return
-			}
-
-			results[i] = executeToolWithHooks(ctx, s, call, r, h, approvals)
-		}(i, call)
-	}
-	wg.Wait()
+	// Phase 2: concurrent execution — fire all approved tools in parallel.
+	results := executeTools(ctx, s, preflight, r, h, maxParallel)
 
 	var toolMsgs []llm.Message
 	for _, r := range results {
@@ -101,129 +85,242 @@ func runTools(
 	}, nil
 }
 
-func executeToolWithHooks(
+// preflightTools runs sequential validation for all tool calls: registry lookup,
+// PreToolUse hooks, and approval checks. This runs in source order so that hooks
+// can depend on the results of sibling validations.
+func preflightTools(
 	ctx context.Context,
 	s *session.Session,
-	call llm.Call,
+	calls []llm.Call,
 	r *tool.Registry,
 	h *hook.Runner,
 	approvals *approval.Manager,
-) toolResult {
-	var output string
+) []preflightResult {
+	results := make([]preflightResult, len(calls))
 
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.ToolStarted, map[string]any{
-		"tool": call.Function.Name,
-		"args": call.Function.Arguments,
-		"id":   call.ID,
-	})); err != nil {
-		return toolResult{err: err}
-	}
+	for i, call := range calls {
+		results[i].call = call
 
-	if h != nil {
-		hookResults, err := h.Run(
-			ctx,
-			hook.EventPreToolUse,
-			hook.SessionMeta{ID: s.ID()},
-			map[string]any{
-				"tool": call.Function.Name,
-				"args": call.Function.Arguments,
-			},
-		)
-		if err != nil {
-			return toolResult{
-				call: call,
-				err:  fmt.Errorf("hook blocked tool %q: %w", call.Function.Name, err),
+		if err := s.Append(ctx, session.NewToolStartedEvent(s.ID(), session.ToolStartedData{
+			Tool:      call.Function.Name,
+			Arguments: call.Function.Arguments,
+			ID:        call.ID,
+		})); err != nil {
+			results[i].err = err
+			results[i].skipExecute = true
+			continue
+		}
+
+		// PreToolUse hooks — run sequentially so they can inspect sibling state.
+		var hookOutput string
+		if h != nil {
+			hookResults, err := h.Run(
+				ctx,
+				hook.EventPreToolUse,
+				hook.SessionMeta{ID: s.ID()},
+				map[string]any{
+					"tool": call.Function.Name,
+					"args": call.Function.Arguments,
+				},
+			)
+			if err != nil {
+				results[i].err = fmt.Errorf("hook blocked tool %q: %w", call.Function.Name, err)
+				results[i].skipExecute = true
+				continue
+			}
+			for _, res := range hookResults {
+				if res.Output != "" {
+					hookOutput += fmt.Sprintf(
+						"<hook_context name=%q>\n%s\n</hook_context>\n",
+						"PreToolUse",
+						res.Output,
+					)
+				}
 			}
 		}
-		for _, res := range hookResults {
-			if res.Output != "" {
-				output += fmt.Sprintf(
-					"<hook_context name=%q>\n%s\n</hook_context>\n",
-					"PreToolUse",
-					res.Output,
-				)
-			}
-		}
-	}
 
-	if r != nil {
+		// Registry lookup.
+		if r == nil {
+			results[i].output = fmt.Sprintf(
+				"Error: no tool registry configured; cannot execute %q",
+				call.Function.Name,
+			)
+			results[i].skipExecute = true
+			continue
+		}
 		t, ok := r.Get(call.Function.Name)
 		if !ok {
-			output = fmt.Sprintf("Error: tool %q not found", call.Function.Name)
-		} else {
-			if approvals != nil {
-				if gated, ok := t.(tool.ApprovalTool); ok {
-					req, needsApproval, err := gated.ApprovalRequirement(call.Function.Arguments)
+			results[i].output = fmt.Sprintf("Error: tool %q not found", call.Function.Name)
+			results[i].skipExecute = true
+			continue
+		}
+
+		// Approval check.
+		if approvals != nil {
+			if gated, ok := t.(tool.ApprovalTool); ok {
+				req, needsApproval, err := gated.ApprovalRequirement(call.Function.Arguments)
+				if err != nil {
+					results[i].err = fmt.Errorf(
+						"approval requirement for %q: %w",
+						call.Function.Name,
+						err,
+					)
+					results[i].skipExecute = true
+					continue
+				}
+				if needsApproval {
+					res, err := approvals.Request(
+						ctx,
+						s,
+						call.Function.Name,
+						call.Function.Arguments,
+						req,
+					)
 					if err != nil {
-						return toolResult{
-							call: call,
-							err:  fmt.Errorf("approval requirement for %q: %w", call.Function.Name, err),
-						}
+						results[i].err = err
+						results[i].skipExecute = true
+						continue
 					}
-					if needsApproval {
-						res, err := approvals.Request(ctx, s, call.Function.Name, call.Function.Arguments, req)
-						if err != nil {
-							return toolResult{call: call, err: err}
-						}
-						if denyErr := res.Error(); denyErr != nil {
-							return toolResult{call: call, err: denyErr}
-						}
+					if denyErr := res.Error(); denyErr != nil {
+						results[i].err = denyErr
+						results[i].skipExecute = true
+						continue
 					}
 				}
 			}
+		}
 
-			var execErr error
-			if st, ok := t.(tool.StreamingTool); ok {
-				output, execErr = st.ExecuteStreaming(ctx, call.Function.Arguments, func(delta string) error {
-					return s.Append(ctx, session.NewEvent(s.ID(), session.ToolOutputDelta, map[string]any{
+		results[i].output = hookOutput
+	}
+
+	return results
+}
+
+// executeTools runs approved tool calls concurrently with a semaphore.
+// PreToolUse hooks and approvals have already been resolved in preflightTools.
+func executeTools(
+	ctx context.Context,
+	s *session.Session,
+	preflight []preflightResult,
+	r *tool.Registry,
+	h *hook.Runner,
+	maxParallel int,
+) []toolResult {
+	results := make([]toolResult, len(preflight))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxParallel)
+
+	for i, pf := range preflight {
+		// If preflight blocked or skipped execution, carry the result forward.
+		if pf.skipExecute || pf.err != nil {
+			results[i] = toolResult{call: pf.call, output: pf.output, err: pf.err}
+			continue
+		}
+
+		wg.Add(1)
+		go func(i int, pf preflightResult) {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					results[i] = toolResult{
+						call: pf.call,
+						err:  fmt.Errorf("tool %q panicked: %v", pf.call.Function.Name, r),
+					}
+				}
+			}()
+
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				results[i] = toolResult{call: pf.call, err: ctx.Err()}
+				return
+			}
+
+			results[i] = executeTool(ctx, s, pf, r, h)
+		}(i, pf)
+	}
+	wg.Wait()
+
+	return results
+}
+
+// executeTool runs a single tool and its PostToolUse hooks. Preflight
+// validation has already completed; this only performs I/O.
+func executeTool(
+	ctx context.Context,
+	s *session.Session,
+	pf preflightResult,
+	r *tool.Registry,
+	h *hook.Runner,
+) toolResult {
+	call := pf.call
+	output := pf.output // hook context from preflight
+
+	t, ok := r.Get(call.Function.Name)
+	if !ok {
+		// Should not happen — preflight already checked — but guard defensively.
+		output = fmt.Sprintf("Error: tool %q not found", call.Function.Name)
+		return toolResult{call: call, output: output}
+	}
+
+	var execErr error
+	if st, ok := t.(tool.StreamingTool); ok {
+		output, execErr = st.ExecuteStreaming(
+			ctx,
+			call.Function.Arguments,
+			func(delta string) error {
+				return s.Append(
+					ctx,
+					session.NewEvent(s.ID(), session.ToolOutputDelta, map[string]any{
 						"tool":  call.Function.Name,
 						"id":    call.ID,
 						"delta": delta,
-					}))
-				})
-			} else {
-				output, execErr = t.Execute(ctx, call.Function.Arguments)
-			}
+					}),
+				)
+			},
+		)
+	} else {
+		var execOutput string
+		execOutput, execErr = t.Execute(ctx, call.Function.Arguments)
+		output += execOutput
+	}
 
-			if execErr != nil {
-				output = fmt.Sprintf("%s\nError: %s", output, execErr)
-				if h != nil {
-					_, hookErr := h.Run(
-						ctx,
-						hook.EventPostToolUseFailure,
-						hook.SessionMeta{ID: s.ID()},
-						map[string]any{
-							"tool":  call.Function.Name,
-							"error": execErr.Error(),
-						},
-					)
-					if hookErr != nil {
-						slog.Warn(
-							"PostToolUseFailure hook failed",
-							"tool", call.Function.Name,
-							"error", hookErr,
-						)
-					}
-				}
-			} else {
-				if h != nil {
-					_, hookErr := h.Run(
-						ctx,
-						hook.EventPostToolUse,
-						hook.SessionMeta{ID: s.ID()},
-						map[string]any{
-							"tool":   call.Function.Name,
-							"output": output,
-						},
-					)
-					if hookErr != nil {
-						slog.Warn("PostToolUse hook failed", "tool", call.Function.Name, "error", hookErr)
-					}
-				}
+	if execErr != nil {
+		output = fmt.Sprintf("%s\nError: %s", output, execErr)
+		if h != nil {
+			_, hookErr := h.Run(
+				ctx,
+				hook.EventPostToolUseFailure,
+				hook.SessionMeta{ID: s.ID()},
+				map[string]any{
+					"tool":  call.Function.Name,
+					"error": execErr.Error(),
+				},
+			)
+			if hookErr != nil {
+				slog.Warn(
+					"PostToolUseFailure hook failed",
+					"tool", call.Function.Name,
+					"error", hookErr,
+				)
 			}
 		}
 	} else {
-		output = fmt.Sprintf("Error: no tool registry configured; cannot execute %q", call.Function.Name)
+		if h != nil {
+			_, hookErr := h.Run(
+				ctx,
+				hook.EventPostToolUse,
+				hook.SessionMeta{ID: s.ID()},
+				map[string]any{
+					"tool":   call.Function.Name,
+					"output": output,
+				},
+			)
+			if hookErr != nil {
+				slog.Warn("PostToolUse hook failed", "tool", call.Function.Name, "error", hookErr)
+			}
+		}
 	}
 
 	res := toolResult{call: call, output: output}
@@ -235,4 +332,19 @@ func executeToolWithHooks(
 		res.err = err
 	}
 	return res
+}
+
+// executeToolWithHooks is kept for backward compatibility with callers that
+// bypass the two-phase model. New code should use preflightTools + executeTools.
+func executeToolWithHooks(
+	ctx context.Context,
+	s *session.Session,
+	call llm.Call,
+	r *tool.Registry,
+	h *hook.Runner,
+	approvals *approval.Manager,
+) toolResult {
+	pfResults := preflightTools(ctx, s, []llm.Call{call}, r, h, approvals)
+	execResults := executeTools(ctx, s, pfResults, r, h, 1)
+	return execResults[0]
 }

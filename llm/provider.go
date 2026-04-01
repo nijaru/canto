@@ -245,6 +245,11 @@ type Provider interface {
 
 	// IsTransient returns true if the given error is retryable (e.g. 429, 503).
 	IsTransient(err error) bool
+
+	// IsContextOverflow returns true if the error indicates the model's context
+	// window was exceeded (e.g. context_length_exceeded, 400 bad request with
+	// overflow message).
+	IsContextOverflow(err error) bool
 }
 
 // RetryConfig controls the backoff behavior for a RetryProvider.

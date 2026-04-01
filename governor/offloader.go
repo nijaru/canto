@@ -25,6 +25,7 @@ type Offloader struct {
 	OffloadDir   string
 	Artifacts    artifact.Store
 	MinKeepTurns int
+	// OnPreCompact is called right before offload work begins, if non-nil.
 	OnPreCompact func(ctx context.Context, sess *session.Session)
 }
 
@@ -101,14 +102,13 @@ func (p *Offloader) compact(
 		return nil
 	}
 
-	if p.OnPreCompact != nil {
-		p.OnPreCompact(ctx, sess)
-	}
-
 	// Identify candidates
 	numMessages := len(entries)
 	if numMessages <= p.MinKeepTurns {
 		return nil
+	}
+	if p.OnPreCompact != nil {
+		p.OnPreCompact(ctx, sess)
 	}
 	cutoffEventID := lastMessageEventID(sess)
 	store, closeStore, err := p.artifactStore()

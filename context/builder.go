@@ -155,7 +155,7 @@ func validateCompactionOrder(mutators []ContextMutator) error {
 	var hasOffloader bool
 	var hasSummarizer bool
 	var seenSummarizer bool
-	var offloaderBeforeSummarizer = true
+	offloaderBeforeSummarizer := true
 
 	for _, mutator := range mutators {
 		if c, ok := mutator.(Compactor); ok {

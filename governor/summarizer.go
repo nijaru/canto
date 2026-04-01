@@ -21,7 +21,7 @@ type Summarizer struct {
 	// Message is an optional instruction appended to the summarization prompt.
 	// The summarizer LLM treats it as guidance on what to preserve or emphasize.
 	Message string
-	// OnPreCompact is called before summarization begins, if non-nil.
+	// OnPreCompact is called right before summarization work begins, if non-nil.
 	OnPreCompact func(ctx context.Context, sess *session.Session)
 }
 
@@ -87,14 +87,13 @@ func (p *Summarizer) summarize(
 		return nil
 	}
 
-	if p.OnPreCompact != nil {
-		p.OnPreCompact(ctx, sess)
-	}
-
 	// 3. Identify candidates
 	numMessages := len(entries)
 	if numMessages <= p.MinKeepTurns {
 		return nil
+	}
+	if p.OnPreCompact != nil {
+		p.OnPreCompact(ctx, sess)
 	}
 
 	// Strategy: Keep system messages and the last N turns.
@@ -152,12 +151,69 @@ func (p *Summarizer) summarize(
 		sb.WriteString("\n\n")
 	}
 
-	// Generate summary
+	// Generate summary — use update prompt when a previous summary exists.
+	const generatePrompt = `You are a concise summarizer for an AI coding agent session.
+
+Summarize the conversation into this structured format:
+
+## Goal
+What the user is trying to accomplish (1-2 sentences).
+
+## Constraints
+Known limitations, requirements, or constraints discovered.
+
+## Progress
+What has been done so far. Include key file operations and their outcomes.
+
+## Key Decisions
+Important architectural or implementation decisions made, with brief rationale.
+
+## Next Steps
+What should happen next, in order.
+
+## Critical Context
+Anything that MUST be preserved — error states, partial work, active investigations, file paths being modified.
+
+Be specific. Preserve file paths, function names, and error messages. Do not summarize away actionable details.`
+
+	const updatePrompt = `You are a concise summarizer for an AI coding agent session.
+
+You have an existing summary and new conversation segments. UPDATE the existing
+summary to incorporate the new information. Follow the same structured format:
+
+## Goal
+## Constraints
+## Progress
+## Key Decisions
+## Next Steps
+## Critical Context
+
+Rules:
+- Preserve information from the existing summary that is still relevant.
+- Add new progress, decisions, and context from the new segments.
+- Remove information that is no longer relevant (completed tasks, superseded decisions).
+- Keep the summary compact. Do not let it grow unboundedly across updates.
+- Be specific. Preserve file paths, function names, and error messages.`
+
+	existingSummary, hasPrevious := extractPreviousSummary(systemEntries)
+
+	var systemPrompt string
+	var userContent string
+
+	if hasPrevious {
+		systemPrompt = updatePrompt
+		userContent = fmt.Sprintf(
+			"<existing_summary>\n%s\n</existing_summary>\n\n<new_segments>\n%s\n</new_segments>",
+			existingSummary,
+			sb.String(),
+		)
+	} else {
+		systemPrompt = generatePrompt
+		userContent = sb.String()
+	}
+
 	summarizeMessages := []llm.Message{
-		{
-			Role:    llm.RoleSystem,
-			Content: "You are a helpful assistant that summarizes conversations. Summarize the following conversation history concisely but comprehensively, retaining key facts, decisions, and tool execution outcomes.",
-		},
+		{Role: llm.RoleSystem, Content: systemPrompt},
 	}
 	if p.Message != "" {
 		summarizeMessages = append(summarizeMessages, llm.Message{
@@ -167,7 +223,7 @@ func (p *Summarizer) summarize(
 	}
 	summarizeMessages = append(summarizeMessages, llm.Message{
 		Role:    llm.RoleUser,
-		Content: sb.String(),
+		Content: userContent,
 	})
 	summarizeReq := &llm.Request{
 		Model:       p.Model,
@@ -182,12 +238,39 @@ func (p *Summarizer) summarize(
 
 	// Build new messages: system + summary + recent
 	newEntries := cloneHistoryEntries(systemEntries)
+
+	// Extract and track file paths across compaction windows.
+	newRead, newModified := extractFilePaths(candidates)
+	prevRead, prevModified := previousFileLists(sess)
+	allRead := mergeFileLists(newRead, prevRead)
+	allModified := mergeFileLists(newModified, prevModified)
+
+	summaryContent := resp.Content
+	if len(allRead) > 0 || len(allModified) > 0 {
+		var fileTags strings.Builder
+		if len(allRead) > 0 {
+			fileTags.WriteString("<read-files>\n")
+			for _, f := range allRead {
+				fileTags.WriteString(f + "\n")
+			}
+			fileTags.WriteString("</read-files>\n")
+		}
+		if len(allModified) > 0 {
+			fileTags.WriteString("<modified-files>\n")
+			for _, f := range allModified {
+				fileTags.WriteString(f + "\n")
+			}
+			fileTags.WriteString("</modified-files>\n")
+		}
+		summaryContent = fileTags.String() + summaryContent
+	}
+
 	newEntries = append(newEntries, session.HistoryEntry{
 		Message: llm.Message{
 			Role: llm.RoleSystem,
 			Content: fmt.Sprintf(
 				"<conversation_summary>\n%s\n</conversation_summary>",
-				resp.Content,
+				summaryContent,
 			),
 		},
 	})
@@ -200,6 +283,8 @@ func (p *Summarizer) summarize(
 		CurrentTokens: currentTokens,
 		CutoffEventID: lastMessageEventID(sess),
 		Entries:       newEntries,
+		ReadFiles:     allRead,
+		ModifiedFiles: allModified,
 	})
 	if err := sess.Append(ctx, event); err != nil {
 		return err

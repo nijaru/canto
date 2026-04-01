@@ -38,22 +38,15 @@ func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, e
 }
 
 func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepResult, err error) {
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.StepStarted, map[string]any{
-		"agent_id": cfg.ID,
-		"model":    cfg.Model,
-	})); err != nil {
-		return StepResult{}, err
-	}
-
 	defer func() {
-		data := map[string]any{
-			"agent_id": cfg.ID,
-			"usage":    res.Usage,
+		data := session.StepCompletedData{
+			AgentID: cfg.ID,
+			Usage:   res.Usage,
 		}
 		if err != nil {
-			data["error"] = err.Error()
+			data.Error = err.Error()
 		}
-		_ = s.Append(ctx, session.NewEvent(s.ID(), session.StepCompleted, data))
+		_ = s.Append(ctx, session.NewStepCompletedEvent(s.ID(), data))
 	}()
 
 	req := &llm.Request{
@@ -63,6 +56,21 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 	// Build context
 	if err = cfg.Builder.Build(ctx, cfg.Provider, cfg.Model, s, req); err != nil {
 		return
+	}
+
+	cacheFingerprint, err := ccontext.FingerprintPromptCache(s, req)
+	if err != nil {
+		return StepResult{}, err
+	}
+	if err := s.Append(ctx, session.NewStepStartedEvent(s.ID(), session.StepStartedData{
+		AgentID: cfg.ID,
+		Model:   cfg.Model,
+		PromptCache: session.PromptCacheData{
+			PrefixHash:     cacheFingerprint.PrefixHash,
+			ToolSchemaHash: cacheFingerprint.ToolSchemaHash,
+		},
+	})); err != nil {
+		return StepResult{}, err
 	}
 
 	resp, err := cfg.Provider.Generate(ctx, req)
@@ -116,8 +124,8 @@ func RunTurn(
 	s *session.Session,
 	maxSteps int,
 ) (res StepResult, err error) {
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.TurnStarted, map[string]any{
-		"agent_id": a.ID(),
+	if err := s.Append(ctx, session.NewTurnStartedEvent(s.ID(), session.TurnStartedData{
+		AgentID: a.ID(),
 	})); err != nil {
 		return StepResult{}, err
 	}
@@ -125,15 +133,15 @@ func RunTurn(
 	var steps int
 	var totalUsage llm.Usage
 	defer func() {
-		data := map[string]any{
-			"agent_id": a.ID(),
-			"steps":    steps,
-			"usage":    totalUsage,
+		data := session.TurnCompletedData{
+			AgentID: a.ID(),
+			Steps:   steps,
+			Usage:   totalUsage,
 		}
 		if err != nil {
-			data["error"] = err.Error()
+			data.Error = err.Error()
 		}
-		_ = s.Append(ctx, session.NewEvent(s.ID(), session.TurnCompleted, data))
+		_ = s.Append(ctx, session.NewTurnCompletedEvent(s.ID(), data))
 	}()
 
 	for steps < maxSteps {

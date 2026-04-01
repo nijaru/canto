@@ -10,9 +10,11 @@ import (
 )
 
 type mockProvider struct {
-	id     string
-	genFn  func(ctx context.Context, req *Request) (*Response, error)
-	models []Model
+	id                  string
+	genFn               func(ctx context.Context, req *Request) (*Response, error)
+	models              []Model
+	isTransientFn       func(error) bool
+	isContextOverflowFn func(error) bool
 }
 
 func (m *mockProvider) ID() string { return m.id }
@@ -40,7 +42,19 @@ func (m *mockProvider) Cost(ctx context.Context, model string, usage Usage) floa
 	return 0
 }
 func (m *mockProvider) Capabilities(_ string) Capabilities { return DefaultCapabilities() }
-func (m *mockProvider) IsTransient(err error) bool         { return IsRateLimit(err) }
+func (m *mockProvider) IsTransient(err error) bool {
+	if m.isTransientFn != nil {
+		return m.isTransientFn(err)
+	}
+	return IsRateLimit(err)
+}
+
+func (m *mockProvider) IsContextOverflow(err error) bool {
+	if m.isContextOverflowFn != nil {
+		return m.isContextOverflowFn(err)
+	}
+	return false
+}
 
 func TestFailoverProvider(t *testing.T) {
 	p1 := &mockProvider{
@@ -63,6 +77,36 @@ func TestFailoverProvider(t *testing.T) {
 	}
 	if resp.Content != "p2 success" {
 		t.Errorf("expected p2 success, got %s", resp.Content)
+	}
+}
+
+func TestFailoverProvider_ErrorClassificationUsesAnyProvider(t *testing.T) {
+	failover := NewFailoverProvider(
+		&mockProvider{
+			id: "p1",
+			isTransientFn: func(err error) bool {
+				return false
+			},
+			isContextOverflowFn: func(err error) bool {
+				return false
+			},
+		},
+		&mockProvider{
+			id: "p2",
+			isTransientFn: func(err error) bool {
+				return true
+			},
+			isContextOverflowFn: func(err error) bool {
+				return true
+			},
+		},
+	)
+
+	if !failover.IsTransient(errors.New("rate limited")) {
+		t.Fatal("expected transient classification to match any provider")
+	}
+	if !failover.IsContextOverflow(errors.New("context_length_exceeded")) {
+		t.Fatal("expected overflow classification to match any provider")
 	}
 }
 
@@ -144,6 +188,37 @@ func TestSmartResolver_RoundRobin(t *testing.T) {
 
 	if p1Calls != 1 || p2Calls != 1 {
 		t.Errorf("expected 1 call each to p1 and p2, got p1=%d, p2=%d", p1Calls, p2Calls)
+	}
+}
+
+func TestSmartResolver_ErrorClassificationUsesAnyProvider(t *testing.T) {
+	smart := NewSmartResolver(
+		StrategyPriority,
+		&mockProvider{
+			id: "p1",
+			isTransientFn: func(err error) bool {
+				return false
+			},
+			isContextOverflowFn: func(err error) bool {
+				return false
+			},
+		},
+		&mockProvider{
+			id: "p2",
+			isTransientFn: func(err error) bool {
+				return true
+			},
+			isContextOverflowFn: func(err error) bool {
+				return true
+			},
+		},
+	)
+
+	if !smart.IsTransient(errors.New("rate limited")) {
+		t.Fatal("expected transient classification to match any provider")
+	}
+	if !smart.IsContextOverflow(errors.New("context_length_exceeded")) {
+		t.Fatal("expected overflow classification to match any provider")
 	}
 }
 

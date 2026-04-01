@@ -2,6 +2,7 @@ package governor
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	ccontext "github.com/nijaru/canto/context"
@@ -44,6 +45,7 @@ func (m *mockProvider) Cost(ctx context.Context, model string, usage llm.Usage) 
 }
 func (m *mockProvider) Capabilities(_ string) llm.Capabilities { return llm.DefaultCapabilities() }
 func (m *mockProvider) IsTransient(_ error) bool               { return false }
+func (m *mockProvider) IsContextOverflow(_ error) bool         { return false }
 
 func TestSummarizer(t *testing.T) {
 	sess := session.New("test-session")
@@ -129,5 +131,37 @@ func TestSummarizer(t *testing.T) {
 	}
 	if historyReq.Messages[1].Content != expectedSummary {
 		t.Fatalf("expected persisted summary, got %q", historyReq.Messages[1].Content)
+	}
+}
+
+func TestSummarizerSkipsPreCompactWhenTooFewTurns(t *testing.T) {
+	sess := session.New("short-session")
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: strings.Repeat("hello ", 80)},
+		{Role: llm.RoleAssistant, Content: strings.Repeat("world ", 80)},
+	} {
+		if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append history: %v", err)
+		}
+	}
+
+	compactCalled := false
+	provider := &mockProvider{
+		id: "mock",
+		genFn: func(ctx context.Context, req *llm.Request) (*llm.Response, error) {
+			return &llm.Response{Content: "unused"}, nil
+		},
+	}
+
+	processor := NewSummarizer(100, provider, "mock-model")
+	processor.OnPreCompact = func(ctx context.Context, sess *session.Session) {
+		compactCalled = true
+	}
+
+	if err := processor.Mutate(context.Background(), nil, "", sess); err != nil {
+		t.Fatalf("processor failed: %v", err)
+	}
+	if compactCalled {
+		t.Fatal("expected OnPreCompact to stay idle when summarizer has no candidates")
 	}
 }

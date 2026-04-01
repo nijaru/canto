@@ -206,9 +206,15 @@ func TestBuilderPhasedHelpersSupportRequestProcessorsAndMutators(t *testing.T) {
 
 type dummyMutator struct{ strategy string }
 
-func (m *dummyMutator) Mutate(ctx context.Context, pr llm.Provider, model string, sess *session.Session) error {
+func (m *dummyMutator) Mutate(
+	ctx context.Context,
+	pr llm.Provider,
+	model string,
+	sess *session.Session,
+) error {
 	return nil
 }
+
 func (m *dummyMutator) Effects() SideEffects {
 	if m.strategy == "offload" {
 		return SideEffects{Session: true, External: true}

@@ -2,7 +2,9 @@ package governor
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
 
@@ -45,4 +47,32 @@ func offloadCandidateID(
 
 func offloadPlaceholder(path string) string {
 	return fmt.Sprintf("[Content offloaded to %s. Use read_offload tool to retrieve.]", path)
+}
+
+// extractPreviousSummary finds the most recent <conversation_summary> block in
+// system entries from a prior compaction. Returns the content inside the tags
+// and true if found, or empty string and false otherwise.
+func extractPreviousSummary(entries []session.HistoryEntry) (string, bool) {
+	const openTag = "<conversation_summary>"
+	const closeTag = "</conversation_summary>"
+
+	// Walk backwards — most recent compaction snapshot summary comes last in
+	// the snapshot entries.
+	for i := len(entries) - 1; i >= 0; i-- {
+		m := entries[i].Message
+		if m.Role != llm.RoleSystem {
+			continue
+		}
+		start := strings.Index(m.Content, openTag)
+		if start < 0 {
+			continue
+		}
+		start += len(openTag)
+		end := strings.Index(m.Content[start:], closeTag)
+		if end < 0 {
+			continue
+		}
+		return strings.TrimSpace(m.Content[start : start+end]), true
+	}
+	return "", false
 }

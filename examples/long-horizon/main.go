@@ -44,12 +44,12 @@ func main() {
 
 	// 4. Run a long session
 	sess := session.New("long-task")
-	
+
 	// Simulate many turns...
 	for i := 1; i <= 5; i++ {
 		msg := llm.Message{
-			Role:    llm.RoleUser,
-			Content: fmt.Sprintf("This is a very long message for turn %d. " + 
+			Role: llm.RoleUser,
+			Content: fmt.Sprintf("This is a very long message for turn %d. "+
 				"We want to trigger the governor's offloading logic.", i),
 		}
 		sess.Append(ctx, session.NewMessage(sess.ID(), msg))

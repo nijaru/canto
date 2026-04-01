@@ -36,6 +36,33 @@ func TestMockProvider_ConsumeSteps(t *testing.T) {
 	}
 }
 
+func TestFauxProvider_ConsumeSteps(t *testing.T) {
+	faux := NewFauxProvider("test",
+		Step{Content: "step 1"},
+		Step{Content: "step 2"},
+	)
+
+	resp, err := faux.Generate(context.Background(), &llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Content != "step 1" {
+		t.Fatalf("content = %q, want step 1", resp.Content)
+	}
+
+	resp, err = faux.Generate(context.Background(), &llm.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Content != "step 2" {
+		t.Fatalf("content = %q, want step 2", resp.Content)
+	}
+
+	if faux.Remaining() != 0 {
+		t.Fatalf("remaining = %d, want 0", faux.Remaining())
+	}
+}
+
 func TestMockProvider_Exhausted(t *testing.T) {
 	mock := NewMockProvider("test", Step{Content: "only"})
 	mock.Generate(context.Background(), &llm.Request{}) //nolint

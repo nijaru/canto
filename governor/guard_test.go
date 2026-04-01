@@ -18,20 +18,29 @@ func (m *mockGuardProvider) ID() string { return "mock" }
 func (m *mockGuardProvider) Generate(ctx context.Context, req *llm.Request) (*llm.Response, error) {
 	return &llm.Response{}, nil
 }
+
 func (m *mockGuardProvider) Stream(ctx context.Context, req *llm.Request) (llm.Stream, error) {
 	return nil, nil
 }
 func (m *mockGuardProvider) Models(ctx context.Context) ([]llm.Model, error) { return nil, nil }
-func (m *mockGuardProvider) CountTokens(ctx context.Context, model string, messages []llm.Message) (int, error) {
+
+func (m *mockGuardProvider) CountTokens(
+	ctx context.Context,
+	model string,
+	messages []llm.Message,
+) (int, error) {
 	return len(messages) * m.TokensPerMessage, nil
 }
+
 func (m *mockGuardProvider) Cost(ctx context.Context, model string, usage llm.Usage) float64 {
 	return 0
 }
+
 func (m *mockGuardProvider) Capabilities(model string) llm.Capabilities {
 	return llm.Capabilities{}
 }
-func (m *mockGuardProvider) IsTransient(err error) bool { return false }
+func (m *mockGuardProvider) IsTransient(err error) bool       { return false }
+func (m *mockGuardProvider) IsContextOverflow(err error) bool { return false }
 
 func TestTokenGuard(t *testing.T) {
 	ctx := context.Background()

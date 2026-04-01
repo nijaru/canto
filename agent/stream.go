@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -29,22 +30,15 @@ func (a *BaseAgent) StreamStep(
 	s *session.Session,
 	chunkFn func(*llm.Chunk),
 ) (res StepResult, err error) {
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.StepStarted, map[string]any{
-		"agent_id": a.ID(),
-		"model":    a.model,
-	})); err != nil {
-		return StepResult{}, err
-	}
-
 	defer func() {
-		data := map[string]any{
-			"agent_id": a.ID(),
-			"usage":    res.Usage,
+		data := session.StepCompletedData{
+			AgentID: a.ID(),
+			Usage:   res.Usage,
 		}
 		if err != nil {
-			data["error"] = err.Error()
+			data.Error = err.Error()
 		}
-		_ = s.Append(ctx, session.NewEvent(s.ID(), session.StepCompleted, data))
+		_ = s.Append(ctx, session.NewStepCompletedEvent(s.ID(), data))
 	}()
 
 	req := &llm.Request{
@@ -53,6 +47,21 @@ func (a *BaseAgent) StreamStep(
 
 	if err = a.builder.Build(ctx, a.provider, a.model, s, req); err != nil {
 		return
+	}
+
+	cacheFingerprint, err := ccontext.FingerprintPromptCache(s, req)
+	if err != nil {
+		return StepResult{}, err
+	}
+	if err := s.Append(ctx, session.NewStepStartedEvent(s.ID(), session.StepStartedData{
+		AgentID: a.ID(),
+		Model:   a.model,
+		PromptCache: session.PromptCacheData{
+			PrefixHash:     cacheFingerprint.PrefixHash,
+			ToolSchemaHash: cacheFingerprint.ToolSchemaHash,
+		},
+	})); err != nil {
+		return StepResult{}, err
 	}
 
 	stream, err := a.provider.Stream(ctx, req)
@@ -158,8 +167,8 @@ func (a *BaseAgent) StreamTurn(
 	s *session.Session,
 	chunkFn func(*llm.Chunk),
 ) (res StepResult, err error) {
-	if err := s.Append(ctx, session.NewEvent(s.ID(), session.TurnStarted, map[string]any{
-		"agent_id": a.ID(),
+	if err := s.Append(ctx, session.NewTurnStartedEvent(s.ID(), session.TurnStartedData{
+		AgentID: a.ID(),
 	})); err != nil {
 		return StepResult{}, err
 	}
@@ -167,15 +176,15 @@ func (a *BaseAgent) StreamTurn(
 	var steps int
 	var totalUsage llm.Usage
 	defer func() {
-		data := map[string]any{
-			"agent_id": a.ID(),
-			"steps":    steps,
-			"usage":    totalUsage,
+		data := session.TurnCompletedData{
+			AgentID: a.ID(),
+			Steps:   steps,
+			Usage:   totalUsage,
 		}
 		if err != nil {
-			data["error"] = err.Error()
+			data.Error = err.Error()
 		}
-		_ = s.Append(ctx, session.NewEvent(s.ID(), session.TurnCompleted, data))
+		_ = s.Append(ctx, session.NewTurnCompletedEvent(s.ID(), data))
 	}()
 
 	for steps < a.maxSteps {

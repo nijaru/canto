@@ -11,7 +11,7 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-// Step is a pre-programmed LLM response returned by MockProvider.
+// Step is a pre-programmed LLM response returned by FauxProvider.
 type Step struct {
 	Content        string
 	Reasoning      string
@@ -23,25 +23,37 @@ type Step struct {
 	Chunks []llm.Chunk
 }
 
-// MockProvider is a programmable llm.Provider for testing agent logic
-// without making real API calls. Responses are consumed in order.
-type MockProvider struct {
+// FauxProvider is a deterministic in-memory llm.Provider for testing agent
+// logic without making real API calls. Responses are consumed in order.
+type FauxProvider struct {
 	mu    sync.Mutex
 	id    string
 	steps []Step
 	pos   int
 	calls []*llm.Request // record of all Generate calls
+
+	// IsContextOverflowFn, when non-nil, overrides the default IsContextOverflow
+	// behavior. This allows tests to simulate overflow recovery scenarios.
+	IsContextOverflowFn func(error) bool
 }
 
-// NewMockProvider creates a MockProvider with the given step sequence.
+// MockProvider is kept as a compatibility alias for FauxProvider.
+type MockProvider = FauxProvider
+
+// NewFauxProvider creates a FauxProvider with the given step sequence.
+func NewFauxProvider(id string, steps ...Step) *FauxProvider {
+	return &FauxProvider{id: id, steps: steps}
+}
+
+// NewMockProvider creates a FauxProvider with the given step sequence.
 func NewMockProvider(id string, steps ...Step) *MockProvider {
-	return &MockProvider{id: id, steps: steps}
+	return NewFauxProvider(id, steps...)
 }
 
-func (m *MockProvider) ID() string { return m.id }
+func (m *FauxProvider) ID() string { return m.id }
 
 // Generate returns the next pre-programmed step. Fails the test if steps are exhausted.
-func (m *MockProvider) Generate(_ context.Context, req *llm.Request) (*llm.Response, error) {
+func (m *FauxProvider) Generate(_ context.Context, req *llm.Request) (*llm.Response, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -49,7 +61,7 @@ func (m *MockProvider) Generate(_ context.Context, req *llm.Request) (*llm.Respo
 
 	if m.pos >= len(m.steps) {
 		return nil, fmt.Errorf(
-			"MockProvider: no more steps (called %d times, have %d)",
+			"FauxProvider: no more steps (called %d times, have %d)",
 			m.pos+1,
 			len(m.steps),
 		)
@@ -72,7 +84,7 @@ func (m *MockProvider) Generate(_ context.Context, req *llm.Request) (*llm.Respo
 // If the step has no Chunks set, it synthesises a single content chunk from
 // the step's Content and Calls, so streaming and non-streaming tests can use
 // the same Step definitions when chunk granularity doesn't matter.
-func (m *MockProvider) Stream(_ context.Context, req *llm.Request) (llm.Stream, error) {
+func (m *FauxProvider) Stream(_ context.Context, req *llm.Request) (llm.Stream, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -80,7 +92,7 @@ func (m *MockProvider) Stream(_ context.Context, req *llm.Request) (llm.Stream, 
 
 	if m.pos >= len(m.steps) {
 		return nil, fmt.Errorf(
-			"MockProvider: no more steps (called %d times, have %d)",
+			"FauxProvider: no more steps (called %d times, have %d)",
 			m.pos+1,
 			len(m.steps),
 		)
@@ -124,27 +136,33 @@ func (s *MockStream) Err() error   { return s.err }
 func (s *MockStream) Close() error { return nil }
 
 // Models returns an empty list.
-func (m *MockProvider) Models(_ context.Context) ([]llm.Model, error) {
+func (m *FauxProvider) Models(_ context.Context) ([]llm.Model, error) {
 	return nil, nil
 }
 
 // CountTokens returns 0.
-func (m *MockProvider) CountTokens(_ context.Context, _ string, _ []llm.Message) (int, error) {
+func (m *FauxProvider) CountTokens(_ context.Context, _ string, _ []llm.Message) (int, error) {
 	return 0, nil
 }
 
 // Cost returns 0.
-func (m *MockProvider) Cost(_ context.Context, _ string, _ llm.Usage) float64 { return 0 }
+func (m *FauxProvider) Cost(_ context.Context, _ string, _ llm.Usage) float64 { return 0 }
 
 // Capabilities returns default capabilities.
-func (m *MockProvider) Capabilities(_ string) llm.Capabilities {
+func (m *FauxProvider) Capabilities(_ string) llm.Capabilities {
 	return llm.DefaultCapabilities()
 }
 
-func (m *MockProvider) IsTransient(_ error) bool { return false }
+func (m *FauxProvider) IsTransient(_ error) bool { return false }
+func (m *FauxProvider) IsContextOverflow(err error) bool {
+	if m.IsContextOverflowFn != nil {
+		return m.IsContextOverflowFn(err)
+	}
+	return false
+}
 
 // Calls returns all requests processed by the provider.
-func (m *MockProvider) Calls() []*llm.Request {
+func (m *FauxProvider) Calls() []*llm.Request {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]*llm.Request, len(m.calls))
@@ -153,17 +171,17 @@ func (m *MockProvider) Calls() []*llm.Request {
 }
 
 // Remaining returns the number of unconsumed steps.
-func (m *MockProvider) Remaining() int {
+func (m *FauxProvider) Remaining() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.steps) - m.pos
 }
 
 // AssertExhausted fails t if there are unconsumed steps.
-func (m *MockProvider) AssertExhausted(t *testing.T) {
+func (m *FauxProvider) AssertExhausted(t *testing.T) {
 	t.Helper()
 	if r := m.Remaining(); r != 0 {
-		t.Errorf("MockProvider %q: %d step(s) not consumed", m.id, r)
+		t.Errorf("FauxProvider %q: %d step(s) not consumed", m.id, r)
 	}
 }
 

@@ -25,6 +25,11 @@ type CompactionSnapshot struct {
 	CutoffEventID string         `json:"cutoff_event_id,omitzero"`
 	Entries       []HistoryEntry `json:"entries,omitzero"`
 	Messages      []llm.Message  `json:"messages,omitzero"`
+	// ReadFiles tracks file paths the agent read during this compaction window.
+	ReadFiles []string `json:"read_files,omitzero"`
+	// ModifiedFiles tracks file paths the agent edited or wrote during this
+	// compaction window.
+	ModifiedFiles []string `json:"modified_files,omitzero"`
 }
 
 // ForkOrigin identifies the parent event copied into a forked session.

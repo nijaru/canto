@@ -222,6 +222,10 @@ func (w *wrappedProvider) IsTransient(err error) bool {
 	return w.inner.IsTransient(err)
 }
 
+func (w *wrappedProvider) IsContextOverflow(err error) bool {
+	return w.inner.IsContextOverflow(err)
+}
+
 // wrappedTool adds a "canto.tool.{name}" child span to a tool's Execute call.
 type wrappedTool struct {
 	inner tool.Tool

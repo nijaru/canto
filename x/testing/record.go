@@ -132,7 +132,7 @@ func LoadRecordedSteps(path string) ([]RecordedStep, error) {
 }
 
 // ToSteps converts a slice of RecordedStep to x/testing/Step, suitable for
-// programmed responses in a MockProvider.
+// programmed responses in a FauxProvider.
 func ToSteps(recorded []RecordedStep) []Step {
 	steps := make([]Step, len(recorded))
 	for i, r := range recorded {

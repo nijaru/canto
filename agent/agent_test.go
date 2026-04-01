@@ -294,6 +294,53 @@ func TestStepNoToolCalls(t *testing.T) {
 	}
 }
 
+func TestStepRecordsPromptCacheFingerprint(t *testing.T) {
+	p := &mockProvider{
+		responses: []*llm.Response{
+			{Content: "first"},
+			{Content: "second"},
+		},
+	}
+	a := New("test-agent", "You are helpful.", "gpt-4", p, nil)
+	s := userSession("cache-session", "Hi!")
+
+	if _, err := a.Step(context.Background(), s); err != nil {
+		t.Fatalf("first step: %v", err)
+	}
+	if _, err := a.Step(context.Background(), s); err != nil {
+		t.Fatalf("second step: %v", err)
+	}
+
+	var fingerprints []session.PromptCacheData
+	for _, e := range s.Events() {
+		if e.Type != session.StepStarted {
+			continue
+		}
+		data, ok, err := e.StepStartedData()
+		if err != nil {
+			t.Fatalf("decode step started data: %v", err)
+		}
+		if !ok {
+			t.Fatal("expected step started data")
+		}
+		if data.PromptCache == (session.PromptCacheData{}) {
+			t.Fatal("expected prompt cache fingerprint on step start")
+		}
+		fingerprints = append(fingerprints, data.PromptCache)
+	}
+
+	if len(fingerprints) != 2 {
+		t.Fatalf("expected 2 step fingerprints, got %d", len(fingerprints))
+	}
+	if fingerprints[0] != fingerprints[1] {
+		t.Fatalf(
+			"expected stable fingerprint across ordinary history growth, got %v then %v",
+			fingerprints[0],
+			fingerprints[1],
+		)
+	}
+}
+
 func TestStepWithToolCallAndRegistry(t *testing.T) {
 	reg := tool.NewRegistry()
 	reg.Register(&simpleTool{name: "echo", output: "pong"})

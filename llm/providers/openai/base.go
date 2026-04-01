@@ -204,6 +204,40 @@ func (b *Base) IsTransient(err error) bool {
 	return false
 }
 
+// IsContextOverflow returns true if the error indicates the model's context
+// window was exceeded.
+func (b *Base) IsContextOverflow(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr *openai.APIError
+	if errors.As(err, &apiErr) {
+		if apiErr.Code == "context_length_exceeded" {
+			return true
+		}
+		if apiErr.HTTPStatusCode == 400 &&
+			containsSubstring(apiErr.Message, "context") &&
+			containsSubstring(apiErr.Message, "token") {
+			return true
+		}
+	}
+	return false
+}
+
+func containsSubstring(s, substr string) bool {
+	return len(s) >= len(substr) &&
+		(s == substr || len(s) > 0 && containsSubstringImpl(s, substr))
+}
+
+func containsSubstringImpl(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 // DefaultModelCaps returns capability entries for well-known OpenAI reasoning
 // models. Pass to Base.ModelCaps (or merge with your own overrides) when
 // constructing a provider that will use these models.
