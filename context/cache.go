@@ -24,7 +24,10 @@ type PromptCacheFingerprint struct {
 // The prefix hash intentionally excludes the session history suffix so the
 // result stays stable across ordinary turn-to-turn conversation growth. The
 // tool hash is taken from the built request so lazy tool unlocking is visible.
-func FingerprintPromptCache(sess *session.Session, req *llm.Request) (PromptCacheFingerprint, error) {
+func FingerprintPromptCache(
+	sess *session.Session,
+	req *llm.Request,
+) (PromptCacheFingerprint, error) {
 	if req == nil {
 		return PromptCacheFingerprint{}, nil
 	}

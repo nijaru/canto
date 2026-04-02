@@ -51,7 +51,11 @@ func (r *RecoveryProvider) Generate(
 	}
 
 	if compactErr := r.compact(ctx); compactErr != nil {
-		return nil, fmt.Errorf("overflow recovery: compact failed: %w (original: %v)", compactErr, err)
+		return nil, fmt.Errorf(
+			"overflow recovery: compact failed: %w (original: %v)",
+			compactErr,
+			err,
+		)
 	}
 
 	return r.Provider.Generate(ctx, req)
@@ -70,7 +74,11 @@ func (r *RecoveryProvider) Stream(
 	}
 
 	if compactErr := r.compact(ctx); compactErr != nil {
-		return nil, fmt.Errorf("overflow recovery: compact failed: %w (original: %v)", compactErr, err)
+		return nil, fmt.Errorf(
+			"overflow recovery: compact failed: %w (original: %v)",
+			compactErr,
+			err,
+		)
 	}
 
 	return r.Provider.Stream(ctx, req)
