@@ -3,7 +3,10 @@ set -eu
 
 make fmt
 
-if ! git diff --quiet --exit-code -- '*.go'; then
-	echo "pre-commit: Go files changed during formatting; review and restage"
+changed_files="$(git diff --name-only -- '*.go')"
+if [ -n "$changed_files" ]; then
+	echo "pre-commit: formatting changed these Go files:"
+	printf '%s\n' "$changed_files"
+	echo "pre-commit: review the diff and re-run commit"
 	exit 1
 fi
