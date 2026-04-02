@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+make fmt
+
+if ! git diff --quiet --exit-code -- '*.go'; then
+	echo "pre-commit: Go files changed during formatting; review and restage"
+	exit 1
+fi

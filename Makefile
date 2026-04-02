@@ -1,4 +1,4 @@
-.PHONY: fmt test test-redis build check
+.PHONY: fmt test test-redis build check hooks
 
 fmt:
 	@files="$$(git ls-files '*.go')"; \
@@ -19,3 +19,6 @@ build:
 	go build ./...
 
 check: fmt test build
+
+hooks:
+	git config core.hooksPath .githooks
