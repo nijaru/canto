@@ -116,7 +116,7 @@ func TestJSONLStoreLoadMissingSessionKeepsWriter(t *testing.T) {
 		t.Fatalf("append missing session: %v", err)
 	}
 
-	path := filepath.Join(store.dir, "missing-jsonl.jsonl")
+	path := filepath.Join(store.root.Name(), "missing-jsonl.jsonl")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("stat missing session file: %v", err)
 	}

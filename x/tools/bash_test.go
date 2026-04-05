@@ -47,3 +47,30 @@ func TestBashTool_Execute_CommandFailure(t *testing.T) {
 		t.Fatal("expected error for failing command, got nil")
 	}
 }
+
+func TestBashTool_ExecuteStreaming(t *testing.T) {
+	b := &BashTool{}
+	ctx := context.Background()
+	args := `{"command": "echo hello"}`
+
+	var deltas []string
+	var execErr error
+	for delta, err := range b.ExecuteStreaming(ctx, args) {
+		if err != nil {
+			execErr = err
+			break
+		}
+		deltas = append(deltas, delta)
+	}
+
+	if execErr != nil {
+		t.Fatalf("unexpected error: %v", execErr)
+	}
+	if len(deltas) == 0 {
+		t.Error("expected at least one delta, got 0")
+	}
+	combined := strings.Join(deltas, "")
+	if !strings.Contains(combined, "hello") {
+		t.Errorf("expected 'hello' in combined deltas, got: %q", combined)
+	}
+}

@@ -19,6 +19,11 @@ const (
 	RoleDeveloper Role = "developer"
 )
 
+// CacheControl defines the caching behavior for a block of content.
+type CacheControl struct {
+	Type string `json:"type"` // e.g. "ephemeral"
+}
+
 // ThinkingBlock represents a reasoning block from a provider like Anthropic.
 type ThinkingBlock struct {
 	Type      string `json:"type"` // "thinking" or "redacted_thinking"
@@ -35,6 +40,7 @@ type Message struct {
 	Name           string          `json:"name,omitzero"` // For tool output or identifying the assistant
 	ToolID         string          `json:"tool_id,omitzero"`
 	Calls          []Call          `json:"tool_calls,omitzero"`
+	CacheControl   *CacheControl   `json:"cache_control,omitzero"`
 }
 
 // Call represents a request from the LLM to call a tool.
@@ -49,9 +55,10 @@ type Call struct {
 
 // Spec represents a tool that can be called by the LLM.
 type Spec struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Parameters  any    `json:"parameters"` // JSON Schema
+	Name         string        `json:"name"`
+	Description  string        `json:"description"`
+	Parameters   any           `json:"parameters"` // JSON Schema
+	CacheControl *CacheControl `json:"cache_control,omitzero"`
 }
 
 // ResponseFormatType controls how the model formats its output.

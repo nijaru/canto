@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -51,8 +50,8 @@ type taskLog struct {
 // TaskTool allows an agent to list, add, complete, and log entries for tasks
 // stored in the .tasks/ directory used by the tk CLI.
 type TaskTool struct {
-	// Dir is the path to the .tasks/ directory.
-	Dir string
+	// root is the os.Root handle to the .tasks/ directory.
+	root *os.Root
 	// Project is the project name prefix used in filenames and the project field.
 	Project string
 }
@@ -145,7 +144,12 @@ func (t *TaskTool) Execute(_ context.Context, args string) (string, error) {
 }
 
 func (t *TaskTool) list(statusFilter string) (string, error) {
-	entries, err := os.ReadDir(t.Dir)
+	f, err := t.root.Open(".")
+	if err != nil {
+		return "", fmt.Errorf("task list: %w", err)
+	}
+	defer f.Close()
+	entries, err := f.ReadDir(-1)
 	if err != nil {
 		return "", fmt.Errorf("task list: %w", err)
 	}
@@ -243,7 +247,7 @@ func (t *TaskTool) findTask(ref string) (string, *taskRecord, error) {
 }
 
 func (t *TaskTool) readTask(filename string) (*taskRecord, error) {
-	b, err := os.ReadFile(filepath.Join(t.Dir, filename))
+	b, err := t.root.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +263,7 @@ func (t *TaskTool) writeTask(filename string, rec *taskRecord) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(t.Dir, filename), append(b, '\n'), 0o644)
+	return t.root.WriteFile(filename, append(b, '\n'), 0o644)
 }
 
 func randomRef(n int) (string, error) {
@@ -274,7 +278,7 @@ func randomRef(n int) (string, error) {
 	return string(b), nil
 }
 
-// NewTaskTool creates a TaskTool for the given tasks directory and project name.
-func NewTaskTool(dir, project string) tool.Tool {
-	return &TaskTool{Dir: dir, Project: project}
+// NewTaskTool creates a TaskTool for the given tasks directory handle and project name.
+func NewTaskTool(root *os.Root, project string) tool.Tool {
+	return &TaskTool{root: root, Project: project}
 }

@@ -9,7 +9,12 @@ import (
 
 func TestTaskTool_AddListDoneLog(t *testing.T) {
 	dir := t.TempDir()
-	tt := &TaskTool{Dir: dir, Project: "proj"}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	tt := &TaskTool{root: root, Project: "proj"}
 
 	ctx := context.Background()
 
@@ -44,7 +49,15 @@ func TestTaskTool_AddListDoneLog(t *testing.T) {
 	}
 
 	// verify log entry persisted
-	entries, _ := os.ReadDir(dir)
+	f, err := root.Open(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	entries, err := f.ReadDir(-1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(entries) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(entries))
 	}
@@ -86,7 +99,12 @@ func TestTaskTool_AddListDoneLog(t *testing.T) {
 
 func TestTaskTool_Errors(t *testing.T) {
 	dir := t.TempDir()
-	tt := &TaskTool{Dir: dir, Project: "p"}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	tt := &TaskTool{root: root, Project: "p"}
 	ctx := context.Background()
 
 	if _, err := tt.Execute(ctx, `{"action":"add"}`); err == nil {

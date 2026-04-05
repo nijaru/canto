@@ -46,6 +46,14 @@ type ToolStartedData struct {
 	ID        string `json:"id"`
 }
 
+// WaitData is the payload for WaitStarted and WaitResolved events.
+type WaitData struct {
+	Reason string `json:"reason,omitzero"`
+	// ExternalID is an optional identifier for the external process or person
+	// being waited on.
+	ExternalID string `json:"external_id,omitzero"`
+}
+
 // NewStepStartedEvent records the durable start of a step.
 func NewStepStartedEvent(sessionID string, data StepStartedData) Event {
 	return NewEvent(sessionID, StepStarted, data)
@@ -71,6 +79,16 @@ func NewToolStartedEvent(sessionID string, data ToolStartedData) Event {
 	return NewEvent(sessionID, ToolStarted, data)
 }
 
+// NewWaitStartedEvent records the start of an external wait (HITL).
+func NewWaitStartedEvent(sessionID string, data WaitData) Event {
+	return NewEvent(sessionID, WaitStarted, data)
+}
+
+// NewWaitResolvedEvent records the resolution of an external wait.
+func NewWaitResolvedEvent(sessionID string, data WaitData) Event {
+	return NewEvent(sessionID, WaitResolved, data)
+}
+
 // StepStartedData decodes the payload of a step-started event.
 func (e Event) StepStartedData() (StepStartedData, bool, error) {
 	return decodeEventData[StepStartedData](e, StepStarted, "step started")
@@ -94,6 +112,14 @@ func (e Event) TurnCompletedData() (TurnCompletedData, bool, error) {
 // ToolStartedData decodes the payload of a tool-started event.
 func (e Event) ToolStartedData() (ToolStartedData, bool, error) {
 	return decodeEventData[ToolStartedData](e, ToolStarted, "tool started")
+}
+
+// WaitData decodes the payload of a wait-started or wait-resolved event.
+func (e Event) WaitData() (WaitData, bool, error) {
+	if e.Type != WaitStarted && e.Type != WaitResolved {
+		return WaitData{}, false, nil
+	}
+	return decodeEventData[WaitData](e, e.Type, "wait state")
 }
 
 // decodeEventData is shared with other typed event helpers.

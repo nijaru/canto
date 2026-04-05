@@ -1,6 +1,7 @@
 package context
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -68,4 +69,37 @@ func (f PromptCacheFingerprint) String() string {
 	default:
 		return fmt.Sprintf("%s/%s", f.PrefixHash, f.ToolSchemaHash)
 	}
+}
+
+// CacheAligner returns a RequestProcessor that adds provider-agnostic
+// cache-control markers to the request.
+//
+// For Anthropic, it marks the first n messages and the tool list with
+// "ephemeral" cache-control. Typically, n should be small (e.g. 1-3) to
+// capture the system prompt and initial task context without hitting the
+// 4-breakpoint limit.
+func CacheAligner(messageLimit int) RequestProcessor {
+	return RequestProcessorFunc(
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
+			if req == nil {
+				return nil
+			}
+
+			// Anthropic caching: mark first n messages.
+			for i := 0; i < len(req.Messages) && i < messageLimit; i++ {
+				req.Messages[i].CacheControl = &llm.CacheControl{Type: "ephemeral"}
+			}
+
+			// Mark tool list if present.
+			if len(req.Tools) > 0 {
+				// Most providers cache the whole list as one block if any tool is marked,
+				// or have a specific top-level toggle. Canto marks all as a hint.
+				for i := range req.Tools {
+					req.Tools[i].CacheControl = &llm.CacheControl{Type: "ephemeral"}
+				}
+			}
+
+			return nil
+		},
+	)
 }

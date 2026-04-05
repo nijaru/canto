@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"iter"
 
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
@@ -18,11 +19,9 @@ type Tool interface {
 
 type StreamingTool interface {
 	Tool
-	// ExecuteStreaming runs the tool and calls emit for each chunk of output.
-	// emit may return an error (e.g., if session storage fails), in which case
-	// the tool should ideally stop and return that error.
-	// It returns the final complete output.
-	ExecuteStreaming(ctx context.Context, args string, emit func(string) error) (string, error)
+	// ExecuteStreaming runs the tool and returns an iterator that yields
+	// chunks of output.
+	ExecuteStreaming(ctx context.Context, args string) iter.Seq2[string, error]
 }
 
 type ApprovalTool interface {

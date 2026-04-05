@@ -266,20 +266,21 @@ func executeTool(
 
 	var execErr error
 	if st, ok := t.(tool.StreamingTool); ok {
-		output, execErr = st.ExecuteStreaming(
-			ctx,
-			call.Function.Arguments,
-			func(delta string) error {
-				return s.Append(
-					ctx,
-					session.NewEvent(s.ID(), session.ToolOutputDelta, map[string]any{
-						"tool":  call.Function.Name,
-						"id":    call.ID,
-						"delta": delta,
-					}),
-				)
-			},
-		)
+		for delta, err := range st.ExecuteStreaming(ctx, call.Function.Arguments) {
+			if err != nil {
+				execErr = err
+				break
+			}
+			output += delta
+			_ = s.Append(
+				ctx,
+				session.NewEvent(s.ID(), session.ToolOutputDelta, map[string]any{
+					"tool":  call.Function.Name,
+					"id":    call.ID,
+					"delta": delta,
+				}),
+			)
+		}
 	} else {
 		var execOutput string
 		execOutput, execErr = t.Execute(ctx, call.Function.Arguments)
@@ -299,10 +300,12 @@ func executeTool(
 				},
 			)
 			if hookErr != nil {
-				slog.Warn(
+				slog.LogAttrs(
+					ctx,
+					slog.LevelWarn,
 					"PostToolUseFailure hook failed",
-					"tool", call.Function.Name,
-					"error", hookErr,
+					slog.String("tool", call.Function.Name),
+					slog.Any("error", hookErr),
 				)
 			}
 		}
@@ -318,7 +321,13 @@ func executeTool(
 				},
 			)
 			if hookErr != nil {
-				slog.Warn("PostToolUse hook failed", "tool", call.Function.Name, "error", hookErr)
+				slog.LogAttrs(
+					ctx,
+					slog.LevelWarn,
+					"PostToolUse hook failed",
+					slog.String("tool", call.Function.Name),
+					slog.Any("error", hookErr),
+				)
 			}
 		}
 	}

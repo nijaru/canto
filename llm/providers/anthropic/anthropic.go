@@ -208,10 +208,14 @@ func (p *Provider) convertRequest(req *llm.Request) sdk.MessageNewParams {
 	for i := 0; i < len(req.Messages); i++ {
 		m := req.Messages[i]
 		if m.Role == llm.RoleSystem {
-			system = append(system, sdk.TextBlockParam{
+			block := sdk.TextBlockParam{
 				Text: m.Content,
 				Type: constant.Text("text"),
-			})
+			}
+			if m.CacheControl != nil {
+				block.CacheControl = sdk.NewCacheControlEphemeralParam()
+			}
+			system = append(system, block)
 			continue
 		}
 
@@ -224,7 +228,11 @@ func (p *Provider) convertRequest(req *llm.Request) sdk.MessageNewParams {
 					i = j - 1
 					break
 				}
-				blocks = append(blocks, sdk.NewToolResultBlock(curr.ToolID, curr.Content, false))
+				block := sdk.NewToolResultBlock(curr.ToolID, curr.Content, false)
+				if curr.CacheControl != nil {
+					block.OfToolResult.CacheControl = sdk.NewCacheControlEphemeralParam()
+				}
+				blocks = append(blocks, block)
 				if j == len(req.Messages)-1 {
 					i = j
 				}
@@ -243,13 +251,18 @@ func (p *Provider) convertRequest(req *llm.Request) sdk.MessageNewParams {
 			}
 		}
 		if m.Content != "" {
-			blocks = append(blocks, sdk.NewTextBlock(m.Content))
+			block := sdk.NewTextBlock(m.Content)
+			if m.CacheControl != nil {
+				block.OfText.CacheControl = sdk.NewCacheControlEphemeralParam()
+			}
+			blocks = append(blocks, block)
 		}
 		for _, call := range m.Calls {
-			blocks = append(
-				blocks,
-				sdk.NewToolUseBlock(call.ID, call.Function.Arguments, call.Function.Name),
-			)
+			block := sdk.NewToolUseBlock(call.ID, call.Function.Arguments, call.Function.Name)
+			if m.CacheControl != nil {
+				block.OfToolUse.CacheControl = sdk.NewCacheControlEphemeralParam()
+			}
+			blocks = append(blocks, block)
 		}
 
 		if m.Role == llm.RoleAssistant {
@@ -265,6 +278,9 @@ func (p *Provider) convertRequest(req *llm.Request) sdk.MessageNewParams {
 		tool := sdk.ToolUnionParamOfTool(schema, t.Name)
 		if t.Description != "" {
 			tool.OfTool.Description = sdk.String(t.Description)
+		}
+		if t.CacheControl != nil {
+			tool.OfTool.CacheControl = sdk.NewCacheControlEphemeralParam()
 		}
 		tools = append(tools, tool)
 	}

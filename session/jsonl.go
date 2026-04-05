@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -19,17 +18,29 @@ import (
 
 // JSONLStore is a file-backed store that saves events as JSON lines.
 type JSONLStore struct {
-	dir        string
+	root       *os.Root
 	ancestryMu sync.RWMutex
 	sessionMus sync.Map // map[string]*sync.RWMutex
 }
 
-// NewJSONLStore creates a new JSONL store.
+// NewJSONLStore creates a new JSONL store rooted at dir.
 func NewJSONLStore(dir string) (*JSONLStore, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	return &JSONLStore{dir: dir}, nil
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	return &JSONLStore{root: root}, nil
+}
+
+// Close releases the underlying filesystem root.
+func (s *JSONLStore) Close() error {
+	if s == nil || s.root == nil {
+		return nil
+	}
+	return s.root.Close()
 }
 
 func (s *JSONLStore) getSessionMu(sessionID string) *sync.RWMutex {
@@ -47,8 +58,8 @@ func (s *JSONLStore) Save(ctx context.Context, e Event) error {
 }
 
 func (s *JSONLStore) saveLocked(e Event) error {
-	path := filepath.Join(s.dir, fmt.Sprintf("%s.jsonl", e.SessionID))
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	path := fmt.Sprintf("%s.jsonl", e.SessionID)
+	f, err := s.root.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
@@ -70,8 +81,8 @@ func (s *JSONLStore) Load(ctx context.Context, sessionID string) (*Session, erro
 	mu.RLock()
 	defer mu.RUnlock()
 
-	path := filepath.Join(s.dir, fmt.Sprintf("%s.jsonl", sessionID))
-	f, err := os.Open(path)
+	path := fmt.Sprintf("%s.jsonl", sessionID)
+	f, err := s.root.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return New(sessionID).WithWriter(s), nil
@@ -121,8 +132,8 @@ func (s *JSONLStore) LoadUntil(
 	mu.RLock()
 	defer mu.RUnlock()
 
-	path := filepath.Join(s.dir, fmt.Sprintf("%s.jsonl", sessionID))
-	f, err := os.Open(path)
+	path := fmt.Sprintf("%s.jsonl", sessionID)
+	f, err := s.root.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -308,8 +319,8 @@ func (s *JSONLStore) appendAncestryLocked(record SessionAncestry) error {
 }
 
 func (s *JSONLStore) appendAncestryRecordLocked(record SessionAncestry) error {
-	path := filepath.Join(s.dir, "ancestry.jsonl")
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	path := "ancestry.jsonl"
+	f, err := s.root.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
@@ -323,8 +334,8 @@ func (s *JSONLStore) appendAncestryRecordLocked(record SessionAncestry) error {
 }
 
 func (s *JSONLStore) loadAncestryIndexLocked() (map[string]SessionAncestry, error) {
-	path := filepath.Join(s.dir, "ancestry.jsonl")
-	f, err := os.Open(path)
+	path := "ancestry.jsonl"
+	f, err := s.root.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return make(map[string]SessionAncestry), nil

@@ -19,6 +19,7 @@ package obs
 
 import (
 	"context"
+	"iter"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -267,8 +268,7 @@ type wrappedStreamingTool struct {
 func (w *wrappedStreamingTool) ExecuteStreaming(
 	ctx context.Context,
 	args string,
-	emit func(string) error,
-) (string, error) {
+) iter.Seq2[string, error] {
 	name := w.inner.Spec().Name
 	ctx, span := Tracer().Start(ctx, "canto.tool."+name,
 		trace.WithAttributes(
@@ -276,12 +276,24 @@ func (w *wrappedStreamingTool) ExecuteStreaming(
 			attribute.Bool("canto.tool.streaming", true),
 		),
 	)
-	defer span.End()
 
-	out, err := w.innerStreaming.ExecuteStreaming(ctx, args, emit)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+	return func(yield func(string, error) bool) {
+		defer span.End()
+		var totalOutput string
+		for delta, err := range w.innerStreaming.ExecuteStreaming(ctx, args) {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+				if !yield("", err) {
+					return
+				}
+				return
+			}
+			totalOutput += delta
+			if !yield(delta, nil) {
+				return
+			}
+		}
+		span.SetAttributes(attribute.Int("canto.tool.output_len", len(totalOutput)))
 	}
-	return out, err
 }

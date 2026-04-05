@@ -28,6 +28,8 @@ const (
 	ApprovalRequested   EventType = "approval_requested"
 	ApprovalResolved    EventType = "approval_resolved"
 	ApprovalCanceled    EventType = "approval_canceled"
+	WaitStarted         EventType = "wait_started"
+	WaitResolved        EventType = "wait_resolved"
 	CompactionTriggered EventType = "compaction_triggered"
 	ChildRequested      EventType = "child_requested"
 	ChildStarted        EventType = "child_started"

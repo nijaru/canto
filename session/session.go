@@ -406,6 +406,25 @@ func (s *Session) TotalCost() float64 {
 	return total
 }
 
+// IsWaiting returns true if the session is currently waiting for external input
+// or approval (HITL).
+func (s *Session) IsWaiting() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Scan backwards for the latest lifecycle state.
+	for i := len(s.events) - 1; i >= 0; i-- {
+		e := s.events[i]
+		switch e.Type {
+		case WaitStarted, ApprovalRequested:
+			return true
+		case WaitResolved, ApprovalResolved, ApprovalCanceled:
+			return false
+		}
+	}
+	return false
+}
+
 // LastEvent returns the most recent event in the session, if any.
 func (s *Session) LastEvent() (Event, bool) {
 	s.mu.RLock()

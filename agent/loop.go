@@ -160,6 +160,11 @@ func RunTurn(
 			break
 		}
 
+		// If the session is waiting for external input (e.g. approval), stop.
+		if s.IsWaiting() {
+			break
+		}
+
 		// Continue only if the last message is a tool result (model must
 		// process it). Any other role means the agent has finished.
 		last, ok := s.LastMessage()
