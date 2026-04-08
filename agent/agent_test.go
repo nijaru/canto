@@ -1084,6 +1084,42 @@ func TestTurnRetriesTransientModelError(t *testing.T) {
 	}
 }
 
+func TestTurnStopsCleanlyWhenBudgetGuardTrips(t *testing.T) {
+	p := &mockProvider{
+		responses: []*llm.Response{
+			{Content: "should not run"},
+		},
+	}
+	a := New("a", "sys", "m", p, nil, WithBudgetGuard(1.0))
+	s := userSession("s-budget-stop", "hello")
+
+	e := session.NewEvent(s.ID(), session.MessageAdded, llm.Message{
+		Role:    llm.RoleAssistant,
+		Content: "prior cost",
+	})
+	e.Cost = 1.0
+	if err := s.Append(t.Context(), e); err != nil {
+		t.Fatalf("append prior cost: %v", err)
+	}
+
+	result, err := a.Turn(t.Context(), s)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if result.TurnStopReason != TurnStopBudgetExhausted {
+		t.Fatalf(
+			"expected turn stop reason %q, got %q",
+			TurnStopBudgetExhausted,
+			result.TurnStopReason,
+		)
+	}
+
+	msgs := s.Messages()
+	if len(msgs) != 2 {
+		t.Fatalf("expected no new assistant output after budget stop, got %d messages", len(msgs))
+	}
+}
+
 func TestTurnWithholdsRecoverableToolFailure(t *testing.T) {
 	reg := tool.NewRegistry()
 	reg.Register(&panicTool{})

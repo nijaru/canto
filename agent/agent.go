@@ -5,6 +5,7 @@ import (
 
 	"github.com/nijaru/canto/approval"
 	ccontext "github.com/nijaru/canto/context"
+	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -89,6 +90,12 @@ func WithMutators(ms ...ccontext.ContextMutator) Option {
 	return func(a *BaseAgent) {
 		a.builder.AppendMutators(ms...)
 	}
+}
+
+// WithBudgetGuard halts turns cleanly once the session's accumulated cost hits
+// the configured budget limit.
+func WithBudgetGuard(limit float64) Option {
+	return WithRequestProcessors(governor.NewBudgetGuard(limit))
 }
 
 // WithModel overrides the model used for LLM calls.

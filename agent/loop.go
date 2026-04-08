@@ -2,10 +2,12 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"iter"
 
 	"github.com/nijaru/canto/approval"
 	ccontext "github.com/nijaru/canto/context"
+	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -173,6 +175,12 @@ func Run(
 
 			res, err := a.Step(ctx, s)
 			if err != nil {
+				var budgetErr *governor.BudgetExceededError
+				if errors.As(err, &budgetErr) {
+					stopReason = TurnStopBudgetExhausted
+					yield(StepResult{TurnStopReason: stopReason, Usage: totalUsage}, nil)
+					return
+				}
 				escalation := classifyStepError(err, provider)
 				if escalation != nil && escalation.recoverable && escalations < maxEscalations {
 					escalations++

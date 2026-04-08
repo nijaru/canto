@@ -9,6 +9,17 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
+// BudgetExceededError reports that a request should not proceed because the
+// session has already consumed the configured budget.
+type BudgetExceededError struct {
+	Limit     float64
+	TotalCost float64
+}
+
+func (e *BudgetExceededError) Error() string {
+	return fmt.Sprintf("budget exceeded: %.4f >= %.4f", e.TotalCost, e.Limit)
+}
+
 // TokenGuard ensures the LLM request doesn't exceed the token budget.
 // It also detects if the context is nearing the "rot threshold" (default 60%).
 type TokenGuard struct {
@@ -66,7 +77,7 @@ func (p *BudgetGuard) ApplyRequest(
 	totalCost := sess.TotalCost()
 
 	if totalCost >= p.Limit {
-		return fmt.Errorf("budget exceeded: %.4f >= %.4f", totalCost, p.Limit)
+		return &BudgetExceededError{Limit: p.Limit, TotalCost: totalCost}
 	}
 
 	return nil

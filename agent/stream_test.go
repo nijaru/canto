@@ -273,6 +273,42 @@ func TestStreamTurnRetriesTransientStartError(t *testing.T) {
 	}
 }
 
+func TestStreamTurnStopsCleanlyWhenBudgetGuardTrips(t *testing.T) {
+	p := &streamMockProvider{
+		chunks: [][]llm.Chunk{
+			{{Content: "should not stream"}},
+		},
+	}
+	a := New("a", "sys", "m", p, nil, WithBudgetGuard(1.0))
+	s := userSession("s-stream-budget-stop", "q")
+
+	e := session.NewEvent(s.ID(), session.MessageAdded, llm.Message{
+		Role:    llm.RoleAssistant,
+		Content: "prior cost",
+	})
+	e.Cost = 1.0
+	if err := s.Append(t.Context(), e); err != nil {
+		t.Fatalf("append prior cost: %v", err)
+	}
+
+	result, err := a.StreamTurn(t.Context(), s, nil)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if result.TurnStopReason != TurnStopBudgetExhausted {
+		t.Fatalf(
+			"expected turn stop reason %q, got %q",
+			TurnStopBudgetExhausted,
+			result.TurnStopReason,
+		)
+	}
+
+	msgs := s.Messages()
+	if len(msgs) != 2 {
+		t.Fatalf("expected no new assistant output after budget stop, got %d messages", len(msgs))
+	}
+}
+
 func TestStreamStepThinkingBlocks(t *testing.T) {
 	p := &streamMockProvider{
 		chunks: [][]llm.Chunk{

@@ -2,10 +2,12 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	ccontext "github.com/nijaru/canto/context"
+	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -194,6 +196,12 @@ func (a *BaseAgent) StreamTurn(
 		for steps < a.maxSteps {
 			res, err = a.StreamStep(ctx, s, chunkFn)
 			if err != nil {
+				var budgetErr *governor.BudgetExceededError
+				if errors.As(err, &budgetErr) {
+					stopReason = TurnStopBudgetExhausted
+					err = nil
+					break
+				}
 				escalation := classifyStepError(err, a.provider)
 				if escalation != nil && escalation.recoverable && escalations < a.maxEscalations {
 					escalations++
