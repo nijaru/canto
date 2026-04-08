@@ -112,14 +112,14 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 
 // Turn executes one or more steps until the agent finishes or a handoff is requested.
 func (a *BaseAgent) Turn(ctx context.Context, s *session.Session) (StepResult, error) {
-	return RunTurn(ctx, a, s, a.maxSteps)
+	return RunTurn(ctx, a, s, a.maxSteps, a.provider, a.maxEscalations)
 }
 
 // Run executes the agent loop as an iterator over per-step results.
 // Callers can stop early by breaking the range loop; the session turn start/end
 // events are still managed internally.
 func (a *BaseAgent) Run(ctx context.Context, s *session.Session) iter.Seq2[StepResult, error] {
-	return Run(ctx, a, s, a.maxSteps)
+	return Run(ctx, a, s, a.maxSteps, a.provider, a.maxEscalations)
 }
 
 // Run executes the agent loop as an iterator over per-step results.
@@ -129,6 +129,8 @@ func Run(
 	a Agent,
 	s *session.Session,
 	maxSteps int,
+	provider llm.Provider,
+	maxEscalations int,
 ) iter.Seq2[StepResult, error] {
 	return func(yield func(StepResult, error) bool) {
 		if err := s.Append(ctx, session.NewTurnStartedEvent(s.ID(), session.TurnStartedData{
@@ -139,6 +141,7 @@ func Run(
 		}
 
 		var steps int
+		var escalations int
 		var totalUsage llm.Usage
 		var stopReason TurnStopReason
 		var runErr error
@@ -170,10 +173,31 @@ func Run(
 
 			res, err := a.Step(ctx, s)
 			if err != nil {
+				escalation := classifyStepError(err, provider)
+				if escalation != nil && escalation.recoverable && escalations < maxEscalations {
+					escalations++
+					if appendErr := appendWithheldToolMessage(ctx, s, escalation); appendErr != nil {
+						runErr = appendErr
+						yield(StepResult{}, appendErr)
+						return
+					}
+					if recordErr := recordEscalationRetry(ctx, s, a.ID(), escalations, escalation); recordErr != nil {
+						runErr = recordErr
+						yield(StepResult{}, recordErr)
+						return
+					}
+					continue
+				}
+				if escalation != nil && escalation.recoverable {
+					runErr = hardEscalationError(escalation, escalations)
+					yield(StepResult{}, runErr)
+					return
+				}
 				runErr = err
 				yield(res, err)
 				return
 			}
+			escalations = 0
 			steps++
 			totalUsage.InputTokens += res.Usage.InputTokens
 			totalUsage.OutputTokens += res.Usage.OutputTokens
@@ -201,10 +225,12 @@ func RunTurn(
 	a Agent,
 	s *session.Session,
 	maxSteps int,
+	provider llm.Provider,
+	maxEscalations int,
 ) (res StepResult, err error) {
 	var steps int
 	var totalUsage llm.Usage
-	for stepRes, stepErr := range Run(ctx, a, s, maxSteps) {
+	for stepRes, stepErr := range Run(ctx, a, s, maxSteps, provider, maxEscalations) {
 		if stepErr != nil {
 			res = stepRes
 			res.Usage = totalUsage

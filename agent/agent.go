@@ -26,6 +26,7 @@ type BaseAgent struct {
 	instructions     string
 	model            string
 	maxSteps         int // Maximum tool-calling steps per turn
+	maxEscalations   int // Maximum recoverable retries per turn
 	maxParallelTools int // Maximum concurrent tool executions per step
 	provider         llm.Provider
 	tools            *tool.Registry
@@ -48,6 +49,9 @@ func WithMaxSteps(n int) Option { return func(a *BaseAgent) { a.maxSteps = n } }
 
 // WithMaxParallelTools sets the maximum concurrent tool executions per step.
 func WithMaxParallelTools(n int) Option { return func(a *BaseAgent) { a.maxParallelTools = n } }
+
+// WithMaxEscalations sets the maximum recoverable retry attempts per turn.
+func WithMaxEscalations(n int) Option { return func(a *BaseAgent) { a.maxEscalations = n } }
 
 // WithHooks appends one or more hooks to the agent's hook runner.
 func WithHooks(hs ...hook.Hook) Option {
@@ -103,6 +107,7 @@ func New(
 		instructions:     instructions,
 		model:            model,
 		maxSteps:         10,
+		maxEscalations:   2,
 		maxParallelTools: 10,
 		provider:         p,
 		tools:            t,

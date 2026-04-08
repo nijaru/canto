@@ -124,7 +124,19 @@ func preflightTools(
 				},
 			)
 			if err != nil {
-				results[i].err = fmt.Errorf("hook blocked tool %q: %w", call.Function.Name, err)
+				results[i].err = &escalationError{
+					scope:       "tool",
+					target:      call.Function.Name,
+					message:     fmt.Sprintf("hook blocked tool %q: %v", call.Function.Name, err),
+					recoverable: true,
+					cause:       err,
+					toolMessage: &llm.Message{
+						Role:    llm.RoleTool,
+						Content: fmt.Sprintf("Error: %v", err),
+						ToolID:  call.ID,
+						Name:    call.Function.Name,
+					},
+				}
 				results[i].skipExecute = true
 				continue
 			}
@@ -177,12 +189,36 @@ func preflightTools(
 						req,
 					)
 					if err != nil {
-						results[i].err = err
+						results[i].err = &escalationError{
+							scope:       "tool",
+							target:      call.Function.Name,
+							message:     fmt.Sprintf("approval request for %q failed: %v", call.Function.Name, err),
+							recoverable: true,
+							cause:       err,
+							toolMessage: &llm.Message{
+								Role:    llm.RoleTool,
+								Content: fmt.Sprintf("Error: %v", err),
+								ToolID:  call.ID,
+								Name:    call.Function.Name,
+							},
+						}
 						results[i].skipExecute = true
 						continue
 					}
 					if denyErr := res.Error(); denyErr != nil {
-						results[i].err = denyErr
+						results[i].err = &escalationError{
+							scope:       "tool",
+							target:      call.Function.Name,
+							message:     fmt.Sprintf("tool %q denied: %v", call.Function.Name, denyErr),
+							recoverable: true,
+							cause:       denyErr,
+							toolMessage: &llm.Message{
+								Role:    llm.RoleTool,
+								Content: fmt.Sprintf("Error: %v", denyErr),
+								ToolID:  call.ID,
+								Name:    call.Function.Name,
+							},
+						}
 						results[i].skipExecute = true
 						continue
 					}
@@ -224,7 +260,19 @@ func executeTools(
 				if r := recover(); r != nil {
 					results[i] = toolResult{
 						call: pf.call,
-						err:  fmt.Errorf("tool %q panicked: %v", pf.call.Function.Name, r),
+						err: &escalationError{
+							scope:       "tool",
+							target:      pf.call.Function.Name,
+							message:     fmt.Sprintf("tool %q panicked: %v", pf.call.Function.Name, r),
+							recoverable: true,
+							cause:       fmt.Errorf("tool %q panicked: %v", pf.call.Function.Name, r),
+							toolMessage: &llm.Message{
+								Role:    llm.RoleTool,
+								Content: fmt.Sprintf("Error: tool panicked: %v", r),
+								ToolID:  pf.call.ID,
+								Name:    pf.call.Function.Name,
+							},
+						},
 					}
 				}
 			}()

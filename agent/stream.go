@@ -174,6 +174,7 @@ func (a *BaseAgent) StreamTurn(
 	}
 
 	var steps int
+	var escalations int
 	var totalUsage llm.Usage
 	var stopReason TurnStopReason
 	defer func() {
@@ -193,8 +194,25 @@ func (a *BaseAgent) StreamTurn(
 		for steps < a.maxSteps {
 			res, err = a.StreamStep(ctx, s, chunkFn)
 			if err != nil {
+				escalation := classifyStepError(err, a.provider)
+				if escalation != nil && escalation.recoverable && escalations < a.maxEscalations {
+					escalations++
+					if appendErr := appendWithheldToolMessage(ctx, s, escalation); appendErr != nil {
+						err = appendErr
+						return
+					}
+					if recordErr := recordEscalationRetry(ctx, s, a.ID(), escalations, escalation); recordErr != nil {
+						err = recordErr
+						return
+					}
+					continue
+				}
+				if escalation != nil && escalation.recoverable {
+					err = hardEscalationError(escalation, escalations)
+				}
 				return
 			}
+			escalations = 0
 			steps++
 			totalUsage.InputTokens += res.Usage.InputTokens
 			totalUsage.OutputTokens += res.Usage.OutputTokens

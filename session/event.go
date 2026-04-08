@@ -30,6 +30,7 @@ const (
 	ApprovalCanceled    EventType = "approval_canceled"
 	WaitStarted         EventType = "wait_started"
 	WaitResolved        EventType = "wait_resolved"
+	EscalationRetried   EventType = "escalation_retried"
 	CompactionTriggered EventType = "compaction_triggered"
 	ChildRequested      EventType = "child_requested"
 	ChildStarted        EventType = "child_started"

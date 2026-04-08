@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -33,6 +34,23 @@ func (m *mockProvider) Generate(
 	resp := m.responses[0]
 	m.responses = m.responses[1:]
 	return resp, nil
+}
+
+type flakyProvider struct {
+	mockProvider
+	failures int
+}
+
+func (m *flakyProvider) Generate(ctx context.Context, req *llm.Request) (*llm.Response, error) {
+	if m.failures > 0 {
+		m.failures--
+		return nil, fmt.Errorf("transient provider failure")
+	}
+	return m.mockProvider.Generate(ctx, req)
+}
+
+func (m *flakyProvider) IsTransient(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "transient")
 }
 
 // simpleTool is an inline tool for use in tests.
@@ -692,7 +710,7 @@ func TestAgentRunIterator(t *testing.T) {
 	s := userSession("s-run", "say hello")
 
 	var steps []StepResult
-	for step, err := range Run(context.Background(), a, s, a.maxSteps) {
+	for step, err := range Run(context.Background(), a, s, a.maxSteps, a.provider, a.maxEscalations) {
 		if err != nil {
 			t.Fatalf("Run returned error: %v", err)
 		}
@@ -710,6 +728,80 @@ func TestAgentRunIterator(t *testing.T) {
 	}
 	if steps[1].TurnStopReason != TurnStopCompleted {
 		t.Fatalf("expected final step turn stop reason %q, got %q", TurnStopCompleted, steps[1].TurnStopReason)
+	}
+}
+
+func TestTurnRetriesTransientModelError(t *testing.T) {
+	p := &flakyProvider{
+		mockProvider: mockProvider{
+			responses: []*llm.Response{{Content: "recovered"}},
+		},
+		failures: 1,
+	}
+
+	a := New("a", "sys", "m", p, nil, WithMaxEscalations(2))
+	s := userSession("s-transient", "hello")
+
+	result, err := a.Turn(context.Background(), s)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Content != "recovered" {
+		t.Fatalf("Content = %q, want recovered", result.Content)
+	}
+
+	var retries int
+	for _, e := range s.Events() {
+		if e.Type == session.EscalationRetried {
+			retries++
+		}
+	}
+	if retries != 1 {
+		t.Fatalf("expected 1 escalation retry event, got %d", retries)
+	}
+}
+
+func TestTurnWithholdsRecoverableToolFailure(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&panicTool{})
+
+	p := &mockProvider{
+		responses: []*llm.Response{
+			{
+				Calls: []llm.Call{{
+					ID:   "c1",
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{Name: "panic", Arguments: `{}`},
+				}},
+			},
+			{Content: "fallback after tool failure"},
+		},
+	}
+
+	a := New("a", "sys", "m", p, reg, WithMaxEscalations(2))
+	s := userSession("s-tool-retry", "trigger tool")
+
+	result, err := a.Turn(context.Background(), s)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Content != "fallback after tool failure" {
+		t.Fatalf("Content = %q, want fallback after tool failure", result.Content)
+	}
+
+	msgs := s.Messages()
+	var sawToolError bool
+	for _, msg := range msgs {
+		if msg.Role == llm.RoleTool && strings.Contains(msg.Content, "tool panicked") {
+			sawToolError = true
+			break
+		}
+	}
+	if !sawToolError {
+		t.Fatal("expected withheld tool failure to be appended as a tool message")
 	}
 }
 

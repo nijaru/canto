@@ -40,6 +40,16 @@ type TurnCompletedData struct {
 	Error          string    `json:"error,omitzero"`
 }
 
+// EscalationRetriedData records a recoverable loop error that was withheld
+// from the caller and retried internally.
+type EscalationRetriedData struct {
+	AgentID string `json:"agent_id"`
+	Scope   string `json:"scope"`
+	Target  string `json:"target,omitzero"`
+	Attempt int    `json:"attempt"`
+	Error   string `json:"error"`
+}
+
 // ToolStartedData records the durable start of a tool call.
 type ToolStartedData struct {
 	Tool      string `json:"tool"`
@@ -90,6 +100,11 @@ func NewWaitResolvedEvent(sessionID string, data WaitData) Event {
 	return NewEvent(sessionID, WaitResolved, data)
 }
 
+// NewEscalationRetriedEvent records a recoverable retry inside the agent loop.
+func NewEscalationRetriedEvent(sessionID string, data EscalationRetriedData) Event {
+	return NewEvent(sessionID, EscalationRetried, data)
+}
+
 // StepStartedData decodes the payload of a step-started event.
 func (e Event) StepStartedData() (StepStartedData, bool, error) {
 	return decodeEventData[StepStartedData](e, StepStarted, "step started")
@@ -121,6 +136,11 @@ func (e Event) WaitData() (WaitData, bool, error) {
 		return WaitData{}, false, nil
 	}
 	return decodeEventData[WaitData](e, e.Type, "wait state")
+}
+
+// EscalationRetriedData decodes the payload of an escalation-retried event.
+func (e Event) EscalationRetriedData() (EscalationRetriedData, bool, error) {
+	return decodeEventData[EscalationRetriedData](e, EscalationRetried, "escalation retried")
 }
 
 // decodeEventData is shared with other typed event helpers.

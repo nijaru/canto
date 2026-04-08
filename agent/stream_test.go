@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -16,9 +17,14 @@ type streamMockProvider struct {
 	mockProvider
 	chunks [][]llm.Chunk // one slice of chunks per Stream call
 	spos   int
+	failures int
 }
 
 func (m *streamMockProvider) Stream(_ context.Context, _ *llm.Request) (llm.Stream, error) {
+	if m.failures > 0 {
+		m.failures--
+		return nil, fmt.Errorf("transient stream failure")
+	}
 	if m.spos >= len(m.chunks) {
 		return &fixedStream{chunks: []llm.Chunk{{Content: "no more streams"}}}, nil
 	}
@@ -42,6 +48,10 @@ func (s *fixedStream) Next() (*llm.Chunk, bool) {
 }
 func (s *fixedStream) Err() error   { return nil }
 func (s *fixedStream) Close() error { return nil }
+
+func (m *streamMockProvider) IsTransient(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "transient")
+}
 
 // ---------------------------------------------------------------------------
 // StreamStep
@@ -241,6 +251,25 @@ func TestStreamTurnMaxSteps_PreservesUsage(t *testing.T) {
 	}
 	if result.TurnStopReason != TurnStopMaxTurnsHit {
 		t.Fatalf("expected turn stop reason %q, got %q", TurnStopMaxTurnsHit, result.TurnStopReason)
+	}
+}
+
+func TestStreamTurnRetriesTransientStartError(t *testing.T) {
+	p := &streamMockProvider{
+		failures: 1,
+		chunks: [][]llm.Chunk{
+			{{Content: "recovered stream"}},
+		},
+	}
+	a := New("a", "sys", "m", p, nil, WithMaxEscalations(2))
+	s := userSession("s-stream-retry", "q")
+
+	result, err := a.StreamTurn(context.Background(), s, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Content != "recovered stream" {
+		t.Fatalf("Content = %q, want recovered stream", result.Content)
 	}
 }
 

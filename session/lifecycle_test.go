@@ -59,4 +59,22 @@ func TestLifecycleEventsRoundTrip(t *testing.T) {
 	if toolData.Tool != "read" || toolData.ID != "call-1" {
 		t.Fatalf("unexpected tool started payload: %+v", toolData)
 	}
+
+	retry := NewEscalationRetriedEvent("sess", EscalationRetriedData{
+		AgentID: "agent",
+		Scope:   "model",
+		Target:  "gpt-test",
+		Attempt: 2,
+		Error:   "transient provider failure",
+	})
+	retryData, ok, err := retry.EscalationRetriedData()
+	if err != nil {
+		t.Fatalf("decode escalation retried: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected escalation retried payload")
+	}
+	if retryData.Attempt != 2 || retryData.Scope != "model" {
+		t.Fatalf("unexpected escalation retried payload: %+v", retryData)
+	}
 }
