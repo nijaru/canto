@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -23,6 +25,8 @@ type toolResult struct {
 // preflightResult holds the outcome of sequential validation for one tool call.
 type preflightResult struct {
 	call        llm.Call
+	index       int
+	stepID      string
 	metadata    tool.Metadata
 	output      string // non-empty if preflight produced output (error or hook context)
 	err         error  // non-nil if preflight blocked execution
@@ -148,13 +152,14 @@ func runTools(
 	approvals *approval.Manager,
 	handoffTargets []string,
 	maxParallel int,
+	stepID string,
 ) (StepResult, error) {
 	if maxParallel <= 0 {
 		maxParallel = 10
 	}
 
 	// Phase 1: sequential preflight — validate, run PreToolUse hooks, check approvals.
-	preflight := preflightTools(ctx, s, calls, r, h, approvals)
+	preflight := preflightTools(ctx, s, calls, r, h, approvals, stepID)
 
 	// Phase 2: metadata-driven execution — parallel-safe tools fan out in waves
 	// while serialized or unknown tools remain in source order.
@@ -194,11 +199,14 @@ func preflightTools(
 	r *tool.Registry,
 	h *hook.Runner,
 	approvals *approval.Manager,
+	stepID string,
 ) []preflightResult {
 	results := make([]preflightResult, len(calls))
 
 	for i, call := range calls {
 		results[i].call = call
+		results[i].index = i
+		results[i].stepID = stepID
 
 		// PreToolUse hooks — run sequentially so they can inspect sibling state.
 		var metadata tool.Metadata
@@ -324,9 +332,10 @@ func preflightTools(
 		}
 
 		if err := s.Append(ctx, session.NewToolStartedEvent(s.ID(), session.ToolStartedData{
-			Tool:      call.Function.Name,
-			Arguments: call.Function.Arguments,
-			ID:        call.ID,
+			Tool:           call.Function.Name,
+			Arguments:      call.Function.Arguments,
+			ID:             call.ID,
+			IdempotencyKey: toolIdempotencyKey(s.ID(), stepID, call, i),
 		})); err != nil {
 			results[i].err = err
 			results[i].skipExecute = true
@@ -537,9 +546,10 @@ func executeTool(
 
 	res := toolResult{call: call, output: output}
 	if err := s.Append(ctx, session.NewToolCompletedEvent(s.ID(), session.ToolCompletedData{
-		Tool:   call.Function.Name,
-		ID:     call.ID,
-		Output: output,
+		Tool:           call.Function.Name,
+		ID:             call.ID,
+		IdempotencyKey: toolIdempotencyKey(s.ID(), pf.stepID, call, pf.index),
+		Output:         output,
 	})); err != nil {
 		res.err = err
 	}
@@ -556,7 +566,19 @@ func executeToolWithHooks(
 	h *hook.Runner,
 	approvals *approval.Manager,
 ) toolResult {
-	pfResults := preflightTools(ctx, s, []llm.Call{call}, r, h, approvals)
+	pfResults := preflightTools(ctx, s, []llm.Call{call}, r, h, approvals, "")
 	execResults := executeTools(ctx, s, pfResults, r, h, 1)
 	return execResults[0]
+}
+
+func toolIdempotencyKey(sessionID, stepID string, call llm.Call, index int) string {
+	sum := sha256.Sum256([]byte(call.Function.Arguments))
+	return fmt.Sprintf(
+		"%s:%s:%s:%d:%s",
+		sessionID,
+		stepID,
+		call.Function.Name,
+		index,
+		hex.EncodeToString(sum[:]),
+	)
 }

@@ -64,14 +64,15 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 	if err != nil {
 		return StepResult{}, err
 	}
-	if err := s.Append(ctx, session.NewStepStartedEvent(s.ID(), session.StepStartedData{
+	stepStarted := session.NewStepStartedEvent(s.ID(), session.StepStartedData{
 		AgentID: cfg.ID,
 		Model:   cfg.Model,
 		PromptCache: session.PromptCacheData{
 			PrefixHash:     cacheFingerprint.PrefixHash,
 			ToolSchemaHash: cacheFingerprint.ToolSchemaHash,
 		},
-	})); err != nil {
+	})
+	if err := s.Append(ctx, stepStarted); err != nil {
 		return StepResult{}, err
 	}
 
@@ -106,6 +107,7 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 		cfg.Approvals,
 		handoffTargets,
 		cfg.MaxParallelTools,
+		stepStarted.ID.String(),
 	)
 	res.Usage = resp.Usage // Restore usage as RunTools only returns results/handoff
 

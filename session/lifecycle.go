@@ -52,9 +52,10 @@ type EscalationRetriedData struct {
 
 // ToolStartedData records the durable start of a tool call.
 type ToolStartedData struct {
-	Tool      string `json:"tool"`
-	Arguments string `json:"args"`
-	ID        string `json:"id"`
+	Tool           string `json:"tool"`
+	Arguments      string `json:"args"`
+	ID             string `json:"id"`
+	IdempotencyKey string `json:"idempotency_key,omitzero"`
 }
 
 // WaitData is the payload for WaitStarted and WaitResolved events.

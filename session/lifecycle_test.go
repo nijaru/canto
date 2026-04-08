@@ -45,9 +45,10 @@ func TestLifecycleEventsRoundTrip(t *testing.T) {
 	}
 
 	tool := NewToolStartedEvent("sess", ToolStartedData{
-		Tool:      "read",
-		Arguments: "{}",
-		ID:        "call-1",
+		Tool:           "read",
+		Arguments:      "{}",
+		ID:             "call-1",
+		IdempotencyKey: "sess:step:read:0:hash",
 	})
 	toolData, ok, err := tool.ToolStartedData()
 	if err != nil {
@@ -56,8 +57,26 @@ func TestLifecycleEventsRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("expected tool started payload")
 	}
-	if toolData.Tool != "read" || toolData.ID != "call-1" {
+	if toolData.Tool != "read" || toolData.ID != "call-1" ||
+		toolData.IdempotencyKey != "sess:step:read:0:hash" {
 		t.Fatalf("unexpected tool started payload: %+v", toolData)
+	}
+
+	completed := NewToolCompletedEvent("sess", ToolCompletedData{
+		Tool:           "read",
+		ID:             "call-1",
+		IdempotencyKey: "sess:step:read:0:hash",
+		Output:         "ok",
+	})
+	completedData, ok, err := completed.ToolCompletedData()
+	if err != nil {
+		t.Fatalf("decode tool completed: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected tool completed payload")
+	}
+	if completedData.IdempotencyKey != "sess:step:read:0:hash" || completedData.Output != "ok" {
+		t.Fatalf("unexpected tool completed payload: %+v", completedData)
 	}
 
 	retry := NewEscalationRetriedEvent("sess", EscalationRetriedData{

@@ -55,14 +55,15 @@ func (a *BaseAgent) StreamStep(
 	if err != nil {
 		return StepResult{}, err
 	}
-	if err := s.Append(ctx, session.NewStepStartedEvent(s.ID(), session.StepStartedData{
+	stepStarted := session.NewStepStartedEvent(s.ID(), session.StepStartedData{
 		AgentID: a.ID(),
 		Model:   a.model,
 		PromptCache: session.PromptCacheData{
 			PrefixHash:     cacheFingerprint.PrefixHash,
 			ToolSchemaHash: cacheFingerprint.ToolSchemaHash,
 		},
-	})); err != nil {
+	})
+	if err := s.Append(ctx, stepStarted); err != nil {
 		return StepResult{}, err
 	}
 
@@ -155,6 +156,7 @@ func (a *BaseAgent) StreamStep(
 		a.approvals,
 		handoffTargets,
 		a.maxParallelTools,
+		stepStarted.ID.String(),
 	)
 	res.Usage = usage // Restore usage as RunTools only returns results/handoff
 

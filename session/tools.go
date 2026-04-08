@@ -4,9 +4,10 @@ import "fmt"
 
 // ToolCompletedData captures the durable outcome of a completed tool call.
 type ToolCompletedData struct {
-	Tool   string `json:"tool"`
-	ID     string `json:"id"`
-	Output string `json:"output,omitzero"`
+	Tool           string `json:"tool"`
+	ID             string `json:"id"`
+	IdempotencyKey string `json:"idempotency_key,omitzero"`
+	Output         string `json:"output,omitzero"`
 }
 
 // NewToolCompletedEvent records the durable result of a tool execution.

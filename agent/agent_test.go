@@ -578,6 +578,95 @@ func TestStepPostToolHookCanRewriteOutput(t *testing.T) {
 	t.Fatal("expected tool_completed event")
 }
 
+func TestToolIdempotencyKeyIgnoresVolatileCallID(t *testing.T) {
+	callA := llm.Call{
+		ID:   "call-a",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "read_file", Arguments: `{"path":"main.go"}`},
+	}
+	callB := callA
+	callB.ID = "call-b"
+
+	keyA := toolIdempotencyKey("sess", "step-1", callA, 0)
+	keyB := toolIdempotencyKey("sess", "step-1", callB, 0)
+
+	if keyA != keyB {
+		t.Fatalf("expected stable idempotency key across call-id churn: %q != %q", keyA, keyB)
+	}
+}
+
+func TestStepToolEventsCarryMatchingIdempotencyKey(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.Func(
+		"echo",
+		"Echo input",
+		map[string]any{"type": "object"},
+		func(_ context.Context, args string) (string, error) {
+			return args, nil
+		},
+	))
+
+	p := &mockProvider{
+		responses: []*llm.Response{
+			{
+				Content: "",
+				Calls: []llm.Call{{
+					ID:   "volatile-call-id",
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{Name: "echo", Arguments: `{"value":1}`},
+				}},
+			},
+		},
+	}
+	a := New("test-agent", "You are helpful.", "gpt-4", p, reg)
+	s := userSession("s-tool-idempotency", "use tool")
+
+	if _, err := a.Step(context.Background(), s); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var started, completed string
+	for _, event := range s.Events() {
+		switch event.Type {
+		case session.ToolStarted:
+			data, ok, err := event.ToolStartedData()
+			if err != nil {
+				t.Fatalf("decode tool started: %v", err)
+			}
+			if !ok {
+				t.Fatal("expected tool started data")
+			}
+			started = data.IdempotencyKey
+		case session.ToolCompleted:
+			data, ok, err := event.ToolCompletedData()
+			if err != nil {
+				t.Fatalf("decode tool completed: %v", err)
+			}
+			if !ok {
+				t.Fatal("expected tool completed data")
+			}
+			completed = data.IdempotencyKey
+		}
+	}
+
+	if started == "" || completed == "" {
+		t.Fatalf(
+			"expected non-empty tool idempotency keys, got started=%q completed=%q",
+			started,
+			completed,
+		)
+	}
+	if started != completed {
+		t.Fatalf("expected matching tool event idempotency keys, got %q vs %q", started, completed)
+	}
+}
+
 func TestStepToolConcurrencyPartitioningPreservesSerializedBarriers(t *testing.T) {
 	newBlocking := func(name string, mode tool.ConcurrencyMode) *blockingTool {
 		return &blockingTool{
@@ -1200,7 +1289,7 @@ func TestRunTools_PanicRecovery(t *testing.T) {
 		}{Name: "panic", Arguments: `{}`},
 	}}
 
-	_, err := runTools(context.Background(), s, calls, reg, nil, nil, nil, 10)
+	_, err := runTools(context.Background(), s, calls, reg, nil, nil, nil, 10, "step-1")
 	if err == nil {
 		t.Fatal("expected error from panicking tool, got nil")
 	}
@@ -1226,7 +1315,7 @@ func TestRunTools_ApprovalAllow(t *testing.T) {
 	done := make(chan StepResult, 1)
 	errs := make(chan error, 1)
 	go func() {
-		res, err := runTools(context.Background(), s, calls, reg, nil, manager, nil, 10)
+		res, err := runTools(context.Background(), s, calls, reg, nil, manager, nil, 10, "step-1")
 		if err != nil {
 			errs <- err
 			return
@@ -1271,7 +1360,7 @@ func TestRunTools_ApprovalDeny(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := runTools(context.Background(), s, calls, reg, nil, manager, nil, 10)
+		_, err := runTools(context.Background(), s, calls, reg, nil, manager, nil, 10, "step-1")
 		errCh <- err
 	}()
 
