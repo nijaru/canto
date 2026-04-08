@@ -72,6 +72,29 @@ func (t *simpleTool) Execute(_ context.Context, _ string) (string, error) {
 	return t.output, nil
 }
 
+type blockingTool struct {
+	name     string
+	metadata tool.Metadata
+	started  chan struct{}
+	release  chan struct{}
+}
+
+func (t *blockingTool) Spec() llm.Spec {
+	return llm.Spec{
+		Name:        t.name,
+		Description: "A blocking test tool",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+	}
+}
+
+func (t *blockingTool) Metadata() tool.Metadata { return t.metadata }
+
+func (t *blockingTool) Execute(_ context.Context, _ string) (string, error) {
+	close(t.started)
+	<-t.release
+	return t.name, nil
+}
+
 // userSession returns a session with a single user message appended.
 func userSession(id, content string) *session.Session {
 	s := session.New(id)
@@ -553,6 +576,114 @@ func TestStepPostToolHookCanRewriteOutput(t *testing.T) {
 		return
 	}
 	t.Fatal("expected tool_completed event")
+}
+
+func TestStepToolConcurrencyPartitioningPreservesSerializedBarriers(t *testing.T) {
+	newBlocking := func(name string, mode tool.ConcurrencyMode) *blockingTool {
+		return &blockingTool{
+			name:     name,
+			metadata: tool.Metadata{Concurrency: mode},
+			started:  make(chan struct{}),
+			release:  make(chan struct{}),
+		}
+	}
+
+	parallelA := newBlocking("parallel_a", tool.Parallel)
+	parallelB := newBlocking("parallel_b", tool.Parallel)
+	serialC := newBlocking("serial_c", tool.Serialized)
+
+	reg := tool.NewRegistry()
+	reg.Register(parallelA)
+	reg.Register(parallelB)
+	reg.Register(serialC)
+
+	p := &mockProvider{
+		responses: []*llm.Response{
+			{
+				Content: "",
+				Calls: []llm.Call{
+					{
+						ID:   "c1",
+						Type: "function",
+						Function: struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						}{Name: "parallel_a", Arguments: `{}`},
+					},
+					{
+						ID:   "c2",
+						Type: "function",
+						Function: struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						}{Name: "parallel_b", Arguments: `{}`},
+					},
+					{
+						ID:   "c3",
+						Type: "function",
+						Function: struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						}{Name: "serial_c", Arguments: `{}`},
+					},
+				},
+			},
+		},
+	}
+	a := New("test-agent", "You are helpful.", "gpt-4", p, reg, WithMaxParallelTools(4))
+	s := userSession("s-tool-partition", "run tools")
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := a.Step(context.Background(), s)
+		done <- err
+	}()
+
+	waitStarted := func(name string, ch <-chan struct{}) {
+		t.Helper()
+		select {
+		case <-ch:
+		case <-time.After(250 * time.Millisecond):
+			t.Fatalf("timed out waiting for %s to start", name)
+		}
+	}
+
+	waitStarted("parallel_a", parallelA.started)
+	waitStarted("parallel_b", parallelB.started)
+
+	select {
+	case <-serialC.started:
+		t.Fatal("serialized tool started before parallel wave completed")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(parallelA.release)
+	close(parallelB.release)
+	waitStarted("serial_c", serialC.started)
+	close(serialC.release)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("step did not complete")
+	}
+
+	msgs := s.Messages()
+	if len(msgs) != 5 {
+		t.Fatalf("expected 5 messages (user, assistant, 3 tool results), got %d", len(msgs))
+	}
+	if msgs[2].Name != "parallel_a" || msgs[2].Content != "parallel_a" {
+		t.Fatalf("unexpected first tool result: %+v", msgs[2])
+	}
+	if msgs[3].Name != "parallel_b" || msgs[3].Content != "parallel_b" {
+		t.Fatalf("unexpected second tool result: %+v", msgs[3])
+	}
+	if msgs[4].Name != "serial_c" || msgs[4].Content != "serial_c" {
+		t.Fatalf("unexpected third tool result: %+v", msgs[4])
+	}
 }
 
 func TestStepNoRegistryReturnsErrorString(t *testing.T) {

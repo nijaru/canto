@@ -23,6 +23,7 @@ type toolResult struct {
 // preflightResult holds the outcome of sequential validation for one tool call.
 type preflightResult struct {
 	call        llm.Call
+	metadata    tool.Metadata
 	output      string // non-empty if preflight produced output (error or hook context)
 	err         error  // non-nil if preflight blocked execution
 	skipExecute bool   // true if execution should be skipped (preflight handled it)
@@ -155,7 +156,8 @@ func runTools(
 	// Phase 1: sequential preflight — validate, run PreToolUse hooks, check approvals.
 	preflight := preflightTools(ctx, s, calls, r, h, approvals)
 
-	// Phase 2: concurrent execution — fire all approved tools in parallel.
+	// Phase 2: metadata-driven execution — parallel-safe tools fan out in waves
+	// while serialized or unknown tools remain in source order.
 	results := executeTools(ctx, s, preflight, r, h, maxParallel)
 
 	var toolMsgs []llm.Message
@@ -252,6 +254,7 @@ func preflightTools(
 			continue
 		}
 		metadata = tool.MetadataFor(t)
+		results[i].metadata = metadata
 
 		// Approval check.
 		if approvals != nil {
@@ -347,47 +350,52 @@ func executeTools(
 	maxParallel int,
 ) []toolResult {
 	results := make([]toolResult, len(preflight))
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, maxParallel)
-
-	for i, pf := range preflight {
-		// If preflight blocked or skipped execution, carry the result forward.
+	for i := 0; i < len(preflight); {
+		pf := preflight[i]
 		if pf.skipExecute || pf.err != nil {
 			results[i] = toolResult{call: pf.call, output: pf.output, err: pf.err}
+			i++
+			continue
+		}
+		if pf.metadata.Concurrency != tool.Parallel || maxParallel == 1 {
+			results[i] = executeToolSafely(ctx, s, pf, r, h)
+			i++
 			continue
 		}
 
+		batchStart := i
+		for i < len(preflight) && canRunInParallel(preflight[i]) {
+			i++
+		}
+		executeParallelBatch(ctx, s, preflight, results, batchStart, i, r, h, maxParallel)
+	}
+
+	return results
+}
+
+func canRunInParallel(pf preflightResult) bool {
+	return !pf.skipExecute && pf.err == nil && pf.metadata.Concurrency == tool.Parallel
+}
+
+func executeParallelBatch(
+	ctx context.Context,
+	s *session.Session,
+	preflight []preflightResult,
+	results []toolResult,
+	start int,
+	end int,
+	r *tool.Registry,
+	h *hook.Runner,
+	maxParallel int,
+) {
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxParallel)
+
+	for i := start; i < end; i++ {
+		pf := preflight[i]
 		wg.Add(1)
 		go func(i int, pf preflightResult) {
 			defer wg.Done()
-			defer func() {
-				if r := recover(); r != nil {
-					results[i] = toolResult{
-						call: pf.call,
-						err: &escalationError{
-							scope:  "tool",
-							target: pf.call.Function.Name,
-							message: fmt.Sprintf(
-								"tool %q panicked: %v",
-								pf.call.Function.Name,
-								r,
-							),
-							recoverable: true,
-							cause: fmt.Errorf(
-								"tool %q panicked: %v",
-								pf.call.Function.Name,
-								r,
-							),
-							toolMessage: &llm.Message{
-								Role:    llm.RoleTool,
-								Content: fmt.Sprintf("Error: tool panicked: %v", r),
-								ToolID:  pf.call.ID,
-								Name:    pf.call.Function.Name,
-							},
-						},
-					}
-				}
-			}()
 
 			select {
 			case sem <- struct{}{}:
@@ -397,12 +405,49 @@ func executeTools(
 				return
 			}
 
-			results[i] = executeTool(ctx, s, pf, r, h)
+			results[i] = executeToolSafely(ctx, s, pf, r, h)
 		}(i, pf)
 	}
 	wg.Wait()
+}
 
-	return results
+func executeToolSafely(
+	ctx context.Context,
+	s *session.Session,
+	pf preflightResult,
+	r *tool.Registry,
+	h *hook.Runner,
+) (res toolResult) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			res = toolResult{call: pf.call, err: toolPanicError(pf.call, recovered)}
+		}
+	}()
+	return executeTool(ctx, s, pf, r, h)
+}
+
+func toolPanicError(call llm.Call, recovered any) error {
+	return &escalationError{
+		scope:  "tool",
+		target: call.Function.Name,
+		message: fmt.Sprintf(
+			"tool %q panicked: %v",
+			call.Function.Name,
+			recovered,
+		),
+		recoverable: true,
+		cause: fmt.Errorf(
+			"tool %q panicked: %v",
+			call.Function.Name,
+			recovered,
+		),
+		toolMessage: &llm.Message{
+			Role:    llm.RoleTool,
+			Content: fmt.Sprintf("Error: tool panicked: %v", recovered),
+			ToolID:  call.ID,
+			Name:    call.Function.Name,
+		},
+	}
 }
 
 // executeTool runs a single tool and its PostToolUse hooks. Preflight
