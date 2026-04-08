@@ -1019,6 +1019,41 @@ func TestAgentRunIterator(t *testing.T) {
 	}
 }
 
+func TestTurnStopReasonContinuesWhenStepProducedToolResults(t *testing.T) {
+	s := userSession("s-turn-stop-tool-results", "hello")
+	if err := s.Append(t.Context(), session.NewEvent(s.ID(), session.MessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "external input raced in",
+	})); err != nil {
+		t.Fatalf("append raced user input: %v", err)
+	}
+
+	got := turnStopReasonForTurn(
+		StepResult{
+			ToolResults: []llm.Message{{
+				Role:    llm.RoleTool,
+				Content: "tool output",
+				ToolID:  "c1",
+				Name:    "echo",
+			}},
+		},
+		s,
+		1,
+		4,
+	)
+	if got != "" {
+		t.Fatalf("expected turn to continue when step emitted tool results, got %q", got)
+	}
+}
+
+func TestTurnStopReasonCompletedWithoutToolResults(t *testing.T) {
+	s := userSession("s-turn-stop-complete", "hello")
+	got := turnStopReasonForTurn(StepResult{}, s, 1, 4)
+	if got != TurnStopCompleted {
+		t.Fatalf("expected completed turn stop reason, got %q", got)
+	}
+}
+
 func TestTurnRetriesTransientModelError(t *testing.T) {
 	p := &flakyProvider{
 		mockProvider: mockProvider{

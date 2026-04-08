@@ -1,9 +1,6 @@
 package agent
 
-import (
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
-)
+import "github.com/nijaru/canto/session"
 
 // TurnStopReason explains why a turn stopped.
 type TurnStopReason string
@@ -35,15 +32,9 @@ func turnStopReasonForTurn(res StepResult, s *session.Session, steps, maxSteps i
 		return TurnStopWaiting
 	case maxSteps > 0 && steps >= maxSteps:
 		return TurnStopMaxTurnsHit
+	case len(res.ToolResults) > 0:
+		return ""
 	}
 
-	if s == nil {
-		return TurnStopCompleted
-	}
-
-	last, ok := s.LastMessage()
-	if !ok || last.Role != llm.RoleTool {
-		return TurnStopCompleted
-	}
-	return ""
+	return TurnStopCompleted
 }
