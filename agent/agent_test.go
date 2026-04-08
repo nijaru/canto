@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nijaru/canto/approval"
+	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
@@ -402,6 +403,158 @@ func TestStepWithToolCallAndRegistry(t *testing.T) {
 	}
 }
 
+func TestStepPreToolHookCanRewriteCall(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.FuncWithMetadata(
+		"echo",
+		"Echo args",
+		map[string]any{"type": "object"},
+		tool.Metadata{Category: "workspace", ReadOnly: true},
+		func(_ context.Context, args string) (string, error) {
+			return args, nil
+		},
+	))
+
+	runner := hook.NewRunner()
+	runner.Register(hook.NewFunc(
+		"rewrite-call",
+		[]hook.Event{hook.EventPreToolUse},
+		func(_ context.Context, p *hook.Payload) *hook.Result {
+			got, ok := p.Data["metadata"].(tool.Metadata)
+			if !ok {
+				t.Fatalf("expected tool metadata payload, got %#v", p.Data["metadata"])
+			}
+			if got.Category != "workspace" || !got.ReadOnly {
+				t.Fatalf("unexpected metadata payload: %#v", got)
+			}
+			return &hook.Result{
+				Action: hook.ActionProceed,
+				Data: map[string]any{
+					"args": `{"rewritten":true}`,
+				},
+			}
+		},
+	))
+
+	p := &mockProvider{
+		responses: []*llm.Response{
+			{
+				Content: "",
+				Calls: []llm.Call{{
+					ID:   "c1",
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{Name: "echo", Arguments: `{"original":true}`},
+				}},
+			},
+		},
+	}
+	a := New("test-agent", "You are helpful.", "gpt-4", p, reg)
+	a.hooks = runner
+	s := userSession("s-hook-rewrite", "use tool")
+
+	if _, err := a.Step(context.Background(), s); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	msgs := s.Messages()
+	if got := msgs[len(msgs)-1].Content; got != `{"rewritten":true}` {
+		t.Fatalf("expected rewritten tool args in result, got %q", got)
+	}
+
+	for _, event := range s.Events() {
+		if event.Type != session.ToolStarted {
+			continue
+		}
+		data, ok, err := event.ToolStartedData()
+		if err != nil {
+			t.Fatalf("decode tool started data: %v", err)
+		}
+		if !ok {
+			t.Fatal("expected tool started data")
+		}
+		if data.Arguments != `{"rewritten":true}` {
+			t.Fatalf("expected rewritten args in tool_started event, got %q", data.Arguments)
+		}
+		return
+	}
+	t.Fatal("expected tool_started event")
+}
+
+func TestStepPostToolHookCanRewriteOutput(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.Func(
+		"echo",
+		"Echo secret",
+		map[string]any{"type": "object"},
+		func(_ context.Context, _ string) (string, error) {
+			return "secret-output", nil
+		},
+	))
+
+	runner := hook.NewRunner()
+	runner.Register(hook.NewFunc(
+		"redact-output",
+		[]hook.Event{hook.EventPostToolUse},
+		func(_ context.Context, _ *hook.Payload) *hook.Result {
+			return &hook.Result{
+				Action: hook.ActionProceed,
+				Data: map[string]any{
+					"output": "[redacted]",
+				},
+			}
+		},
+	))
+
+	p := &mockProvider{
+		responses: []*llm.Response{
+			{
+				Content: "",
+				Calls: []llm.Call{{
+					ID:   "c1",
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{Name: "echo", Arguments: `{}`},
+				}},
+			},
+		},
+	}
+	a := New("test-agent", "You are helpful.", "gpt-4", p, reg)
+	a.hooks = runner
+	s := userSession("s-hook-redact", "use tool")
+
+	if _, err := a.Step(context.Background(), s); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	msgs := s.Messages()
+	if got := msgs[len(msgs)-1].Content; got != "[redacted]" {
+		t.Fatalf("expected redacted tool output, got %q", got)
+	}
+
+	for _, event := range s.Events() {
+		if event.Type != session.ToolCompleted {
+			continue
+		}
+		data, ok, err := event.ToolCompletedData()
+		if err != nil {
+			t.Fatalf("decode tool completed data: %v", err)
+		}
+		if !ok {
+			t.Fatal("expected tool completed data")
+		}
+		if data.Output != "[redacted]" {
+			t.Fatalf("expected redacted output in tool_completed event, got %q", data.Output)
+		}
+		return
+	}
+	t.Fatal("expected tool_completed event")
+}
+
 func TestStepNoRegistryReturnsErrorString(t *testing.T) {
 	p := &mockProvider{
 		responses: []*llm.Response{
@@ -727,7 +880,11 @@ func TestAgentRunIterator(t *testing.T) {
 		t.Fatalf("expected final step to be tool-free, got %+v", steps[1].ToolResults)
 	}
 	if steps[1].TurnStopReason != TurnStopCompleted {
-		t.Fatalf("expected final step turn stop reason %q, got %q", TurnStopCompleted, steps[1].TurnStopReason)
+		t.Fatalf(
+			"expected final step turn stop reason %q, got %q",
+			TurnStopCompleted,
+			steps[1].TurnStopReason,
+		)
 	}
 }
 

@@ -2,8 +2,8 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 
@@ -26,6 +26,103 @@ type preflightResult struct {
 	output      string // non-empty if preflight produced output (error or hook context)
 	err         error  // non-nil if preflight blocked execution
 	skipExecute bool   // true if execution should be skipped (preflight handled it)
+}
+
+func hookContextOutput(event hook.Event, results []*hook.Result) string {
+	var out strings.Builder
+	for _, res := range results {
+		if res == nil || res.Output == "" {
+			continue
+		}
+		fmt.Fprintf(&out, "<hook_context name=%q>\n%s\n</hook_context>\n", event, res.Output)
+	}
+	return out.String()
+}
+
+func toolHookData(
+	call llm.Call,
+	metadata tool.Metadata,
+	extra map[string]any,
+) map[string]any {
+	data := map[string]any{
+		"tool": call.Function.Name,
+		"args": call.Function.Arguments,
+	}
+	if metadataPresent(metadata) {
+		data["metadata"] = metadata
+	}
+	for key, value := range extra {
+		data[key] = value
+	}
+	return data
+}
+
+func metadataPresent(metadata tool.Metadata) bool {
+	return metadata.Category != "" ||
+		metadata.ReadOnly ||
+		metadata.Concurrency != tool.Unknown ||
+		metadata.Deferred ||
+		len(metadata.Examples) > 0
+}
+
+func applyPreToolHookData(call *llm.Call, results []*hook.Result) {
+	for _, res := range results {
+		if res == nil {
+			continue
+		}
+		name, ok := stringHookData(res.Data, "tool")
+		if ok {
+			call.Function.Name = name
+		}
+		args, ok := stringHookData(res.Data, "args")
+		if ok {
+			call.Function.Arguments = args
+		}
+	}
+}
+
+func applyPostToolHookData(output *string, execErr *error, results []*hook.Result) {
+	for _, res := range results {
+		if res == nil {
+			continue
+		}
+		if nextOutput, ok := stringHookData(res.Data, "output"); ok {
+			*output = nextOutput
+		}
+		if !hookDataPresent(res.Data, "error") {
+			continue
+		}
+		nextErr, ok := stringHookData(res.Data, "error")
+		if !ok || nextErr == "" {
+			*execErr = nil
+			continue
+		}
+		*execErr = errors.New(nextErr)
+	}
+}
+
+func stringHookData(data map[string]any, key string) (string, bool) {
+	if !hookDataPresent(data, key) {
+		return "", false
+	}
+	value, ok := data[key].(string)
+	return value, ok
+}
+
+func hookDataPresent(data map[string]any, key string) bool {
+	if data == nil {
+		return false
+	}
+	_, ok := data[key]
+	return ok
+}
+
+func postHookBlockOutput(err error, currentOutput string) string {
+	message := fmt.Sprintf("Error: %v", err)
+	if strings.TrimSpace(currentOutput) == "" {
+		return message
+	}
+	return strings.TrimSpace(currentOutput) + "\n" + message
 }
 
 func getHandoffTargets(r *tool.Registry) []string {
@@ -101,28 +198,22 @@ func preflightTools(
 	for i, call := range calls {
 		results[i].call = call
 
-		if err := s.Append(ctx, session.NewToolStartedEvent(s.ID(), session.ToolStartedData{
-			Tool:      call.Function.Name,
-			Arguments: call.Function.Arguments,
-			ID:        call.ID,
-		})); err != nil {
-			results[i].err = err
-			results[i].skipExecute = true
-			continue
-		}
-
 		// PreToolUse hooks — run sequentially so they can inspect sibling state.
+		var metadata tool.Metadata
+		if r != nil {
+			metadata, _ = r.Metadata(call.Function.Name)
+		}
 		var hookOutput string
 		if h != nil {
 			hookResults, err := h.Run(
 				ctx,
 				hook.EventPreToolUse,
 				hook.SessionMeta{ID: s.ID()},
-				map[string]any{
-					"tool": call.Function.Name,
-					"args": call.Function.Arguments,
-				},
+				toolHookData(call, metadata, nil),
 			)
+			hookOutput = hookContextOutput(hook.EventPreToolUse, hookResults)
+			applyPreToolHookData(&call, hookResults)
+			results[i].call = call
 			if err != nil {
 				results[i].err = &escalationError{
 					scope:       "tool",
@@ -140,20 +231,11 @@ func preflightTools(
 				results[i].skipExecute = true
 				continue
 			}
-			for _, res := range hookResults {
-				if res.Output != "" {
-					hookOutput += fmt.Sprintf(
-						"<hook_context name=%q>\n%s\n</hook_context>\n",
-						"PreToolUse",
-						res.Output,
-					)
-				}
-			}
 		}
 
 		// Registry lookup.
 		if r == nil {
-			results[i].output = fmt.Sprintf(
+			results[i].output = hookOutput + fmt.Sprintf(
 				"Error: no tool registry configured; cannot execute %q",
 				call.Function.Name,
 			)
@@ -162,10 +244,14 @@ func preflightTools(
 		}
 		t, ok := r.Get(call.Function.Name)
 		if !ok {
-			results[i].output = fmt.Sprintf("Error: tool %q not found", call.Function.Name)
+			results[i].output = hookOutput + fmt.Sprintf(
+				"Error: tool %q not found",
+				call.Function.Name,
+			)
 			results[i].skipExecute = true
 			continue
 		}
+		metadata = tool.MetadataFor(t)
 
 		// Approval check.
 		if approvals != nil {
@@ -190,9 +276,13 @@ func preflightTools(
 					)
 					if err != nil {
 						results[i].err = &escalationError{
-							scope:       "tool",
-							target:      call.Function.Name,
-							message:     fmt.Sprintf("approval request for %q failed: %v", call.Function.Name, err),
+							scope:  "tool",
+							target: call.Function.Name,
+							message: fmt.Sprintf(
+								"approval request for %q failed: %v",
+								call.Function.Name,
+								err,
+							),
 							recoverable: true,
 							cause:       err,
 							toolMessage: &llm.Message{
@@ -207,9 +297,13 @@ func preflightTools(
 					}
 					if denyErr := res.Error(); denyErr != nil {
 						results[i].err = &escalationError{
-							scope:       "tool",
-							target:      call.Function.Name,
-							message:     fmt.Sprintf("tool %q denied: %v", call.Function.Name, denyErr),
+							scope:  "tool",
+							target: call.Function.Name,
+							message: fmt.Sprintf(
+								"tool %q denied: %v",
+								call.Function.Name,
+								denyErr,
+							),
 							recoverable: true,
 							cause:       denyErr,
 							toolMessage: &llm.Message{
@@ -224,6 +318,16 @@ func preflightTools(
 					}
 				}
 			}
+		}
+
+		if err := s.Append(ctx, session.NewToolStartedEvent(s.ID(), session.ToolStartedData{
+			Tool:      call.Function.Name,
+			Arguments: call.Function.Arguments,
+			ID:        call.ID,
+		})); err != nil {
+			results[i].err = err
+			results[i].skipExecute = true
+			continue
 		}
 
 		results[i].output = hookOutput
@@ -261,11 +365,19 @@ func executeTools(
 					results[i] = toolResult{
 						call: pf.call,
 						err: &escalationError{
-							scope:       "tool",
-							target:      pf.call.Function.Name,
-							message:     fmt.Sprintf("tool %q panicked: %v", pf.call.Function.Name, r),
+							scope:  "tool",
+							target: pf.call.Function.Name,
+							message: fmt.Sprintf(
+								"tool %q panicked: %v",
+								pf.call.Function.Name,
+								r,
+							),
 							recoverable: true,
-							cause:       fmt.Errorf("tool %q panicked: %v", pf.call.Function.Name, r),
+							cause: fmt.Errorf(
+								"tool %q panicked: %v",
+								pf.call.Function.Name,
+								r,
+							),
 							toolMessage: &llm.Message{
 								Role:    llm.RoleTool,
 								Content: fmt.Sprintf("Error: tool panicked: %v", r),
@@ -336,48 +448,46 @@ func executeTool(
 	}
 
 	if execErr != nil {
-		output = fmt.Sprintf("%s\nError: %s", output, execErr)
+		output = strings.TrimSpace(
+			strings.TrimSpace(output) + "\n" + fmt.Sprintf("Error: %s", execErr),
+		)
 		if h != nil {
-			_, hookErr := h.Run(
+			metadata, _ := r.Metadata(call.Function.Name)
+			hookResults, hookErr := h.Run(
 				ctx,
 				hook.EventPostToolUseFailure,
 				hook.SessionMeta{ID: s.ID()},
-				map[string]any{
-					"tool":  call.Function.Name,
-					"error": execErr.Error(),
-				},
+				toolHookData(call, metadata, map[string]any{
+					"output": output,
+					"error":  execErr.Error(),
+				}),
 			)
+			applyPostToolHookData(&output, &execErr, hookResults)
 			if hookErr != nil {
-				slog.LogAttrs(
-					ctx,
-					slog.LevelWarn,
-					"PostToolUseFailure hook failed",
-					slog.String("tool", call.Function.Name),
-					slog.Any("error", hookErr),
-				)
+				output = postHookBlockOutput(hookErr, output)
+				execErr = nil
 			}
 		}
 	} else {
 		if h != nil {
-			_, hookErr := h.Run(
+			metadata, _ := r.Metadata(call.Function.Name)
+			hookResults, hookErr := h.Run(
 				ctx,
 				hook.EventPostToolUse,
 				hook.SessionMeta{ID: s.ID()},
-				map[string]any{
-					"tool":   call.Function.Name,
-					"output": output,
-				},
+				toolHookData(call, metadata, map[string]any{"output": output}),
 			)
+			applyPostToolHookData(&output, &execErr, hookResults)
 			if hookErr != nil {
-				slog.LogAttrs(
-					ctx,
-					slog.LevelWarn,
-					"PostToolUse hook failed",
-					slog.String("tool", call.Function.Name),
-					slog.Any("error", hookErr),
-				)
+				output = postHookBlockOutput(hookErr, output)
+				execErr = nil
 			}
 		}
+	}
+	if execErr != nil && !strings.Contains(output, execErr.Error()) {
+		output = strings.TrimSpace(
+			strings.TrimSpace(output) + "\n" + fmt.Sprintf("Error: %s", execErr),
+		)
 	}
 
 	res := toolResult{call: call, output: output}

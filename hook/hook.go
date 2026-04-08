@@ -52,6 +52,7 @@ type Payload struct {
 type Result struct {
 	Action Action
 	Output string
+	Data   map[string]any
 	Error  error
 }
 

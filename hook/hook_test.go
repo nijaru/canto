@@ -91,7 +91,11 @@ func TestFuncHook(t *testing.T) {
 			if p.Session.ID != "sess-1" {
 				t.Errorf("session ID = %q, want sess-1", p.Session.ID)
 			}
-			return &Result{Action: ActionProceed, Output: "ok"}
+			return &Result{
+				Action: ActionProceed,
+				Output: "ok",
+				Data:   map[string]any{"note": "keep"},
+			}
 		},
 	)
 
@@ -112,6 +116,9 @@ func TestFuncHook(t *testing.T) {
 	}
 	if len(results) != 1 || results[0].Output != "ok" {
 		t.Fatalf("unexpected results: %+v", results)
+	}
+	if results[0].Data["note"] != "keep" {
+		t.Fatalf("expected hook data to survive, got %+v", results[0].Data)
 	}
 }
 
