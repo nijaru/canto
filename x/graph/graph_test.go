@@ -3,6 +3,9 @@ package graph_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/nijaru/canto/agent"
@@ -33,6 +36,72 @@ func (m *mockProvider) CountTokens(_ context.Context, _ string, _ []llm.Message)
 }
 func (m *mockProvider) Cost(_ context.Context, _ string, _ llm.Usage) float64 { return 0 }
 func (m *mockProvider) Models(_ context.Context) ([]llm.Model, error)         { return nil, nil }
+
+type scriptedAgent struct {
+	id     string
+	msg    string
+	usage  llm.Usage
+	err    error
+	calls  int
+	onTurn func(*scriptedAgent) error
+}
+
+func (a *scriptedAgent) ID() string { return a.id }
+
+func (a *scriptedAgent) Step(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a *scriptedAgent) Turn(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+	a.calls++
+	if a.onTurn != nil {
+		if err := a.onTurn(a); err != nil {
+			return agent.StepResult{}, err
+		}
+	}
+	if a.err != nil {
+		return agent.StepResult{}, a.err
+	}
+	msg := llm.Message{Role: llm.RoleAssistant, Content: a.msg}
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.MessageAdded, msg)); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{Content: a.msg, Usage: a.usage}, nil
+}
+
+type memoryCheckpointStore struct {
+	byKey map[string]graph.Checkpoint
+}
+
+func newMemoryCheckpointStore() *memoryCheckpointStore {
+	return &memoryCheckpointStore{byKey: make(map[string]graph.Checkpoint)}
+}
+
+func checkpointKey(graphID, sessionID string) string {
+	return graphID + "::" + sessionID
+}
+
+func (s *memoryCheckpointStore) Load(
+	_ context.Context,
+	graphID, sessionID string,
+) (*graph.Checkpoint, error) {
+	cp, ok := s.byKey[checkpointKey(graphID, sessionID)]
+	if !ok {
+		return nil, nil
+	}
+	copy := cp
+	return &copy, nil
+}
+
+func (s *memoryCheckpointStore) Save(_ context.Context, checkpoint graph.Checkpoint) error {
+	s.byKey[checkpointKey(checkpoint.GraphID, checkpoint.SessionID)] = checkpoint
+	return nil
+}
+
+func (s *memoryCheckpointStore) Clear(_ context.Context, graphID, sessionID string) error {
+	delete(s.byKey, checkpointKey(graphID, sessionID))
+	return nil
+}
 
 func TestGraphConditionalRouting(t *testing.T) {
 	ctx := context.Background()
@@ -352,5 +421,133 @@ func TestGraph_StreamTurn(t *testing.T) {
 	// We expect chunks from 'a' to be relayed. 'b' also relays its message as a chunk.
 	if seen != "hello world!" {
 		t.Errorf("expected 'hello world!', got %q", seen)
+	}
+}
+
+func TestGraphCheckpointingResumesFromNextNode(t *testing.T) {
+	ctx := context.Background()
+	store := newMemoryCheckpointStore()
+
+	first := &scriptedAgent{id: "a", msg: "a", usage: llm.Usage{TotalTokens: 3}}
+	second := &scriptedAgent{
+		id:  "b",
+		msg: "b",
+		onTurn: func(a *scriptedAgent) error {
+			if a.calls == 0 {
+				return fmt.Errorf("calls not incremented")
+			}
+			if a.calls == 1 {
+				return errors.New("boom")
+			}
+			return nil
+		},
+		usage: llm.Usage{TotalTokens: 5},
+	}
+
+	g := graph.New("checkpointed", "a")
+	g.SetCheckpointStore(store)
+	g.AddNode(first)
+	g.AddNode(second)
+	g.AddEdge("a", "b", nil)
+
+	sess := session.New("graph-checkpoint")
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.MessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "run",
+	})); err != nil {
+		t.Fatalf("append user message: %v", err)
+	}
+
+	if _, err := g.Run(ctx, sess); err == nil {
+		t.Fatal("expected first run to fail on second node")
+	}
+	if first.calls != 1 {
+		t.Fatalf("expected first node to run once, got %d", first.calls)
+	}
+	if second.calls != 1 {
+		t.Fatalf("expected second node to run once, got %d", second.calls)
+	}
+
+	second.onTurn = nil
+	result, err := g.Run(ctx, sess)
+	if err != nil {
+		t.Fatalf("resume run: %v", err)
+	}
+	if first.calls != 1 {
+		t.Fatalf("expected resume to skip first node, got %d calls", first.calls)
+	}
+	if second.calls != 2 {
+		t.Fatalf("expected resume to rerun second node once, got %d calls", second.calls)
+	}
+	if result.Content != "b" {
+		t.Fatalf("expected final content from second node, got %q", result.Content)
+	}
+	if result.Usage.TotalTokens != 8 {
+		t.Fatalf("expected accumulated usage 8, got %d", result.Usage.TotalTokens)
+	}
+}
+
+func TestSQLiteCheckpointStoreRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "graph-checkpoints.db")
+	store, err := graph.NewSQLiteCheckpointStore(path)
+	if err != nil {
+		t.Fatalf("new sqlite checkpoint store: %v", err)
+	}
+
+	want := graph.Checkpoint{
+		GraphID:     "g1",
+		SessionID:   "s1",
+		NextNode:    "writer",
+		Steps:       2,
+		LastEventID: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+		Usage:       llm.Usage{InputTokens: 10, OutputTokens: 4, TotalTokens: 14, Cost: 0.25},
+		Result: agent.StepResult{
+			Content: "ok",
+			Usage:   llm.Usage{TotalTokens: 14},
+			ToolResults: []llm.Message{{
+				Role:    llm.RoleTool,
+				Content: "tool output",
+				ToolID:  "c1",
+				Name:    "echo",
+			}},
+		},
+		Completed: false,
+	}
+	if err := store.Save(ctx, want); err != nil {
+		t.Fatalf("save checkpoint: %v", err)
+	}
+
+	got, err := store.Load(ctx, "g1", "s1")
+	if err != nil {
+		t.Fatalf("load checkpoint: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected checkpoint, got nil")
+	}
+	if got.NextNode != want.NextNode || got.Steps != want.Steps ||
+		got.LastEventID != want.LastEventID {
+		t.Fatalf("unexpected checkpoint metadata: %+v", got)
+	}
+	if got.Usage != want.Usage {
+		t.Fatalf("unexpected usage: %+v", got.Usage)
+	}
+	if got.Result.Content != want.Result.Content || len(got.Result.ToolResults) != 1 {
+		t.Fatalf("unexpected result payload: %+v", got.Result)
+	}
+
+	if err := store.Clear(ctx, "g1", "s1"); err != nil {
+		t.Fatalf("clear checkpoint: %v", err)
+	}
+	got, err = store.Load(ctx, "g1", "s1")
+	if err != nil {
+		t.Fatalf("load after clear: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected cleared checkpoint, got %+v", got)
+	}
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected sqlite db file to exist: %v", err)
 	}
 }

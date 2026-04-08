@@ -27,10 +27,11 @@ type Edge struct {
 // are satisfied by each agent's StepResult. Stops at a terminal node
 // (no outgoing edge satisfied) or when the context is cancelled.
 type Graph struct {
-	id    string
-	nodes map[string]agent.Agent
-	edges []Edge
-	entry string
+	id          string
+	nodes       map[string]agent.Agent
+	edges       []Edge
+	entry       string
+	checkpoints CheckpointStore
 }
 
 // New creates an empty Graph with the given ID and entry agent ID.
@@ -44,6 +45,11 @@ func New(id, entry string) *Graph {
 
 // ID returns the graph's unique identifier.
 func (g *Graph) ID() string { return g.id }
+
+// SetCheckpointStore configures durable checkpoint persistence for graph runs.
+func (g *Graph) SetCheckpointStore(store CheckpointStore) {
+	g.checkpoints = store
+}
 
 // Step executes the graph pipeline. For a graph, Step and Turn are equivalent.
 func (g *Graph) Step(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
@@ -147,6 +153,32 @@ func (g *Graph) execute(
 	current := g.entry
 	var lastResult agent.StepResult
 	var totalUsage llm.Usage
+	var steps int
+
+	if g.checkpoints != nil {
+		checkpoint, err := g.checkpoints.Load(ctx, g.id, sess.ID())
+		if err != nil {
+			return agent.StepResult{}, fmt.Errorf("graph: load checkpoint: %w", err)
+		}
+		if checkpoint != nil {
+			if checkpoint.LastEventID != "" {
+				if lastEvent, ok := sess.LastEvent(); ok &&
+					lastEvent.ID.String() != checkpoint.LastEventID {
+					checkpoint = nil
+				}
+			}
+			if checkpoint != nil {
+				current = checkpoint.NextNode
+				totalUsage = checkpoint.Usage
+				lastResult = cloneStepResult(checkpoint.Result)
+				steps = checkpoint.Steps
+				if checkpoint.Completed {
+					lastResult.Usage = totalUsage
+					return lastResult, nil
+				}
+			}
+		}
+	}
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -184,6 +216,7 @@ func (g *Graph) execute(
 		totalUsage.TotalTokens += result.Usage.TotalTokens
 		totalUsage.Cost += result.Usage.Cost
 		lastResult = result
+		steps++
 
 		// If the agent issued a handoff, record it in the session log.
 		if result.Handoff != nil {
@@ -193,6 +226,18 @@ func (g *Graph) execute(
 		}
 
 		if result.TurnStopReason.StopsProgress() {
+			if err := g.saveCheckpoint(ctx, sess, Checkpoint{
+				GraphID:     g.id,
+				SessionID:   sess.ID(),
+				NextNode:    current,
+				Steps:       steps,
+				LastEventID: lastEventID(sess),
+				Usage:       totalUsage,
+				Result:      cloneStepResult(lastResult),
+				Completed:   true,
+			}); err != nil {
+				return lastResult, err
+			}
 			break
 		}
 
@@ -200,13 +245,60 @@ func (g *Graph) execute(
 		next := g.nextNode(current, result)
 		if next == "" {
 			// Terminal node — no satisfied outgoing edge.
+			if err := g.saveCheckpoint(ctx, sess, Checkpoint{
+				GraphID:     g.id,
+				SessionID:   sess.ID(),
+				NextNode:    current,
+				Steps:       steps,
+				LastEventID: lastEventID(sess),
+				Usage:       totalUsage,
+				Result:      cloneStepResult(lastResult),
+				Completed:   true,
+			}); err != nil {
+				return lastResult, err
+			}
 			break
+		}
+		if err := g.saveCheckpoint(ctx, sess, Checkpoint{
+			GraphID:     g.id,
+			SessionID:   sess.ID(),
+			NextNode:    next,
+			Steps:       steps,
+			LastEventID: lastEventID(sess),
+			Usage:       totalUsage,
+			Result:      cloneStepResult(lastResult),
+		}); err != nil {
+			return lastResult, err
 		}
 		current = next
 	}
 
 	lastResult.Usage = totalUsage
 	return lastResult, nil
+}
+
+func (g *Graph) saveCheckpoint(
+	ctx context.Context,
+	sess *session.Session,
+	checkpoint Checkpoint,
+) error {
+	if g.checkpoints == nil {
+		return nil
+	}
+	if err := g.checkpoints.Save(ctx, checkpoint); err != nil {
+		return fmt.Errorf("graph: save checkpoint: %w", err)
+	}
+	return nil
+}
+
+func lastEventID(sess *session.Session) string {
+	if sess == nil {
+		return ""
+	}
+	if event, ok := sess.LastEvent(); ok {
+		return event.ID.String()
+	}
+	return ""
 }
 
 // nextNode returns the target of the first outgoing edge from `from` whose
