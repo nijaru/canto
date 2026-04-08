@@ -289,7 +289,8 @@ func (s *SQLiteStore) Search(ctx context.Context, sessionID string, query string
 }
 
 func loadSessionRows(sessionID string, store *SQLiteStore, rows *sql.Rows) (*Session, error) {
-	sess := New(sessionID).WithWriter(store)
+	replayer := NewReplayer()
+	sess := replayer.NewSession(sessionID).WithWriter(store)
 	for rows.Next() {
 		var idStr, typeStr, timeStr string
 		var loadedSessionID string
@@ -303,9 +304,9 @@ func loadSessionRows(sessionID string, store *SQLiteStore, rows *sql.Rows) (*Ses
 		if err != nil {
 			return nil, err
 		}
-		sess.mu.Lock()
-		sess.events = append(sess.events, e)
-		sess.mu.Unlock()
+		if err := replayer.Apply(sess, e); err != nil {
+			return nil, err
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

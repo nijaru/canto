@@ -91,7 +91,8 @@ func (s *JSONLStore) Load(ctx context.Context, sessionID string) (*Session, erro
 	}
 	defer f.Close()
 
-	sess := New(sessionID).WithWriter(s)
+	replayer := NewReplayer()
+	sess := replayer.NewSession(sessionID).WithWriter(s)
 	reader := bufio.NewReader(f)
 	for {
 		line, readErr := reader.ReadBytes('\n')
@@ -110,10 +111,9 @@ func (s *JSONLStore) Load(ctx context.Context, sessionID string) (*Session, erro
 		if err != nil {
 			return nil, err
 		}
-		// Internal load doesn't need write-through back to itself.
-		sess.mu.Lock()
-		sess.events = append(sess.events, e)
-		sess.mu.Unlock()
+		if err := replayer.Apply(sess, e); err != nil {
+			return nil, err
+		}
 		if readErr == io.EOF {
 			break
 		}
@@ -139,7 +139,8 @@ func (s *JSONLStore) LoadUntil(
 	}
 	defer f.Close()
 
-	sess := New(sessionID).WithWriter(s)
+	replayer := NewReplayer()
+	sess := replayer.NewSession(sessionID).WithWriter(s)
 	reader := bufio.NewReader(f)
 	for {
 		line, readErr := reader.ReadBytes('\n')
@@ -163,10 +164,9 @@ func (s *JSONLStore) LoadUntil(
 			break
 		}
 
-		// Internal load doesn't need write-through back to itself.
-		sess.mu.Lock()
-		sess.events = append(sess.events, e)
-		sess.mu.Unlock()
+		if err := replayer.Apply(sess, e); err != nil {
+			return nil, err
+		}
 
 		if e.ID.Compare(eventID) == 0 {
 			break

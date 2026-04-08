@@ -2,6 +2,8 @@
 //
 // A Session stores events as immutable facts and derives higher-level views
 // from that log:
+//   - Replayer reconstructs a Session from an event stream without re-emitting
+//     writer or subscriber side effects.
 //   - Messages returns the raw transcript exactly as messages were emitted.
 //   - EffectiveMessages returns the model-visible history after durable
 //     compaction snapshots are applied.
