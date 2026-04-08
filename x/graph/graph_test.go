@@ -656,3 +656,118 @@ func TestGraphPauseResumeUsesCheckpointedCurrentNode(t *testing.T) {
 		t.Fatalf("expected accumulated usage 13, got %d", result.Usage.TotalTokens)
 	}
 }
+
+func TestLoopNodeRepeatsAgentUntilExitCondition(t *testing.T) {
+	ctx := context.Background()
+	worker := &scriptedAgent{
+		id:    "loop",
+		usage: llm.Usage{TotalTokens: 2},
+		onTurn: func(a *scriptedAgent) error {
+			if a.calls < 2 {
+				a.msg = "keep-going"
+				return nil
+			}
+			a.msg = "done"
+			return nil
+		},
+	}
+	loop := graph.NewLoopNode(worker, 4, func(res agent.StepResult) bool {
+		return res.Content == "done"
+	})
+
+	sess := session.New("loop-node")
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.MessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "run",
+	})); err != nil {
+		t.Fatalf("append user: %v", err)
+	}
+
+	result, err := loop.Turn(ctx, sess)
+	if err != nil {
+		t.Fatalf("loop turn: %v", err)
+	}
+	if worker.calls != 2 {
+		t.Fatalf("expected 2 internal turns, got %d", worker.calls)
+	}
+	if result.Content != "done" {
+		t.Fatalf("expected final loop content %q, got %q", "done", result.Content)
+	}
+	if result.Usage.TotalTokens != 4 {
+		t.Fatalf("expected aggregated usage 4, got %d", result.Usage.TotalTokens)
+	}
+}
+
+func TestLoopNodeComposesWithGraphCheckpointing(t *testing.T) {
+	ctx := context.Background()
+	store := newMemoryCheckpointStore()
+
+	worker := &scriptedAgent{
+		id:    "loop",
+		usage: llm.Usage{TotalTokens: 2},
+		onTurn: func(a *scriptedAgent) error {
+			if a.calls < 2 {
+				a.msg = "repeat"
+				return nil
+			}
+			a.msg = "done"
+			return nil
+		},
+	}
+	loop := graph.NewLoopNode(worker, 4, func(res agent.StepResult) bool {
+		return res.Content == "done"
+	})
+	final := &scriptedAgent{
+		id:  "final",
+		msg: "final",
+		onTurn: func(a *scriptedAgent) error {
+			if a.calls == 1 {
+				return errors.New("boom")
+			}
+			return nil
+		},
+		usage: llm.Usage{TotalTokens: 5},
+	}
+
+	g := graph.New("loop-graph", "loop")
+	g.SetCheckpointStore(store)
+	g.AddNode(loop)
+	g.AddNode(final)
+	g.AddEdge("loop", "final", nil)
+
+	sess := session.New("loop-checkpoint")
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.MessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "run",
+	})); err != nil {
+		t.Fatalf("append user: %v", err)
+	}
+
+	if _, err := g.Run(ctx, sess); err == nil {
+		t.Fatal("expected first run to fail on final node")
+	}
+	if worker.calls != 2 {
+		t.Fatalf("expected loop node to finish before checkpoint, got %d calls", worker.calls)
+	}
+	if final.calls != 1 {
+		t.Fatalf("expected final node to run once, got %d", final.calls)
+	}
+
+	final.onTurn = nil
+	result, err := g.Run(ctx, sess)
+	if err != nil {
+		t.Fatalf("resume loop graph: %v", err)
+	}
+	if worker.calls != 2 {
+		t.Fatalf("expected checkpoint resume to skip loop node, got %d calls", worker.calls)
+	}
+	if final.calls != 2 {
+		t.Fatalf("expected final node rerun once, got %d", final.calls)
+	}
+	if result.Content != "final" {
+		t.Fatalf("expected final content %q, got %q", "final", result.Content)
+	}
+	if result.Usage.TotalTokens != 9 {
+		t.Fatalf("expected total usage 9, got %d", result.Usage.TotalTokens)
+	}
+}
