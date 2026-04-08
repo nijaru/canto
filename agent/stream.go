@@ -175,11 +175,13 @@ func (a *BaseAgent) StreamTurn(
 
 	var steps int
 	var totalUsage llm.Usage
+	var terminalReason TerminalReason
 	defer func() {
 		data := session.TurnCompletedData{
-			AgentID: a.ID(),
-			Steps:   steps,
-			Usage:   totalUsage,
+			AgentID:        a.ID(),
+			Steps:          steps,
+			Usage:          totalUsage,
+			TerminalReason: string(terminalReason),
 		}
 		if err != nil {
 			data.Error = err.Error()
@@ -187,36 +189,35 @@ func (a *BaseAgent) StreamTurn(
 		_ = s.Append(ctx, session.NewTurnCompletedEvent(s.ID(), data))
 	}()
 
-	for steps < a.maxSteps {
-		res, err = a.StreamStep(ctx, s, chunkFn)
-		if err != nil {
-			return
-		}
-		steps++
-		totalUsage.InputTokens += res.Usage.InputTokens
-		totalUsage.OutputTokens += res.Usage.OutputTokens
-		totalUsage.TotalTokens += res.Usage.TotalTokens
-		totalUsage.Cost += res.Usage.Cost
+	if a.maxSteps > 0 {
+		for steps < a.maxSteps {
+			res, err = a.StreamStep(ctx, s, chunkFn)
+			if err != nil {
+				return
+			}
+			steps++
+			totalUsage.InputTokens += res.Usage.InputTokens
+			totalUsage.OutputTokens += res.Usage.OutputTokens
+			totalUsage.TotalTokens += res.Usage.TotalTokens
+			totalUsage.Cost += res.Usage.Cost
 
-		if res.Handoff != nil {
-			break
+			terminalReason = terminalReasonForTurn(res, s, steps, a.maxSteps)
+			res.TerminalReason = terminalReason
+			if terminalReason != "" {
+				break
+			}
 		}
-
-		last, ok := s.LastMessage()
-		if !ok || last.Role != llm.RoleTool {
-			break
-		}
+	} else {
+		terminalReason = TerminalMaxTurnsHit
 	}
 
-	if steps >= a.maxSteps {
-		res.Usage = totalUsage
-		err = fmt.Errorf("%w (%d)", ErrMaxSteps, a.maxSteps)
-		return
-	}
 	res.Usage = totalUsage
+	res.TerminalReason = terminalReason
 
-	if msg, ok := s.LastAssistantMessage(); ok {
-		res.Content = msg.Content
+	if steps > 0 {
+		if msg, ok := s.LastAssistantMessage(); ok {
+			res.Content = msg.Content
+		}
 	}
 
 	if a.hooks != nil {

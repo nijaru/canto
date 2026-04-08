@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"iter"
 
 	"github.com/nijaru/canto/approval"
@@ -141,18 +140,26 @@ func Run(
 
 		var steps int
 		var totalUsage llm.Usage
+		var terminalReason TerminalReason
 		var runErr error
 		defer func() {
 			data := session.TurnCompletedData{
-				AgentID: a.ID(),
-				Steps:   steps,
-				Usage:   totalUsage,
+				AgentID:        a.ID(),
+				Steps:          steps,
+				Usage:          totalUsage,
+				TerminalReason: string(terminalReason),
 			}
 			if runErr != nil {
 				data.Error = runErr.Error()
 			}
 			_ = s.Append(ctx, session.NewTurnCompletedEvent(s.ID(), data))
 		}()
+
+		if maxSteps <= 0 {
+			terminalReason = TerminalMaxTurnsHit
+			yield(StepResult{TerminalReason: terminalReason}, nil)
+			return
+		}
 
 		for steps < maxSteps {
 			if err := ctx.Err(); err != nil {
@@ -173,27 +180,15 @@ func Run(
 			totalUsage.TotalTokens += res.Usage.TotalTokens
 			totalUsage.Cost += res.Usage.Cost
 
+			terminalReason = terminalReasonForTurn(res, s, steps, maxSteps)
+			res.TerminalReason = terminalReason
 			if !yield(res, nil) {
 				return
 			}
 
-			if res.Handoff != nil {
+			if terminalReason != "" {
 				return
 			}
-
-			if s.IsWaiting() {
-				return
-			}
-
-			last, ok := s.LastMessage()
-			if !ok || last.Role != llm.RoleTool {
-				return
-			}
-		}
-
-		if steps >= maxSteps {
-			runErr = fmt.Errorf("%w (%d)", ErrMaxSteps, maxSteps)
-			yield(StepResult{}, runErr)
 		}
 	}
 }
@@ -207,6 +202,7 @@ func RunTurn(
 	s *session.Session,
 	maxSteps int,
 ) (res StepResult, err error) {
+	var steps int
 	var totalUsage llm.Usage
 	for stepRes, stepErr := range Run(ctx, a, s, maxSteps) {
 		if stepErr != nil {
@@ -216,6 +212,7 @@ func RunTurn(
 			return
 		}
 		res = stepRes
+		steps++
 		totalUsage.InputTokens += stepRes.Usage.InputTokens
 		totalUsage.OutputTokens += stepRes.Usage.OutputTokens
 		totalUsage.TotalTokens += stepRes.Usage.TotalTokens
@@ -225,8 +222,10 @@ func RunTurn(
 	res.Usage = totalUsage
 
 	// Populate Content from the last assistant message without tool calls.
-	if msg, ok := s.LastAssistantMessage(); ok {
-		res.Content = msg.Content
+	if steps > 0 {
+		if msg, ok := s.LastAssistantMessage(); ok {
+			res.Content = msg.Content
+		}
 	}
 
 	return

@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
@@ -68,6 +67,9 @@ func TestStreamStepNoToolCalls(t *testing.T) {
 	}
 	if result.Handoff != nil {
 		t.Error("expected no handoff")
+	}
+	if result.TerminalReason != "" {
+		t.Fatalf("expected no terminal reason from a single step, got %q", result.TerminalReason)
 	}
 
 	msgs := s.Messages()
@@ -169,6 +171,9 @@ func TestStreamTurnPopulatesContent(t *testing.T) {
 	if result.Content != "final answer" {
 		t.Errorf("expected %q, got %q", "final answer", result.Content)
 	}
+	if result.TerminalReason != TerminalCompleted {
+		t.Fatalf("expected terminal reason %q, got %q", TerminalCompleted, result.TerminalReason)
+	}
 }
 
 func TestStreamTurnMaxSteps(t *testing.T) {
@@ -194,11 +199,8 @@ func TestStreamTurnMaxSteps(t *testing.T) {
 	s := userSession("s5", "start")
 
 	_, err := a.StreamTurn(context.Background(), s, nil)
-	if err == nil {
-		t.Fatal("expected ErrMaxSteps error")
-	}
-	if !strings.Contains(err.Error(), "steps") {
-		t.Errorf("expected max steps error, got: %v", err)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
 }
 
@@ -225,8 +227,8 @@ func TestStreamTurnMaxSteps_PreservesUsage(t *testing.T) {
 	s := userSession("s-stream-maxsteps-usage", "start")
 
 	result, err := a.StreamTurn(context.Background(), s, nil)
-	if !errors.Is(err, ErrMaxSteps) {
-		t.Fatalf("expected ErrMaxSteps, got %v", err)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
 	// Each step contributes TotalTokens=15; total across MaxSteps=3 should be 45.
 	want := 15 * 3
@@ -236,6 +238,9 @@ func TestStreamTurnMaxSteps_PreservesUsage(t *testing.T) {
 			result.Usage.TotalTokens,
 			want,
 		)
+	}
+	if result.TerminalReason != TerminalMaxTurnsHit {
+		t.Fatalf("expected terminal reason %q, got %q", TerminalMaxTurnsHit, result.TerminalReason)
 	}
 }
 

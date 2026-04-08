@@ -4,6 +4,7 @@ package pool
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/nijaru/canto/agent"
@@ -72,9 +73,15 @@ func Run(
 func run(ctx context.Context, task Task, a agent.Agent) Result {
 	sess := session.New(task.ID)
 
-	_, err := a.Turn(ctx, sess)
+	turnRes, err := a.Turn(ctx, sess)
 	if err != nil {
 		return Result{Task: task, Err: err}
+	}
+	if turnRes.TerminalReason.StopsProgress() {
+		return Result{
+			Task: task,
+			Err:  fmt.Errorf("turn for task %q stopped with terminal state %s", task.ID, turnRes.TerminalReason),
+		}
 	}
 
 	traj, err := session.ExportRun(sess)

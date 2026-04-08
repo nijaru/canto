@@ -33,10 +33,11 @@ type TurnStartedData struct {
 
 // TurnCompletedData records the durable end of a turn.
 type TurnCompletedData struct {
-	AgentID string    `json:"agent_id"`
-	Steps   int       `json:"steps"`
-	Usage   llm.Usage `json:"usage,omitzero"`
-	Error   string    `json:"error,omitzero"`
+	AgentID        string    `json:"agent_id"`
+	Steps          int       `json:"steps"`
+	Usage          llm.Usage `json:"usage,omitzero"`
+	TerminalReason string    `json:"terminal_reason,omitzero"`
+	Error          string    `json:"error,omitzero"`
 }
 
 // ToolStartedData records the durable start of a tool call.

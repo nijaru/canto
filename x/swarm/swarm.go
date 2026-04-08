@@ -137,6 +137,14 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 					outcomes[idx] = out
 					return
 				}
+				if turnRes.TerminalReason.StopsProgress() {
+					terminalErr := fmt.Errorf("turn for task %q stopped with terminal state %s", claimed.ID, turnRes.TerminalReason)
+					agentSpan.RecordError(terminalErr)
+					agentSpan.End()
+					out.err = terminalErr
+					outcomes[idx] = out
+					return
+				}
 				agentSpan.End()
 				usageMu.Lock()
 				result.TotalUsage.InputTokens += turnRes.Usage.InputTokens

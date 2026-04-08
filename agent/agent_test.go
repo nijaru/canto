@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -437,9 +436,12 @@ func TestAgentTurn(t *testing.T) {
 	a := New("test-agent", "You are a helpful assistant.", "gpt-4", p, nil)
 	s := userSession("test-session", "Hi!")
 
-	_, err := a.Turn(context.Background(), s)
+	result, err := a.Turn(context.Background(), s)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if result.TerminalReason != TerminalCompleted {
+		t.Fatalf("expected terminal reason %q, got %q", TerminalCompleted, result.TerminalReason)
 	}
 
 	messages := s.Messages()
@@ -451,7 +453,7 @@ func TestAgentTurn(t *testing.T) {
 	}
 }
 
-func TestTurnMaxStepsReturnsError(t *testing.T) {
+func TestTurnMaxStepsSetsTerminalReason(t *testing.T) {
 	// Provider always returns a tool call so the loop never terminates naturally.
 	makeToolResponse := func() *llm.Response {
 		return &llm.Response{
@@ -482,12 +484,12 @@ func TestTurnMaxStepsReturnsError(t *testing.T) {
 	a.maxSteps = maxSteps
 	s := userSession("s9", "loop forever")
 
-	_, err := a.Turn(context.Background(), s)
-	if err == nil {
-		t.Fatal("expected MaxSteps error, got nil")
+	result, err := a.Turn(context.Background(), s)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
-	if !errors.Is(err, ErrMaxSteps) {
-		t.Errorf("expected errors.Is(err, ErrMaxSteps), got %v", err)
+	if result.TerminalReason != TerminalMaxTurnsHit {
+		t.Fatalf("expected terminal reason %q, got %q", TerminalMaxTurnsHit, result.TerminalReason)
 	}
 }
 
@@ -539,8 +541,8 @@ func TestTurnMaxSteps_PreservesUsage(t *testing.T) {
 	s := userSession("s-maxsteps-usage", "loop forever")
 
 	result, err := a.Turn(context.Background(), s)
-	if !errors.Is(err, ErrMaxSteps) {
-		t.Fatalf("expected ErrMaxSteps, got %v", err)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
 	}
 	// Each step contributes TotalTokens=15; total across maxSteps=2 should be 30.
 	want := 15 * maxSteps
@@ -550,6 +552,9 @@ func TestTurnMaxSteps_PreservesUsage(t *testing.T) {
 			result.Usage.TotalTokens,
 			want,
 		)
+	}
+	if result.TerminalReason != TerminalMaxTurnsHit {
+		t.Fatalf("expected terminal reason %q, got %q", TerminalMaxTurnsHit, result.TerminalReason)
 	}
 }
 
@@ -601,6 +606,9 @@ func TestTurnHandoffStopsEarly(t *testing.T) {
 	if result.Handoff == nil {
 		t.Fatal("expected non-nil Handoff in result")
 	}
+	if result.TerminalReason != TerminalHandoff {
+		t.Fatalf("expected terminal reason %q, got %q", TerminalHandoff, result.TerminalReason)
+	}
 	if result.Handoff.TargetAgentID != "writer" {
 		t.Errorf("expected handoff target 'writer', got '%s'", result.Handoff.TargetAgentID)
 	}
@@ -640,6 +648,9 @@ func TestAgentToolTurn(t *testing.T) {
 	}
 	if result.Handoff != nil {
 		t.Errorf("expected no handoff, got %+v", result.Handoff)
+	}
+	if result.TerminalReason != TerminalCompleted {
+		t.Fatalf("expected terminal reason %q, got %q", TerminalCompleted, result.TerminalReason)
 	}
 
 	msgs := s.Messages()
@@ -696,6 +707,9 @@ func TestAgentRunIterator(t *testing.T) {
 	}
 	if len(steps[1].ToolResults) != 0 {
 		t.Fatalf("expected final step to be tool-free, got %+v", steps[1].ToolResults)
+	}
+	if steps[1].TerminalReason != TerminalCompleted {
+		t.Fatalf("expected final step terminal reason %q, got %q", TerminalCompleted, steps[1].TerminalReason)
 	}
 }
 

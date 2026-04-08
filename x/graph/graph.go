@@ -192,6 +192,10 @@ func (g *Graph) execute(
 			}
 		}
 
+		if result.TerminalReason.StopsProgress() {
+			break
+		}
+
 		// Find the first outgoing edge whose condition is satisfied.
 		next := g.nextNode(current, result)
 		if next == "" {

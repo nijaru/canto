@@ -27,10 +27,11 @@ func TestLifecycleEventsRoundTrip(t *testing.T) {
 	}
 
 	turn := NewTurnCompletedEvent("sess", TurnCompletedData{
-		AgentID: "agent",
-		Steps:   3,
-		Usage:   llm.Usage{InputTokens: 1, OutputTokens: 2, TotalTokens: 3},
-		Error:   "boom",
+		AgentID:        "agent",
+		Steps:          3,
+		Usage:          llm.Usage{InputTokens: 1, OutputTokens: 2, TotalTokens: 3},
+		TerminalReason: "completed",
+		Error:          "boom",
 	})
 	turnData, ok, err := turn.TurnCompletedData()
 	if err != nil {
@@ -39,7 +40,7 @@ func TestLifecycleEventsRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("expected turn completed payload")
 	}
-	if turnData.Steps != 3 || turnData.Error != "boom" {
+	if turnData.Steps != 3 || turnData.TerminalReason != "completed" || turnData.Error != "boom" {
 		t.Fatalf("unexpected turn completed payload: %+v", turnData)
 	}
 
