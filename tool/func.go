@@ -9,11 +9,14 @@ import (
 
 // funcTool adapts a plain function to the Tool interface.
 type funcTool struct {
-	spec llm.Spec
-	fn   func(ctx context.Context, args string) (string, error)
+	spec     llm.Spec
+	metadata Metadata
+	fn       func(ctx context.Context, args string) (string, error)
 }
 
 func (f *funcTool) Spec() llm.Spec { return f.spec }
+
+func (f *funcTool) Metadata() Metadata { return f.metadata }
 
 func (f *funcTool) Execute(ctx context.Context, args string) (string, error) {
 	res, err := f.fn(ctx, args)
@@ -30,8 +33,19 @@ func Func(
 	schema any,
 	fn func(ctx context.Context, args string) (string, error),
 ) Tool {
+	return FuncWithMetadata(name, desc, schema, Metadata{}, fn)
+}
+
+// FuncWithMetadata constructs a Tool from a function with framework-side metadata.
+func FuncWithMetadata(
+	name, desc string,
+	schema any,
+	metadata Metadata,
+	fn func(ctx context.Context, args string) (string, error),
+) Tool {
 	return &funcTool{
-		spec: llm.Spec{Name: name, Description: desc, Parameters: schema},
-		fn:   fn,
+		spec:     llm.Spec{Name: name, Description: desc, Parameters: schema},
+		metadata: metadata,
+		fn:       fn,
 	}
 }

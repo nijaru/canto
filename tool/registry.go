@@ -39,6 +39,17 @@ func (r *Registry) Get(name string) (Tool, bool) {
 
 // Specs returns all tool specifications.
 func (r *Registry) Specs() []*llm.Spec {
+	entries := r.Entries()
+	res := make([]*llm.Spec, 0, len(entries))
+	for _, entry := range entries {
+		spec := entry.Spec
+		res = append(res, &spec)
+	}
+	return res
+}
+
+// Entries returns the registered tools with their framework-side metadata.
+func (r *Registry) Entries() []ToolEntry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	names := make([]string, 0, len(r.tools))
@@ -47,12 +58,26 @@ func (r *Registry) Specs() []*llm.Spec {
 	}
 	slices.Sort(names)
 
-	res := make([]*llm.Spec, 0, len(names))
+	res := make([]ToolEntry, 0, len(names))
 	for _, name := range names {
-		spec := r.tools[name].Spec()
-		res = append(res, &spec)
+		t := r.tools[name]
+		res = append(res, ToolEntry{
+			Name:     name,
+			Tool:     t,
+			Spec:     t.Spec(),
+			Metadata: MetadataFor(t),
+		})
 	}
 	return res
+}
+
+// Metadata returns framework-side metadata for a tool by name.
+func (r *Registry) Metadata(name string) (Metadata, bool) {
+	t, ok := r.Get(name)
+	if !ok {
+		return Metadata{}, false
+	}
+	return MetadataFor(t), true
 }
 
 // Names returns the names of all registered tools.

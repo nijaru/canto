@@ -26,6 +26,29 @@ func TestFunc_Spec(t *testing.T) {
 	}
 }
 
+func TestFuncWithMetadata(t *testing.T) {
+	tool := FuncWithMetadata(
+		"search",
+		"searches files",
+		map[string]any{"type": "object"},
+		Metadata{
+			Category:    "workspace",
+			ReadOnly:    true,
+			Concurrency: ConcurrencyParallel,
+			Deferred:    true,
+		},
+		func(_ context.Context, _ string) (string, error) { return "ok", nil },
+	)
+
+	mt, ok := tool.(MetadataTool)
+	if !ok {
+		t.Fatal("expected metadata tool")
+	}
+	if got := mt.Metadata(); got.Category != "workspace" || !got.ReadOnly || !got.Deferred {
+		t.Fatalf("unexpected metadata: %+v", got)
+	}
+}
+
 func TestFunc_Execute(t *testing.T) {
 	tool := Func("echo", "", nil, func(_ context.Context, args string) (string, error) {
 		return "got: " + args, nil

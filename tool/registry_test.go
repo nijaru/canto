@@ -26,6 +26,13 @@ func (s *staticTool) Execute(_ context.Context, _ string) (string, error) {
 	return s.result, nil
 }
 
+type metadataTool struct {
+	staticTool
+	metadata Metadata
+}
+
+func (m *metadataTool) Metadata() Metadata { return m.metadata }
+
 func TestRegistry_NewRegistry(t *testing.T) {
 	reg := NewRegistry()
 	if reg == nil {
@@ -117,5 +124,51 @@ func TestRegistry_Execute_NotFound(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "tool not found: missing") {
 		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestRegistry_EntriesIncludeMetadata(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(&metadataTool{
+		staticTool: staticTool{name: "search", result: "ok"},
+		metadata: Metadata{
+			Category:    "workspace",
+			ReadOnly:    true,
+			Concurrency: ConcurrencyParallel,
+			Deferred:    true,
+			Examples: []Example{{
+				Description: "Search Go files",
+				Arguments:   `{"pattern":"TODO"}`,
+			}},
+		},
+	})
+
+	entries := reg.Entries()
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Metadata.Category != "workspace" {
+		t.Fatalf("metadata category = %q, want workspace", entries[0].Metadata.Category)
+	}
+	if !entries[0].Metadata.ReadOnly || !entries[0].Metadata.Deferred {
+		t.Fatalf("unexpected metadata flags: %+v", entries[0].Metadata)
+	}
+}
+
+func TestRegistry_Metadata(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(&metadataTool{
+		staticTool: staticTool{name: "grep", result: "ok"},
+		metadata: Metadata{
+			Concurrency: ConcurrencyParallel,
+		},
+	})
+
+	got, ok := reg.Metadata("grep")
+	if !ok {
+		t.Fatal("expected metadata to exist")
+	}
+	if got.Concurrency != ConcurrencyParallel {
+		t.Fatalf("concurrency = %q, want %q", got.Concurrency, ConcurrencyParallel)
 	}
 }

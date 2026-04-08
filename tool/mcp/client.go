@@ -130,6 +130,13 @@ func (w *wrapper) Spec() llm.Spec {
 	return w.spec
 }
 
+func (w *wrapper) Metadata() tool.Metadata {
+	return tool.Metadata{
+		Category:    "mcp",
+		Concurrency: tool.ConcurrencyUnknown,
+	}
+}
+
 func (w *wrapper) Execute(ctx context.Context, args string) (string, error) {
 	var parsedArgs map[string]any
 	if err := json.Unmarshal([]byte(args), &parsedArgs); err != nil {
