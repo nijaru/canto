@@ -105,3 +105,133 @@ func TestWrapTool_RecordsToolSpan(t *testing.T) {
 		t.Errorf("canto.tool.my_tool span not recorded; got: %v", names)
 	}
 }
+
+func TestWrapProvider_RecordMessages(t *testing.T) {
+	rec := setupTracer(t)
+
+	mock := xtest.NewMockProvider(
+		"test",
+		xtest.Step{Content: "hello"},
+		xtest.Step{Content: "hello"},
+	)
+
+	// Test without RecordMessages (default)
+	p1 := obs.WrapProvider(mock)
+	_, _ = p1.Generate(context.Background(), &llm.Request{
+		Model:    "m",
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "secret"}},
+	})
+
+	// Test with RecordMessages = true
+	p2 := obs.WrapProvider(mock, obs.WithRecordMessages(true))
+	_, _ = p2.Generate(context.Background(), &llm.Request{
+		Model:    "m",
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "secret"}},
+	})
+
+	spans := rec.Ended()
+	if len(spans) != 2 {
+		t.Fatalf("expected 2 spans, got %d", len(spans))
+	}
+
+	span1 := spans[0]
+	span2 := spans[1]
+
+	// Verify span1 does NOT have messages
+	for _, attr := range span1.Attributes() {
+		if attr.Key == "gen_ai.input.messages" || attr.Key == "gen_ai.output.messages" {
+			t.Errorf("default span should not contain messages, found %s", attr.Key)
+		}
+	}
+
+	// Verify span2 DOES have messages
+	foundInput := false
+	foundOutput := false
+	for _, attr := range span2.Attributes() {
+		if attr.Key == "gen_ai.input.messages" {
+			foundInput = true
+			val := attr.Value.AsString()
+			if val == "" {
+				t.Errorf("expected gen_ai.input.messages to contain JSON, got empty string")
+			}
+		}
+		if attr.Key == "gen_ai.output.messages" {
+			foundOutput = true
+			val := attr.Value.AsString()
+			if val == "" {
+				t.Errorf("expected gen_ai.output.messages to contain JSON, got empty string")
+			}
+		}
+	}
+
+	if !foundInput {
+		t.Error("expected gen_ai.input.messages attribute in span with RecordMessages enabled")
+	}
+	if !foundOutput {
+		t.Error("expected gen_ai.output.messages attribute in span with RecordMessages enabled")
+	}
+}
+
+func TestWrapProvider_StreamRecordMessages(t *testing.T) {
+	rec := setupTracer(t)
+
+	mock := xtest.NewMockProvider("test", xtest.Step{
+		Chunks: []llm.Chunk{
+			{Content: "hel"},
+			{Content: "lo"},
+			{Usage: &llm.Usage{InputTokens: 10, OutputTokens: 5}},
+		},
+	})
+
+	p := obs.WrapProvider(mock, obs.WithRecordMessages(true))
+
+	stream, err := p.Stream(context.Background(), &llm.Request{
+		Model:    "m",
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "secret"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	for {
+		_, ok := stream.Next()
+		if !ok {
+			break
+		}
+	}
+	stream.Close()
+
+	spans := rec.Ended()
+
+	var streamSpan sdktrace.ReadOnlySpan
+	for _, s := range spans {
+		if s.Name() == "gen_ai.chat" {
+			streamSpan = s
+			break
+		}
+	}
+	if streamSpan == nil {
+		t.Fatal("gen_ai.chat span not found")
+	}
+
+	foundInput := false
+	foundOutput := false
+	for _, attr := range streamSpan.Attributes() {
+		if attr.Key == "gen_ai.input.messages" {
+			foundInput = true
+		}
+		if attr.Key == "gen_ai.output.messages" {
+			foundOutput = true
+			if attr.Value.AsString() == "" {
+				t.Error("gen_ai.output.messages should contain JSON chunks")
+			}
+		}
+	}
+
+	if !foundInput {
+		t.Error("expected gen_ai.input.messages in stream span with RecordMessages enabled")
+	}
+	if !foundOutput {
+		t.Error("expected gen_ai.output.messages in stream span with RecordMessages enabled")
+	}
+}

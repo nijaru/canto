@@ -1,0 +1,49 @@
+package safety
+
+import (
+	"context"
+	"path/filepath"
+	"strings"
+
+	"github.com/nijaru/canto/approval"
+)
+
+// DefaultProtectedPaths returns a standard list of paths that should always
+// require manual approval before being modified.
+func DefaultProtectedPaths() []string {
+	return []string{".git", ".env"}
+}
+
+// ProtectedPaths wraps an existing policy and defers to manual approval for
+// any write or execute operations targeting the specified paths or their
+// subdirectories. It does so by returning handled=false (skipping the wrapped
+// policy), which signals the policy chain that human approval is required.
+//
+// Callers must provide canonical (symlink-resolved) paths. This policy does
+// not perform its own symlink resolution; that is the workspace layer's
+// responsibility.
+func ProtectedPaths(next approval.Policy, paths []string) approval.Policy {
+	protected := make([]string, 0, len(paths))
+	for _, p := range paths {
+		protected = append(protected, filepath.Clean(p))
+	}
+
+	return approval.PolicyFunc(func(ctx context.Context, req approval.Request) (approval.Result, bool, error) {
+		cat := Category(req.Category)
+		if (cat == CategoryWrite || cat == CategoryExecute) && req.Resource != "" {
+			target := filepath.Clean(req.Resource)
+
+			for _, p := range protected {
+				if target == p || strings.HasPrefix(target, p+string(filepath.Separator)) {
+					// Force manual approval by skipping the next policy
+					return approval.Result{}, false, nil
+				}
+			}
+		}
+
+		if next == nil {
+			return approval.Result{}, false, nil
+		}
+		return next.Decide(ctx, req)
+	})
+}

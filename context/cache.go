@@ -39,8 +39,10 @@ func FingerprintPromptCache(
 		if err != nil {
 			return PromptCacheFingerprint{}, err
 		}
-		if n := len(req.Messages) - len(history); n >= 0 && n <= len(req.Messages) {
+		if n := len(req.Messages) - len(history); n > 0 && n <= len(req.Messages) {
 			prefix = req.Messages[:n]
+		} else {
+			prefix = req.Messages[:0]
 		}
 	}
 
@@ -74,10 +76,10 @@ func (f PromptCacheFingerprint) String() string {
 // CacheAligner returns a RequestProcessor that adds provider-agnostic
 // cache-control markers to the request.
 //
-// For Anthropic, it marks the first n messages and the tool list with
-// "ephemeral" cache-control. Typically, n should be small (e.g. 1-3) to
-// capture the system prompt and initial task context without hitting the
-// 4-breakpoint limit.
+// It marks the first messageLimit messages with "ephemeral" cache-control and
+// places a single "ephemeral" marker on the last tool (which caches the entire
+// tools array on providers like Anthropic). Providers that ignore CacheControl
+// are unaffected.
 func CacheAligner(messageLimit int) RequestProcessor {
 	return RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
@@ -92,11 +94,9 @@ func CacheAligner(messageLimit int) RequestProcessor {
 
 			// Mark tool list if present.
 			if len(req.Tools) > 0 {
-				// Most providers cache the whole list as one block if any tool is marked,
-				// or have a specific top-level toggle. Canto marks all as a hint.
-				for i := range req.Tools {
-					req.Tools[i].CacheControl = &llm.CacheControl{Type: "ephemeral"}
-				}
+				// For Anthropic, placing cache_control on the last tool caches the
+				// entire tools array (and system prompt) while only consuming 1 breakpoint.
+				req.Tools[len(req.Tools)-1].CacheControl = &llm.CacheControl{Type: "ephemeral"}
 			}
 
 			return nil

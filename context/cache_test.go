@@ -95,3 +95,49 @@ func TestFingerprintPromptCacheChangesOnPrefixOrToolSchema(t *testing.T) {
 		t.Fatal("expected tool schema hash to change when tool schema changes")
 	}
 }
+
+func TestCacheAligner(t *testing.T) {
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "1"},
+			{Role: llm.RoleUser, Content: "2"},
+			{Role: llm.RoleAssistant, Content: "3"},
+			{Role: llm.RoleUser, Content: "4"},
+		},
+		Tools: []*llm.Spec{
+			{Name: "tool1"},
+			{Name: "tool2"},
+			{Name: "tool3"},
+		},
+	}
+
+	aligner := CacheAligner(2)
+	err := aligner.ApplyRequest(context.Background(), nil, "", nil, req)
+	if err != nil {
+		t.Fatalf("CacheAligner error: %v", err)
+	}
+
+	for i, m := range req.Messages {
+		if i < 2 {
+			if m.CacheControl == nil || m.CacheControl.Type != "ephemeral" {
+				t.Errorf("expected message %d to have ephemeral cache control", i)
+			}
+		} else {
+			if m.CacheControl != nil {
+				t.Errorf("expected message %d to NOT have cache control, got %v", i, m.CacheControl)
+			}
+		}
+	}
+
+	for i, tool := range req.Tools {
+		if i == 2 {
+			if tool.CacheControl == nil || tool.CacheControl.Type != "ephemeral" {
+				t.Errorf("expected last tool to have ephemeral cache control")
+			}
+		} else {
+			if tool.CacheControl != nil {
+				t.Errorf("expected tool %d to NOT have cache control", i)
+			}
+		}
+	}
+}

@@ -19,7 +19,9 @@ package obs
 
 import (
 	"context"
+	"encoding/json"
 	"iter"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -105,15 +107,40 @@ func StartContext(ctx context.Context) (context.Context, trace.Span) {
 	return Tracer().Start(ctx, "canto.context")
 }
 
+// WrapOptions configures the instrumentation behavior.
+type WrapOptions struct {
+	RecordMessages bool
+}
+
+// WrapOption is a functional option for WrapProvider and WrapTool.
+type WrapOption func(*WrapOptions)
+
+// WithRecordMessages enables recording of the raw prompt and completion messages
+// in the telemetry spans (as gen_ai.input.messages and gen_ai.output.messages).
+// By default, messages are dropped to prevent PII leakage.
+func WithRecordMessages(record bool) WrapOption {
+	return func(o *WrapOptions) {
+		o.RecordMessages = record
+	}
+}
+
 // wrappedProvider adds OpenTelemetry spans to provider Generate calls.
 type wrappedProvider struct {
-	inner llm.Provider
+	inner          llm.Provider
+	recordMessages bool
 }
 
 // WrapProvider returns a Provider that records a "gen_ai.chat" child span on
 // every Generate call. Stream calls are forwarded without instrumentation.
-func WrapProvider(p llm.Provider) llm.Provider {
-	return &wrappedProvider{inner: p}
+func WrapProvider(p llm.Provider, opts ...WrapOption) llm.Provider {
+	var options WrapOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+	return &wrappedProvider{
+		inner:          p,
+		recordMessages: options.RecordMessages,
+	}
 }
 
 func (w *wrappedProvider) ID() string { return w.inner.ID() }
@@ -122,12 +149,18 @@ func (w *wrappedProvider) Generate(
 	ctx context.Context,
 	req *llm.Request,
 ) (*llm.Response, error) {
-	ctx, span := Tracer().Start(ctx, "gen_ai.chat",
-		trace.WithAttributes(
-			attribute.String("gen_ai.request.model", req.Model),
-			attribute.Int("gen_ai.request.message_count", len(req.Messages)),
-		),
-	)
+	attrs := []attribute.KeyValue{
+		attribute.String("gen_ai.request.model", req.Model),
+		attribute.Int("gen_ai.request.message_count", len(req.Messages)),
+	}
+
+	if w.recordMessages {
+		if b, err := json.Marshal(req.Messages); err == nil {
+			attrs = append(attrs, attribute.String("gen_ai.input.messages", string(b)))
+		}
+	}
+
+	ctx, span := Tracer().Start(ctx, "gen_ai.chat", trace.WithAttributes(attrs...))
 	defer span.End()
 
 	resp, err := w.inner.Generate(ctx, req)
@@ -137,22 +170,36 @@ func (w *wrappedProvider) Generate(
 		return nil, err
 	}
 
-	span.SetAttributes(
+	respAttrs := []attribute.KeyValue{
 		attribute.Int("gen_ai.usage.input_tokens", resp.Usage.InputTokens),
 		attribute.Int("gen_ai.usage.output_tokens", resp.Usage.OutputTokens),
 		attribute.Int("gen_ai.response.tool_call_count", len(resp.Calls)),
-	)
+	}
+
+	if w.recordMessages {
+		if b, err := json.Marshal(resp); err == nil {
+			respAttrs = append(respAttrs, attribute.String("gen_ai.output.messages", string(b)))
+		}
+	}
+
+	span.SetAttributes(respAttrs...)
 	return resp, nil
 }
 
 func (w *wrappedProvider) Stream(ctx context.Context, req *llm.Request) (llm.Stream, error) {
-	ctx, span := Tracer().Start(ctx, "gen_ai.chat",
-		trace.WithAttributes(
-			attribute.String("gen_ai.request.model", req.Model),
-			attribute.Int("gen_ai.request.message_count", len(req.Messages)),
-			attribute.Bool("gen_ai.request.stream", true),
-		),
-	)
+	attrs := []attribute.KeyValue{
+		attribute.String("gen_ai.request.model", req.Model),
+		attribute.Int("gen_ai.request.message_count", len(req.Messages)),
+		attribute.Bool("gen_ai.request.stream", true),
+	}
+
+	if w.recordMessages {
+		if b, err := json.Marshal(req.Messages); err == nil {
+			attrs = append(attrs, attribute.String("gen_ai.input.messages", string(b)))
+		}
+	}
+
+	ctx, span := Tracer().Start(ctx, "gen_ai.chat", trace.WithAttributes(attrs...))
 
 	stream, err := w.inner.Stream(ctx, req)
 	if err != nil {
@@ -162,21 +209,28 @@ func (w *wrappedProvider) Stream(ctx context.Context, req *llm.Request) (llm.Str
 		return nil, err
 	}
 
-	return &wrappedStream{inner: stream, span: span}, nil
+	return &wrappedStream{inner: stream, span: span, recordMessages: w.recordMessages}, nil
 }
 
 type wrappedStream struct {
-	inner llm.Stream
-	span  trace.Span
-	usage llm.Usage
+	inner          llm.Stream
+	span           trace.Span
+	usage          llm.Usage
+	recordMessages bool
+	chunks         []llm.Chunk
 }
 
 func (w *wrappedStream) Next() (*llm.Chunk, bool) {
 	chunk, ok := w.inner.Next()
-	if ok && chunk.Usage != nil {
-		w.usage.InputTokens += chunk.Usage.InputTokens
-		w.usage.OutputTokens += chunk.Usage.OutputTokens
-		w.usage.TotalTokens += chunk.Usage.TotalTokens
+	if ok {
+		if chunk.Usage != nil {
+			w.usage.InputTokens += chunk.Usage.InputTokens
+			w.usage.OutputTokens += chunk.Usage.OutputTokens
+			w.usage.TotalTokens += chunk.Usage.TotalTokens
+		}
+		if w.recordMessages {
+			w.chunks = append(w.chunks, *chunk)
+		}
 	}
 	return chunk, ok
 }
@@ -191,10 +245,16 @@ func (w *wrappedStream) Close() error {
 		w.span.RecordError(serr)
 		w.span.SetStatus(codes.Error, serr.Error())
 	}
-	w.span.SetAttributes(
+	attrs := []attribute.KeyValue{
 		attribute.Int("gen_ai.usage.input_tokens", w.usage.InputTokens),
 		attribute.Int("gen_ai.usage.output_tokens", w.usage.OutputTokens),
-	)
+	}
+	if w.recordMessages && len(w.chunks) > 0 {
+		if b, err := json.Marshal(w.chunks); err == nil {
+			attrs = append(attrs, attribute.String("gen_ai.output.messages", string(b)))
+		}
+	}
+	w.span.SetAttributes(attrs...)
 	w.span.End()
 	return err
 }
@@ -279,7 +339,7 @@ func (w *wrappedStreamingTool) ExecuteStreaming(
 
 	return func(yield func(string, error) bool) {
 		defer span.End()
-		var totalOutput string
+		var buf strings.Builder
 		for delta, err := range w.innerStreaming.ExecuteStreaming(ctx, args) {
 			if err != nil {
 				span.RecordError(err)
@@ -289,11 +349,11 @@ func (w *wrappedStreamingTool) ExecuteStreaming(
 				}
 				return
 			}
-			totalOutput += delta
+			buf.WriteString(delta)
 			if !yield(delta, nil) {
 				return
 			}
 		}
-		span.SetAttributes(attribute.Int("canto.tool.output_len", len(totalOutput)))
+		span.SetAttributes(attribute.Int("canto.tool.output_len", buf.Len()))
 	}
 }
