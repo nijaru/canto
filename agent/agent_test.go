@@ -440,8 +440,8 @@ func TestAgentTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.TerminalReason != TerminalCompleted {
-		t.Fatalf("expected terminal reason %q, got %q", TerminalCompleted, result.TerminalReason)
+	if result.TurnStopReason != TurnStopCompleted {
+		t.Fatalf("expected turn stop reason %q, got %q", TurnStopCompleted, result.TurnStopReason)
 	}
 
 	messages := s.Messages()
@@ -453,7 +453,7 @@ func TestAgentTurn(t *testing.T) {
 	}
 }
 
-func TestTurnMaxStepsSetsTerminalReason(t *testing.T) {
+func TestTurnMaxStepsSetsTurnStopReason(t *testing.T) {
 	// Provider always returns a tool call so the loop never terminates naturally.
 	makeToolResponse := func() *llm.Response {
 		return &llm.Response{
@@ -488,8 +488,8 @@ func TestTurnMaxStepsSetsTerminalReason(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
-	if result.TerminalReason != TerminalMaxTurnsHit {
-		t.Fatalf("expected terminal reason %q, got %q", TerminalMaxTurnsHit, result.TerminalReason)
+	if result.TurnStopReason != TurnStopMaxTurnsHit {
+		t.Fatalf("expected turn stop reason %q, got %q", TurnStopMaxTurnsHit, result.TurnStopReason)
 	}
 }
 
@@ -553,8 +553,8 @@ func TestTurnMaxSteps_PreservesUsage(t *testing.T) {
 			want,
 		)
 	}
-	if result.TerminalReason != TerminalMaxTurnsHit {
-		t.Fatalf("expected terminal reason %q, got %q", TerminalMaxTurnsHit, result.TerminalReason)
+	if result.TurnStopReason != TurnStopMaxTurnsHit {
+		t.Fatalf("expected turn stop reason %q, got %q", TurnStopMaxTurnsHit, result.TurnStopReason)
 	}
 }
 
@@ -606,8 +606,8 @@ func TestTurnHandoffStopsEarly(t *testing.T) {
 	if result.Handoff == nil {
 		t.Fatal("expected non-nil Handoff in result")
 	}
-	if result.TerminalReason != TerminalHandoff {
-		t.Fatalf("expected terminal reason %q, got %q", TerminalHandoff, result.TerminalReason)
+	if result.TurnStopReason != TurnStopHandoff {
+		t.Fatalf("expected turn stop reason %q, got %q", TurnStopHandoff, result.TurnStopReason)
 	}
 	if result.Handoff.TargetAgentID != "writer" {
 		t.Errorf("expected handoff target 'writer', got '%s'", result.Handoff.TargetAgentID)
@@ -649,8 +649,8 @@ func TestAgentToolTurn(t *testing.T) {
 	if result.Handoff != nil {
 		t.Errorf("expected no handoff, got %+v", result.Handoff)
 	}
-	if result.TerminalReason != TerminalCompleted {
-		t.Fatalf("expected terminal reason %q, got %q", TerminalCompleted, result.TerminalReason)
+	if result.TurnStopReason != TurnStopCompleted {
+		t.Fatalf("expected turn stop reason %q, got %q", TurnStopCompleted, result.TurnStopReason)
 	}
 
 	msgs := s.Messages()
@@ -708,8 +708,8 @@ func TestAgentRunIterator(t *testing.T) {
 	if len(steps[1].ToolResults) != 0 {
 		t.Fatalf("expected final step to be tool-free, got %+v", steps[1].ToolResults)
 	}
-	if steps[1].TerminalReason != TerminalCompleted {
-		t.Fatalf("expected final step terminal reason %q, got %q", TerminalCompleted, steps[1].TerminalReason)
+	if steps[1].TurnStopReason != TurnStopCompleted {
+		t.Fatalf("expected final step turn stop reason %q, got %q", TurnStopCompleted, steps[1].TurnStopReason)
 	}
 }
 

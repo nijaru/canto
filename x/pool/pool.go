@@ -77,10 +77,10 @@ func run(ctx context.Context, task Task, a agent.Agent) Result {
 	if err != nil {
 		return Result{Task: task, Err: err}
 	}
-	if turnRes.TerminalReason.StopsProgress() {
+	if turnRes.TurnStopReason.StopsProgress() {
 		return Result{
 			Task: task,
-			Err:  fmt.Errorf("turn for task %q stopped with terminal state %s", task.ID, turnRes.TerminalReason),
+			Err:  fmt.Errorf("turn for task %q stopped with turn stop state %s", task.ID, turnRes.TurnStopReason),
 		}
 	}
 

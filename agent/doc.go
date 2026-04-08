@@ -9,7 +9,7 @@
 //
 // Step executes one model/tool iteration. Turn repeats Step until the agent
 // produces a final assistant message, hands off control, waits for input, or
-// exhausts its step budget. The terminal state is exposed on StepResult.
+// exhausts its step budget. The turn stop state is exposed on StepResult.
 //
 // Extend the default builder with WithRequestProcessors and WithMutators, and
 // configure gated tool execution with WithApprovalManager when a host needs

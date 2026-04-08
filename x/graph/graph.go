@@ -192,7 +192,7 @@ func (g *Graph) execute(
 			}
 		}
 
-		if result.TerminalReason.StopsProgress() {
+		if result.TurnStopReason.StopsProgress() {
 			break
 		}
 

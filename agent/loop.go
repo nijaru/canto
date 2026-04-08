@@ -140,14 +140,14 @@ func Run(
 
 		var steps int
 		var totalUsage llm.Usage
-		var terminalReason TerminalReason
+		var stopReason TurnStopReason
 		var runErr error
 		defer func() {
 			data := session.TurnCompletedData{
 				AgentID:        a.ID(),
 				Steps:          steps,
 				Usage:          totalUsage,
-				TerminalReason: string(terminalReason),
+				TurnStopReason: string(stopReason),
 			}
 			if runErr != nil {
 				data.Error = runErr.Error()
@@ -156,8 +156,8 @@ func Run(
 		}()
 
 		if maxSteps <= 0 {
-			terminalReason = TerminalMaxTurnsHit
-			yield(StepResult{TerminalReason: terminalReason}, nil)
+			stopReason = TurnStopMaxTurnsHit
+			yield(StepResult{TurnStopReason: stopReason}, nil)
 			return
 		}
 
@@ -180,13 +180,13 @@ func Run(
 			totalUsage.TotalTokens += res.Usage.TotalTokens
 			totalUsage.Cost += res.Usage.Cost
 
-			terminalReason = terminalReasonForTurn(res, s, steps, maxSteps)
-			res.TerminalReason = terminalReason
+			stopReason = turnStopReasonForTurn(res, s, steps, maxSteps)
+			res.TurnStopReason = stopReason
 			if !yield(res, nil) {
 				return
 			}
 
-			if terminalReason != "" {
+			if stopReason != "" {
 				return
 			}
 		}

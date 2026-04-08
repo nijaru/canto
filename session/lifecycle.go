@@ -36,7 +36,7 @@ type TurnCompletedData struct {
 	AgentID        string    `json:"agent_id"`
 	Steps          int       `json:"steps"`
 	Usage          llm.Usage `json:"usage,omitzero"`
-	TerminalReason string    `json:"terminal_reason,omitzero"`
+	TurnStopReason string    `json:"turn_stop_reason,omitzero"`
 	Error          string    `json:"error,omitzero"`
 }
 

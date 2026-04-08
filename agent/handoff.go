@@ -16,9 +16,9 @@ type StepResult struct {
 	// Populated by Turn so orchestrators don't re-parse the session.
 	Content string `json:"content,omitzero"`
 
-	// TerminalReason explains why a turn stopped. It is set on the final
+	// TurnStopReason explains why a turn stopped. It is set on the final
 	// result returned by Turn/StreamTurn/RunTurn.
-	TerminalReason TerminalReason `json:"terminal_reason,omitzero"`
+	TurnStopReason TurnStopReason `json:"turn_stop_reason,omitzero"`
 
 	// Handoff is non-nil when the agent's last action was a handoff to
 	// another agent. The caller must route to the target agent.

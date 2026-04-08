@@ -68,8 +68,8 @@ func TestStreamStepNoToolCalls(t *testing.T) {
 	if result.Handoff != nil {
 		t.Error("expected no handoff")
 	}
-	if result.TerminalReason != "" {
-		t.Fatalf("expected no terminal reason from a single step, got %q", result.TerminalReason)
+	if result.TurnStopReason != "" {
+		t.Fatalf("expected no turn stop reason from a single step, got %q", result.TurnStopReason)
 	}
 
 	msgs := s.Messages()
@@ -171,8 +171,8 @@ func TestStreamTurnPopulatesContent(t *testing.T) {
 	if result.Content != "final answer" {
 		t.Errorf("expected %q, got %q", "final answer", result.Content)
 	}
-	if result.TerminalReason != TerminalCompleted {
-		t.Fatalf("expected terminal reason %q, got %q", TerminalCompleted, result.TerminalReason)
+	if result.TurnStopReason != TurnStopCompleted {
+		t.Fatalf("expected turn stop reason %q, got %q", TurnStopCompleted, result.TurnStopReason)
 	}
 }
 
@@ -239,8 +239,8 @@ func TestStreamTurnMaxSteps_PreservesUsage(t *testing.T) {
 			want,
 		)
 	}
-	if result.TerminalReason != TerminalMaxTurnsHit {
-		t.Fatalf("expected terminal reason %q, got %q", TerminalMaxTurnsHit, result.TerminalReason)
+	if result.TurnStopReason != TurnStopMaxTurnsHit {
+		t.Fatalf("expected turn stop reason %q, got %q", TurnStopMaxTurnsHit, result.TurnStopReason)
 	}
 }
 

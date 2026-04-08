@@ -137,11 +137,11 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 					outcomes[idx] = out
 					return
 				}
-				if turnRes.TerminalReason.StopsProgress() {
-					terminalErr := fmt.Errorf("turn for task %q stopped with terminal state %s", claimed.ID, turnRes.TerminalReason)
-					agentSpan.RecordError(terminalErr)
+				if turnRes.TurnStopReason.StopsProgress() {
+					stopErr := fmt.Errorf("turn for task %q stopped with turn stop state %s", claimed.ID, turnRes.TurnStopReason)
+					agentSpan.RecordError(stopErr)
 					agentSpan.End()
-					out.err = terminalErr
+					out.err = stopErr
 					outcomes[idx] = out
 					return
 				}

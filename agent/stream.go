@@ -175,13 +175,13 @@ func (a *BaseAgent) StreamTurn(
 
 	var steps int
 	var totalUsage llm.Usage
-	var terminalReason TerminalReason
+	var stopReason TurnStopReason
 	defer func() {
 		data := session.TurnCompletedData{
 			AgentID:        a.ID(),
 			Steps:          steps,
 			Usage:          totalUsage,
-			TerminalReason: string(terminalReason),
+			TurnStopReason: string(stopReason),
 		}
 		if err != nil {
 			data.Error = err.Error()
@@ -201,18 +201,18 @@ func (a *BaseAgent) StreamTurn(
 			totalUsage.TotalTokens += res.Usage.TotalTokens
 			totalUsage.Cost += res.Usage.Cost
 
-			terminalReason = terminalReasonForTurn(res, s, steps, a.maxSteps)
-			res.TerminalReason = terminalReason
-			if terminalReason != "" {
+			stopReason = turnStopReasonForTurn(res, s, steps, a.maxSteps)
+			res.TurnStopReason = stopReason
+			if stopReason != "" {
 				break
 			}
 		}
 	} else {
-		terminalReason = TerminalMaxTurnsHit
+		stopReason = TurnStopMaxTurnsHit
 	}
 
 	res.Usage = totalUsage
-	res.TerminalReason = terminalReason
+	res.TurnStopReason = stopReason
 
 	if steps > 0 {
 		if msg, ok := s.LastAssistantMessage(); ok {
