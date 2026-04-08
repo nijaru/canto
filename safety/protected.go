@@ -28,22 +28,24 @@ func ProtectedPaths(next approval.Policy, paths []string) approval.Policy {
 		protected = append(protected, filepath.Clean(p))
 	}
 
-	return approval.PolicyFunc(func(ctx context.Context, req approval.Request) (approval.Result, bool, error) {
-		cat := Category(req.Category)
-		if (cat == CategoryWrite || cat == CategoryExecute) && req.Resource != "" {
-			target := filepath.Clean(req.Resource)
+	return approval.PolicyFunc(
+		func(ctx context.Context, req approval.Request) (approval.Result, bool, error) {
+			cat := Category(req.Category)
+			if (cat == CategoryWrite || cat == CategoryExecute) && req.Resource != "" {
+				target := filepath.Clean(req.Resource)
 
-			for _, p := range protected {
-				if target == p || strings.HasPrefix(target, p+string(filepath.Separator)) {
-					// Force manual approval by skipping the next policy
-					return approval.Result{}, false, nil
+				for _, p := range protected {
+					if target == p || strings.HasPrefix(target, p+string(filepath.Separator)) {
+						// Force manual approval by skipping the next policy
+						return approval.Result{}, false, nil
+					}
 				}
 			}
-		}
 
-		if next == nil {
-			return approval.Result{}, false, nil
-		}
-		return next.Decide(ctx, req)
-	})
+			if next == nil {
+				return approval.Result{}, false, nil
+			}
+			return next.Decide(ctx, req)
+		},
+	)
 }

@@ -10,9 +10,11 @@ import (
 
 func TestProtectedPaths(t *testing.T) {
 	// Base policy that auto-approves everything
-	autoPolicy := approval.PolicyFunc(func(ctx context.Context, req approval.Request) (approval.Result, bool, error) {
-		return approval.Result{Decision: approval.DecisionAllow}, true, nil
-	})
+	autoPolicy := approval.PolicyFunc(
+		func(ctx context.Context, req approval.Request) (approval.Result, bool, error) {
+			return approval.Result{Decision: approval.DecisionAllow}, true, nil
+		},
+	)
 
 	protected := safety.ProtectedPaths(autoPolicy, []string{".git", ".env", "secrets/"})
 

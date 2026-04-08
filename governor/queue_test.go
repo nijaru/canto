@@ -18,7 +18,12 @@ type mockMutator struct {
 	calls int
 }
 
-func (m *mockMutator) Mutate(ctx context.Context, p llm.Provider, model string, sess *session.Session) error {
+func (m *mockMutator) Mutate(
+	ctx context.Context,
+	p llm.Provider,
+	model string,
+	sess *session.Session,
+) error {
 	m.calls++
 	if m.delay > 0 {
 		time.Sleep(m.delay)

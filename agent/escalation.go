@@ -79,7 +79,11 @@ func recordEscalationRetry(
 	}))
 }
 
-func appendWithheldToolMessage(ctx context.Context, s *session.Session, escalation *escalationError) error {
+func appendWithheldToolMessage(
+	ctx context.Context,
+	s *session.Session,
+	escalation *escalationError,
+) error {
 	if escalation == nil || escalation.toolMessage == nil {
 		return nil
 	}

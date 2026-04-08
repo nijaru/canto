@@ -80,7 +80,11 @@ func run(ctx context.Context, task Task, a agent.Agent) Result {
 	if turnRes.TurnStopReason.StopsProgress() {
 		return Result{
 			Task: task,
-			Err:  fmt.Errorf("turn for task %q stopped with turn stop state %s", task.ID, turnRes.TurnStopReason),
+			Err: fmt.Errorf(
+				"turn for task %q stopped with turn stop state %s",
+				task.ID,
+				turnRes.TurnStopReason,
+			),
 		}
 	}
 

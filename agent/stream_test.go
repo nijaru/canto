@@ -15,8 +15,8 @@ import (
 // streamMockProvider extends mockProvider with a scripted Stream implementation.
 type streamMockProvider struct {
 	mockProvider
-	chunks [][]llm.Chunk // one slice of chunks per Stream call
-	spos   int
+	chunks   [][]llm.Chunk // one slice of chunks per Stream call
+	spos     int
 	failures int
 }
 

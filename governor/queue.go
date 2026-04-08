@@ -51,7 +51,12 @@ func (q *CompactionQueue) CompactionStrategy() string {
 
 // Mutate triggers the underlying mutator asynchronously if it is not already running.
 // It returns immediately without error. Call Wait() to block until completion if needed.
-func (q *CompactionQueue) Mutate(ctx context.Context, p llm.Provider, model string, sess *session.Session) error {
+func (q *CompactionQueue) Mutate(
+	ctx context.Context,
+	p llm.Provider,
+	model string,
+	sess *session.Session,
+) error {
 	q.mu.Lock()
 	if q.running {
 		q.mu.Unlock()
