@@ -27,35 +27,35 @@ type BranchResult struct {
 	Result  agent.StepResult
 }
 
-// GatherFunc reduces all branch results into the single StepResult returned
-// from the macro-graph node.
-type GatherFunc func([]BranchResult) agent.StepResult
+// JoinFunc reduces all branch results into the single StepResult returned from
+// the macro-graph node.
+type JoinFunc func([]BranchResult) agent.StepResult
 
-// FanoutNode runs multiple branch agents concurrently against forked child
-// sessions, then gathers their results back in branch declaration order.
-type FanoutNode struct {
+// ParallelNode runs multiple branch agents concurrently against forked child
+// sessions, then joins their results back in branch declaration order.
+type ParallelNode struct {
 	id       string
 	branches []Branch
-	gather   GatherFunc
+	join     JoinFunc
 }
 
-// NewFanoutNode creates a graph node that scatters work across concurrent
-// branches and gathers the results into one StepResult.
-func NewFanoutNode(id string, branches []Branch, gather GatherFunc) *FanoutNode {
-	return &FanoutNode{
+// NewParallelNode creates a graph node that scatters work across concurrent
+// branches and joins the results into one StepResult.
+func NewParallelNode(id string, branches []Branch, join JoinFunc) *ParallelNode {
+	return &ParallelNode{
 		id:       id,
 		branches: append([]Branch(nil), branches...),
-		gather:   gather,
+		join:     join,
 	}
 }
 
-func (n *FanoutNode) ID() string { return n.id }
+func (n *ParallelNode) ID() string { return n.id }
 
-func (n *FanoutNode) Step(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+func (n *ParallelNode) Step(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
 	return n.Turn(ctx, sess)
 }
 
-func (n *FanoutNode) Turn(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+func (n *ParallelNode) Turn(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
 	if len(n.branches) == 0 {
 		return agent.StepResult{}, nil
 	}
@@ -70,7 +70,7 @@ func (n *FanoutNode) Turn(ctx context.Context, sess *session.Session) (agent.Ste
 	for i, branch := range n.branches {
 		i := i
 		branch := branch
-		child, err := sess.ForkDurably(
+		child, err := sess.Branch(
 			branchCtx,
 			branchSessionID(sess.ID(), n.id, branch.Name, i),
 			session.ForkOptions{
@@ -110,13 +110,13 @@ func (n *FanoutNode) Turn(ctx context.Context, sess *session.Session) (agent.Ste
 		}
 	}
 
-	if n.gather != nil {
-		result := n.gather(results)
+	if n.join != nil {
+		result := n.join(results)
 		result.Usage = aggregateBranchUsage(results, llm.Usage{})
 		return result, nil
 	}
 
-	return defaultGather(results), nil
+	return defaultJoin(results), nil
 }
 
 func aggregateBranchUsage(results []BranchResult, base llm.Usage) llm.Usage {
@@ -127,7 +127,7 @@ func aggregateBranchUsage(results []BranchResult, base llm.Usage) llm.Usage {
 	return total
 }
 
-func defaultGather(results []BranchResult) agent.StepResult {
+func defaultJoin(results []BranchResult) agent.StepResult {
 	out := agent.StepResult{}
 	parts := make([]string, 0, len(results))
 	for _, branch := range results {

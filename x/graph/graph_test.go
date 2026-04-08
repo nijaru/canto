@@ -774,7 +774,7 @@ func TestLoopNodeComposesWithGraphCheckpointing(t *testing.T) {
 	}
 }
 
-func TestFanoutNodeJoinsBranchResultsInDeclarationOrder(t *testing.T) {
+func TestParallelNodeJoinsBranchResultsInDeclarationOrder(t *testing.T) {
 	ctx := context.Background()
 	sessionStore, err := session.NewSQLiteStore(":memory:")
 	if err != nil {
@@ -804,7 +804,7 @@ func TestFanoutNodeJoinsBranchResultsInDeclarationOrder(t *testing.T) {
 	}
 
 	var gathered []graph.BranchResult
-	node := graph.NewFanoutNode("fanout", []graph.Branch{
+	node := graph.NewParallelNode("fanout", []graph.Branch{
 		{Name: "slow", Agent: slow},
 		{Name: "fast", Agent: fast},
 	}, func(results []graph.BranchResult) agent.StepResult {
@@ -867,7 +867,7 @@ func TestFanoutNodeJoinsBranchResultsInDeclarationOrder(t *testing.T) {
 	}
 }
 
-func TestFanoutNodeComposesWithGraphCheckpointing(t *testing.T) {
+func TestParallelNodeComposesWithGraphCheckpointing(t *testing.T) {
 	ctx := context.Background()
 	store := newMemoryCheckpointStore()
 	sessionStore, err := session.NewSQLiteStore(":memory:")
@@ -878,7 +878,7 @@ func TestFanoutNodeComposesWithGraphCheckpointing(t *testing.T) {
 
 	left := &scriptedAgent{id: "left", msg: "left", usage: llm.Usage{TotalTokens: 2}}
 	right := &scriptedAgent{id: "right", msg: "right", usage: llm.Usage{TotalTokens: 3}}
-	fanout := graph.NewFanoutNode("fanout", []graph.Branch{
+	fanout := graph.NewParallelNode("fanout", []graph.Branch{
 		{Name: "left", Agent: left},
 		{Name: "right", Agent: right},
 	}, func(results []graph.BranchResult) agent.StepResult {
@@ -950,9 +950,9 @@ func TestFanoutNodeComposesWithGraphCheckpointing(t *testing.T) {
 	}
 }
 
-func TestFanoutNodeRequiresDurableForkCapability(t *testing.T) {
+func TestParallelNodeRequiresBranchCapability(t *testing.T) {
 	ctx := context.Background()
-	node := graph.NewFanoutNode("fanout", []graph.Branch{
+	node := graph.NewParallelNode("fanout", []graph.Branch{
 		{Name: "solo", Agent: &scriptedAgent{id: "solo", msg: "ok"}},
 	}, nil)
 

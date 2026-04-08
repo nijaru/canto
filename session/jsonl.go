@@ -195,12 +195,12 @@ func (s *JSONLStore) ForkWithOptions(
 		return nil, err
 	}
 
-	return s.ForkSessionWithOptions(ctx, sess, newID, opts)
+	return s.BranchSession(ctx, sess, newID, opts)
 }
 
-// ForkSessionWithOptions creates a durable fork from the current in-memory
+// BranchSession creates a persisted child branch from the current in-memory
 // parent session, preserving copied history and ancestry metadata on disk.
-func (s *JSONLStore) ForkSessionWithOptions(
+func (s *JSONLStore) BranchSession(
 	_ context.Context,
 	parent *Session,
 	newID string,

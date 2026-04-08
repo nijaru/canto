@@ -147,7 +147,7 @@ func TestSQLiteStoreFork(t *testing.T) {
 	}
 }
 
-func TestSessionForkDurablyUsesSQLiteLiveParentState(t *testing.T) {
+func TestSessionBranchUsesSQLiteLiveParentState(t *testing.T) {
 	dbFile := "test_canto_live_fork.db"
 	defer os.Remove(dbFile)
 
@@ -167,12 +167,12 @@ func TestSessionForkDurablyUsesSQLiteLiveParentState(t *testing.T) {
 		}
 	}
 
-	child, err := parent.ForkDurably(t.Context(), "live-child", ForkOptions{
+	child, err := parent.Branch(t.Context(), "live-child", ForkOptions{
 		BranchLabel: "fanout",
 		ForkReason:  "test",
 	})
 	if err != nil {
-		t.Fatalf("fork durably: %v", err)
+		t.Fatalf("branch session: %v", err)
 	}
 
 	reloaded, err := store.Load(t.Context(), child.ID())

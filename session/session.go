@@ -176,9 +176,9 @@ func (s *Session) WithWriter(w Writer) *Session {
 	return s
 }
 
-// ForkDurably creates a persisted child session from the current in-memory
-// parent session, including copied history and ancestry metadata.
-func (s *Session) ForkDurably(
+// Branch creates a persisted child branch from the current in-memory parent
+// session, including copied history and ancestry metadata.
+func (s *Session) Branch(
 	ctx context.Context,
 	newID string,
 	opts ForkOptions,
@@ -188,13 +188,15 @@ func (s *Session) ForkDurably(
 	s.mu.RUnlock()
 
 	if writer == nil {
-		return nil, errors.New("fork durably: session has no durable writer")
+		return nil, errors.New("branch session: session has no durable writer")
 	}
-	store, ok := writer.(LiveForkStore)
+	store, ok := writer.(SessionBranchStore)
 	if !ok {
-		return nil, errors.New("fork durably: writer does not support durable live forks")
+		return nil, errors.New(
+			"branch session: writer does not support branching from a live session",
+		)
 	}
-	return store.ForkSessionWithOptions(ctx, s, newID, opts)
+	return store.BranchSession(ctx, s, newID, opts)
 }
 
 // Fork creates a new session with a new ID, copying all existing events from
@@ -509,10 +511,10 @@ type SearchStore interface {
 }
 
 var (
-	_ SessionTreeStore = (*SQLiteStore)(nil)
-	_ ForkStore        = (*SQLiteStore)(nil)
-	_ LiveForkStore    = (*SQLiteStore)(nil)
-	_ SessionTreeStore = (*JSONLStore)(nil)
-	_ ForkStore        = (*JSONLStore)(nil)
-	_ LiveForkStore    = (*JSONLStore)(nil)
+	_ SessionTreeStore   = (*SQLiteStore)(nil)
+	_ ForkStore          = (*SQLiteStore)(nil)
+	_ SessionBranchStore = (*SQLiteStore)(nil)
+	_ SessionTreeStore   = (*JSONLStore)(nil)
+	_ ForkStore          = (*JSONLStore)(nil)
+	_ SessionBranchStore = (*JSONLStore)(nil)
 )

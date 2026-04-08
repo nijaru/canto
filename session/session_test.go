@@ -50,10 +50,10 @@ func TestSessionAppend_DoesNotMutateStateWhenWriterFails(t *testing.T) {
 	}
 }
 
-func TestSessionForkDurablyRequiresLiveForkWriter(t *testing.T) {
+func TestSessionBranchRequiresSessionBranchWriter(t *testing.T) {
 	sess := New("parent").WithWriter(&failingWriter{})
 
-	if _, err := sess.ForkDurably(t.Context(), "child", ForkOptions{}); err == nil {
-		t.Fatal("expected durable fork without live-fork writer to fail")
+	if _, err := sess.Branch(t.Context(), "child", ForkOptions{}); err == nil {
+		t.Fatal("expected branch without session-branch writer to fail")
 	}
 }

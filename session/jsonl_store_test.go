@@ -130,7 +130,7 @@ func TestJSONLStoreLoadMissingSessionKeepsWriter(t *testing.T) {
 	}
 }
 
-func TestSessionForkDurablyUsesJSONLLiveParentState(t *testing.T) {
+func TestSessionBranchUsesJSONLLiveParentState(t *testing.T) {
 	store, err := NewJSONLStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("new jsonl store: %v", err)
@@ -146,12 +146,12 @@ func TestSessionForkDurablyUsesJSONLLiveParentState(t *testing.T) {
 		}
 	}
 
-	child, err := parent.ForkDurably(t.Context(), "live-child", ForkOptions{
+	child, err := parent.Branch(t.Context(), "live-child", ForkOptions{
 		BranchLabel: "fanout",
 		ForkReason:  "test",
 	})
 	if err != nil {
-		t.Fatalf("fork durably: %v", err)
+		t.Fatalf("branch session: %v", err)
 	}
 
 	reloaded, err := store.Load(t.Context(), child.ID())

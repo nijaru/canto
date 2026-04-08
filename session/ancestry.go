@@ -32,8 +32,8 @@ type SessionTreeStore interface {
 	Lineage(ctx context.Context, sessionID string) ([]SessionAncestry, error)
 }
 
-// ForkStore materializes forked sessions with optional ancestry metadata such
-// as branch labels or fork reasons.
+// ForkStore materializes forked sessions from persisted parent session IDs,
+// with optional ancestry metadata such as branch labels or fork reasons.
 type ForkStore interface {
 	ForkWithOptions(
 		ctx context.Context,
@@ -42,10 +42,10 @@ type ForkStore interface {
 	) (*Session, error)
 }
 
-// LiveForkStore materializes a fork from the current in-memory parent session
-// while still persisting copied history and ancestry metadata durably.
-type LiveForkStore interface {
-	ForkSessionWithOptions(
+// SessionBranchStore materializes a persisted child branch from the current
+// in-memory parent session.
+type SessionBranchStore interface {
+	BranchSession(
 		ctx context.Context,
 		parent *Session,
 		newSessionID string,

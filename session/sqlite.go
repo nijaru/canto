@@ -208,12 +208,12 @@ func (s *SQLiteStore) ForkWithOptions(
 		return nil, err
 	}
 
-	return s.ForkSessionWithOptions(ctx, sess, newID, opts)
+	return s.BranchSession(ctx, sess, newID, opts)
 }
 
-// ForkSessionWithOptions creates a durable fork from the current in-memory
+// BranchSession creates a persisted child branch from the current in-memory
 // parent session, preserving copied history and ancestry metadata in SQLite.
-func (s *SQLiteStore) ForkSessionWithOptions(
+func (s *SQLiteStore) BranchSession(
 	ctx context.Context,
 	parent *Session,
 	newID string,
