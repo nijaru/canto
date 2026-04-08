@@ -190,6 +190,7 @@ func exportRun(sess *Session) (*RunLog, error) {
 				inputBuffer = inputBuffer[:0] // Reset input for next turn without re-allocating
 			} else if msg.Role == llm.RoleTool && currentTurn != nil {
 				currentTurn.ToolResults = append(currentTurn.ToolResults, *msg)
+				inputBuffer = append(inputBuffer, *msg)
 			}
 		}
 	}

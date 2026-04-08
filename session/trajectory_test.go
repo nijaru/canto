@@ -85,8 +85,11 @@ func TestExportRun(t *testing.T) {
 	}
 
 	turn2 := traj.Turns[1]
-	if len(turn2.Input) != 0 {
-		t.Errorf("expected turn 2 input to be empty (carried over from tool result)")
+	if len(turn2.Input) != 1 {
+		t.Fatalf("expected turn 2 input to include the prior tool result, got %d entries", len(turn2.Input))
+	}
+	if turn2.Input[0].Role != llm.RoleTool || turn2.Input[0].Content != "Result data" {
+		t.Errorf("expected turn 2 input to carry the tool result, got %+v", turn2.Input[0])
 	}
 	if turn2.Output.Role != llm.RoleAssistant || turn2.Output.Content != "The result is data" {
 		t.Errorf("expected turn 2 output to be final assistant message")
