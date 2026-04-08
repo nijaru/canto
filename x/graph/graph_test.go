@@ -44,6 +44,7 @@ type scriptedAgent struct {
 	err    error
 	calls  int
 	onTurn func(*scriptedAgent) error
+	result *agent.StepResult
 }
 
 func (a *scriptedAgent) ID() string { return a.id }
@@ -61,6 +62,11 @@ func (a *scriptedAgent) Turn(ctx context.Context, sess *session.Session) (agent.
 	}
 	if a.err != nil {
 		return agent.StepResult{}, a.err
+	}
+	if a.result != nil {
+		res := *a.result
+		res.Usage = a.usage
+		return res, nil
 	}
 	msg := llm.Message{Role: llm.RoleAssistant, Content: a.msg}
 	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.MessageAdded, msg)); err != nil {
@@ -549,5 +555,104 @@ func TestSQLiteCheckpointStoreRoundTrip(t *testing.T) {
 
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected sqlite db file to exist: %v", err)
+	}
+}
+
+func TestGraphPauseResumeUsesCheckpointedCurrentNode(t *testing.T) {
+	ctx := context.Background()
+	store := newMemoryCheckpointStore()
+
+	first := &scriptedAgent{id: "a", msg: "a", usage: llm.Usage{TotalTokens: 2}}
+	waiter := &scriptedAgent{
+		id:    "b",
+		usage: llm.Usage{TotalTokens: 3},
+		onTurn: func(a *scriptedAgent) error {
+			if a.calls == 1 {
+				return nil
+			}
+			return nil
+		},
+		result: &agent.StepResult{TurnStopReason: agent.TurnStopWaiting},
+	}
+	final := &scriptedAgent{id: "c", msg: "c", usage: llm.Usage{TotalTokens: 5}}
+
+	g := graph.New("pause-resume", "a")
+	g.SetCheckpointStore(store)
+	g.AddNode(first)
+	g.AddNode(waiter)
+	g.AddNode(final)
+	g.AddEdge("a", "b", nil)
+	g.AddEdge("b", "c", func(res agent.StepResult) bool { return res.TurnStopReason == "" })
+
+	sess := session.New("graph-pause")
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.MessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "run",
+	})); err != nil {
+		t.Fatalf("append user message: %v", err)
+	}
+
+	if err := sess.Append(ctx, session.NewWaitStartedEvent(sess.ID(), session.WaitData{
+		Reason: "approval",
+	})); err != nil {
+		t.Fatalf("append wait started: %v", err)
+	}
+
+	result, err := g.Run(ctx, sess)
+	if err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+	if result.TurnStopReason != agent.TurnStopWaiting {
+		t.Fatalf("expected waiting stop reason, got %q", result.TurnStopReason)
+	}
+	if first.calls != 1 || waiter.calls != 1 || final.calls != 0 {
+		t.Fatalf(
+			"unexpected call counts after pause: a=%d b=%d c=%d",
+			first.calls,
+			waiter.calls,
+			final.calls,
+		)
+	}
+
+	result, err = g.Run(ctx, sess)
+	if err != nil {
+		t.Fatalf("second run while waiting: %v", err)
+	}
+	if result.TurnStopReason != agent.TurnStopWaiting {
+		t.Fatalf("expected waiting stop reason on parked rerun, got %q", result.TurnStopReason)
+	}
+	if first.calls != 1 || waiter.calls != 1 || final.calls != 0 {
+		t.Fatalf(
+			"expected parked rerun to avoid duplicate work: a=%d b=%d c=%d",
+			first.calls,
+			waiter.calls,
+			final.calls,
+		)
+	}
+
+	if err := sess.Append(ctx, session.NewWaitResolvedEvent(sess.ID(), session.WaitData{
+		Reason: "approval",
+	})); err != nil {
+		t.Fatalf("append wait resolved: %v", err)
+	}
+	waiter.result = &agent.StepResult{Content: "b"}
+
+	result, err = g.Run(ctx, sess)
+	if err != nil {
+		t.Fatalf("resume after wait resolved: %v", err)
+	}
+	if first.calls != 1 || waiter.calls != 2 || final.calls != 1 {
+		t.Fatalf(
+			"unexpected call counts after resume: a=%d b=%d c=%d",
+			first.calls,
+			waiter.calls,
+			final.calls,
+		)
+	}
+	if result.Content != "c" {
+		t.Fatalf("expected final content from c, got %q", result.Content)
+	}
+	if result.Usage.TotalTokens != 13 {
+		t.Fatalf("expected accumulated usage 13, got %d", result.Usage.TotalTokens)
 	}
 }

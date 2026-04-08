@@ -161,7 +161,13 @@ func (g *Graph) execute(
 			return agent.StepResult{}, fmt.Errorf("graph: load checkpoint: %w", err)
 		}
 		if checkpoint != nil {
-			if checkpoint.LastEventID != "" {
+			if checkpoint.Result.TurnStopReason == agent.TurnStopWaiting && sess.IsWaiting() {
+				lastResult = cloneStepResult(checkpoint.Result)
+				lastResult.Usage = checkpoint.Usage
+				return lastResult, nil
+			}
+			if checkpoint.Result.TurnStopReason != agent.TurnStopWaiting &&
+				checkpoint.LastEventID != "" {
 				if lastEvent, ok := sess.LastEvent(); ok &&
 					lastEvent.ID.String() != checkpoint.LastEventID {
 					checkpoint = nil
@@ -226,15 +232,17 @@ func (g *Graph) execute(
 		}
 
 		if result.TurnStopReason.StopsProgress() {
+			completed := result.TurnStopReason != agent.TurnStopWaiting
+			nextNode := current
 			if err := g.saveCheckpoint(ctx, sess, Checkpoint{
 				GraphID:     g.id,
 				SessionID:   sess.ID(),
-				NextNode:    current,
+				NextNode:    nextNode,
 				Steps:       steps,
 				LastEventID: lastEventID(sess),
 				Usage:       totalUsage,
 				Result:      cloneStepResult(lastResult),
-				Completed:   true,
+				Completed:   completed,
 			}); err != nil {
 				return lastResult, err
 			}
