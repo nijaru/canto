@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
@@ -769,5 +771,157 @@ func TestLoopNodeComposesWithGraphCheckpointing(t *testing.T) {
 	}
 	if result.Usage.TotalTokens != 9 {
 		t.Fatalf("expected total usage 9, got %d", result.Usage.TotalTokens)
+	}
+}
+
+func TestFanoutNodeJoinsBranchResultsInDeclarationOrder(t *testing.T) {
+	ctx := context.Background()
+	slowStarted := make(chan struct{})
+
+	slow := &scriptedAgent{
+		id:    "slow",
+		msg:   "slow",
+		usage: llm.Usage{TotalTokens: 2},
+		onTurn: func(a *scriptedAgent) error {
+			close(slowStarted)
+			time.Sleep(30 * time.Millisecond)
+			return nil
+		},
+	}
+	fast := &scriptedAgent{
+		id:    "fast",
+		msg:   "fast",
+		usage: llm.Usage{TotalTokens: 3},
+		onTurn: func(a *scriptedAgent) error {
+			<-slowStarted
+			return nil
+		},
+	}
+
+	var gathered []graph.BranchResult
+	node := graph.NewFanoutNode("fanout", []graph.Branch{
+		{Name: "slow", Agent: slow},
+		{Name: "fast", Agent: fast},
+	}, func(results []graph.BranchResult) agent.StepResult {
+		gathered = slices.Clone(results)
+		return agent.StepResult{
+			Content: results[0].Result.Content + "|" + results[1].Result.Content,
+		}
+	})
+
+	sess := session.New("fanout-parent")
+	if err := sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "run",
+	})); err != nil {
+		t.Fatalf("append user: %v", err)
+	}
+
+	result, err := node.Turn(ctx, sess)
+	if err != nil {
+		t.Fatalf("fanout turn: %v", err)
+	}
+	if result.Content != "slow|fast" {
+		t.Fatalf("expected gathered content in declaration order, got %q", result.Content)
+	}
+	if result.Usage.TotalTokens != 5 {
+		t.Fatalf("expected aggregated usage 5, got %d", result.Usage.TotalTokens)
+	}
+	if len(sess.Messages()) != 1 {
+		t.Fatalf("expected parent session to remain unchanged, got %#v", sess.Messages())
+	}
+	if len(gathered) != 2 {
+		t.Fatalf("expected 2 gathered branches, got %d", len(gathered))
+	}
+	if gathered[0].Session.ID() == sess.ID() || gathered[1].Session.ID() == sess.ID() {
+		t.Fatal("expected branch sessions to fork away from parent session")
+	}
+	for _, branch := range gathered {
+		msgs := branch.Session.Messages()
+		if len(msgs) != 2 {
+			t.Fatalf(
+				"expected branch session %q to contain copied history + branch output, got %#v",
+				branch.Name,
+				msgs,
+			)
+		}
+	}
+}
+
+func TestFanoutNodeComposesWithGraphCheckpointing(t *testing.T) {
+	ctx := context.Background()
+	store := newMemoryCheckpointStore()
+
+	left := &scriptedAgent{id: "left", msg: "left", usage: llm.Usage{TotalTokens: 2}}
+	right := &scriptedAgent{id: "right", msg: "right", usage: llm.Usage{TotalTokens: 3}}
+	fanout := graph.NewFanoutNode("fanout", []graph.Branch{
+		{Name: "left", Agent: left},
+		{Name: "right", Agent: right},
+	}, func(results []graph.BranchResult) agent.StepResult {
+		return agent.StepResult{
+			Content: results[0].Result.Content + "+" + results[1].Result.Content,
+		}
+	})
+
+	final := &scriptedAgent{
+		id:  "final",
+		msg: "done",
+		onTurn: func(a *scriptedAgent) error {
+			if a.calls == 1 {
+				return errors.New("boom")
+			}
+			return nil
+		},
+		usage: llm.Usage{TotalTokens: 5},
+	}
+
+	g := graph.New("fanout-graph", "fanout")
+	g.SetCheckpointStore(store)
+	g.AddNode(fanout)
+	g.AddNode(final)
+	g.AddEdge("fanout", "final", nil)
+
+	sess := session.New("fanout-checkpoint")
+	if err := sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "run",
+	})); err != nil {
+		t.Fatalf("append user: %v", err)
+	}
+
+	if _, err := g.Run(ctx, sess); err == nil {
+		t.Fatal("expected first run to fail on final node")
+	}
+	if left.calls != 1 || right.calls != 1 {
+		t.Fatalf(
+			"expected fanout branches to run once, got left=%d right=%d",
+			left.calls,
+			right.calls,
+		)
+	}
+	if final.calls != 1 {
+		t.Fatalf("expected final node to run once, got %d", final.calls)
+	}
+
+	final.onTurn = nil
+	result, err := g.Run(ctx, sess)
+	if err != nil {
+		t.Fatalf("resume fanout graph: %v", err)
+	}
+	if left.calls != 1 || right.calls != 1 {
+		t.Fatalf(
+			"expected checkpoint resume to skip fanout node, got left=%d right=%d",
+			left.calls,
+			right.calls,
+		)
+	}
+	if final.calls != 2 {
+		t.Fatalf("expected final node rerun once, got %d", final.calls)
+	}
+	if result.Content != "done" {
+		t.Fatalf("expected final content %q, got %q", "done", result.Content)
+	}
+	if result.Usage.TotalTokens != 10 {
+		t.Fatalf("expected total usage 10, got %d", result.Usage.TotalTokens)
 	}
 }
