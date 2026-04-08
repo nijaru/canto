@@ -4,6 +4,9 @@
 // chain with instructions, tool definitions, effective history, and model
 // capability adaptation.
 //
+// Run exposes the loop as an iterator over per-step results so callers can
+// consume turn progress with native backpressure.
+//
 // Step executes one model/tool iteration. Turn repeats Step until the agent
 // produces a final assistant message, hands off control, or reaches MaxSteps.
 //

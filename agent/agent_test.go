@@ -656,6 +656,49 @@ func TestAgentToolTurn(t *testing.T) {
 	}
 }
 
+func TestAgentRunIterator(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&simpleTool{name: "echo", output: "world"})
+
+	p := &mockProvider{
+		responses: []*llm.Response{
+			{
+				Content: "",
+				Calls: []llm.Call{{
+					ID:   "c1",
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{Name: "echo", Arguments: `{}`},
+				}},
+			},
+			{Content: "Tool called, result was: world"},
+		},
+	}
+
+	a := New("test-agent", "You are helpful.", "gpt-4", p, reg)
+	s := userSession("s-run", "say hello")
+
+	var steps []StepResult
+	for step, err := range Run(context.Background(), a, s, a.maxSteps) {
+		if err != nil {
+			t.Fatalf("Run returned error: %v", err)
+		}
+		steps = append(steps, step)
+	}
+
+	if len(steps) != 2 {
+		t.Fatalf("expected 2 yielded steps, got %d", len(steps))
+	}
+	if len(steps[0].ToolResults) != 1 {
+		t.Fatalf("expected first step to execute a tool, got %+v", steps[0].ToolResults)
+	}
+	if len(steps[1].ToolResults) != 0 {
+		t.Fatalf("expected final step to be tool-free, got %+v", steps[1].ToolResults)
+	}
+}
+
 type panicTool struct{}
 
 func (t *panicTool) Spec() llm.Spec {

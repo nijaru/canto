@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"iter"
 
 	"github.com/nijaru/canto/approval"
 	ccontext "github.com/nijaru/canto/context"
@@ -115,6 +116,88 @@ func (a *BaseAgent) Turn(ctx context.Context, s *session.Session) (StepResult, e
 	return RunTurn(ctx, a, s, a.maxSteps)
 }
 
+// Run executes the agent loop as an iterator over per-step results.
+// Callers can stop early by breaking the range loop; the session turn start/end
+// events are still managed internally.
+func (a *BaseAgent) Run(ctx context.Context, s *session.Session) iter.Seq2[StepResult, error] {
+	return Run(ctx, a, s, a.maxSteps)
+}
+
+// Run executes the agent loop as an iterator over per-step results.
+// It is the low-level generator form of RunTurn.
+func Run(
+	ctx context.Context,
+	a Agent,
+	s *session.Session,
+	maxSteps int,
+) iter.Seq2[StepResult, error] {
+	return func(yield func(StepResult, error) bool) {
+		if err := s.Append(ctx, session.NewTurnStartedEvent(s.ID(), session.TurnStartedData{
+			AgentID: a.ID(),
+		})); err != nil {
+			yield(StepResult{}, err)
+			return
+		}
+
+		var steps int
+		var totalUsage llm.Usage
+		var runErr error
+		defer func() {
+			data := session.TurnCompletedData{
+				AgentID: a.ID(),
+				Steps:   steps,
+				Usage:   totalUsage,
+			}
+			if runErr != nil {
+				data.Error = runErr.Error()
+			}
+			_ = s.Append(ctx, session.NewTurnCompletedEvent(s.ID(), data))
+		}()
+
+		for steps < maxSteps {
+			if err := ctx.Err(); err != nil {
+				runErr = err
+				yield(StepResult{}, err)
+				return
+			}
+
+			res, err := a.Step(ctx, s)
+			if err != nil {
+				runErr = err
+				yield(res, err)
+				return
+			}
+			steps++
+			totalUsage.InputTokens += res.Usage.InputTokens
+			totalUsage.OutputTokens += res.Usage.OutputTokens
+			totalUsage.TotalTokens += res.Usage.TotalTokens
+			totalUsage.Cost += res.Usage.Cost
+
+			if !yield(res, nil) {
+				return
+			}
+
+			if res.Handoff != nil {
+				return
+			}
+
+			if s.IsWaiting() {
+				return
+			}
+
+			last, ok := s.LastMessage()
+			if !ok || last.Role != llm.RoleTool {
+				return
+			}
+		}
+
+		if steps >= maxSteps {
+			runErr = fmt.Errorf("%w (%d)", ErrMaxSteps, maxSteps)
+			yield(StepResult{}, runErr)
+		}
+	}
+}
+
 // RunTurn executes one or more steps until the agent finishes (no pending tool
 // calls) or a handoff is requested, or maxSteps is reached.
 // It can run any Agent implementation that satisfies the interface.
@@ -124,60 +207,21 @@ func RunTurn(
 	s *session.Session,
 	maxSteps int,
 ) (res StepResult, err error) {
-	if err := s.Append(ctx, session.NewTurnStartedEvent(s.ID(), session.TurnStartedData{
-		AgentID: a.ID(),
-	})); err != nil {
-		return StepResult{}, err
-	}
-
-	var steps int
 	var totalUsage llm.Usage
-	defer func() {
-		data := session.TurnCompletedData{
-			AgentID: a.ID(),
-			Steps:   steps,
-			Usage:   totalUsage,
-		}
-		if err != nil {
-			data.Error = err.Error()
-		}
-		_ = s.Append(ctx, session.NewTurnCompletedEvent(s.ID(), data))
-	}()
-
-	for steps < maxSteps {
-		res, err = a.Step(ctx, s)
-		if err != nil {
+	for stepRes, stepErr := range Run(ctx, a, s, maxSteps) {
+		if stepErr != nil {
+			res = stepRes
+			res.Usage = totalUsage
+			err = stepErr
 			return
 		}
-		steps++
-		totalUsage.InputTokens += res.Usage.InputTokens
-		totalUsage.OutputTokens += res.Usage.OutputTokens
-		totalUsage.TotalTokens += res.Usage.TotalTokens
-		totalUsage.Cost += res.Usage.Cost
-
-		// If a handoff was requested, stop immediately so the caller can route.
-		if res.Handoff != nil {
-			break
-		}
-
-		// If the session is waiting for external input (e.g. approval), stop.
-		if s.IsWaiting() {
-			break
-		}
-
-		// Continue only if the last message is a tool result (model must
-		// process it). Any other role means the agent has finished.
-		last, ok := s.LastMessage()
-		if !ok || last.Role != llm.RoleTool {
-			break
-		}
+		res = stepRes
+		totalUsage.InputTokens += stepRes.Usage.InputTokens
+		totalUsage.OutputTokens += stepRes.Usage.OutputTokens
+		totalUsage.TotalTokens += stepRes.Usage.TotalTokens
+		totalUsage.Cost += stepRes.Usage.Cost
 	}
 
-	if steps >= maxSteps {
-		res.Usage = totalUsage
-		err = fmt.Errorf("%w (%d)", ErrMaxSteps, maxSteps)
-		return
-	}
 	res.Usage = totalUsage
 
 	// Populate Content from the last assistant message without tool calls.
