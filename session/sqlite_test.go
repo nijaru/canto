@@ -147,6 +147,51 @@ func TestSQLiteStoreFork(t *testing.T) {
 	}
 }
 
+func TestSessionForkDurablyUsesSQLiteLiveParentState(t *testing.T) {
+	dbFile := "test_canto_live_fork.db"
+	defer os.Remove(dbFile)
+
+	store, err := NewSQLiteStore(dbFile)
+	if err != nil {
+		t.Fatalf("failed to create sqlite store: %v", err)
+	}
+	defer store.Close()
+
+	parent := New("live-parent").WithWriter(store)
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: "hello"},
+		{Role: llm.RoleAssistant, Content: "hi"},
+	} {
+		if err := parent.Append(t.Context(), NewMessage(parent.ID(), msg)); err != nil {
+			t.Fatalf("append parent message: %v", err)
+		}
+	}
+
+	child, err := parent.ForkDurably(t.Context(), "live-child", ForkOptions{
+		BranchLabel: "fanout",
+		ForkReason:  "test",
+	})
+	if err != nil {
+		t.Fatalf("fork durably: %v", err)
+	}
+
+	reloaded, err := store.Load(t.Context(), child.ID())
+	if err != nil {
+		t.Fatalf("load child: %v", err)
+	}
+	if got := len(reloaded.Messages()); got != 2 {
+		t.Fatalf("reloaded child messages = %d, want 2", got)
+	}
+
+	parentAncestry, err := store.Parent(t.Context(), child.ID())
+	if err != nil {
+		t.Fatalf("load parent ancestry: %v", err)
+	}
+	if parentAncestry == nil || parentAncestry.SessionID != parent.ID() {
+		t.Fatalf("child parent ancestry = %#v, want %q", parentAncestry, parent.ID())
+	}
+}
+
 func TestSQLiteStoreLoadMaterializesMetadataOnEvents(t *testing.T) {
 	dbFile := "test_canto_metadata.db"
 	defer os.Remove(dbFile)

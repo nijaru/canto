@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"iter"
 	"log/slog"
 	"sync"
@@ -173,6 +174,27 @@ func (s *Session) WithWriter(w Writer) *Session {
 	defer s.mu.Unlock()
 	s.writer = w
 	return s
+}
+
+// ForkDurably creates a persisted child session from the current in-memory
+// parent session, including copied history and ancestry metadata.
+func (s *Session) ForkDurably(
+	ctx context.Context,
+	newID string,
+	opts ForkOptions,
+) (*Session, error) {
+	s.mu.RLock()
+	writer := s.writer
+	s.mu.RUnlock()
+
+	if writer == nil {
+		return nil, errors.New("fork durably: session has no durable writer")
+	}
+	store, ok := writer.(LiveForkStore)
+	if !ok {
+		return nil, errors.New("fork durably: writer does not support durable live forks")
+	}
+	return store.ForkSessionWithOptions(ctx, s, newID, opts)
 }
 
 // Fork creates a new session with a new ID, copying all existing events from
@@ -489,6 +511,8 @@ type SearchStore interface {
 var (
 	_ SessionTreeStore = (*SQLiteStore)(nil)
 	_ ForkStore        = (*SQLiteStore)(nil)
+	_ LiveForkStore    = (*SQLiteStore)(nil)
 	_ SessionTreeStore = (*JSONLStore)(nil)
 	_ ForkStore        = (*JSONLStore)(nil)
+	_ LiveForkStore    = (*JSONLStore)(nil)
 )

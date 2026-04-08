@@ -129,3 +129,44 @@ func TestJSONLStoreLoadMissingSessionKeepsWriter(t *testing.T) {
 		t.Fatalf("loaded messages = %d, want 1", got)
 	}
 }
+
+func TestSessionForkDurablyUsesJSONLLiveParentState(t *testing.T) {
+	store, err := NewJSONLStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new jsonl store: %v", err)
+	}
+
+	parent := New("live-parent").WithWriter(store)
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: "hello"},
+		{Role: llm.RoleAssistant, Content: "hi"},
+	} {
+		if err := parent.Append(t.Context(), NewMessage(parent.ID(), msg)); err != nil {
+			t.Fatalf("append parent message: %v", err)
+		}
+	}
+
+	child, err := parent.ForkDurably(t.Context(), "live-child", ForkOptions{
+		BranchLabel: "fanout",
+		ForkReason:  "test",
+	})
+	if err != nil {
+		t.Fatalf("fork durably: %v", err)
+	}
+
+	reloaded, err := store.Load(t.Context(), child.ID())
+	if err != nil {
+		t.Fatalf("load child: %v", err)
+	}
+	if got := len(reloaded.Messages()); got != 2 {
+		t.Fatalf("reloaded child messages = %d, want 2", got)
+	}
+
+	parentAncestry, err := store.Parent(t.Context(), child.ID())
+	if err != nil {
+		t.Fatalf("load parent ancestry: %v", err)
+	}
+	if parentAncestry == nil || parentAncestry.SessionID != parent.ID() {
+		t.Fatalf("child parent ancestry = %#v, want %q", parentAncestry, parent.ID())
+	}
+}

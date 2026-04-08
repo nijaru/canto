@@ -42,6 +42,17 @@ type ForkStore interface {
 	) (*Session, error)
 }
 
+// LiveForkStore materializes a fork from the current in-memory parent session
+// while still persisting copied history and ancestry metadata durably.
+type LiveForkStore interface {
+	ForkSessionWithOptions(
+		ctx context.Context,
+		parent *Session,
+		newSessionID string,
+		opts ForkOptions,
+	) (*Session, error)
+}
+
 func maxULID() ulid.ULID {
 	return ulid.MustParse("7ZZZZZZZZZZZZZZZZZZZZZZZZZ")
 }

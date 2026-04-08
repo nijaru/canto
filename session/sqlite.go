@@ -208,13 +208,28 @@ func (s *SQLiteStore) ForkWithOptions(
 		return nil, err
 	}
 
-	forked := sess.Fork(newID)
-	parentEvents := sess.Events()
+	return s.ForkSessionWithOptions(ctx, sess, newID, opts)
+}
+
+// ForkSessionWithOptions creates a durable fork from the current in-memory
+// parent session, preserving copied history and ancestry metadata in SQLite.
+func (s *SQLiteStore) ForkSessionWithOptions(
+	ctx context.Context,
+	parent *Session,
+	newID string,
+	opts ForkOptions,
+) (*Session, error) {
+	if parent == nil {
+		return nil, fmt.Errorf("fork live session %q: nil parent", newID)
+	}
+	parentID := parent.ID()
+	forked := parent.Fork(newID)
+	parentEvents := parent.Events()
 	forkPointEventID := ""
 	if n := len(parentEvents); n > 0 {
 		forkPointEventID = parentEvents[n-1].ID.String()
 	}
-	parentCreatedAt := sessionCreatedAt(sess)
+	parentCreatedAt := sessionCreatedAt(parent)
 	childCreatedAt := time.Now().UTC()
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -223,13 +238,13 @@ func (s *SQLiteStore) ForkWithOptions(
 	}
 	defer tx.Rollback()
 
-	parentDepth, err := ensureSQLiteRootAncestryTx(ctx, tx, originalID, parentCreatedAt)
+	parentDepth, err := ensureSQLiteRootAncestryTx(ctx, tx, parentID, parentCreatedAt)
 	if err != nil {
 		return nil, err
 	}
 	if err := saveSQLiteAncestryTx(ctx, tx, SessionAncestry{
 		SessionID:        newID,
-		ParentSessionID:  originalID,
+		ParentSessionID:  parentID,
 		ForkPointEventID: forkPointEventID,
 		BranchLabel:      opts.BranchLabel,
 		ForkReason:       opts.ForkReason,

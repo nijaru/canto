@@ -70,7 +70,21 @@ func (n *FanoutNode) Turn(ctx context.Context, sess *session.Session) (agent.Ste
 	for i, branch := range n.branches {
 		i := i
 		branch := branch
-		child := sess.Fork(branchSessionID(sess.ID(), n.id, branch.Name, i))
+		child, err := sess.ForkDurably(
+			branchCtx,
+			branchSessionID(sess.ID(), n.id, branch.Name, i),
+			session.ForkOptions{
+				BranchLabel: branchLabel(branch, i),
+				ForkReason:  "graph fanout",
+			},
+		)
+		if err != nil {
+			return agent.StepResult{}, fmt.Errorf(
+				"fanout: fork branch %q: %w",
+				branchLabel(branch, i),
+				err,
+			)
+		}
 		results[i] = BranchResult{
 			Name:    branch.Name,
 			Session: child,

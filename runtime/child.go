@@ -192,10 +192,7 @@ func (r *ChildRunner) materializeChildSession(
 
 	switch spec.Mode {
 	case session.ChildModeFork:
-		if r.store == nil {
-			return nil, errors.New("materialize forked child session: nil store")
-		}
-		child, err = r.store.Fork(ctx, parent.ID(), childSessionID)
+		child, err = parent.ForkDurably(ctx, childSessionID, session.ForkOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("materialize forked child session: %w", err)
 		}

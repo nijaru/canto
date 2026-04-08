@@ -776,6 +776,11 @@ func TestLoopNodeComposesWithGraphCheckpointing(t *testing.T) {
 
 func TestFanoutNodeJoinsBranchResultsInDeclarationOrder(t *testing.T) {
 	ctx := context.Background()
+	sessionStore, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	defer sessionStore.Close()
 	slowStarted := make(chan struct{})
 
 	slow := &scriptedAgent{
@@ -809,7 +814,7 @@ func TestFanoutNodeJoinsBranchResultsInDeclarationOrder(t *testing.T) {
 		}
 	})
 
-	sess := session.New("fanout-parent")
+	sess := session.New("fanout-parent").WithWriter(sessionStore)
 	if err := sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
 		Role:    llm.RoleUser,
 		Content: "run",
@@ -845,12 +850,31 @@ func TestFanoutNodeJoinsBranchResultsInDeclarationOrder(t *testing.T) {
 				msgs,
 			)
 		}
+		reloaded, err := sessionStore.Load(ctx, branch.Session.ID())
+		if err != nil {
+			t.Fatalf("reload branch session %q: %v", branch.Name, err)
+		}
+		if got := len(reloaded.Messages()); got != 2 {
+			t.Fatalf("reloaded branch %q messages = %d, want 2", branch.Name, got)
+		}
+		parent, err := sessionStore.Parent(ctx, branch.Session.ID())
+		if err != nil {
+			t.Fatalf("load parent ancestry for %q: %v", branch.Name, err)
+		}
+		if parent == nil || parent.SessionID != sess.ID() {
+			t.Fatalf("branch parent ancestry for %q = %#v, want %q", branch.Name, parent, sess.ID())
+		}
 	}
 }
 
 func TestFanoutNodeComposesWithGraphCheckpointing(t *testing.T) {
 	ctx := context.Background()
 	store := newMemoryCheckpointStore()
+	sessionStore, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	defer sessionStore.Close()
 
 	left := &scriptedAgent{id: "left", msg: "left", usage: llm.Usage{TotalTokens: 2}}
 	right := &scriptedAgent{id: "right", msg: "right", usage: llm.Usage{TotalTokens: 3}}
@@ -881,7 +905,7 @@ func TestFanoutNodeComposesWithGraphCheckpointing(t *testing.T) {
 	g.AddNode(final)
 	g.AddEdge("fanout", "final", nil)
 
-	sess := session.New("fanout-checkpoint")
+	sess := session.New("fanout-checkpoint").WithWriter(sessionStore)
 	if err := sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
 		Role:    llm.RoleUser,
 		Content: "run",
@@ -923,5 +947,24 @@ func TestFanoutNodeComposesWithGraphCheckpointing(t *testing.T) {
 	}
 	if result.Usage.TotalTokens != 10 {
 		t.Fatalf("expected total usage 10, got %d", result.Usage.TotalTokens)
+	}
+}
+
+func TestFanoutNodeRequiresDurableForkCapability(t *testing.T) {
+	ctx := context.Background()
+	node := graph.NewFanoutNode("fanout", []graph.Branch{
+		{Name: "solo", Agent: &scriptedAgent{id: "solo", msg: "ok"}},
+	}, nil)
+
+	sess := session.New("fanout-parent")
+	if err := sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "run",
+	})); err != nil {
+		t.Fatalf("append user: %v", err)
+	}
+
+	if _, err := node.Turn(ctx, sess); err == nil {
+		t.Fatal("expected fanout without durable writer to fail")
 	}
 }

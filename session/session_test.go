@@ -49,3 +49,11 @@ func TestSessionAppend_DoesNotMutateStateWhenWriterFails(t *testing.T) {
 	default:
 	}
 }
+
+func TestSessionForkDurablyRequiresLiveForkWriter(t *testing.T) {
+	sess := New("parent").WithWriter(&failingWriter{})
+
+	if _, err := sess.ForkDurably(t.Context(), "child", ForkOptions{}); err == nil {
+		t.Fatal("expected durable fork without live-fork writer to fail")
+	}
+}
