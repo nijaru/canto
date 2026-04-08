@@ -134,7 +134,7 @@ func TestRegistry_EntriesIncludeMetadata(t *testing.T) {
 		metadata: Metadata{
 			Category:    "workspace",
 			ReadOnly:    true,
-			Concurrency: ConcurrencyParallel,
+			Concurrency: Parallel,
 			Deferred:    true,
 			Examples: []Example{{
 				Description: "Search Go files",
@@ -160,7 +160,7 @@ func TestRegistry_Metadata(t *testing.T) {
 	reg.Register(&metadataTool{
 		staticTool: staticTool{name: "grep", result: "ok"},
 		metadata: Metadata{
-			Concurrency: ConcurrencyParallel,
+			Concurrency: Parallel,
 		},
 	})
 
@@ -168,7 +168,7 @@ func TestRegistry_Metadata(t *testing.T) {
 	if !ok {
 		t.Fatal("expected metadata to exist")
 	}
-	if got.Concurrency != ConcurrencyParallel {
-		t.Fatalf("concurrency = %q, want %q", got.Concurrency, ConcurrencyParallel)
+	if got.Concurrency != Parallel {
+		t.Fatalf("concurrency = %q, want %q", got.Concurrency, Parallel)
 	}
 }

@@ -6,9 +6,9 @@ import "github.com/nijaru/canto/llm"
 type ConcurrencyMode string
 
 const (
-	ConcurrencyUnknown    ConcurrencyMode = ""
-	ConcurrencyParallel   ConcurrencyMode = "parallel"
-	ConcurrencySerialized ConcurrencyMode = "serialized"
+	Unknown    ConcurrencyMode = ""
+	Parallel   ConcurrencyMode = "parallel"
+	Serialized ConcurrencyMode = "serialized"
 )
 
 // Example captures a concrete tool invocation example without overloading the

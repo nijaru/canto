@@ -34,7 +34,7 @@ func TestFuncWithMetadata(t *testing.T) {
 		Metadata{
 			Category:    "workspace",
 			ReadOnly:    true,
-			Concurrency: ConcurrencyParallel,
+			Concurrency: Parallel,
 			Deferred:    true,
 		},
 		func(_ context.Context, _ string) (string, error) { return "ok", nil },

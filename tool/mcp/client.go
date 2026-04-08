@@ -133,7 +133,7 @@ func (w *wrapper) Spec() llm.Spec {
 func (w *wrapper) Metadata() tool.Metadata {
 	return tool.Metadata{
 		Category:    "mcp",
-		Concurrency: tool.ConcurrencyUnknown,
+		Concurrency: tool.Unknown,
 	}
 }
 
