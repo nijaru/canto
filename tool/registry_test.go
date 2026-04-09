@@ -172,3 +172,27 @@ func TestRegistry_Metadata(t *testing.T) {
 		t.Fatalf("concurrency = %q, want %q", got.Concurrency, Parallel)
 	}
 }
+
+func TestRegistry_Subset(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(&staticTool{name: "alpha", result: "a"})
+	reg.Register(&staticTool{name: "beta", result: "b"})
+
+	subset, err := reg.Subset("beta")
+	if err != nil {
+		t.Fatalf("subset: %v", err)
+	}
+
+	if got := strings.Join(subset.Names(), ","); got != "beta" {
+		t.Fatalf("subset names = %q, want beta", got)
+	}
+}
+
+func TestRegistry_SubsetMissingToolFailsClosed(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(&staticTool{name: "alpha", result: "a"})
+
+	if _, err := reg.Subset("missing"); err == nil {
+		t.Fatal("expected missing subset tool to fail")
+	}
+}

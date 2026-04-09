@@ -92,6 +92,20 @@ func (r *Registry) Names() []string {
 	return names
 }
 
+// Subset returns a new registry containing only the named tools.
+// It fails closed if any requested tool is missing.
+func (r *Registry) Subset(names ...string) (*Registry, error) {
+	subset := NewRegistry()
+	for _, name := range names {
+		t, ok := r.Get(name)
+		if !ok {
+			return nil, fmt.Errorf("tool not found: %s", name)
+		}
+		subset.Register(t)
+	}
+	return subset, nil
+}
+
 // Execute looks up and runs a tool.
 func (r *Registry) Execute(ctx context.Context, name, args string) (string, error) {
 	t, ok := r.Get(name)

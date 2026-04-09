@@ -14,6 +14,71 @@ import (
 	"github.com/nijaru/canto/tool"
 )
 
+type childRecordingProvider struct {
+	lastTools []string
+}
+
+func (p *childRecordingProvider) ID() string { return "child-recording" }
+
+func (p *childRecordingProvider) Generate(
+	_ context.Context,
+	req *llm.Request,
+) (*llm.Response, error) {
+	p.lastTools = p.lastTools[:0]
+	for _, spec := range req.Tools {
+		p.lastTools = append(p.lastTools, spec.Name)
+	}
+	return &llm.Response{Content: "ok"}, nil
+}
+
+func (p *childRecordingProvider) Stream(
+	_ context.Context,
+	_ *llm.Request,
+) (llm.Stream, error) {
+	return nil, errors.New("stream not implemented")
+}
+
+func (p *childRecordingProvider) Models(context.Context) ([]llm.Model, error) {
+	return nil, nil
+}
+
+func (p *childRecordingProvider) CountTokens(
+	context.Context,
+	string,
+	[]llm.Message,
+) (int, error) {
+	return 0, nil
+}
+
+func (p *childRecordingProvider) Cost(context.Context, string, llm.Usage) float64 {
+	return 0
+}
+
+func (p *childRecordingProvider) Capabilities(string) llm.Capabilities {
+	return llm.DefaultCapabilities()
+}
+
+func (p *childRecordingProvider) IsTransient(error) bool { return false }
+
+func (p *childRecordingProvider) IsContextOverflow(error) bool { return false }
+
+type scopedTool struct {
+	name   string
+	output string
+}
+
+func (t *scopedTool) Spec() llm.Spec {
+	return llm.Spec{
+		Name:        t.name,
+		Description: "A scoped test tool.",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+	}
+}
+
+func (t *scopedTool) Execute(context.Context, string) (string, error) {
+	return t.output, nil
+}
+
 func TestChildRunnerSpawnAndWait_Handoff(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {
@@ -558,5 +623,47 @@ func TestChildRunnerSpawn_FailsClosedWhenScopingNonConfigurableAgent(t *testing.
 	})
 	if err == nil {
 		t.Fatal("expected scoped child spawn to fail for non-configurable agent")
+	}
+}
+
+func TestChildRunnerRun_AppliesScopedRegistryToBaseAgent(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent-scope-ok").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	full := tool.NewRegistry()
+	full.Register(&scopedTool{name: "alpha", output: "a"})
+	full.Register(&scopedTool{name: "beta", output: "b"})
+	scoped, err := full.Subset("beta")
+	if err != nil {
+		t.Fatalf("subset: %v", err)
+	}
+
+	provider := &childRecordingProvider{}
+	childAgent := agent.New("child-base", "sys", "m", provider, full)
+
+	result, err := childRunner.Run(t.Context(), parent, ChildSpec{
+		ID:    "child-scope-ok",
+		Agent: childAgent,
+		Mode:  session.ChildModeFresh,
+		Tools: scoped,
+		InitialMessages: []llm.Message{
+			{Role: llm.RoleUser, Content: "go"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("run child: %v", err)
+	}
+	if result.Status != session.ChildStatusCompleted {
+		t.Fatalf("child status = %q, want %q", result.Status, session.ChildStatusCompleted)
+	}
+	if got := len(provider.lastTools); got != 1 || provider.lastTools[0] != "beta" {
+		t.Fatalf("child prompt tool set = %#v, want [beta]", provider.lastTools)
 	}
 }
