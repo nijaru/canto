@@ -71,3 +71,41 @@ func TestRootRejectsSymlinkEscapes(t *testing.T) {
 		t.Fatal("expected symlink escape read to fail")
 	}
 }
+
+func TestRootRejectsAbsoluteAndTraversalPaths(t *testing.T) {
+	dir := t.TempDir()
+
+	root, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+
+	if err := root.WriteFile("../escape.txt", []byte("nope"), 0o644); err == nil {
+		t.Fatal("expected traversal write to fail")
+	}
+	if _, err := root.ReadFile(filepath.Join(dir, "abs.txt")); err == nil {
+		t.Fatal("expected absolute read to fail")
+	}
+}
+
+func TestRootReadDirAllowsWorkspaceRoot(t *testing.T) {
+	dir := t.TempDir()
+
+	root, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+
+	if err := root.WriteFile("hello.txt", []byte("hi"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	entries, err := root.ReadDir(".")
+	if err != nil {
+		t.Fatalf("ReadDir(.): %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "hello.txt" {
+		t.Fatalf("unexpected root entries: %#v", entries)
+	}
+}

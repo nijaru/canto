@@ -10,24 +10,22 @@ import (
 
 // Root provides symlink-safe rooted filesystem access for one workspace.
 type Root struct {
-	path string
-	root *os.Root
+	path      string
+	root      *os.Root
+	validator *Validator
 }
 
 // Open opens path as a rooted workspace.
 func Open(path string) (*Root, error) {
-	if path == "" {
-		return nil, fmt.Errorf("open workspace: path is required")
-	}
-	abs, err := filepath.Abs(path)
+	validator, err := NewValidator(path)
 	if err != nil {
 		return nil, fmt.Errorf("open workspace: %w", err)
 	}
-	root, err := os.OpenRoot(abs)
+	root, err := os.OpenRoot(validator.base)
 	if err != nil {
 		return nil, fmt.Errorf("open workspace: %w", err)
 	}
-	return &Root{path: abs, root: root}, nil
+	return &Root{path: validator.base, root: root, validator: validator}, nil
 }
 
 // Path returns the absolute path of the opened workspace root.
@@ -59,6 +57,10 @@ func (r *Root) Open(name string) (*os.File, error) {
 	if r == nil || r.root == nil {
 		return nil, fmt.Errorf("workspace is not open")
 	}
+	name, err := r.validate(name, false)
+	if err != nil {
+		return nil, err
+	}
 	return r.root.Open(name)
 }
 
@@ -66,6 +68,11 @@ func (r *Root) Open(name string) (*os.File, error) {
 func (r *Root) OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
 	if r == nil || r.root == nil {
 		return nil, fmt.Errorf("workspace is not open")
+	}
+	var err error
+	name, err = r.validate(name, false)
+	if err != nil {
+		return nil, err
 	}
 	return r.root.OpenFile(name, flag, perm)
 }
@@ -75,6 +82,11 @@ func (r *Root) MkdirAll(path string, perm os.FileMode) error {
 	if r == nil || r.root == nil {
 		return fmt.Errorf("workspace is not open")
 	}
+	var err error
+	path, err = r.validate(path, true)
+	if err != nil {
+		return err
+	}
 	return r.root.MkdirAll(path, perm)
 }
 
@@ -82,6 +94,11 @@ func (r *Root) MkdirAll(path string, perm os.FileMode) error {
 func (r *Root) ReadFile(name string) ([]byte, error) {
 	if r == nil || r.root == nil {
 		return nil, fmt.Errorf("workspace is not open")
+	}
+	var err error
+	name, err = r.validate(name, false)
+	if err != nil {
+		return nil, err
 	}
 	return r.root.ReadFile(name)
 }
@@ -91,6 +108,11 @@ func (r *Root) ReadFile(name string) ([]byte, error) {
 func (r *Root) WriteFile(name string, data []byte, perm os.FileMode) error {
 	if r == nil || r.root == nil {
 		return fmt.Errorf("workspace is not open")
+	}
+	var err error
+	name, err = r.validate(name, false)
+	if err != nil {
+		return err
 	}
 	dir := filepath.Dir(name)
 	if dir != "." {
@@ -105,6 +127,11 @@ func (r *Root) WriteFile(name string, data []byte, perm os.FileMode) error {
 func (r *Root) ReadDir(name string) ([]fs.DirEntry, error) {
 	if r == nil || r.root == nil {
 		return nil, fmt.Errorf("workspace is not open")
+	}
+	var err error
+	name, err = r.validate(name, true)
+	if err != nil {
+		return nil, err
 	}
 	f, err := r.root.Open(name)
 	if err != nil {
@@ -144,4 +171,11 @@ func (r *Root) Glob(ctx context.Context, pattern string) ([]string, error) {
 		return nil, err
 	}
 	return matches, nil
+}
+
+func (r *Root) validate(name string, allowRoot bool) (string, error) {
+	if r == nil || r.validator == nil {
+		return "", fmt.Errorf("workspace is not open")
+	}
+	return r.validator.validate(name, allowRoot)
 }
