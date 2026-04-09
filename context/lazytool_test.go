@@ -3,6 +3,7 @@ package context
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/go-json-experiment/json"
@@ -45,8 +46,6 @@ func TestLazyToolProcessor_BelowThreshold(t *testing.T) {
 
 func TestLazyToolProcessor_AboveThreshold_OnlySearchTool(t *testing.T) {
 	reg := makeRegistry(25)
-	// Register a fake search_tools tool.
-	reg.Register(&mockTool{name: "search_tools"})
 	p := NewLazyTools(reg)
 	p.Threshold = 10
 
@@ -58,6 +57,43 @@ func TestLazyToolProcessor_AboveThreshold_OnlySearchTool(t *testing.T) {
 	// Only search_tools should be in req.Tools (no prior history).
 	if len(req.Tools) != 1 || req.Tools[0].Name != "search_tools" {
 		t.Errorf("expected only search_tools, got %v", req.Tools)
+	}
+}
+
+func TestLazyToolProcessor_DeferredToolsStayHiddenBelowThreshold(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.Func("always_on", "Always available", map[string]any{"type": "object"}, func(
+		context.Context,
+		string,
+	) (string, error) {
+		return "", nil
+	}))
+	reg.Register(tool.FuncWithMetadata(
+		"expensive_tool",
+		"Deferred tool",
+		map[string]any{"type": "object"},
+		tool.Metadata{Deferred: true},
+		func(context.Context, string) (string, error) {
+			return "", nil
+		},
+	))
+
+	p := NewLazyTools(reg)
+	p.Threshold = 10
+
+	req := &llm.Request{}
+	if err := p.ApplyRequest(t.Context(), nil, "", session.New("s-deferred"), req); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(req.Tools) != 2 {
+		t.Fatalf("expected search_tools plus visible tool, got %d tools", len(req.Tools))
+	}
+	if req.Tools[0].Name != tool.SearchToolName || req.Tools[1].Name != "always_on" {
+		t.Fatalf("unexpected tool order: %s, %s", req.Tools[0].Name, req.Tools[1].Name)
+	}
+	if strings.Contains(req.Messages[0].Content, "expensive_tool") {
+		t.Fatalf("expected compact hint, got %q", req.Messages[0].Content)
 	}
 }
 
@@ -87,7 +123,6 @@ func TestSearchUnlockedTools(t *testing.T) {
 
 func TestLazyToolProcessor_UnlocksFromSessionState(t *testing.T) {
 	reg := makeRegistry(3) // tool_0, tool_1, tool_2
-	reg.Register(&mockTool{name: "search_tools"})
 	p := NewLazyTools(reg)
 	p.Threshold = 2 // 4 total > 2 → lazy mode
 
@@ -130,7 +165,6 @@ func TestLazyToolProcessor_UnlockedToolsAreSorted(t *testing.T) {
 	reg := tool.NewRegistry()
 	reg.Register(&mockTool{name: "tool_b"})
 	reg.Register(&mockTool{name: "tool_a"})
-	reg.Register(&mockTool{name: "search_tools"})
 
 	p := NewLazyTools(reg)
 	p.Threshold = 1
@@ -156,14 +190,13 @@ func TestLazyToolProcessor_UnlockedToolsAreSorted(t *testing.T) {
 	if err := p.ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatal(err)
 	}
-	if len(req.Tools) != 3 {
-		t.Fatalf("expected 3 tools, got %d", len(req.Tools))
+	if len(req.Tools) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(req.Tools))
 	}
-	if req.Tools[0].Name != "search_tools" || req.Tools[1].Name != "tool_a" ||
-		req.Tools[2].Name != "tool_b" {
+	if req.Tools[0].Name != "tool_a" || req.Tools[1].Name != "tool_b" {
 		t.Fatalf(
 			"unexpected tool order: %v",
-			[]string{req.Tools[0].Name, req.Tools[1].Name, req.Tools[2].Name},
+			[]string{req.Tools[0].Name, req.Tools[1].Name},
 		)
 	}
 }

@@ -254,6 +254,10 @@ func preflightTools(
 			continue
 		}
 		t, ok := r.Get(call.Function.Name)
+		if !ok && call.Function.Name == tool.SearchToolName {
+			t = tool.NewSearchTool(r)
+			ok = true
+		}
 		if !ok {
 			results[i].output = hookOutput + fmt.Sprintf(
 				"Error: tool %q not found",

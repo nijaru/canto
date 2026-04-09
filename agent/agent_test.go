@@ -351,6 +351,25 @@ func TestStepNoToolCalls(t *testing.T) {
 	}
 }
 
+func TestNewAgentUsesLazyToolsByDefault(t *testing.T) {
+	reg := tool.NewRegistry()
+	for i := range 25 {
+		reg.Register(&simpleTool{name: fmt.Sprintf("tool_%d", i), output: "ok"})
+	}
+
+	p := &recordingProvider{}
+	a := New("lazy-agent", "You are helpful.", "gpt-4", p, reg)
+	s := userSession("lazy-session", "find a tool")
+
+	if _, err := a.Step(t.Context(), s); err != nil {
+		t.Fatalf("step: %v", err)
+	}
+
+	if len(p.lastTools) != 1 || p.lastTools[0] != tool.SearchToolName {
+		t.Fatalf("expected only search_tools in prompt, got %#v", p.lastTools)
+	}
+}
+
 func TestStepRecordsPromptCacheFingerprint(t *testing.T) {
 	p := &mockProvider{
 		responses: []*llm.Response{

@@ -59,10 +59,6 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 	if err = cfg.Builder.Build(ctx, cfg.Provider, cfg.Model, s, req); err != nil {
 		return
 	}
-	req.Tools = req.Tools[:0]
-	if cfg.Tools != nil {
-		req.Tools = append(req.Tools, cfg.Tools.Specs()...)
-	}
 
 	cacheFingerprint, err := ccontext.FingerprintPromptCache(s, req)
 	if err != nil {

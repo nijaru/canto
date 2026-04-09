@@ -16,6 +16,13 @@ type Builder struct {
 	mutators          []ContextMutator
 }
 
+// ToolRegistryProcessor is a request processor whose registry can be swapped
+// for runtime-scoped prompt shaping.
+type ToolRegistryProcessor interface {
+	RequestProcessor
+	WithToolRegistry(*tool.Registry) RequestProcessor
+}
+
 // NewBuilder creates a new builder with the default request-shaping chain.
 func NewBuilder(processors ...RequestProcessor) *Builder {
 	return &Builder{requestProcessors: append([]RequestProcessor(nil), processors...)}
@@ -133,6 +140,25 @@ func (b *Builder) InsertRequestProcessorsBeforeLast(processors ...RequestProcess
 	b.requestProcessors = merged
 }
 
+// ReplaceToolRegistryProcessors swaps any tool-registry-bound request
+// processors to the provided registry. If the builder has no such processor,
+// it inserts a LazyTools processor before the final capabilities pass.
+func (b *Builder) ReplaceToolRegistryProcessors(reg *tool.Registry) {
+	replaced := false
+	for i, proc := range b.requestProcessors {
+		toolProc, ok := proc.(ToolRegistryProcessor)
+		if !ok {
+			continue
+		}
+		b.requestProcessors[i] = toolProc.WithToolRegistry(reg)
+		replaced = true
+	}
+	if replaced {
+		return
+	}
+	b.InsertRequestProcessorsBeforeLast(NewLazyTools(reg))
+}
+
 // PrependMutators inserts commit-time mutators at the front of the mutator chain.
 func (b *Builder) PrependMutators(mutators ...ContextMutator) {
 	if len(mutators) == 0 {
@@ -212,15 +238,29 @@ func History() RequestProcessor {
 
 // Tools appends tool definitions to the LLM request.
 func Tools(reg *tool.Registry) RequestProcessor {
-	return RequestProcessorFunc(
-		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
-			if reg == nil {
-				return nil
-			}
-			req.Tools = append(req.Tools, reg.Specs()...)
-			return nil
-		},
-	)
+	return &toolSpecsProcessor{Registry: reg}
+}
+
+type toolSpecsProcessor struct {
+	Registry *tool.Registry
+}
+
+func (p *toolSpecsProcessor) WithToolRegistry(reg *tool.Registry) RequestProcessor {
+	return &toolSpecsProcessor{Registry: reg}
+}
+
+func (p *toolSpecsProcessor) ApplyRequest(
+	ctx context.Context,
+	pr llm.Provider,
+	model string,
+	sess *session.Session,
+	req *llm.Request,
+) error {
+	if p.Registry == nil {
+		return nil
+	}
+	req.Tools = append(req.Tools, p.Registry.Specs()...)
+	return nil
 }
 
 // Instructions prepends instructions as a system message.

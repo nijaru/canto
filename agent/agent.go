@@ -60,9 +60,13 @@ func (a *BaseAgent) ConfigureRuntime(cfg RuntimeConfig) Agent {
 	clone := *a
 	if cfg.Tools != nil {
 		clone.tools = cfg.Tools
+		clone.builder = a.builder.Clone()
+		clone.builder.ReplaceToolRegistryProcessors(cfg.Tools)
 	}
 	if len(cfg.RequestProcessors) > 0 {
-		clone.builder = a.builder.Clone()
+		if clone.builder == a.builder {
+			clone.builder = a.builder.Clone()
+		}
 		clone.builder.InsertRequestProcessorsBeforeLast(cfg.RequestProcessors...)
 	}
 	return &clone
@@ -152,7 +156,7 @@ func New(
 
 	a.builder = ccontext.NewBuilder(
 		ccontext.Instructions(instructions),
-		ccontext.Tools(t),
+		ccontext.NewLazyTools(t),
 		ccontext.History(),
 		ccontext.Capabilities(), // must be last: adapts system/temp for reasoning models
 	)

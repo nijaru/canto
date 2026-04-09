@@ -2,8 +2,6 @@ package context
 
 import (
 	"context"
-	"slices"
-	"strings"
 
 	"github.com/go-json-experiment/json"
 
@@ -15,18 +13,14 @@ import (
 const (
 	// DefaultLazyThreshold is the tool count above which lazy loading activates.
 	DefaultLazyThreshold = 20
-	searchToolName       = "search_tools"
 )
 
 // LazyTools conditionally loads tool specs.
 //
-// If the registry has <= Threshold tools, all specs are included (same as
-// Tools). Above the threshold, only the search_tools meta-tool is
-// exposed, along with a system hint listing all available tool names.
-// Previously searched tools are re-included by scanning session history for
-// search_tools results — ensuring the agent can call tools it has discovered.
-//
-// Wire a SearchTool (from x/tools) into the registry before using this.
+// Explicitly deferred tools stay out of the default request until searched and
+// unlocked. Once the registry grows beyond Threshold, all tool specs are kept
+// out of the initial request except the search_tools meta-tool and any tools
+// previously unlocked from session history.
 type LazyTools struct {
 	Registry  *tool.Registry
 	Threshold int // default: DefaultLazyThreshold
@@ -35,6 +29,12 @@ type LazyTools struct {
 // NewLazyTools creates a LazyTools with the given registry.
 func NewLazyTools(reg *tool.Registry) *LazyTools {
 	return &LazyTools{Registry: reg, Threshold: DefaultLazyThreshold}
+}
+
+func (p *LazyTools) WithToolRegistry(reg *tool.Registry) RequestProcessor {
+	clone := *p
+	clone.Registry = reg
+	return &clone
 }
 
 func (p *LazyTools) ApplyRequest(
@@ -53,40 +53,44 @@ func (p *LazyTools) ApplyRequest(
 		threshold = DefaultLazyThreshold
 	}
 
-	specs := p.Registry.Specs()
-	if len(specs) <= threshold {
-		// Below threshold: include everything.
-		req.Tools = append(req.Tools, specs...)
+	entries := p.Registry.Entries()
+	if len(entries) == 0 {
 		return nil
 	}
 
-	// Above threshold: include only the search_tools meta-tool.
-	if st, ok := p.Registry.Get(searchToolName); ok {
-		spec := st.Spec()
-		req.Tools = append(req.Tools, &spec)
-	}
-
-	// Scan session history for search_tools results and unlock those tools.
 	unlocked, err := SearchUnlockedTools(sess)
 	if err != nil {
 		return err
 	}
-	unlockedNames := make([]string, 0, len(unlocked))
-	for name := range unlocked {
-		unlockedNames = append(unlockedNames, name)
-	}
-	slices.Sort(unlockedNames)
-	for _, name := range unlockedNames {
-		if t, ok := p.Registry.Get(name); ok {
-			spec := t.Spec()
-			req.Tools = append(req.Tools, &spec)
+
+	hiddenCount := 0
+	for _, entry := range entries {
+		if entry.Name == tool.SearchToolName {
+			continue
 		}
+		if shouldHideTool(entry, len(entries), threshold) {
+			if _, ok := unlocked[entry.Name]; ok {
+				spec := entry.Spec
+				req.Tools = append(req.Tools, &spec)
+				continue
+			}
+			hiddenCount++
+			continue
+		}
+		spec := entry.Spec
+		req.Tools = append(req.Tools, &spec)
 	}
 
-	// Inject a system hint listing all available tool names.
-	names := p.Registry.Names()
-	hint := "Available tools (use search_tools to get specs): " + strings.Join(names, ", ")
-	injectSystemHint(req, hint)
+	if hiddenCount == 0 {
+		return nil
+	}
+
+	searchSpec := tool.NewSearchTool(p.Registry).Spec()
+	req.Tools = append([]*llm.Spec{&searchSpec}, req.Tools...)
+	injectSystemHint(
+		req,
+		"Additional tools are available via search_tools. Search by capability, keyword, category, or exact tool name before calling a hidden tool.",
+	)
 
 	return nil
 }
@@ -103,7 +107,7 @@ func SearchUnlockedTools(sess *session.Session) (map[string]struct{}, error) {
 			errOut = err
 			break
 		}
-		if !ok || result.Tool != searchToolName {
+		if !ok || result.Tool != tool.SearchToolName {
 			continue
 		}
 
@@ -112,13 +116,17 @@ func SearchUnlockedTools(sess *session.Session) (map[string]struct{}, error) {
 			continue
 		}
 		for _, spec := range specs {
-			if spec.Name == "" || spec.Name == searchToolName {
+			if spec.Name == "" || spec.Name == tool.SearchToolName {
 				continue
 			}
 			unlocked[spec.Name] = struct{}{}
 		}
 	}
 	return unlocked, errOut
+}
+
+func shouldHideTool(entry tool.ToolEntry, total, threshold int) bool {
+	return entry.Metadata.Deferred || total > threshold
 }
 
 // injectSystemHint prepends a system message with the hint text.
