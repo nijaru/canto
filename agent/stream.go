@@ -156,7 +156,7 @@ func (a *BaseAgent) StreamStep(
 		a.approvals,
 		handoffTargets,
 		a.maxParallelTools,
-		stepStarted.ID.String(),
+		e.ID.String(),
 	)
 	res.Usage = usage // Restore usage as RunTools only returns results/handoff
 

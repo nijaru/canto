@@ -107,7 +107,7 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 		cfg.Approvals,
 		handoffTargets,
 		cfg.MaxParallelTools,
-		stepStarted.ID.String(),
+		e.ID.String(),
 	)
 	res.Usage = resp.Usage // Restore usage as RunTools only returns results/handoff
 

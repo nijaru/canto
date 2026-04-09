@@ -667,6 +667,103 @@ func TestStepToolEventsCarryMatchingIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestRunTools_ReusesCompletedOutputForMatchingIdempotencyKey(t *testing.T) {
+	reg := tool.NewRegistry()
+	calls := 0
+	reg.Register(tool.Func(
+		"echo",
+		"Echo input",
+		map[string]any{"type": "object"},
+		func(_ context.Context, args string) (string, error) {
+			calls++
+			return args, nil
+		},
+	))
+
+	s := session.New("s-acrfence-reuse")
+	call := llm.Call{
+		ID:   "volatile-call-id",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "echo", Arguments: `{"value":1}`},
+	}
+	key := toolIdempotencyKey(s.ID(), "assistant-msg-1", call, 0)
+	if err := s.Append(context.Background(), session.NewToolCompletedEvent(s.ID(), session.ToolCompletedData{
+		Tool:           "echo",
+		ID:             "old-call-id",
+		IdempotencyKey: key,
+		Output:         "cached output",
+	})); err != nil {
+		t.Fatalf("append prior tool completion: %v", err)
+	}
+
+	res, err := runTools(
+		context.Background(),
+		s,
+		[]llm.Call{call},
+		reg,
+		nil,
+		nil,
+		nil,
+		10,
+		"assistant-msg-1",
+	)
+	if err != nil {
+		t.Fatalf("runTools: %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("expected tool execution to be reused, got %d calls", calls)
+	}
+	if len(res.ToolResults) != 1 || res.ToolResults[0].Content != "cached output" {
+		t.Fatalf("unexpected reused tool results: %#v", res.ToolResults)
+	}
+}
+
+func TestRunTools_ACRFenceRejectsStartedOnlyExecution(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(tool.Func(
+		"echo",
+		"Echo input",
+		map[string]any{"type": "object"},
+		func(_ context.Context, args string) (string, error) { return args, nil },
+	))
+
+	s := session.New("s-acrfence-ambiguous")
+	call := llm.Call{
+		ID:   "volatile-call-id",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "echo", Arguments: `{"value":1}`},
+	}
+	key := toolIdempotencyKey(s.ID(), "assistant-msg-1", call, 0)
+	if err := s.Append(context.Background(), session.NewToolStartedEvent(s.ID(), session.ToolStartedData{
+		Tool:           "echo",
+		Arguments:      `{"value":1}`,
+		ID:             "old-call-id",
+		IdempotencyKey: key,
+	})); err != nil {
+		t.Fatalf("append prior tool start: %v", err)
+	}
+
+	if _, err := runTools(
+		context.Background(),
+		s,
+		[]llm.Call{call},
+		reg,
+		nil,
+		nil,
+		nil,
+		10,
+		"assistant-msg-1",
+	); err == nil {
+		t.Fatal("expected ambiguous replay error, got nil")
+	}
+}
+
 func TestStepToolConcurrencyPartitioningPreservesSerializedBarriers(t *testing.T) {
 	newBlocking := func(name string, mode tool.ConcurrencyMode) *blockingTool {
 		return &blockingTool{

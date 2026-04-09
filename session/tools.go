@@ -31,3 +31,46 @@ func (e Event) ToolCompletedData() (ToolCompletedData, bool, error) {
 	}
 	return result, true, nil
 }
+
+// ToolExecutionRecord summarizes durable tool lifecycle facts for one
+// idempotency key.
+type ToolExecutionRecord struct {
+	Started   ToolStartedData
+	Completed ToolCompletedData
+}
+
+// FindToolExecutionByKey looks up the most recent durable tool lifecycle facts
+// for an idempotency key.
+func FindToolExecutionByKey(
+	s *Session,
+	idempotencyKey string,
+) (ToolExecutionRecord, bool, error) {
+	if s == nil || idempotencyKey == "" {
+		return ToolExecutionRecord{}, false, nil
+	}
+
+	var record ToolExecutionRecord
+	for e := range s.Backward() {
+		switch e.Type {
+		case ToolCompleted:
+			data, ok, err := e.ToolCompletedData()
+			if err != nil {
+				return ToolExecutionRecord{}, false, err
+			}
+			if ok && data.IdempotencyKey == idempotencyKey {
+				record.Completed = data
+				return record, true, nil
+			}
+		case ToolStarted:
+			data, ok, err := e.ToolStartedData()
+			if err != nil {
+				return ToolExecutionRecord{}, false, err
+			}
+			if ok && data.IdempotencyKey == idempotencyKey {
+				record.Started = data
+				return record, true, nil
+			}
+		}
+	}
+	return ToolExecutionRecord{}, false, nil
+}

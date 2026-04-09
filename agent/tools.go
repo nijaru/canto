@@ -152,14 +152,14 @@ func runTools(
 	approvals *approval.Manager,
 	handoffTargets []string,
 	maxParallel int,
-	stepID string,
+	assistantMessageID string,
 ) (StepResult, error) {
 	if maxParallel <= 0 {
 		maxParallel = 10
 	}
 
 	// Phase 1: sequential preflight — validate, run PreToolUse hooks, check approvals.
-	preflight := preflightTools(ctx, s, calls, r, h, approvals, stepID)
+	preflight := preflightTools(ctx, s, calls, r, h, approvals, assistantMessageID)
 
 	// Phase 2: metadata-driven execution — parallel-safe tools fan out in waves
 	// while serialized or unknown tools remain in source order.
@@ -199,14 +199,15 @@ func preflightTools(
 	r *tool.Registry,
 	h *hook.Runner,
 	approvals *approval.Manager,
-	stepID string,
+	assistantMessageID string,
 ) []preflightResult {
 	results := make([]preflightResult, len(calls))
+	fence := tool.ACRFence{}
 
 	for i, call := range calls {
 		results[i].call = call
 		results[i].index = i
-		results[i].stepID = stepID
+		results[i].stepID = assistantMessageID
 
 		// PreToolUse hooks — run sequentially so they can inspect sibling state.
 		var metadata tool.Metadata
@@ -331,11 +332,24 @@ func preflightTools(
 			}
 		}
 
+		idempotencyKey := toolIdempotencyKey(s.ID(), assistantMessageID, call, i)
+		decision, err := fence.Validate(s, idempotencyKey)
+		if err != nil {
+			results[i].err = err
+			results[i].skipExecute = true
+			continue
+		}
+		if decision.Action == tool.ReplayReuse {
+			results[i].output = hookOutput + decision.Output
+			results[i].skipExecute = true
+			continue
+		}
+
 		if err := s.Append(ctx, session.NewToolStartedEvent(s.ID(), session.ToolStartedData{
 			Tool:           call.Function.Name,
 			Arguments:      call.Function.Arguments,
 			ID:             call.ID,
-			IdempotencyKey: toolIdempotencyKey(s.ID(), stepID, call, i),
+			IdempotencyKey: idempotencyKey,
 		})); err != nil {
 			results[i].err = err
 			results[i].skipExecute = true
@@ -571,12 +585,12 @@ func executeToolWithHooks(
 	return execResults[0]
 }
 
-func toolIdempotencyKey(sessionID, stepID string, call llm.Call, index int) string {
+func toolIdempotencyKey(sessionID, assistantMessageID string, call llm.Call, index int) string {
 	sum := sha256.Sum256([]byte(call.Function.Arguments))
 	return fmt.Sprintf(
 		"%s:%s:%s:%d:%s",
 		sessionID,
-		stepID,
+		assistantMessageID,
 		call.Function.Name,
 		index,
 		hex.EncodeToString(sum[:]),
