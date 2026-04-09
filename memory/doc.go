@@ -28,8 +28,9 @@
 //
 // CoreStore persists durable memory blocks and text-searchable memories in
 // SQLite/FTS5. VectorStore implementations add optional semantic retrieval.
-// SQLiteVectorStore is the simplest brute-force option for small collections,
-// while HNSWStore targets larger approximate-nearest-neighbor workloads.
+// NewVectorStore returns the default HNSW-backed vector index, while
+// NewSQLiteVectorStore remains available as the explicit brute-force fallback
+// for tiny collections or exact-search tests.
 //
 // Indexer remains available for session-derived semantic indexing when hosts
 // want live embeddings of newly appended session messages.

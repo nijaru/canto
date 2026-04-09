@@ -99,9 +99,9 @@ func TestManager_SemanticRetrieval(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	vector, err := NewSQLiteVectorStore("file::memory:?cache=shared")
+	vector, err := NewVectorStore(t.Context(), "file::memory:?cache=shared")
 	if err != nil {
-		t.Fatalf("NewSQLiteVectorStore: %v", err)
+		t.Fatalf("NewVectorStore: %v", err)
 	}
 	t.Cleanup(func() { _ = vector.Close() })
 
@@ -309,9 +309,9 @@ func TestManagerCapabilities(t *testing.T) {
 		t.Fatalf("expected semantic search to be disabled without vector store, got %#v", caps)
 	}
 
-	vector, err := NewSQLiteVectorStore("file::memory:?cache=shared")
+	vector, err := NewVectorStore(t.Context(), "file::memory:?cache=shared")
 	if err != nil {
-		t.Fatalf("NewSQLiteVectorStore: %v", err)
+		t.Fatalf("NewVectorStore: %v", err)
 	}
 	t.Cleanup(func() { _ = vector.Close() })
 
@@ -542,9 +542,9 @@ func TestManager_SemanticRetrievalRespectsLifecycle(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	vector, err := NewSQLiteVectorStore("file::memory:?cache=shared")
+	vector, err := NewVectorStore(t.Context(), "file::memory:?cache=shared")
 	if err != nil {
-		t.Fatalf("NewSQLiteVectorStore: %v", err)
+		t.Fatalf("NewVectorStore: %v", err)
 	}
 	t.Cleanup(func() { _ = vector.Close() })
 

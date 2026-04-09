@@ -35,6 +35,15 @@ type SearchResult struct {
 	Metadata map[string]any
 }
 
+// NewVectorStore creates the default vector backend for memory/.
+//
+// The default is HNSW-backed approximate search with durable SQLite metadata
+// storage. Callers that need an exact brute-force implementation can opt into
+// NewSQLiteVectorStore explicitly.
+func NewVectorStore(ctx context.Context, dsn string) (VectorStore, error) {
+	return NewHNSWStore(ctx, dsn)
+}
+
 // SQLiteVectorStore is a brute-force vector store backed by SQLite.
 // It is efficient for small collections (< 10k vectors).
 type SQLiteVectorStore struct {

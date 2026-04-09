@@ -6,6 +6,18 @@ import (
 	"testing"
 )
 
+func TestNewVectorStore_DefaultsToHNSW(t *testing.T) {
+	store, err := NewVectorStore(t.Context(), t.TempDir()+"/default.sqlite")
+	if err != nil {
+		t.Fatalf("NewVectorStore: %v", err)
+	}
+	defer store.Close()
+
+	if _, ok := store.(*HNSWStore); !ok {
+		t.Fatalf("default vector store = %T, want *HNSWStore", store)
+	}
+}
+
 func TestSQLiteVectorStore(t *testing.T) {
 	dbFile := "test_vector.db"
 	defer os.Remove(dbFile)
