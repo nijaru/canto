@@ -30,13 +30,43 @@ func (s *CoreStore) UpsertBlock(ctx context.Context, block Block) error {
 	return err
 }
 
-func (s *CoreStore) ListBlocks(ctx context.Context, namespaces []Namespace) ([]Block, error) {
+func (s *CoreStore) GetBlock(
+	ctx context.Context,
+	namespace Namespace,
+	name string,
+) (*Block, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT content, metadata, updated_at
+		FROM memory_blocks
+		WHERE scope = ? AND scope_id = ? AND name = ?
+	`, string(namespace.Scope), namespace.ID, name)
+	var block Block
+	var metadata string
+	var updatedAt string
+	if err := row.Scan(&block.Content, &metadata, &updatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	block.Namespace = namespace
+	block.Name = name
+	if metadata != "" {
+		if err := json.Unmarshal([]byte(metadata), &block.Metadata); err != nil {
+			return nil, err
+		}
+	}
+	block.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+	return &block, nil
+}
+
+func (s *CoreStore) ListBlocks(ctx context.Context, input BlockListInput) ([]Block, error) {
 	query := "SELECT scope, scope_id, name, content, metadata, updated_at FROM memory_blocks"
 	var where []string
 	var args []any
-	if len(namespaces) > 0 {
+	if len(input.Namespaces) > 0 {
 		var parts []string
-		for _, ns := range namespaces {
+		for _, ns := range input.Namespaces {
 			parts = append(parts, "(scope = ? AND scope_id = ?)")
 			args = append(args, string(ns.Scope), ns.ID)
 		}
@@ -46,6 +76,10 @@ func (s *CoreStore) ListBlocks(ctx context.Context, namespaces []Namespace) ([]B
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
 	query += " ORDER BY updated_at DESC, name ASC"
+	if input.Limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, input.Limit)
+	}
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -166,6 +200,81 @@ func (s *CoreStore) GetMemory(ctx context.Context, id string) (*Memory, error) {
 	}
 	mem.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
 	return mem, nil
+}
+
+func (s *CoreStore) ListMemories(
+	ctx context.Context,
+	input MemoryListInput,
+) ([]Memory, error) {
+	if input.Limit <= 0 {
+		input.Limit = 32
+	}
+	args := []any{}
+	query := `
+		SELECT m.id, m.scope, m.scope_id, m.role, m.memory_key, m.content, m.metadata,
+		       m.observed_at, m.valid_from, m.valid_to, m.supersedes, m.superseded_by, m.forgotten_at,
+		       m.updated_at
+		FROM memories m
+	`
+
+	var where []string
+	if len(input.Namespaces) > 0 {
+		var parts []string
+		for _, ns := range input.Namespaces {
+			parts = append(parts, "(m.scope = ? AND m.scope_id = ?)")
+			args = append(args, string(ns.Scope), ns.ID)
+		}
+		where = append(where, "("+strings.Join(parts, " OR ")+")")
+	}
+	if len(input.Roles) > 0 {
+		placeholders := make([]string, len(input.Roles))
+		for i, role := range input.Roles {
+			placeholders[i] = "?"
+			args = append(args, string(role))
+		}
+		where = append(where, "m.role IN ("+strings.Join(placeholders, ",")+")")
+	}
+	if !input.IncludeForgotten {
+		where = append(where, "m.forgotten_at IS NULL")
+	}
+	if !input.IncludeSuperseded {
+		where = append(where, "(m.superseded_by IS NULL OR m.superseded_by = '')")
+	}
+	if input.ValidAt != nil {
+		when := input.ValidAt.UTC().Format(time.RFC3339Nano)
+		where = append(where, "(m.valid_from IS NULL OR m.valid_from <= ?)")
+		args = append(args, when)
+		where = append(where, "(m.valid_to IS NULL OR m.valid_to >= ?)")
+		args = append(args, when)
+	}
+	if input.ObservedAfter != nil {
+		where = append(where, "m.observed_at IS NOT NULL AND m.observed_at >= ?")
+		args = append(args, input.ObservedAfter.UTC().Format(time.RFC3339Nano))
+	}
+	if input.ObservedBefore != nil {
+		where = append(where, "m.observed_at IS NOT NULL AND m.observed_at <= ?")
+		args = append(args, input.ObservedBefore.UTC().Format(time.RFC3339Nano))
+	}
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	query += " ORDER BY m.updated_at DESC, m.id ASC LIMIT ?"
+	args = append(args, input.Limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var memories []Memory
+	for rows.Next() {
+		memory, err := scanMemory(rows)
+		if err != nil {
+			return nil, err
+		}
+		memories = append(memories, memory)
+	}
+	return memories, rows.Err()
 }
 
 func (s *CoreStore) SearchMemories(ctx context.Context, input SearchInput) ([]Memory, error) {

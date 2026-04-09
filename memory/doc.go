@@ -12,9 +12,16 @@
 // thread/user/agent/workspace/app namespaces, with option-based configuration
 // for pluggable write policy, retrieval policy, vectors, and embeddings.
 //
+// Index is the cheap pointer layer that sits above the repository. It renders
+// namespaces, core blocks, and long-term memories as short filetree-style
+// summaries so callers can keep a stable memory map in context without loading
+// full memory bodies.
+//
 // Small interfaces such as Writer, Retriever, and Store keep the higher-level
 // helpers decoupled from any one concrete implementation. CoreStore is the
 // built-in SQLite/FTS5 store, not the only supported backing store shape.
+// Repository exposes the lower-level block/memory listing and lookup surface
+// that Index and future retrieval planners build on.
 // Vector-store details, block layout, and future graph/context capabilities are
 // intentionally not stable consumer-facing commitments yet.
 //

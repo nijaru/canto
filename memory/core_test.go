@@ -27,7 +27,18 @@ func TestCoreStore_Blocks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	blocks, err := store.ListBlocks(ctx, []Namespace{ns})
+	block, err := store.GetBlock(ctx, ns, "persona")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if block == nil {
+		t.Fatal("GetBlock returned nil block")
+	}
+	if block.Name != "persona" || block.Content != "Be concise." {
+		t.Fatalf("unexpected fetched block: %+v", *block)
+	}
+
+	blocks, err := store.ListBlocks(ctx, BlockListInput{Namespaces: []Namespace{ns}})
 	if err != nil {
 		t.Fatal(err)
 	}

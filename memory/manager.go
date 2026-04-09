@@ -277,7 +277,9 @@ func (m *Manager) Retrieve(ctx context.Context, query Query) ([]Memory, error) {
 
 	var results []Memory
 	if includeCore {
-		blocks, err := m.store.ListBlocks(ctx, query.Namespaces)
+		blocks, err := m.store.ListBlocks(ctx, BlockListInput{
+			Namespaces: query.Namespaces,
+		})
 		if err != nil {
 			return nil, err
 		}
