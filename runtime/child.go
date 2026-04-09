@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -229,7 +230,7 @@ func (r *ChildRunner) materializeChildSession(
 		child = session.New(childSessionID).WithWriter(r.store)
 	}
 
-	for _, msg := range spec.InitialMessages {
+	for _, msg := range childSeedMessages(spec) {
 		if err := child.Append(ctx, session.NewMessage(child.ID(), msg)); err != nil {
 			return nil, fmt.Errorf("materialize child initial message: %w", err)
 		}
@@ -428,4 +429,29 @@ func mergeMetadata(base map[string]any, extra map[string]any) map[string]any {
 		ordered[key] = out[key]
 	}
 	return ordered
+}
+
+func childSeedMessages(spec ChildSpec) []llm.Message {
+	if len(spec.InitialMessages) > 0 {
+		return append([]llm.Message(nil), spec.InitialMessages...)
+	}
+	if spec.Mode != session.ChildModeHandoff {
+		return nil
+	}
+
+	var parts []string
+	if spec.Task != "" {
+		parts = append(parts, "Task: "+spec.Task)
+	}
+	if spec.Context != "" {
+		parts = append(parts, "Context: "+spec.Context)
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+
+	return []llm.Message{{
+		Role:    llm.RoleUser,
+		Content: strings.Join(parts, "\n"),
+	}}
 }

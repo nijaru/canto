@@ -217,6 +217,44 @@ func TestChildRunnerSpawn_ForkCopiesParentHistory(t *testing.T) {
 	}
 }
 
+func TestChildRunnerRun_HandoffSeedsTaskAndContextWhenNoMessagesProvided(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent-handoff-seed").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	result, err := childRunner.Run(t.Context(), parent, ChildSpec{
+		ID:      "child-handoff-seed",
+		Agent:   &echoAgent{},
+		Mode:    session.ChildModeHandoff,
+		Task:    "Review the patch",
+		Context: "Focus on regressions",
+	})
+	if err != nil {
+		t.Fatalf("run child: %v", err)
+	}
+	if result.Status != session.ChildStatusCompleted {
+		t.Fatalf("child status = %q, want %q", result.Status, session.ChildStatusCompleted)
+	}
+
+	childReloaded, err := store.Load(t.Context(), result.Ref.SessionID)
+	if err != nil {
+		t.Fatalf("load child: %v", err)
+	}
+	messages := childReloaded.Messages()
+	if len(messages) < 2 {
+		t.Fatalf("expected seeded user message plus reply, got %d messages", len(messages))
+	}
+	if got := messages[0].Content; got != "Task: Review the patch\nContext: Focus on regressions" {
+		t.Fatalf("seeded handoff message = %q", got)
+	}
+}
+
 func TestChildRunnerRun_WaitsSynchronously(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {
@@ -598,6 +636,44 @@ func TestChildRunnerRun_RecordsBlockedChildWhenWaiting(t *testing.T) {
 	}
 	if got := blocked.Metadata["external_id"]; got != "approver-1" {
 		t.Fatalf("blocked external_id = %#v, want approver-1", got)
+	}
+}
+
+func TestChildRunnerRun_FreshDoesNotSeedTaskOrContext(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent-fresh-seed").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	result, err := childRunner.Run(t.Context(), parent, ChildSpec{
+		ID:      "child-fresh-seed",
+		Agent:   &echoAgent{},
+		Mode:    session.ChildModeFresh,
+		Task:    "Review the patch",
+		Context: "Focus on regressions",
+	})
+	if err != nil {
+		t.Fatalf("run child: %v", err)
+	}
+	if result.Status != session.ChildStatusCompleted {
+		t.Fatalf("child status = %q, want %q", result.Status, session.ChildStatusCompleted)
+	}
+
+	childReloaded, err := store.Load(t.Context(), result.Ref.SessionID)
+	if err != nil {
+		t.Fatalf("load child: %v", err)
+	}
+	messages := childReloaded.Messages()
+	if len(messages) != 1 {
+		t.Fatalf("expected only assistant reply in fresh child, got %d messages", len(messages))
+	}
+	if messages[0].Role != llm.RoleAssistant || messages[0].Content != "pong" {
+		t.Fatalf("unexpected fresh child messages: %#v", messages)
 	}
 }
 
