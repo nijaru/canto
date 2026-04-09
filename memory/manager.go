@@ -90,10 +90,14 @@ type Candidate struct {
 	Importance float64        `json:"importance,omitzero"`
 }
 
-type CandidateExtractor func(ctx context.Context, candidate Candidate) ([]Candidate, error)
+type (
+	CandidateExtractor func(ctx context.Context, candidate Candidate) ([]Candidate, error)
+	CandidateDeduper   func(ctx context.Context, candidates []Candidate) ([]Candidate, error)
+)
 
 type WritePolicy struct {
 	Extractor           CandidateExtractor
+	Deduper             CandidateDeduper
 	ConflictMode        ConflictMode
 	ImportanceThreshold float64
 	DefaultMode         WriteMode
@@ -117,6 +121,46 @@ type WriteResult struct {
 	Stored  int
 	Pending int
 	IDs     []string
+}
+
+type ForgetInput struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason,omitzero"`
+}
+
+type ConsolidationInput struct {
+	Namespaces        []Namespace
+	Roles             []Role
+	Limit             int
+	IncludeForgotten  bool
+	IncludeSuperseded bool
+}
+
+type ConsolidationPlan struct {
+	Upserts []WriteInput  `json:"upserts,omitzero"`
+	Forgets []ForgetInput `json:"forgets,omitzero"`
+}
+
+type ConsolidationResult struct {
+	Examined  int         `json:"examined"`
+	Written   WriteResult `json:"written"`
+	Forgotten int         `json:"forgotten"`
+}
+
+type Consolidator interface {
+	Consolidate(ctx context.Context, memories []Memory) (ConsolidationPlan, error)
+}
+
+type ConsolidatorFunc func(
+	ctx context.Context,
+	memories []Memory,
+) (ConsolidationPlan, error)
+
+func (f ConsolidatorFunc) Consolidate(
+	ctx context.Context,
+	memories []Memory,
+) (ConsolidationPlan, error) {
+	return f(ctx, memories)
 }
 
 type Query struct {
@@ -170,32 +214,23 @@ func (m *Manager) Close() error {
 }
 
 func (m *Manager) Write(ctx context.Context, input WriteInput) (WriteResult, error) {
+	return m.WriteBatch(ctx, []WriteInput{input})
+}
+
+func (m *Manager) WriteBatch(
+	ctx context.Context,
+	inputs []WriteInput,
+) (WriteResult, error) {
 	if m == nil || m.store == nil {
 		return WriteResult{}, fmt.Errorf("memory manager: store is required")
 	}
-	candidate := Candidate{
-		Namespace:  input.Namespace,
-		Role:       input.Role,
-		Key:        input.Key,
-		Content:    input.Content,
-		Metadata:   cloneMap(input.Metadata),
-		ObservedAt: cloneTime(input.ObservedAt),
-		ValidFrom:  cloneTime(input.ValidFrom),
-		ValidTo:    cloneTime(input.ValidTo),
-		Supersedes: input.Supersedes,
-		Importance: input.Importance,
-	}
-	candidates, err := m.extract(ctx, candidate)
+	items, err := m.prepareWriteItems(ctx, inputs)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	mode := input.Mode
-	if mode == "" {
-		mode = m.policy.DefaultMode
-	}
-
 	var result WriteResult
-	for _, candidate := range candidates {
+	for _, item := range items {
+		candidate := item.Candidate
 		if candidate.Content == "" {
 			continue
 		}
@@ -204,7 +239,7 @@ func (m *Manager) Write(ctx context.Context, input WriteInput) (WriteResult, err
 		}
 		id := memoryID(candidate)
 		result.IDs = append(result.IDs, id)
-		if mode == WriteAsync {
+		if item.Mode == WriteAsync {
 			result.Pending++
 			m.asyncWG.Add(1)
 			go func(candidate Candidate, id string) {

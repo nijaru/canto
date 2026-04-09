@@ -10,6 +10,8 @@ type MemoryCapabilities struct {
 	Memories       bool
 	Search         bool
 	Forget         bool
+	BatchWrite     bool
+	Consolidate    bool
 	SemanticSearch bool
 	Temporal       bool
 	AsyncWrite     bool
@@ -24,6 +26,7 @@ type MemoryCapabilities struct {
 // existing experimental surface or freezing backend details too early.
 type MemoryService interface {
 	Remember(ctx context.Context, input WriteInput) (WriteResult, error)
+	RememberBatch(ctx context.Context, inputs []WriteInput) (WriteResult, error)
 	Search(ctx context.Context, query Query) ([]Memory, error)
 	Forget(ctx context.Context, id, reason string) error
 	Capabilities() MemoryCapabilities
@@ -42,6 +45,8 @@ func (m *Manager) Capabilities() MemoryCapabilities {
 		Memories:       true,
 		Search:         true,
 		Forget:         true,
+		BatchWrite:     true,
+		Consolidate:    true,
 		SemanticSearch: m.vector != nil && m.embedder != nil,
 		Temporal:       true,
 		AsyncWrite:     true,
@@ -54,6 +59,14 @@ func (m *Manager) Capabilities() MemoryCapabilities {
 // Remember stores a memory record. It is a semantic alias for Write.
 func (m *Manager) Remember(ctx context.Context, input WriteInput) (WriteResult, error) {
 	return m.Write(ctx, input)
+}
+
+// RememberBatch stores multiple memory records through the manager write pipeline.
+func (m *Manager) RememberBatch(
+	ctx context.Context,
+	inputs []WriteInput,
+) (WriteResult, error) {
+	return m.WriteBatch(ctx, inputs)
 }
 
 // Search retrieves memories. It is a semantic alias for Retrieve.

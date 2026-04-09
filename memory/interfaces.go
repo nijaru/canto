@@ -71,6 +71,10 @@ type Writer interface {
 	Write(ctx context.Context, input WriteInput) (WriteResult, error)
 }
 
+type BatchWriter interface {
+	WriteBatch(ctx context.Context, inputs []WriteInput) (WriteResult, error)
+}
+
 type Retriever interface {
 	Retrieve(ctx context.Context, query Query) ([]Memory, error)
 }
