@@ -79,6 +79,32 @@ func (t *scopedTool) Execute(context.Context, string) (string, error) {
 	return t.output, nil
 }
 
+type artifactAgent struct{}
+
+func (a *artifactAgent) ID() string { return "artifact" }
+
+func (a *artifactAgent) Step(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a *artifactAgent) Turn(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+	if err := session.RecordArtifact(ctx, sess, session.ArtifactRecordedData{
+		Artifact: session.ArtifactRef{
+			ID:    "artifact-1",
+			Kind:  "note",
+			URI:   "memory://artifact-1",
+			Label: "Child note",
+		},
+	}); err != nil {
+		return agent.StepResult{}, err
+	}
+	msg := llm.Message{Role: llm.RoleAssistant, Content: "done"}
+	if err := sess.Append(ctx, session.NewMessage(sess.ID(), msg)); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{Content: msg.Content}, nil
+}
+
 func TestChildRunnerSpawnAndWait_Handoff(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {
@@ -741,5 +767,54 @@ func TestChildRunnerRun_AppliesScopedRegistryToBaseAgent(t *testing.T) {
 	}
 	if got := len(provider.lastTools); got != 1 || provider.lastTools[0] != "beta" {
 		t.Fatalf("child prompt tool set = %#v, want [beta]", provider.lastTools)
+	}
+}
+
+func TestChildRunnerRun_PropagatesChildArtifactsToParent(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent-artifacts").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	result, err := childRunner.Run(t.Context(), parent, ChildSpec{
+		ID:    "child-artifacts",
+		Agent: &artifactAgent{},
+		Mode:  session.ChildModeFresh,
+	})
+	if err != nil {
+		t.Fatalf("run child: %v", err)
+	}
+	if len(result.Artifacts) != 1 || result.Artifacts[0].ID != "artifact-1" {
+		t.Fatalf("child artifacts = %#v", result.Artifacts)
+	}
+
+	parentReloaded, err := store.Load(t.Context(), parent.ID())
+	if err != nil {
+		t.Fatalf("load parent: %v", err)
+	}
+	var sawArtifact bool
+	for _, event := range parentReloaded.Events() {
+		if event.Type != session.ArtifactRecorded {
+			continue
+		}
+		data, ok, err := event.ArtifactRecordedData()
+		if err != nil {
+			t.Fatalf("decode artifact: %v", err)
+		}
+		if !ok {
+			continue
+		}
+		if data.ChildID == "child-artifacts" && data.Artifact.ID == "artifact-1" &&
+			data.SessionID == result.Ref.SessionID {
+			sawArtifact = true
+		}
+	}
+	if !sawArtifact {
+		t.Fatal("expected parent artifact_recorded event for child artifact")
 	}
 }

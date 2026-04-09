@@ -284,6 +284,7 @@ func (r *ChildRunner) runChild(
 	result.Usage = stepResult.Usage
 	result.Artifacts = collectArtifacts(childSess)
 	result.Err = runErr
+	recordChildArtifacts(eventCtx, parent, ref, result.Artifacts)
 	if result.Err != nil {
 		result.Status = session.ChildStatusFailed
 		if errors.Is(result.Err, context.Canceled) ||
@@ -348,6 +349,21 @@ func (r *ChildRunner) ensureSemaphore() {
 	}
 	if r.sem == nil || cap(r.sem) != r.maxConcurrent {
 		r.sem = make(chan struct{}, r.maxConcurrent)
+	}
+}
+
+func recordChildArtifacts(
+	ctx context.Context,
+	parent *session.Session,
+	ref ChildRef,
+	artifacts []session.ArtifactRef,
+) {
+	for _, artifact := range artifacts {
+		_ = session.RecordArtifact(ctx, parent, session.ArtifactRecordedData{
+			ChildID:   ref.ID,
+			Artifact:  artifact,
+			SessionID: ref.SessionID,
+		})
 	}
 }
 
