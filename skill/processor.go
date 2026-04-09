@@ -13,30 +13,7 @@ import (
 
 // ListPrompt injects a summary list of all available skills.
 func ListPrompt(reg *agentskills.Registry) ccontext.RequestProcessor {
-	if reg == nil {
-		return ccontext.RequestProcessorFunc(
-			func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
-				return nil
-			},
-		)
-	}
-	return ccontext.RequestProcessorFunc(
-		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
-			skills := reg.List()
-			if len(skills) == 0 {
-				return nil
-			}
-
-			var sb strings.Builder
-			sb.WriteString("Available Skills (use read_skill for full details):\n")
-			for _, s := range skills {
-				sb.WriteString(fmt.Sprintf("- %s: %s\n", s.Name, s.Description))
-			}
-
-			instructions := sb.String()
-			return ccontext.Instructions(instructions).ApplyRequest(ctx, p, model, sess, req)
-		},
-	)
+	return ListPromptWithOptions(reg, ListPromptOptions{})
 }
 
 // PreloadPrompt injects the full instructions for a selected skill set.
