@@ -77,9 +77,9 @@ func TestRunEval(t *testing.T) {
 		[]*session.Session{sess1, sess2},
 		eval.Options{
 			TurnEvals: []eval.TurnEvaluator{
-				&eval.ToolCallAccuracy{Expected: []string{"search"}},
+				&eval.ToolCorrectness{Expected: []string{"search"}},
+				&eval.StepEfficiency{},
 				&eval.CostEfficiency{},
-				&eval.TurnEfficiency{},
 			},
 			OutputPath: outPath,
 		},
@@ -92,16 +92,20 @@ func TestRunEval(t *testing.T) {
 		t.Fatalf("expected 2 results, got %d", len(results))
 	}
 
-	// sess-1: 2 turns, search called in turn 1 → accuracy = (1+0)/2 = 0.5
-	acc1 := results[0].Scores["tool_call_accuracy"]
+	// sess-1: 2 turns, search called in turn 1 → correctness = (1+0)/2 = 0.5
+	acc1 := results[0].Scores["tool_correctness"]
 	if acc1 != 0.5 {
-		t.Errorf("sess-1 tool_call_accuracy: expected 0.5, got %f", acc1)
+		t.Errorf("sess-1 tool_correctness: expected 0.5, got %f", acc1)
 	}
 
-	// sess-2: 1 turn, no search → accuracy = 0.0
-	acc2 := results[1].Scores["tool_call_accuracy"]
+	// sess-2: 1 turn, no search → correctness = 0.0
+	acc2 := results[1].Scores["tool_correctness"]
 	if acc2 != 0.0 {
-		t.Errorf("sess-2 tool_call_accuracy: expected 0.0, got %f", acc2)
+		t.Errorf("sess-2 tool_correctness: expected 0.0, got %f", acc2)
+	}
+
+	if step := results[0].Scores["step_efficiency"]; step != 0.75 {
+		t.Errorf("sess-1 step_efficiency: expected 0.75, got %f", step)
 	}
 
 	// Verify JSONL output is well-formed and contains 2 lines.

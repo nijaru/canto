@@ -6,53 +6,77 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-// ToolCallAccuracy checks whether the tool calls in a turn match
-// a set of expected tool names. Score = fraction of expected tools called.
-type ToolCallAccuracy struct {
+// ToolCorrectness scores how accurately a turn used the expected tools.
+// If Expected is empty, every turn scores 1.0.
+type ToolCorrectness struct {
 	// Expected is the set of tool names that should appear in the turn.
-	// If empty, every turn scores 1.0.
 	Expected []string
 }
 
-func (s *ToolCallAccuracy) Name() string { return "tool_call_accuracy" }
+// Name returns the scorer identifier.
+func (s *ToolCorrectness) Name() string { return "tool_correctness" }
 
-func (s *ToolCallAccuracy) ScoreTurn(
+// ScoreTurn returns an F1-style score over expected vs actual tool names.
+func (s *ToolCorrectness) ScoreTurn(
 	_ context.Context,
 	turn session.RunTurn,
 ) (float64, error) {
 	if len(s.Expected) == 0 {
 		return 1.0, nil
 	}
-	called := make(map[string]bool, len(turn.ToolCalls))
-	for _, tc := range turn.ToolCalls {
-		called[tc.Function.Name] = true
-	}
-	var hits float64
+
+	expected := make(map[string]struct{}, len(s.Expected))
 	for _, name := range s.Expected {
-		if called[name] {
+		expected[name] = struct{}{}
+	}
+
+	called := make(map[string]struct{}, len(turn.ToolCalls))
+	for _, tc := range turn.ToolCalls {
+		called[tc.Function.Name] = struct{}{}
+	}
+
+	var hits float64
+	for name := range expected {
+		if _, ok := called[name]; ok {
 			hits++
 		}
 	}
-	return hits / float64(len(s.Expected)), nil
+	if hits == 0 {
+		return 0, nil
+	}
+
+	precision := hits / float64(len(called))
+	recall := hits / float64(len(expected))
+	return 2 * precision * recall / (precision + recall), nil
 }
+
+// ToolCallAccuracy is kept as a compatibility alias for ToolCorrectness.
+type ToolCallAccuracy = ToolCorrectness
+
+// StepEfficiency rewards turns that reach completion with fewer tool calls.
+type StepEfficiency struct{}
+
+// Name returns the scorer identifier.
+func (s *StepEfficiency) Name() string { return "step_efficiency" }
+
+// ScoreTurn penalises turns that require more tool calls.
+func (s *StepEfficiency) ScoreTurn(_ context.Context, turn session.RunTurn) (float64, error) {
+	return 1.0 / (1.0 + float64(len(turn.ToolCalls))), nil
+}
+
+// TurnEfficiency is kept as a compatibility alias for StepEfficiency.
+type TurnEfficiency = StepEfficiency
 
 // CostEfficiency rewards low-cost turns.
 type CostEfficiency struct{}
 
+// Name returns the scorer identifier.
 func (s *CostEfficiency) Name() string { return "cost_efficiency" }
 
+// ScoreTurn rewards lower-cost turns.
 func (s *CostEfficiency) ScoreTurn(
 	_ context.Context,
 	turn session.RunTurn,
 ) (float64, error) {
 	return 1.0 / (1.0 + turn.Cost), nil
-}
-
-// TurnEfficiency penalises trajectories that take more steps.
-type TurnEfficiency struct{}
-
-func (s *TurnEfficiency) Name() string { return "turn_efficiency" }
-
-func (s *TurnEfficiency) ScoreTurn(_ context.Context, turn session.RunTurn) (float64, error) {
-	return 1.0 / (1.0 + float64(len(turn.ToolCalls))), nil
 }
