@@ -16,6 +16,9 @@
 // BudgetGuard reports request-capacity state before the provider call and gives
 // later masking/rebuild layers a structured budget status instead of relying on
 // overflow strings.
+// ObservationMasker is the reversible masking tier: it rewrites oversized tool
+// outputs into traceable placeholders in the in-flight request while leaving
+// the append-only event log untouched.
 // CompactSession provides a small consumer-neutral helper for manually running
 // the built-in offload-then-summarize compaction path and reporting whether
 // durable compaction occurred. LazyTools derives unlocked tool state from
