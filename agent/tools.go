@@ -14,6 +14,7 @@ import (
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/canto/x/tracing"
 )
 
 type toolResult struct {
@@ -27,6 +28,7 @@ type preflightResult struct {
 	call        llm.Call
 	index       int
 	stepID      string
+	tool        tool.Tool
 	metadata    tool.Metadata
 	output      string // non-empty if preflight produced output (error or hook context)
 	err         error  // non-nil if preflight blocked execution
@@ -267,6 +269,9 @@ func preflightTools(
 			continue
 		}
 		metadata = tool.MetadataFor(t)
+		t = tracing.WrapTool(t)
+		results[i].tool = t
+		metadata = tool.MetadataFor(t)
 		results[i].metadata = metadata
 
 		// Approval check.
@@ -488,9 +493,8 @@ func executeTool(
 ) toolResult {
 	call := pf.call
 	output := pf.output // hook context from preflight
-
-	t, ok := r.Get(call.Function.Name)
-	if !ok {
+	t := pf.tool
+	if t == nil {
 		// Should not happen — preflight already checked — but guard defensively.
 		output = fmt.Sprintf("Error: tool %q not found", call.Function.Name)
 		return toolResult{call: call, output: output}

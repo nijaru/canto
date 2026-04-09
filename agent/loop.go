@@ -12,6 +12,7 @@ import (
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/canto/x/tracing"
 )
 
 type stepConfig struct {
@@ -23,6 +24,17 @@ type stepConfig struct {
 	Hooks            *hook.Runner
 	Approvals        *approval.Manager
 	MaxParallelTools int
+}
+
+type modeler interface {
+	Model() string
+}
+
+func agentModel(a Agent) string {
+	if m, ok := a.(modeler); ok {
+		return m.Model()
+	}
+	return ""
 }
 
 // Step executes a single turn of the agentic loop and returns its result.
@@ -54,11 +66,16 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 	req := &llm.Request{
 		Model: cfg.Model,
 	}
+	provider := tracing.WrapProvider(cfg.Provider)
 
 	// Build context
-	if err = cfg.Builder.Build(ctx, cfg.Provider, cfg.Model, s, req); err != nil {
+	buildCtx, buildSpan := tracing.StartContext(ctx, cfg.ID, s.ID(), cfg.Model)
+	if err = cfg.Builder.Build(buildCtx, provider, cfg.Model, s, req); err != nil {
+		tracing.EndContext(buildSpan, err)
 		return
 	}
+	tracing.EndContext(buildSpan, nil)
+	ctx = buildCtx
 
 	cacheFingerprint, err := ccontext.FingerprintPromptCache(s, req)
 	if err != nil {
@@ -76,7 +93,7 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 		return StepResult{}, err
 	}
 
-	resp, err := cfg.Provider.Generate(ctx, req)
+	resp, err := provider.Generate(ctx, req)
 	if err != nil {
 		return
 	}
@@ -94,7 +111,7 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 	if err = s.Append(ctx, e); err != nil {
 		return
 	}
-	llm.RecordUsage(ctx, cfg.Provider.ID(), req.Model, resp.Usage)
+	llm.RecordUsage(ctx, provider.ID(), req.Model, resp.Usage)
 
 	// Execute tool calls in parallel and append results to the session.
 	handoffTargets := getHandoffTargets(cfg.Tools)
@@ -137,18 +154,17 @@ func Run(
 	maxEscalations int,
 ) iter.Seq2[StepResult, error] {
 	return func(yield func(StepResult, error) bool) {
-		if err := s.Append(ctx, session.NewTurnStartedEvent(s.ID(), session.TurnStartedData{
-			AgentID: a.ID(),
-		})); err != nil {
-			yield(StepResult{}, err)
-			return
-		}
+		model := agentModel(a)
+		var runErr error
+		ctx, sessionSpan := tracing.StartSession(ctx, a.ID(), s.ID(), model)
+		defer func() { tracing.EndSession(sessionSpan, runErr) }()
+		ctx, turnSpan := tracing.StartTurn(ctx, a.ID(), s.ID(), model)
+		defer func() { tracing.EndTurn(turnSpan, runErr) }()
 
 		var steps int
 		var escalations int
 		var totalUsage llm.Usage
 		var stopReason TurnStopReason
-		var runErr error
 		defer func() {
 			data := session.TurnCompletedData{
 				AgentID:        a.ID(),
@@ -161,6 +177,14 @@ func Run(
 			}
 			_ = s.Append(ctx, session.NewTurnCompletedEvent(s.ID(), data))
 		}()
+
+		if err := s.Append(ctx, session.NewTurnStartedEvent(s.ID(), session.TurnStartedData{
+			AgentID: a.ID(),
+		})); err != nil {
+			runErr = err
+			yield(StepResult{}, err)
+			return
+		}
 
 		if maxSteps <= 0 {
 			stopReason = TurnStopMaxTurnsHit
@@ -246,6 +270,10 @@ func RunTurn(
 			res.Usage = totalUsage
 			err = stepErr
 			return
+		}
+		if stepRes.TurnStopReason == TurnStopBudgetExhausted {
+			res = stepRes
+			break
 		}
 		res = stepRes
 		steps++

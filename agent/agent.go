@@ -52,6 +52,9 @@ type BaseAgent struct {
 // ID returns the agent's unique identifier.
 func (a *BaseAgent) ID() string { return a.agentID }
 
+// Model returns the configured model used for LLM calls.
+func (a *BaseAgent) Model() string { return a.model }
+
 // ConfigureRuntime returns a shallow runtime-scoped copy of the agent.
 func (a *BaseAgent) ConfigureRuntime(cfg RuntimeConfig) Agent {
 	if a == nil {

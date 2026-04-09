@@ -1,21 +1,24 @@
-// Package obs provides OpenTelemetry instrumentation for canto agents.
+// Package tracing provides OpenTelemetry instrumentation for canto agents.
 //
-// Span hierarchy per turn:
+// Span hierarchy per session/turn:
 //
-//	canto.turn
-//	├── canto.context   (context pipeline build)
-//	├── gen_ai.chat     (provider.Generate)
-//	└── canto.tool.{name}  (tool executions, one per call)
+//	canto.session
+//	└── canto.turn
+//	    ├── canto.context   (context pipeline build)
+//	    ├── gen_ai.chat     (provider.Generate)
+//	    └── canto.tool.{name}  (tool executions, one per call)
 //
 // Typical usage:
 //
-//	provider := obs.WrapProvider(baseProvider)
-//	reg.Register(obs.WrapTool(myTool))
+//	provider := tracing.WrapProvider(baseProvider)
+//	reg.Register(tracing.WrapTool(myTool))
 //
-//	ctx, span := obs.StartTurn(ctx, agentID, sessID, model)
-//	defer obs.EndTurn(span, err)
+//	ctx, span := tracing.StartSession(ctx, agentID, sessID, model)
+//	defer tracing.EndSession(span, err)
+//	ctx, span := tracing.StartTurn(ctx, agentID, sessID, model)
+//	defer tracing.EndTurn(span, err)
 //	result, err := agent.Turn(ctx, sess)
-package obs
+package tracing
 
 import (
 	"context"
@@ -28,6 +31,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/tool"
 )
@@ -39,7 +43,30 @@ func Tracer() trace.Tracer {
 	return otel.Tracer(tracerName)
 }
 
-// StartTurn starts a "canto.turn" root span and returns the derived context
+// StartSession starts a "canto.session" root span for a session execution.
+func StartSession(
+	ctx context.Context,
+	agentID, sessionID, model string,
+) (context.Context, trace.Span) {
+	return Tracer().Start(ctx, "canto.session",
+		trace.WithAttributes(
+			attribute.String("canto.agent_id", agentID),
+			attribute.String("canto.session_id", sessionID),
+			attribute.String("gen_ai.request.model", model),
+		),
+	)
+}
+
+// EndSession ends a session span, setting the error status if err is non-nil.
+func EndSession(span trace.Span, err error) {
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.End()
+}
+
+// StartTurn starts a "canto.turn" child span and returns the derived context
 // and span. The caller must call span.End() when the turn is complete.
 func StartTurn(
 	ctx context.Context,
@@ -102,9 +129,27 @@ func StartAgent(ctx context.Context, agentID string) (context.Context, trace.Spa
 }
 
 // StartContext starts a "canto.context" child span for the context-pipeline
-// build phase. Call this immediately before builder.Build and defer span.End.
-func StartContext(ctx context.Context) (context.Context, trace.Span) {
-	return Tracer().Start(ctx, "canto.context")
+// build phase. Call this immediately before builder.Build.
+func StartContext(
+	ctx context.Context,
+	agentID, sessionID, model string,
+) (context.Context, trace.Span) {
+	return Tracer().Start(ctx, "canto.context",
+		trace.WithAttributes(
+			attribute.String("canto.agent_id", agentID),
+			attribute.String("canto.session_id", sessionID),
+			attribute.String("gen_ai.request.model", model),
+		),
+	)
+}
+
+// EndContext ends a context-build span, setting the error status if err is non-nil.
+func EndContext(span trace.Span, err error) {
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.End()
 }
 
 // WrapOptions configures the instrumentation behavior.
@@ -130,9 +175,14 @@ type wrappedProvider struct {
 	recordMessages bool
 }
 
+func (*wrappedProvider) tracingWrapped() {}
+
 // WrapProvider returns a Provider that records a "gen_ai.chat" child span on
 // every Generate call. Stream calls are forwarded without instrumentation.
 func WrapProvider(p llm.Provider, opts ...WrapOption) llm.Provider {
+	if _, ok := p.(interface{ tracingWrapped() }); ok {
+		return p
+	}
 	var options WrapOptions
 	for _, opt := range opts {
 		opt(&options)
@@ -292,10 +342,15 @@ type wrappedTool struct {
 	inner tool.Tool
 }
 
+func (*wrappedTool) tracingWrapped() {}
+
 // WrapTool returns a Tool that records a "canto.tool.{name}" child span on
 // every Execute call. If the tool is a StreamingTool, the returned tool
 // will also implement StreamingTool and instrument ExecuteStreaming.
 func WrapTool(t tool.Tool) tool.Tool {
+	if _, ok := t.(interface{ tracingWrapped() }); ok {
+		return t
+	}
 	w := wrappedTool{inner: t}
 	if st, ok := t.(tool.StreamingTool); ok {
 		return &wrappedStreamingTool{wrappedTool: w, innerStreaming: st}
@@ -304,6 +359,20 @@ func WrapTool(t tool.Tool) tool.Tool {
 }
 
 func (w *wrappedTool) Spec() llm.Spec { return w.inner.Spec() }
+
+func (w *wrappedTool) Metadata() tool.Metadata {
+	if mt, ok := w.inner.(tool.MetadataTool); ok {
+		return mt.Metadata()
+	}
+	return tool.Metadata{}
+}
+
+func (w *wrappedTool) ApprovalRequirement(args string) (approval.Requirement, bool, error) {
+	if at, ok := w.inner.(tool.ApprovalTool); ok {
+		return at.ApprovalRequirement(args)
+	}
+	return approval.Requirement{}, false, nil
+}
 
 func (w *wrappedTool) Execute(ctx context.Context, args string) (string, error) {
 	name := w.inner.Spec().Name
@@ -324,6 +393,8 @@ type wrappedStreamingTool struct {
 	wrappedTool
 	innerStreaming tool.StreamingTool
 }
+
+func (*wrappedStreamingTool) tracingWrapped() {}
 
 func (w *wrappedStreamingTool) ExecuteStreaming(
 	ctx context.Context,

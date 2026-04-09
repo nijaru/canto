@@ -8,7 +8,7 @@ import (
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/x/obs"
+	"github.com/nijaru/canto/x/tracing"
 )
 
 // SwarmResult summarises a completed swarm run.
@@ -53,7 +53,7 @@ func New(blackboard Blackboard, maxRounds int, agents ...agent.Agent) *Swarm {
 func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, error) {
 	var result SwarmResult
 
-	ctx, span := obs.StartSwarm(ctx, sess.ID())
+	ctx, span := tracing.StartSwarm(ctx, sess.ID())
 	defer span.End()
 
 	for round := range s.maxRounds {
@@ -62,7 +62,7 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 			return result, err
 		}
 
-		roundCtx, roundSpan := obs.StartSwarmRound(ctx, round)
+		roundCtx, roundSpan := tracing.StartSwarmRound(ctx, round)
 
 		unclaimed, err := s.blackboard.ListUnclaimed(roundCtx)
 		if err != nil {
@@ -128,7 +128,7 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 				_ = s.blackboard.Post(roundCtx, ag.ID(), "current_task", claimed.Description)
 
 				// Execute one agent turn on the shared session within its own span.
-				ctx, agentSpan := obs.StartAgent(roundCtx, ag.ID())
+				ctx, agentSpan := tracing.StartAgent(roundCtx, ag.ID())
 				turnRes, turnErr := ag.Turn(ctx, sess)
 				if turnErr != nil {
 					agentSpan.RecordError(turnErr)

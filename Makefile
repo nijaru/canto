@@ -1,7 +1,7 @@
 .PHONY: fmt test test-redis build check hooks
 
 fmt:
-	@files="$$(git ls-files '*.go')"; \
+	@files="$$(git ls-files '*.go' | while IFS= read -r f; do [ -f "$$f" ] && printf '%s\n' "$$f"; done)"; \
 	if [ -z "$$files" ]; then \
 		echo "no tracked Go files to format"; \
 	else \

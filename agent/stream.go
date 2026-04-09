@@ -11,6 +11,7 @@ import (
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
+	"github.com/nijaru/canto/x/tracing"
 )
 
 // Streamer is implemented by agents that support token-by-token streaming.
@@ -46,10 +47,15 @@ func (a *BaseAgent) StreamStep(
 	req := &llm.Request{
 		Model: a.model,
 	}
+	provider := tracing.WrapProvider(a.provider)
 
-	if err = a.builder.Build(ctx, a.provider, a.model, s, req); err != nil {
+	buildCtx, buildSpan := tracing.StartContext(ctx, a.ID(), s.ID(), a.model)
+	if err = a.builder.Build(buildCtx, provider, a.model, s, req); err != nil {
+		tracing.EndContext(buildSpan, err)
 		return
 	}
+	tracing.EndContext(buildSpan, nil)
+	ctx = buildCtx
 
 	cacheFingerprint, err := ccontext.FingerprintPromptCache(s, req)
 	if err != nil {
@@ -67,7 +73,7 @@ func (a *BaseAgent) StreamStep(
 		return StepResult{}, err
 	}
 
-	stream, err := a.provider.Stream(ctx, req)
+	stream, err := provider.Stream(ctx, req)
 	if err != nil {
 		return
 	}
@@ -143,7 +149,7 @@ func (a *BaseAgent) StreamStep(
 	if err = s.Append(ctx, e); err != nil {
 		return
 	}
-	llm.RecordUsage(ctx, a.provider.ID(), req.Model, usage)
+	llm.RecordUsage(ctx, provider.ID(), req.Model, usage)
 
 	// Execute tool calls in parallel and append results to the session.
 	handoffTargets := getHandoffTargets(a.tools)
@@ -171,6 +177,11 @@ func (a *BaseAgent) StreamTurn(
 	s *session.Session,
 	chunkFn func(*llm.Chunk),
 ) (res StepResult, err error) {
+	ctx, sessionSpan := tracing.StartSession(ctx, a.ID(), s.ID(), a.model)
+	defer func() { tracing.EndSession(sessionSpan, err) }()
+	ctx, turnSpan := tracing.StartTurn(ctx, a.ID(), s.ID(), a.model)
+	defer func() { tracing.EndTurn(turnSpan, err) }()
+
 	if err := s.Append(ctx, session.NewTurnStartedEvent(s.ID(), session.TurnStartedData{
 		AgentID: a.ID(),
 	})); err != nil {
