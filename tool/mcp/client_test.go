@@ -10,6 +10,8 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/safety"
+	"github.com/nijaru/canto/workspace"
 )
 
 type fakeClientSession struct {
@@ -165,6 +167,84 @@ func TestWrapperExecuteRejectsInvalidJSON(t *testing.T) {
 	w := &wrapper{client: &Client{session: &fakeClientSession{}}, spec: llmSpec("echo")}
 	if _, err := w.Execute(t.Context(), `{`); err == nil {
 		t.Fatal("Execute should reject invalid JSON")
+	}
+}
+
+func TestWrapperExecuteNormalizesMCPFilePaths(t *testing.T) {
+	root := t.TempDir()
+	validator, err := workspace.NewValidator(root)
+	if err != nil {
+		t.Fatalf("NewValidator: %v", err)
+	}
+	session := &fakeClientSession{
+		callResult: &sdkmcp.CallToolResult{
+			Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "ok"}},
+		},
+	}
+	w := &wrapper{
+		client: (&Client{session: session}).WithFilePolicy(&FilePolicy{Validator: validator}),
+		spec: llm.Spec{
+			Name:        "read_file",
+			Description: "Read a file from disk.",
+		},
+	}
+
+	if _, err := w.Execute(t.Context(), `{"path":"nested/../file.txt"}`); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	got, ok := session.lastCall.Arguments.(map[string]any)
+	if !ok {
+		t.Fatalf("arguments type = %T, want map[string]any", session.lastCall.Arguments)
+	}
+	if got["path"] != "file.txt" {
+		t.Fatalf("path = %v, want file.txt", got["path"])
+	}
+}
+
+func TestWrapperApprovalRequirementUsesProtectedMCPPath(t *testing.T) {
+	root := t.TempDir()
+	validator, err := workspace.NewValidator(root)
+	if err != nil {
+		t.Fatalf("NewValidator: %v", err)
+	}
+	w := &wrapper{
+		client: (&Client{session: &fakeClientSession{}}).WithFilePolicy(&FilePolicy{
+			Validator:      validator,
+			ProtectedPaths: safety.DefaultProtectedPaths(),
+		}),
+		spec: llm.Spec{
+			Name:        "write_file",
+			Description: "Write a file to disk.",
+		},
+	}
+
+	req, ok, err := w.ApprovalRequirement(`{"path":".env","content":"secret"}`)
+	if err != nil {
+		t.Fatalf("ApprovalRequirement: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected approval requirement")
+	}
+	if req.Category != string(safety.CategoryWrite) {
+		t.Fatalf("Category = %q, want %q", req.Category, safety.CategoryWrite)
+	}
+	if req.Resource != ".env" {
+		t.Fatalf("Resource = %q, want .env", req.Resource)
+	}
+}
+
+func TestWrapperApprovalRequirementReturnsFalseForNonFileTools(t *testing.T) {
+	w := &wrapper{
+		client: (&Client{session: &fakeClientSession{}}).WithFilePolicy(&FilePolicy{}),
+		spec:   llmSpec("echo"),
+	}
+
+	req, ok, err := w.ApprovalRequirement(`{"msg":"hello"}`)
+	if err != nil {
+		t.Fatalf("ApprovalRequirement: %v", err)
+	}
+	if ok || req.Category != "" || req.Operation != "" || req.Resource != "" {
+		t.Fatalf("expected no approval requirement, got %#v ok=%v", req, ok)
 	}
 }
 

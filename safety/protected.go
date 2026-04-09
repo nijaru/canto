@@ -14,6 +14,18 @@ func DefaultProtectedPaths() []string {
 	return []string{".git", ".env"}
 }
 
+// IsProtectedPath reports whether target matches or descends from one of paths.
+func IsProtectedPath(target string, paths []string) bool {
+	target = filepath.Clean(target)
+	for _, p := range paths {
+		protected := filepath.Clean(p)
+		if target == protected || strings.HasPrefix(target, protected+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
 // ProtectedPaths wraps an existing policy and defers to manual approval for
 // any write or execute operations targeting the specified paths or their
 // subdirectories. It does so by returning handled=false (skipping the wrapped
@@ -32,13 +44,9 @@ func ProtectedPaths(next approval.Policy, paths []string) approval.Policy {
 		func(ctx context.Context, req approval.Request) (approval.Result, bool, error) {
 			cat := Category(req.Category)
 			if (cat == CategoryWrite || cat == CategoryExecute) && req.Resource != "" {
-				target := filepath.Clean(req.Resource)
-
-				for _, p := range protected {
-					if target == p || strings.HasPrefix(target, p+string(filepath.Separator)) {
-						// Force manual approval by skipping the next policy
-						return approval.Result{}, false, nil
-					}
+				if IsProtectedPath(req.Resource, protected) {
+					// Force manual approval by skipping the next policy
+					return approval.Result{}, false, nil
 				}
 			}
 

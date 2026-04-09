@@ -9,6 +9,7 @@ import (
 	"github.com/go-json-experiment/json"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/tool"
 )
@@ -22,7 +23,8 @@ type clientSession interface {
 // Client represents an MCP client session wrapped with Canto validation and
 // tool-registry adaptation.
 type Client struct {
-	session clientSession
+	session    clientSession
+	filePolicy *FilePolicy
 }
 
 // NewClient connects to an MCP server over the provided official SDK transport.
@@ -63,6 +65,16 @@ func (c *Client) Close() error {
 		return nil
 	}
 	return c.session.Close()
+}
+
+// WithFilePolicy configures workspace/sensitive-path handling for MCP tools
+// that behave like file operations.
+func (c *Client) WithFilePolicy(policy *FilePolicy) *Client {
+	if c == nil {
+		return nil
+	}
+	c.filePolicy = policy
+	return c
 }
 
 // DiscoverTools fetches available tools from the MCP server and returns them
@@ -142,5 +154,23 @@ func (w *wrapper) Execute(ctx context.Context, args string) (string, error) {
 	if err := json.Unmarshal([]byte(args), &parsedArgs); err != nil {
 		return "", fmt.Errorf("failed to parse arguments: %w", err)
 	}
+	if w.client != nil && w.client.filePolicy != nil {
+		var err error
+		parsedArgs, _, err = w.client.filePolicy.normalizeArguments(w.spec, parsedArgs)
+		if err != nil {
+			return "", err
+		}
+	}
 	return w.client.CallTool(ctx, w.spec.Name, parsedArgs)
+}
+
+func (w *wrapper) ApprovalRequirement(args string) (approval.Requirement, bool, error) {
+	if w == nil || w.client == nil || w.client.filePolicy == nil {
+		return approval.Requirement{}, false, nil
+	}
+	var parsedArgs map[string]any
+	if err := json.Unmarshal([]byte(args), &parsedArgs); err != nil {
+		return approval.Requirement{}, false, fmt.Errorf("failed to parse arguments: %w", err)
+	}
+	return w.client.filePolicy.approvalRequirement(w.spec, parsedArgs)
 }
