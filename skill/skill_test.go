@@ -131,6 +131,32 @@ func TestListPrompt(t *testing.T) {
 	}
 }
 
+func TestPreloadPrompt(t *testing.T) {
+	req := &llm.Request{}
+	err := PreloadPrompt(
+		&agentskills.Skill{
+			Name:         "debug",
+			Description:  "Debugging workflow",
+			Instructions: "Follow the debugger checklist.",
+		},
+	).ApplyRequest(t.Context(), nil, "", &session.Session{}, req)
+	if err != nil {
+		t.Fatalf("process: %v", err)
+	}
+	if len(req.Messages) == 0 {
+		t.Fatal("expected injected system message")
+	}
+	if !strings.Contains(req.Messages[0].Content, "Preloaded Skills:") {
+		t.Fatalf("missing preloaded skill header: %q", req.Messages[0].Content)
+	}
+	if !strings.Contains(req.Messages[0].Content, "# Skill: debug") {
+		t.Fatalf("missing skill heading: %q", req.Messages[0].Content)
+	}
+	if !strings.Contains(req.Messages[0].Content, "Follow the debugger checklist.") {
+		t.Fatalf("missing skill instructions: %q", req.Messages[0].Content)
+	}
+}
+
 // escapeJSON escapes a string for embedding in a JSON string literal.
 func escapeJSON(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)

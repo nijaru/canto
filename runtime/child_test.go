@@ -6,11 +6,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	agentskills "github.com/nijaru/agentskills"
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -18,7 +20,8 @@ import (
 )
 
 type childRecordingProvider struct {
-	lastTools []string
+	lastTools  []string
+	lastSystem string
 }
 
 func (p *childRecordingProvider) ID() string { return "child-recording" }
@@ -28,8 +31,15 @@ func (p *childRecordingProvider) Generate(
 	req *llm.Request,
 ) (*llm.Response, error) {
 	p.lastTools = p.lastTools[:0]
+	p.lastSystem = ""
 	for _, spec := range req.Tools {
 		p.lastTools = append(p.lastTools, spec.Name)
+	}
+	for _, msg := range req.Messages {
+		if msg.Role == llm.RoleSystem {
+			p.lastSystem = msg.Content
+			break
+		}
 	}
 	return &llm.Response{Content: "ok"}, nil
 }
@@ -793,6 +803,47 @@ func TestChildRunnerRun_AppliesScopedRegistryToBaseAgent(t *testing.T) {
 	}
 	if got := len(provider.lastTools); got != 1 || provider.lastTools[0] != "beta" {
 		t.Fatalf("child prompt tool set = %#v, want [beta]", provider.lastTools)
+	}
+}
+
+func TestChildRunnerRun_PreloadsSkillsIntoBaseAgent(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent-skills").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	provider := &childRecordingProvider{}
+	childAgent := agent.New("child-skill", "sys", "m", provider, nil)
+
+	result, err := childRunner.Run(t.Context(), parent, ChildSpec{
+		ID:    "child-skill",
+		Agent: childAgent,
+		Mode:  session.ChildModeFresh,
+		Skills: []*agentskills.Skill{{
+			Name:         "debug",
+			Description:  "Debugging workflow",
+			Instructions: "Follow the debugger checklist.",
+		}},
+		InitialMessages: []llm.Message{
+			{Role: llm.RoleUser, Content: "go"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("run child: %v", err)
+	}
+	if result.Status != session.ChildStatusCompleted {
+		t.Fatalf("child status = %q, want %q", result.Status, session.ChildStatusCompleted)
+	}
+	if !strings.Contains(provider.lastSystem, "# Skill: debug") {
+		t.Fatalf("preloaded system prompt missing skill heading: %q", provider.lastSystem)
+	}
+	if !strings.Contains(provider.lastSystem, "Follow the debugger checklist.") {
+		t.Fatalf("preloaded system prompt missing skill instructions: %q", provider.lastSystem)
 	}
 }
 

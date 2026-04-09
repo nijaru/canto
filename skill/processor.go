@@ -38,3 +38,35 @@ func ListPrompt(reg *agentskills.Registry) ccontext.RequestProcessor {
 		},
 	)
 }
+
+// PreloadPrompt injects the full instructions for a selected skill set.
+func PreloadPrompt(skills ...*agentskills.Skill) ccontext.RequestProcessor {
+	preloaded := make([]*agentskills.Skill, 0, len(skills))
+	for _, skill := range skills {
+		if skill == nil {
+			continue
+		}
+		preloaded = append(preloaded, skill)
+	}
+	return ccontext.RequestProcessorFunc(
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
+			if len(preloaded) == 0 {
+				return nil
+			}
+			var sb strings.Builder
+			sb.WriteString("Preloaded Skills:\n")
+			for _, skill := range preloaded {
+				sb.WriteString(fmt.Sprintf("\n# Skill: %s\n", skill.Name))
+				if skill.Description != "" {
+					sb.WriteString(skill.Description)
+					sb.WriteByte('\n')
+				}
+				sb.WriteString(skill.Instructions)
+				if !strings.HasSuffix(skill.Instructions, "\n") {
+					sb.WriteByte('\n')
+				}
+			}
+			return ccontext.Instructions(sb.String()).ApplyRequest(ctx, p, model, sess, req)
+		},
+	)
+}

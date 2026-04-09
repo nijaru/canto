@@ -23,7 +23,8 @@ type Agent interface {
 // RuntimeConfig applies runtime-local execution overrides without mutating the
 // original agent instance.
 type RuntimeConfig struct {
-	Tools *tool.Registry
+	Tools             *tool.Registry
+	RequestProcessors []ccontext.RequestProcessor
 }
 
 // RuntimeConfigurable agents can produce a runtime-scoped view of themselves
@@ -59,6 +60,10 @@ func (a *BaseAgent) ConfigureRuntime(cfg RuntimeConfig) Agent {
 	clone := *a
 	if cfg.Tools != nil {
 		clone.tools = cfg.Tools
+	}
+	if len(cfg.RequestProcessors) > 0 {
+		clone.builder = a.builder.Clone()
+		clone.builder.InsertRequestProcessorsBeforeLast(cfg.RequestProcessors...)
 	}
 	return &clone
 }

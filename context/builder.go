@@ -35,6 +35,17 @@ func (b *Builder) Mutators() []ContextMutator {
 	return res
 }
 
+// Clone returns a shallow copy of the builder with copied pipeline slices.
+func (b *Builder) Clone() *Builder {
+	if b == nil {
+		return nil
+	}
+	return &Builder{
+		requestProcessors: b.RequestProcessors(),
+		mutators:          b.Mutators(),
+	}
+}
+
 // Build executes the commit-time pipeline to transform the session and request.
 func (b *Builder) Build(
 	ctx context.Context,

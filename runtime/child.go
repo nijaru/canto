@@ -9,10 +9,13 @@ import (
 	"sync"
 	"time"
 
+	agentskills "github.com/nijaru/agentskills"
 	"github.com/nijaru/canto/agent"
+	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
+	"github.com/nijaru/canto/skill"
 	"github.com/nijaru/canto/tool"
 	"github.com/oklog/ulid/v2"
 )
@@ -32,6 +35,7 @@ type ChildSpec struct {
 	Metadata        map[string]any
 	Tools           *tool.Registry
 	Worktree        *WorktreeSpec
+	Skills          []*agentskills.Skill
 	// Detached keeps child execution running even if the Spawn context is
 	// canceled. The default is attached execution, which inherits cancellation.
 	Detached bool
@@ -147,7 +151,13 @@ func (r *ChildRunner) Spawn(
 		return ChildRef{}, err
 	}
 
-	childAgent, err := configureChildAgent(spec.Agent, spec.Tools)
+	runtimeCfg := agent.RuntimeConfig{Tools: spec.Tools}
+	if len(spec.Skills) > 0 {
+		runtimeCfg.RequestProcessors = []ccontext.RequestProcessor{
+			skill.PreloadPrompt(spec.Skills...),
+		}
+	}
+	childAgent, err := configureChildAgentWithRuntime(spec.Agent, runtimeCfg)
 	if err != nil {
 		return ChildRef{}, err
 	}
@@ -409,17 +419,21 @@ func validateChildSpec(spec ChildSpec) error {
 }
 
 func configureChildAgent(a agent.Agent, reg *tool.Registry) (agent.Agent, error) {
-	if reg == nil {
+	return configureChildAgentWithRuntime(a, agent.RuntimeConfig{Tools: reg})
+}
+
+func configureChildAgentWithRuntime(
+	a agent.Agent,
+	cfg agent.RuntimeConfig,
+) (agent.Agent, error) {
+	if cfg.Tools == nil && len(cfg.RequestProcessors) == 0 {
 		return a, nil
 	}
 	configurable, ok := a.(agent.RuntimeConfigurable)
 	if !ok {
-		return nil, fmt.Errorf(
-			"spawn child: agent %q does not support runtime tool scoping",
-			a.ID(),
-		)
+		return nil, fmt.Errorf("spawn child: agent %q does not support runtime overrides", a.ID())
 	}
-	return configurable.ConfigureRuntime(agent.RuntimeConfig{Tools: reg}), nil
+	return configurable.ConfigureRuntime(cfg), nil
 }
 
 func childWaitReason(sess *session.Session) (reason string, externalID string) {
