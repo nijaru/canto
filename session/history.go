@@ -2,7 +2,6 @@ package session
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/go-json-experiment/json"
 
@@ -85,47 +84,7 @@ func (e Event) ForkOrigin() (ForkOrigin, bool, error) {
 // EffectiveMessages returns the model-visible session history after applying
 // the latest durable compaction snapshot, if any.
 func (s *Session) EffectiveMessages() ([]llm.Message, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	snapshot, ok, err := s.latestCompactionSnapshot()
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return s.rawMessagesLocked()
-	}
-
-	messages := make([]llm.Message, 0, len(snapshot.entries())+16)
-	messages = append(messages, snapshot.messages()...)
-
-	cutoffSeen := false
-	for i := range s.events {
-		e := &s.events[i]
-		if e.Type != MessageAdded {
-			continue
-		}
-		if !cutoffSeen {
-			if e.ID.String() == snapshot.CutoffEventID {
-				cutoffSeen = true
-			}
-			continue
-		}
-
-		m, err := e.ensureMessage()
-		if err != nil {
-			return nil, fmt.Errorf("effective history: decode message %s: %w", e.ID, err)
-		}
-		messages = append(messages, *m)
-	}
-
-	if !cutoffSeen {
-		return nil, fmt.Errorf(
-			"effective history: compaction cutoff %q not found",
-			snapshot.CutoffEventID,
-		)
-	}
-	return messages, nil
+	return NewRebuilder().RebuildMessages(s)
 }
 
 func (s *Session) rawMessagesLocked() ([]llm.Message, error) {
@@ -149,45 +108,7 @@ func (s *Session) rawMessagesLocked() ([]llm.Message, error) {
 // the latest durable compaction snapshot, together with the originating event
 // ID for each message when known.
 func (s *Session) EffectiveEntries() ([]HistoryEntry, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	snapshot, ok, err := s.latestCompactionSnapshot()
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return s.rawEntriesLocked()
-	}
-
-	entries := slices.Clone(snapshot.entries())
-	cutoffSeen := false
-	for i := range s.events {
-		e := &s.events[i]
-		if e.Type != MessageAdded {
-			continue
-		}
-		if !cutoffSeen {
-			if e.ID.String() == snapshot.CutoffEventID {
-				cutoffSeen = true
-			}
-			continue
-		}
-
-		entry, err := s.historyEntryFromEvent(e)
-		if err != nil {
-			return nil, fmt.Errorf("effective history: decode message %s: %w", e.ID, err)
-		}
-		entries = append(entries, entry)
-	}
-
-	if !cutoffSeen {
-		return nil, fmt.Errorf(
-			"effective history: compaction cutoff %q not found",
-			snapshot.CutoffEventID,
-		)
-	}
-	return entries, nil
+	return NewRebuilder().RebuildEntries(s)
 }
 
 func (s *Session) rawEntriesLocked() ([]HistoryEntry, error) {
