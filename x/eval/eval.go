@@ -1,8 +1,3 @@
-// Package eval provides an evaluation harness for scoring agent trajectories.
-//
-// RunLogs are exported from session event logs via session.ExportRun.
-// Evaluators are pure functions over individual turns; RunEval collects per-run
-// score maps and writes results to a JSONL file for offline analysis.
 package eval
 
 import (
