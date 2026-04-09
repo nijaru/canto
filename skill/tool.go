@@ -113,7 +113,7 @@ func (t *ManageSkillTool) Execute(_ context.Context, args string) (string, error
 		if input.Content == "" {
 			return "", fmt.Errorf("content is required for action %q", input.Action)
 		}
-		return t.write(input.Name, input.Content)
+		return t.write(input.Action, input.Name, input.Content)
 	case "delete":
 		return t.delete(input.Name)
 	default:
@@ -121,7 +121,11 @@ func (t *ManageSkillTool) Execute(_ context.Context, args string) (string, error
 	}
 }
 
-func (t *ManageSkillTool) write(name, content string) (string, error) {
+func (t *ManageSkillTool) write(action, name, content string) (string, error) {
+	skill, err := validateSkillContent(name, content)
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(t.Path, 0o755); err != nil {
 		return "", fmt.Errorf("manage_skill: mkdir root: %w", err)
 	}
@@ -131,6 +135,21 @@ func (t *ManageSkillTool) write(name, content string) (string, error) {
 	}
 	defer root.Close()
 
+	exists, err := root.Stat(name)
+	if err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("manage_skill: stat: %w", err)
+	}
+	switch action {
+	case "create":
+		if err == nil && exists.IsDir() {
+			return "", fmt.Errorf("skill %q already exists", name)
+		}
+	case "update":
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("skill %q does not exist", name)
+		}
+	}
+
 	if err := root.MkdirAll(name, 0o755); err != nil {
 		return "", fmt.Errorf("manage_skill: mkdir: %w", err)
 	}
@@ -139,11 +158,7 @@ func (t *ManageSkillTool) write(name, content string) (string, error) {
 		return "", fmt.Errorf("manage_skill: write: %w", err)
 	}
 	path := filepath.Join(t.Path, rel)
-	s, err := agentskills.Load(path)
-	if err != nil {
-		return "", fmt.Errorf("manage_skill: parse: %w", err)
-	}
-	t.Registry.Register(s)
+	t.Registry.Register(skill)
 	return fmt.Sprintf("skill %q written to %s", name, path), nil
 }
 
@@ -158,9 +173,40 @@ func (t *ManageSkillTool) delete(name string) (string, error) {
 	}
 	defer root.Close()
 
-	if err := root.Remove(filepath.Join(name, "SKILL.md")); err != nil && !os.IsNotExist(err) {
+	if err := os.RemoveAll(filepath.Join(t.Path, name)); err != nil && !os.IsNotExist(err) {
 		return "", fmt.Errorf("manage_skill: delete: %w", err)
 	}
 	t.Registry.Deregister(name)
 	return fmt.Sprintf("skill %q deleted", name), nil
+}
+
+func validateSkillContent(name, content string) (*agentskills.Skill, error) {
+	tmp, err := os.CreateTemp("", "canto-skill-*.md")
+	if err != nil {
+		return nil, fmt.Errorf("manage_skill: temp file: %w", err)
+	}
+	path := tmp.Name()
+	defer os.Remove(path)
+	if _, err := tmp.WriteString(content); err != nil {
+		tmp.Close()
+		return nil, fmt.Errorf("manage_skill: temp write: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return nil, fmt.Errorf("manage_skill: temp close: %w", err)
+	}
+	skill, err := agentskills.Load(path)
+	if err != nil {
+		return nil, fmt.Errorf("manage_skill: parse: %w", err)
+	}
+	if skill.Name != name {
+		return nil, fmt.Errorf(
+			"manage_skill: content name %q does not match requested name %q",
+			skill.Name,
+			name,
+		)
+	}
+	if err := skill.Validate(); err != nil {
+		return nil, fmt.Errorf("manage_skill: validate: %w", err)
+	}
+	return skill, nil
 }

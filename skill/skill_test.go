@@ -75,8 +75,74 @@ func TestManageSkillTool(t *testing.T) {
 	if _, ok := reg.Get("hello"); ok {
 		t.Fatal("skill still present after delete")
 	}
-	if _, err := os.Stat(filepath.Join(tmp, "hello", "SKILL.md")); !os.IsNotExist(err) {
-		t.Fatalf("skill file still present after delete: %v", err)
+	if _, err := os.Stat(filepath.Join(tmp, "hello")); !os.IsNotExist(err) {
+		t.Fatalf("skill directory still present after delete: %v", err)
+	}
+}
+
+func TestManageSkillTool_EnforcesCreateUpdateSemantics(t *testing.T) {
+	tmp := t.TempDir()
+	reg := agentskills.NewRegistry()
+	tool := &ManageSkillTool{Registry: reg, Path: tmp}
+	content := "---\nname: hello\ndescription: hello skill\n---\nDo things.\n"
+
+	if _, err := tool.Execute(
+		t.Context(),
+		`{"action":"update","name":"hello","content":"`+escapeJSON(content)+`"}`,
+	); err == nil {
+		t.Fatal("expected update of missing skill to fail")
+	}
+	if _, err := tool.Execute(
+		t.Context(),
+		`{"action":"create","name":"hello","content":"`+escapeJSON(content)+`"}`,
+	); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := tool.Execute(
+		t.Context(),
+		`{"action":"create","name":"hello","content":"`+escapeJSON(content)+`"}`,
+	); err == nil {
+		t.Fatal("expected create of existing skill to fail")
+	}
+}
+
+func TestManageSkillTool_RejectsNameMismatch(t *testing.T) {
+	tmp := t.TempDir()
+	reg := agentskills.NewRegistry()
+	tool := &ManageSkillTool{Registry: reg, Path: tmp}
+
+	content := "---\nname: other\ndescription: mismatch\n---\nDo things.\n"
+	if _, err := tool.Execute(
+		t.Context(),
+		`{"action":"create","name":"hello","content":"`+escapeJSON(content)+`"}`,
+	); err == nil {
+		t.Fatal("expected name mismatch to fail")
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "hello")); !os.IsNotExist(err) {
+		t.Fatalf("skill directory should not exist after failed validation: %v", err)
+	}
+}
+
+func TestManageSkillTool_DeleteRemovesDirectory(t *testing.T) {
+	tmp := t.TempDir()
+	reg := agentskills.NewRegistry()
+	tool := &ManageSkillTool{Registry: reg, Path: tmp}
+	content := "---\nname: hello\ndescription: hello skill\n---\nDo things.\n"
+	if _, err := tool.Execute(
+		t.Context(),
+		`{"action":"create","name":"hello","content":"`+escapeJSON(content)+`"}`,
+	); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	asset := filepath.Join(tmp, "hello", "notes.txt")
+	if err := os.WriteFile(asset, []byte("extra"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if _, err := tool.Execute(t.Context(), `{"action":"delete","name":"hello"}`); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "hello")); !os.IsNotExist(err) {
+		t.Fatalf("skill directory still present after delete: %v", err)
 	}
 }
 
