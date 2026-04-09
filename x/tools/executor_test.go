@@ -2,10 +2,24 @@ package tools
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nijaru/canto/safety"
 )
+
+type fakeSandbox struct {
+	called bool
+	opts   safety.SandboxOptions
+}
+
+func (f *fakeSandbox) Wrap(cmd *exec.Cmd, opts safety.SandboxOptions) error {
+	f.called = true
+	f.opts = opts
+	return nil
+}
 
 func TestExecutor_RunStructuredResult(t *testing.T) {
 	e := NewExecutor(time.Second, 1024)
@@ -91,5 +105,37 @@ func TestExecutor_StreamsOutput(t *testing.T) {
 	}
 	if !sawStdout || !sawStderr {
 		t.Fatalf("expected both stdout and stderr chunks, got %#v", chunks)
+	}
+}
+
+func TestExecutor_AppliesSandboxAndSanitizesEnvironment(t *testing.T) {
+	sandbox := &fakeSandbox{}
+	e := &Executor{
+		Timeout:        time.Second,
+		MaxOutputBytes: 2048,
+		Sandbox:        sandbox,
+		EnvSanitizer: &safety.EnvSanitizer{
+			Allow: []string{"PATH", "SAFE_VAR"},
+			Deny:  []string{"KEY", "TOKEN"},
+		},
+	}
+
+	result, err := e.Run(t.Context(), Command{
+		Name: "bash",
+		Args: []string{"-lc", `printf "%s|%s" "$SAFE_VAR" "$OPENAI_API_KEY"`},
+		Env:  []string{"SAFE_VAR=ok", "OPENAI_API_KEY=secret"},
+		Sandbox: &safety.SandboxOptions{
+			WorkDir:       t.TempDir(),
+			WritablePaths: []string{t.TempDir()},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !sandbox.called {
+		t.Fatal("expected sandbox to be invoked")
+	}
+	if result.Stdout != "ok|" {
+		t.Fatalf("expected sanitized command output %q, got %q", "ok|", result.Stdout)
 	}
 }

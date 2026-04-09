@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/nijaru/canto/safety"
 )
 
 // OutputStream identifies which stream produced a chunk.
@@ -31,6 +33,7 @@ type Command struct {
 	Dir      string
 	Env      []string
 	OnOutput func(OutputChunk)
+	Sandbox  *safety.SandboxOptions
 }
 
 // Result captures the structured outcome of a subprocess run.
@@ -48,6 +51,8 @@ type Result struct {
 type Executor struct {
 	Timeout        time.Duration
 	MaxOutputBytes int
+	Sandbox        safety.Sandbox
+	EnvSanitizer   *safety.EnvSanitizer
 }
 
 // NewExecutor creates a new executor with the given timeout and max output size.
@@ -55,6 +60,7 @@ func NewExecutor(timeout time.Duration, maxOutputBytes int) *Executor {
 	return &Executor{
 		Timeout:        timeout,
 		MaxOutputBytes: maxOutputBytes,
+		EnvSanitizer:   safety.NewEnvSanitizer(),
 	}
 }
 
@@ -73,8 +79,27 @@ func (e *Executor) Run(ctx context.Context, cmd Command) (Result, error) {
 
 	execCmd := exec.CommandContext(runCtx, cmd.Name, cmd.Args...)
 	execCmd.Dir = cmd.Dir
+	env := execCmd.Environ()
 	if len(cmd.Env) > 0 {
-		execCmd.Env = append(execCmd.Environ(), cmd.Env...)
+		env = append(env, cmd.Env...)
+	}
+	if e.EnvSanitizer != nil {
+		env = e.EnvSanitizer.Sanitize(env)
+	}
+	if len(env) > 0 {
+		execCmd.Env = env
+	}
+	if e.Sandbox != nil {
+		opts := safety.SandboxOptions{WorkDir: cmd.Dir}
+		if cmd.Sandbox != nil {
+			opts = *cmd.Sandbox
+			if opts.WorkDir == "" {
+				opts.WorkDir = cmd.Dir
+			}
+		}
+		if err := e.Sandbox.Wrap(execCmd, opts); err != nil {
+			return Result{}, fmt.Errorf("executor sandbox: %w", err)
+		}
 	}
 	configureExecutorProcess(execCmd)
 
