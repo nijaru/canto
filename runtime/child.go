@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
+	"github.com/nijaru/canto/tool"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -27,6 +29,7 @@ type ChildSpec struct {
 	SharedPrefixKey string
 	InitialMessages []llm.Message
 	Metadata        map[string]any
+	Tools           *tool.Registry
 	// Detached keeps child execution running even if the Spawn context is
 	// canceled. The default is attached execution, which inherits cancellation.
 	Detached bool
@@ -43,9 +46,13 @@ type ChildRef struct {
 
 // ChildResult is the durable execution outcome of a child run.
 type ChildResult struct {
-	Ref    ChildRef
-	Result agent.StepResult
-	Err    error
+	Ref            ChildRef
+	Status         session.ChildStatus
+	Summary        string
+	TurnStopReason agent.TurnStopReason
+	Usage          llm.Usage
+	Artifacts      []session.ArtifactRef
+	Err            error
 }
 
 type childHandle struct {
@@ -91,6 +98,20 @@ func (r *ChildRunner) Close() {
 	}
 }
 
+// Run executes a child request synchronously through the same durable spawn
+// lifecycle used by Spawn/Wait.
+func (r *ChildRunner) Run(
+	ctx context.Context,
+	parent *session.Session,
+	spec ChildSpec,
+) (ChildResult, error) {
+	ref, err := r.Spawn(ctx, parent, spec)
+	if err != nil {
+		return ChildResult{}, err
+	}
+	return r.Wait(ctx, ref.ID)
+}
+
 // Spawn creates a child session, records a durable request event in the parent,
 // and starts child execution asynchronously.
 func (r *ChildRunner) Spawn(
@@ -118,6 +139,14 @@ func (r *ChildRunner) Spawn(
 	if spec.Mode == "" {
 		spec.Mode = session.ChildModeHandoff
 	}
+	if err := validateChildSpec(spec); err != nil {
+		return ChildRef{}, err
+	}
+
+	childAgent, err := configureChildAgent(spec.Agent, spec.Tools)
+	if err != nil {
+		return ChildRef{}, err
+	}
 
 	childSess, err := r.materializeChildSession(ctx, parent, childSessionID, spec)
 	if err != nil {
@@ -128,7 +157,7 @@ func (r *ChildRunner) Spawn(
 		ID:              childID,
 		SessionID:       childSessionID,
 		ParentSessionID: parent.ID(),
-		AgentID:         spec.Agent.ID(),
+		AgentID:         childAgent.ID(),
 		Mode:            spec.Mode,
 	}
 
@@ -156,7 +185,7 @@ func (r *ChildRunner) Spawn(
 		runCtx = context.WithoutCancel(ctx)
 	}
 
-	go r.runChild(runCtx, parent, childSess, spec.Agent, ref, spec.Metadata, handle)
+	go r.runChild(runCtx, parent, childSess, childAgent, ref, spec.Metadata, handle)
 
 	return ref, nil
 }
@@ -229,6 +258,7 @@ func (r *ChildRunner) runChild(
 		ChildID:        ref.ID,
 		ChildSessionID: ref.SessionID,
 		AgentID:        ref.AgentID,
+		Metadata:       metadata,
 	}))
 
 	childRuntime := NewRunner(r.store, childAgent)
@@ -247,16 +277,24 @@ func (r *ChildRunner) runChild(
 		ctx = session.WithMetadata(ctx, metadata)
 	}
 
-	result.Result, result.Err = childRuntime.Run(ctx, childSess.ID())
+	stepResult, runErr := childRuntime.Run(ctx, childSess.ID())
+	result.TurnStopReason = stepResult.TurnStopReason
+	result.Summary = stepResult.Content
+	result.Usage = stepResult.Usage
+	result.Artifacts = collectArtifacts(childSess)
+	result.Err = runErr
 	if result.Err != nil {
+		result.Status = session.ChildStatusFailed
 		if errors.Is(result.Err, context.Canceled) ||
 			errors.Is(result.Err, context.DeadlineExceeded) {
+			result.Status = session.ChildStatusCanceled
 			_ = parent.Append(
 				eventCtx,
 				session.NewChildCanceledEvent(parent.ID(), session.ChildCanceledData{
 					ChildID:        ref.ID,
 					ChildSessionID: ref.SessionID,
 					Reason:         result.Err.Error(),
+					Metadata:       metadata,
 				}),
 			)
 		} else {
@@ -264,14 +302,35 @@ func (r *ChildRunner) runChild(
 				ChildID:        ref.ID,
 				ChildSessionID: ref.SessionID,
 				Error:          result.Err.Error(),
+				Metadata:       metadata,
 			}))
 		}
+	} else if stepResult.TurnStopReason == agent.TurnStopWaiting {
+		result.Status = session.ChildStatusBlocked
+		waitReason, externalID := childWaitReason(childSess)
+		_ = parent.Append(eventCtx, session.NewChildBlockedEvent(parent.ID(), session.ChildBlockedData{
+			ChildID:        ref.ID,
+			ChildSessionID: ref.SessionID,
+			Reason:         waitReason,
+			Metadata: mergeMetadata(metadata, map[string]any{
+				"external_id": externalID,
+			}),
+		}))
 	} else {
+		result.Status = session.ChildStatusCompleted
+		artifactIDs := make([]string, 0, len(result.Artifacts))
+		for _, artifact := range result.Artifacts {
+			if artifact.ID != "" {
+				artifactIDs = append(artifactIDs, artifact.ID)
+			}
+		}
 		_ = parent.Append(eventCtx, session.NewChildCompletedEvent(parent.ID(), session.ChildCompletedData{
 			ChildID:        ref.ID,
 			ChildSessionID: ref.SessionID,
-			Summary:        result.Result.Content,
-			Usage:          result.Result.Usage,
+			Summary:        result.Summary,
+			ArtifactIDs:    artifactIDs,
+			Usage:          result.Usage,
+			Metadata:       metadata,
 		}))
 	}
 
@@ -289,4 +348,84 @@ func (r *ChildRunner) ensureSemaphore() {
 	if r.sem == nil || cap(r.sem) != r.maxConcurrent {
 		r.sem = make(chan struct{}, r.maxConcurrent)
 	}
+}
+
+func validateChildSpec(spec ChildSpec) error {
+	switch spec.Mode {
+	case session.ChildModeFork, session.ChildModeHandoff, session.ChildModeFresh:
+		return nil
+	case "":
+		return nil
+	default:
+		return fmt.Errorf("spawn child: unsupported mode %q", spec.Mode)
+	}
+}
+
+func configureChildAgent(a agent.Agent, reg *tool.Registry) (agent.Agent, error) {
+	if reg == nil {
+		return a, nil
+	}
+	configurable, ok := a.(agent.RuntimeConfigurable)
+	if !ok {
+		return nil, fmt.Errorf(
+			"spawn child: agent %q does not support runtime tool scoping",
+			a.ID(),
+		)
+	}
+	return configurable.ConfigureRuntime(agent.RuntimeConfig{Tools: reg}), nil
+}
+
+func childWaitReason(sess *session.Session) (reason string, externalID string) {
+	for e := range sess.Backward() {
+		data, ok, err := e.WaitData()
+		if err != nil || !ok || e.Type != session.WaitStarted {
+			continue
+		}
+		return data.Reason, data.ExternalID
+	}
+	return "waiting", ""
+}
+
+func collectArtifacts(sess *session.Session) []session.ArtifactRef {
+	artifacts := make([]session.ArtifactRef, 0)
+	for e := range sess.All() {
+		data, ok, err := e.ArtifactRecordedData()
+		if err != nil || !ok {
+			continue
+		}
+		artifacts = append(artifacts, data.Artifact)
+	}
+	return artifacts
+}
+
+func mergeMetadata(base map[string]any, extra map[string]any) map[string]any {
+	if len(base) == 0 && len(extra) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(base)+len(extra))
+	for key, value := range base {
+		out[key] = value
+	}
+	for key, value := range extra {
+		if value == nil {
+			continue
+		}
+		if text, ok := value.(string); ok && text == "" {
+			continue
+		}
+		out[key] = value
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(out))
+	for key := range out {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	ordered := make(map[string]any, len(out))
+	for _, key := range keys {
+		ordered[key] = out[key]
+	}
+	return ordered
 }

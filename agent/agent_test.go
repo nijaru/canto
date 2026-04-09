@@ -54,6 +54,22 @@ func (m *flakyProvider) IsTransient(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "transient")
 }
 
+type recordingProvider struct {
+	mockProvider
+	lastTools []string
+}
+
+func (p *recordingProvider) Generate(
+	_ context.Context,
+	req *llm.Request,
+) (*llm.Response, error) {
+	p.lastTools = p.lastTools[:0]
+	for _, spec := range req.Tools {
+		p.lastTools = append(p.lastTools, spec.Name)
+	}
+	return &llm.Response{Content: "ok"}, nil
+}
+
 // simpleTool is an inline tool for use in tests.
 type simpleTool struct {
 	name   string
@@ -1057,6 +1073,31 @@ func TestWithModel(t *testing.T) {
 	a := New("a", "", "base", &mockProvider{}, nil, WithModel("gpt-4o"))
 	if a.model != "gpt-4o" {
 		t.Fatalf("model = %q, want gpt-4o", a.model)
+	}
+}
+
+func TestBaseAgentConfigureRuntimeOverridesPromptToolSet(t *testing.T) {
+	provider := &recordingProvider{}
+	full := tool.NewRegistry()
+	full.Register(&simpleTool{name: "alpha", output: "a"})
+	full.Register(&simpleTool{name: "beta", output: "b"})
+	scoped := tool.NewRegistry()
+	scoped.Register(&simpleTool{name: "beta", output: "b"})
+
+	base := New("a", "sys", "m", provider, full)
+	configurable, ok := any(base).(RuntimeConfigurable)
+	if !ok {
+		t.Fatal("expected BaseAgent to implement RuntimeConfigurable")
+	}
+
+	runtimeAgent := configurable.ConfigureRuntime(RuntimeConfig{Tools: scoped})
+	sess := userSession("s-runtime-tools", "hi")
+	if _, err := runtimeAgent.Turn(t.Context(), sess); err != nil {
+		t.Fatalf("turn: %v", err)
+	}
+
+	if got := strings.Join(provider.lastTools, ","); got != "beta" {
+		t.Fatalf("provider tool set = %q, want beta", got)
 	}
 }
 

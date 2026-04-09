@@ -20,6 +20,18 @@ type Agent interface {
 	Turn(ctx context.Context, sess *session.Session) (StepResult, error)
 }
 
+// RuntimeConfig applies runtime-local execution overrides without mutating the
+// original agent instance.
+type RuntimeConfig struct {
+	Tools *tool.Registry
+}
+
+// RuntimeConfigurable agents can produce a runtime-scoped view of themselves
+// for child execution or other narrow orchestration contexts.
+type RuntimeConfigurable interface {
+	ConfigureRuntime(RuntimeConfig) Agent
+}
+
 // BaseAgent is the default Agent implementation. It runs an LLM with a
 // context pipeline, tool registry, and lifecycle hooks.
 type BaseAgent struct {
@@ -38,6 +50,18 @@ type BaseAgent struct {
 
 // ID returns the agent's unique identifier.
 func (a *BaseAgent) ID() string { return a.agentID }
+
+// ConfigureRuntime returns a shallow runtime-scoped copy of the agent.
+func (a *BaseAgent) ConfigureRuntime(cfg RuntimeConfig) Agent {
+	if a == nil {
+		return nil
+	}
+	clone := *a
+	if cfg.Tools != nil {
+		clone.tools = cfg.Tools
+	}
+	return &clone
+}
 
 // Instructions returns the assembled system instructions for the agent.
 func (a *BaseAgent) Instructions() string { return a.instructions }

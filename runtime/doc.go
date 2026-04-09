@@ -11,8 +11,11 @@
 //
 // ChildRunner builds on the same model for parent/child orchestration:
 // materialize a child session, record durable lifecycle events in the parent,
-// and execute the child agent asynchronously. Child runs inherit spawn-context
-// cancellation by default. Detached execution is explicit via ChildSpec.
+// and execute the child agent through one delegation surface. Spawn/Wait is the
+// asynchronous path; Run is the synchronous convenience wrapper. Child runs
+// inherit spawn-context cancellation by default. Detached execution is explicit
+// via ChildSpec. Waiting children emit durable blocked lifecycle events instead
+// of being reported as completed.
 //
 // Option-based constructors plus Runner.ChildRunner provide the small worker
 // helper layer for hosts that want one obvious way to share timeouts, hooks,

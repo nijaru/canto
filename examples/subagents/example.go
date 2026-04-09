@@ -150,7 +150,7 @@ func runExample(ctx context.Context) (orchestrationResult, error) {
 			return orchestrationResult{}, err
 		}
 
-		findings = append(findings, fmt.Sprintf("- %s: %s", ref.ID, result.Result.Content))
+		findings = append(findings, fmt.Sprintf("- %s: %s", ref.ID, result.Summary))
 	}
 
 	summary := "Merged release review:\n" + strings.Join(findings, "\n")

@@ -11,6 +11,7 @@ import (
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
+	"github.com/nijaru/canto/tool"
 )
 
 func TestChildRunnerSpawnAndWait_Handoff(t *testing.T) {
@@ -43,8 +44,11 @@ func TestChildRunnerSpawnAndWait_Handoff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("wait child: %v", err)
 	}
-	if result.Result.Content != "pong" {
-		t.Fatalf("child result content = %q, want pong", result.Result.Content)
+	if result.Summary != "pong" {
+		t.Fatalf("child summary = %q, want pong", result.Summary)
+	}
+	if result.Status != session.ChildStatusCompleted {
+		t.Fatalf("child status = %q, want %q", result.Status, session.ChildStatusCompleted)
 	}
 
 	parentReloaded, err := store.Load(t.Context(), parent.ID())
@@ -148,6 +152,39 @@ func TestChildRunnerSpawn_ForkCopiesParentHistory(t *testing.T) {
 	}
 }
 
+func TestChildRunnerRun_WaitsSynchronously(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent-sync").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	result, err := childRunner.Run(t.Context(), parent, ChildSpec{
+		ID:    "child-sync",
+		Agent: &echoAgent{},
+		Mode:  session.ChildModeFresh,
+		InitialMessages: []llm.Message{
+			{Role: llm.RoleUser, Content: "go"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("run child: %v", err)
+	}
+	if result.Ref.ID != "child-sync" {
+		t.Fatalf("child ref id = %q, want child-sync", result.Ref.ID)
+	}
+	if result.Status != session.ChildStatusCompleted {
+		t.Fatalf("child status = %q, want %q", result.Status, session.ChildStatusCompleted)
+	}
+	if result.Summary != "pong" {
+		t.Fatalf("child summary = %q, want pong", result.Summary)
+	}
+}
+
 func TestChildRunnerWait_ReleasesHandle(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {
@@ -188,6 +225,24 @@ func TestChildRunnerWaitUnknownChild(t *testing.T) {
 	if _, err := childRunner.Wait(t.Context(), "missing-child"); err == nil {
 		t.Fatal("expected missing child wait to fail")
 	}
+}
+
+type waitingAgent struct{}
+
+func (a *waitingAgent) ID() string { return "waiting" }
+
+func (a *waitingAgent) Step(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a *waitingAgent) Turn(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
+	if err := sess.Append(ctx, session.NewWaitStartedEvent(sess.ID(), session.WaitData{
+		Reason:     "approval required",
+		ExternalID: "approver-1",
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{TurnStopReason: agent.TurnStopWaiting}, nil
 }
 
 type blockingAgent struct {
@@ -424,7 +479,84 @@ func TestChildRunnerSpawn_DetachedIgnoresSpawnContextCancellation(t *testing.T) 
 	if result.Err != nil {
 		t.Fatalf("detached child err = %v, want nil", result.Err)
 	}
-	if result.Result.Content != "child-detached done" {
-		t.Fatalf("detached child content = %q, want child-detached done", result.Result.Content)
+	if result.Summary != "child-detached done" {
+		t.Fatalf("detached child summary = %q, want child-detached done", result.Summary)
+	}
+}
+
+func TestChildRunnerRun_RecordsBlockedChildWhenWaiting(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent-blocked").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	result, err := childRunner.Run(t.Context(), parent, ChildSpec{
+		ID:    "child-blocked",
+		Agent: &waitingAgent{},
+		Mode:  session.ChildModeFresh,
+	})
+	if err != nil {
+		t.Fatalf("run child: %v", err)
+	}
+	if result.Status != session.ChildStatusBlocked {
+		t.Fatalf("child status = %q, want %q", result.Status, session.ChildStatusBlocked)
+	}
+	if result.TurnStopReason != agent.TurnStopWaiting {
+		t.Fatalf("turn stop = %q, want %q", result.TurnStopReason, agent.TurnStopWaiting)
+	}
+
+	parentReloaded, err := store.Load(t.Context(), parent.ID())
+	if err != nil {
+		t.Fatalf("load parent: %v", err)
+	}
+	var blocked session.ChildBlockedData
+	var sawBlocked bool
+	for _, event := range parentReloaded.Events() {
+		if event.Type != session.ChildBlocked {
+			continue
+		}
+		blocked, sawBlocked, err = event.ChildBlockedData()
+		if err != nil {
+			t.Fatalf("decode child blocked: %v", err)
+		}
+	}
+	if !sawBlocked {
+		t.Fatal("expected child_blocked event")
+	}
+	if blocked.Reason != "approval required" {
+		t.Fatalf("blocked reason = %q, want approval required", blocked.Reason)
+	}
+	if got := blocked.Metadata["external_id"]; got != "approver-1" {
+		t.Fatalf("blocked external_id = %#v, want approver-1", got)
+	}
+}
+
+func TestChildRunnerSpawn_FailsClosedWhenScopingNonConfigurableAgent(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent-scope").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	reg := tool.NewRegistry()
+	reg.Register(agent.HandoffTool("reviewer"))
+
+	_, err = childRunner.Spawn(t.Context(), parent, ChildSpec{
+		ID:    "child-scope",
+		Agent: &echoAgent{},
+		Mode:  session.ChildModeFresh,
+		Tools: reg,
+	})
+	if err == nil {
+		t.Fatal("expected scoped child spawn to fail for non-configurable agent")
 	}
 }
