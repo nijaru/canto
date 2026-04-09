@@ -3,6 +3,9 @@ package runtime
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -103,6 +106,29 @@ func (a *artifactAgent) Turn(ctx context.Context, sess *session.Session) (agent.
 		return agent.StepResult{}, err
 	}
 	return agent.StepResult{Content: msg.Content}, nil
+}
+
+type workspaceAgent struct{}
+
+func (a *workspaceAgent) ID() string { return "workspace" }
+
+func (a *workspaceAgent) Step(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a *workspaceAgent) Turn(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	path, _ := session.MetadataFromContext(ctx)["workspace_path"].(string)
+	msg := llm.Message{Role: llm.RoleAssistant, Content: path}
+	if err := sess.Append(ctx, session.NewMessage(sess.ID(), msg)); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{Content: path}, nil
 }
 
 func TestChildRunnerSpawnAndWait_Handoff(t *testing.T) {
@@ -817,4 +843,84 @@ func TestChildRunnerRun_PropagatesChildArtifactsToParent(t *testing.T) {
 	if !sawArtifact {
 		t.Fatal("expected parent artifact_recorded event for child artifact")
 	}
+}
+
+func TestChildRunnerRun_PreparesAndCleansWorktree(t *testing.T) {
+	repo := initGitRepo(t)
+
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent-worktree").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	result, err := childRunner.Run(t.Context(), parent, ChildSpec{
+		ID:    "child-worktree",
+		Agent: &workspaceAgent{},
+		Mode:  session.ChildModeFresh,
+		Worktree: &WorktreeSpec{
+			RepositoryPath: repo,
+		},
+	})
+	if err != nil {
+		t.Fatalf("run child: %v", err)
+	}
+	if result.Ref.WorkspacePath == "" {
+		t.Fatal("expected child workspace path")
+	}
+	if result.Summary != result.Ref.WorkspacePath {
+		t.Fatalf("workspace summary = %q, want %q", result.Summary, result.Ref.WorkspacePath)
+	}
+	if _, err := os.Stat(result.Ref.WorkspacePath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected worktree cleanup, stat err = %v", err)
+	}
+
+	parentReloaded, err := store.Load(t.Context(), parent.ID())
+	if err != nil {
+		t.Fatalf("load parent: %v", err)
+	}
+	var requested session.ChildRequestedData
+	var sawRequested bool
+	for _, event := range parentReloaded.Events() {
+		if event.Type != session.ChildRequested {
+			continue
+		}
+		requested, sawRequested, err = event.ChildRequestedData()
+		if err != nil {
+			t.Fatalf("decode child requested: %v", err)
+		}
+	}
+	if !sawRequested {
+		t.Fatal("expected child requested event")
+	}
+	if got := requested.Metadata["workspace_repo"]; got != repo {
+		t.Fatalf("workspace repo metadata = %#v, want %q", got, repo)
+	}
+}
+
+func initGitRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, string(out))
+		}
+	}
+	run("init")
+	run("config", "user.name", "Canto Test")
+	run("config", "user.email", "test@example.com")
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "README.md")
+	run("commit", "-m", "init")
+	return dir
 }

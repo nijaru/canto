@@ -31,6 +31,7 @@ type ChildSpec struct {
 	InitialMessages []llm.Message
 	Metadata        map[string]any
 	Tools           *tool.Registry
+	Worktree        *WorktreeSpec
 	// Detached keeps child execution running even if the Spawn context is
 	// canceled. The default is attached execution, which inherits cancellation.
 	Detached bool
@@ -43,6 +44,7 @@ type ChildRef struct {
 	ParentSessionID string
 	AgentID         string
 	Mode            session.ChildMode
+	WorkspacePath   string
 }
 
 // ChildResult is the durable execution outcome of a child run.
@@ -57,8 +59,9 @@ type ChildResult struct {
 }
 
 type childHandle struct {
-	done   chan struct{}
-	result ChildResult
+	done    chan struct{}
+	result  ChildResult
+	cleanup func()
 }
 
 // ChildRunner materializes child sessions, records lifecycle facts in the
@@ -148,9 +151,24 @@ func (r *ChildRunner) Spawn(
 	if err != nil {
 		return ChildRef{}, err
 	}
+	metadata := mergeMetadata(spec.Metadata, nil)
+	var worktree *Worktree
+	if spec.Worktree != nil {
+		worktree, err = PrepareWorktree(ctx, *spec.Worktree)
+		if err != nil {
+			return ChildRef{}, err
+		}
+		metadata = mergeMetadata(metadata, map[string]any{
+			"workspace_path": worktree.Path(),
+			"workspace_repo": worktree.RepositoryPath(),
+		})
+	}
 
 	childSess, err := r.materializeChildSession(ctx, parent, childSessionID, spec)
 	if err != nil {
+		if worktree != nil {
+			worktree.Close()
+		}
 		return ChildRef{}, err
 	}
 
@@ -160,6 +178,7 @@ func (r *ChildRunner) Spawn(
 		ParentSessionID: parent.ID(),
 		AgentID:         childAgent.ID(),
 		Mode:            spec.Mode,
+		WorkspacePath:   workspacePath(worktree),
 	}
 
 	if err := parent.Append(ctx, session.NewChildRequestedEvent(parent.ID(), session.ChildRequestedData{
@@ -171,12 +190,18 @@ func (r *ChildRunner) Spawn(
 		Task:            spec.Task,
 		Context:         spec.Context,
 		SharedPrefixKey: spec.SharedPrefixKey,
-		Metadata:        spec.Metadata,
+		Metadata:        metadata,
 	})); err != nil {
+		if worktree != nil {
+			worktree.Close()
+		}
 		return ChildRef{}, err
 	}
 
 	handle := &childHandle{done: make(chan struct{})}
+	if worktree != nil {
+		handle.cleanup = worktree.Close
+	}
 	r.mu.Lock()
 	r.handles[ref.ID] = handle
 	r.mu.Unlock()
@@ -186,7 +211,7 @@ func (r *ChildRunner) Spawn(
 		runCtx = context.WithoutCancel(ctx)
 	}
 
-	go r.runChild(runCtx, parent, childSess, childAgent, ref, spec.Metadata, handle)
+	go r.runChild(runCtx, parent, childSess, childAgent, ref, metadata, handle)
 
 	return ref, nil
 }
@@ -248,6 +273,12 @@ func (r *ChildRunner) runChild(
 	metadata map[string]any,
 	handle *childHandle,
 ) {
+	defer close(handle.done)
+	defer func() {
+		if handle.cleanup != nil {
+			handle.cleanup()
+		}
+	}()
 	if r.sem != nil {
 		r.sem <- struct{}{}
 		defer func() { <-r.sem }()
@@ -337,7 +368,6 @@ func (r *ChildRunner) runChild(
 	}
 
 	handle.result = result
-	close(handle.done)
 }
 
 func (r *ChildRunner) ensureSemaphore() {
