@@ -13,6 +13,9 @@
 // transcript, so compaction stays durable across future turns. Offloader and
 // Summarizer persist compaction snapshots back into the session log; Offloader
 // also emits durable artifact descriptors for externalized content.
+// BudgetGuard reports request-capacity state before the provider call and gives
+// later masking/rebuild layers a structured budget status instead of relying on
+// overflow strings.
 // CompactSession provides a small consumer-neutral helper for manually running
 // the built-in offload-then-summarize compaction path and reporting whether
 // durable compaction occurred. LazyTools derives unlocked tool state from
