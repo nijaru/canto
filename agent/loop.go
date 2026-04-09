@@ -94,7 +94,7 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 	if err = s.Append(ctx, e); err != nil {
 		return
 	}
-	llm.RecordUsage(ctx, req.Model, resp.Usage)
+	llm.RecordUsage(ctx, cfg.Provider.ID(), req.Model, resp.Usage)
 
 	// Execute tool calls in parallel and append results to the session.
 	handoffTargets := getHandoffTargets(cfg.Tools)

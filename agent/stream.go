@@ -143,7 +143,7 @@ func (a *BaseAgent) StreamStep(
 	if err = s.Append(ctx, e); err != nil {
 		return
 	}
-	llm.RecordUsage(ctx, req.Model, usage)
+	llm.RecordUsage(ctx, a.provider.ID(), req.Model, usage)
 
 	// Execute tool calls in parallel and append results to the session.
 	handoffTargets := getHandoffTargets(a.tools)
