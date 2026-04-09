@@ -847,6 +847,80 @@ func TestChildRunnerRun_PreloadsSkillsIntoBaseAgent(t *testing.T) {
 	}
 }
 
+func TestChildRunnerRun_ScopesToolsFromPreloadedSkillAllowedTools(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent-skill-scope").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	full := tool.NewRegistry()
+	full.Register(&scopedTool{name: "alpha", output: "a"})
+	full.Register(&scopedTool{name: "beta", output: "b"})
+
+	provider := &childRecordingProvider{}
+	childAgent := agent.New("child-skill-scope", "sys", "m", provider, full)
+
+	result, err := childRunner.Run(t.Context(), parent, ChildSpec{
+		ID:    "child-skill-scope",
+		Agent: childAgent,
+		Mode:  session.ChildModeFresh,
+		Tools: full,
+		Skills: []*agentskills.Skill{{
+			Name:         "debug",
+			Description:  "Debugging workflow",
+			Instructions: "Follow the debugger checklist.",
+			AllowedTools: agentskills.ToolList{"beta"},
+		}},
+		InitialMessages: []llm.Message{
+			{Role: llm.RoleUser, Content: "go"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("run child: %v", err)
+	}
+	if result.Status != session.ChildStatusCompleted {
+		t.Fatalf("child status = %q, want %q", result.Status, session.ChildStatusCompleted)
+	}
+	if got := provider.lastTools; len(got) != 1 || got[0] != "beta" {
+		t.Fatalf("child prompt tool set = %#v, want [beta]", got)
+	}
+}
+
+func TestChildRunnerSpawn_FailsClosedWhenSkillRestrictsToolsWithoutRegistry(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent-skill-missing-reg").WithWriter(store)
+	childRunner := NewChildRunner(store)
+	defer childRunner.Close()
+
+	provider := &childRecordingProvider{}
+	childAgent := agent.New("child-skill-missing-reg", "sys", "m", provider, tool.NewRegistry())
+
+	_, err = childRunner.Spawn(t.Context(), parent, ChildSpec{
+		ID:    "child-skill-missing-reg",
+		Agent: childAgent,
+		Mode:  session.ChildModeFresh,
+		Skills: []*agentskills.Skill{{
+			Name:         "debug",
+			Description:  "Debugging workflow",
+			Instructions: "Follow the debugger checklist.",
+			AllowedTools: agentskills.ToolList{"beta"},
+		}},
+	})
+	if err == nil {
+		t.Fatal("expected spawn to fail without registry for restricted skill")
+	}
+}
+
 func TestChildRunnerRun_PropagatesChildArtifactsToParent(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {

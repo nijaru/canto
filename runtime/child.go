@@ -153,6 +153,17 @@ func (r *ChildRunner) Spawn(
 
 	runtimeCfg := agent.RuntimeConfig{Tools: spec.Tools}
 	if len(spec.Skills) > 0 {
+		securityHooks := skill.DefaultSecurityHooks()
+		if err := securityHooks.Validate(ctx, spec.Skills...); err != nil {
+			return ChildRef{}, err
+		}
+		scopedTools, err := securityHooks.ScopeRegistry(spec.Tools, spec.Skills...)
+		if err != nil {
+			return ChildRef{}, err
+		}
+		runtimeCfg.Tools = scopedTools
+	}
+	if len(spec.Skills) > 0 {
 		runtimeCfg.RequestProcessors = []ccontext.RequestProcessor{
 			skill.PreloadPrompt(spec.Skills...),
 		}
