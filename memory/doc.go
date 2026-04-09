@@ -10,7 +10,8 @@
 // Manager is the main entry point for framework-facing memory behavior. It
 // coordinates scoped core blocks and durable long-term memories across
 // thread/user/agent/workspace/app namespaces, with option-based configuration
-// for pluggable write policy, retrieval policy, vectors, and embeddings.
+// for pluggable write policy, retrieval planning/fusion, vectors, and
+// embeddings.
 //
 // Index is the cheap pointer layer that sits above the repository. It renders
 // namespaces, core blocks, and long-term memories as short filetree-style

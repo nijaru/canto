@@ -271,102 +271,36 @@ func (m *Manager) Retrieve(ctx context.Context, query Query) ([]Memory, error) {
 	if limit <= 0 {
 		limit = 5
 	}
-
-	roles := query.Roles
-	includeCore := query.IncludeCore || len(roles) == 0 || slices.Contains(roles, RoleCore)
-
-	var results []Memory
-	if includeCore {
-		blocks, err := m.store.ListBlocks(ctx, BlockListInput{
-			Namespaces: query.Namespaces,
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, block := range blocks {
-			results = append(results, Memory{
-				ID:        block.Name,
-				Namespace: block.Namespace,
-				Role:      RoleCore,
-				Key:       block.Name,
-				Content:   block.Content,
-				Metadata:  cloneMap(block.Metadata),
-				UpdatedAt: block.UpdatedAt,
-				Score:     1.0,
-			})
-		}
+	planner := m.retrievePolicy.Planner
+	if planner == nil {
+		planner = DefaultPlanner{}
 	}
-
-	ftsRoles := filterRoles(roles, func(role Role) bool { return role != RoleCore })
-	if query.Text != "" || query.IncludeRecent {
-		ftsHits, err := m.store.SearchMemories(ctx, SearchInput{
-			Namespaces:        query.Namespaces,
-			Roles:             ftsRoles,
-			Text:              query.Text,
-			Limit:             limit,
-			Filters:           query.Filters,
-			IncludeRecent:     query.IncludeRecent,
-			ValidAt:           query.ValidAt,
-			ObservedAfter:     query.ObservedAfter,
-			ObservedBefore:    query.ObservedBefore,
-			IncludeForgotten:  query.IncludeForgotten,
-			IncludeSuperseded: query.IncludeSuperseded,
-		})
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, ftsHits...)
-	}
-
-	if query.UseSemantic && query.Text != "" && m.vector != nil && m.embedder != nil {
-		vector, err := m.embedder.EmbedContent(ctx, query.Text)
-		if err != nil {
-			return nil, err
-		}
-		filter := cloneMap(query.Filters)
-		if filter == nil {
-			filter = map[string]any{}
-		}
-		if len(query.Namespaces) == 1 {
-			filter["scope"] = string(query.Namespaces[0].Scope)
-			filter["scope_id"] = query.Namespaces[0].ID
-		}
-		if len(ftsRoles) == 1 {
-			filter["role"] = string(ftsRoles[0])
-		}
-		vectorHits, err := m.vector.Search(ctx, vector, limit, filter)
-		if err != nil {
-			return nil, err
-		}
-		for _, hit := range vectorHits {
-			mem, ok := memoryFromVector(hit)
-			if !ok {
-				continue
-			}
-			results = append(results, mem)
-		}
-	}
-
-	results = filterMemories(results, query)
-	results = dedupeMemories(results)
-	slices.SortFunc(results, func(a, b Memory) int {
-		if a.Score > b.Score {
-			return -1
-		}
-		if a.Score < b.Score {
-			return 1
-		}
-		if a.UpdatedAt.After(b.UpdatedAt) {
-			return -1
-		}
-		if a.UpdatedAt.Before(b.UpdatedAt) {
-			return 1
-		}
-		return strings.Compare(a.ID, b.ID)
+	requests := planner.Plan(query, RetrievalCapabilities{
+		Core:     true,
+		Recent:   true,
+		Text:     true,
+		Semantic: m.vector != nil && m.embedder != nil,
 	})
-	if len(results) > limit {
-		results = results[:limit]
+	var sets []RetrievalResultSet
+	for _, request := range requests {
+		hits, err := m.retrieveSource(ctx, request, query)
+		if err != nil {
+			return nil, err
+		}
+		if len(hits) == 0 {
+			continue
+		}
+		sets = append(sets, RetrievalResultSet{
+			Source: request.Source,
+			Hits:   hits,
+		})
 	}
+	fuser := m.retrievePolicy.Fuser
+	if fuser == nil {
+		fuser = DefaultRRFFuser()
+	}
+	results := fuser.Fuse(query, sets, limit)
+	results = filterMemories(results, query)
 	if m.retrievePolicy.Postprocess != nil {
 		var err error
 		results, err = m.retrievePolicy.Postprocess(query, slices.Clone(results))
@@ -378,6 +312,142 @@ func (m *Manager) Retrieve(ctx context.Context, query Query) ([]Memory, error) {
 		}
 	}
 	return results, nil
+}
+
+func (m *Manager) retrieveSource(
+	ctx context.Context,
+	request RetrievalRequest,
+	query Query,
+) ([]Memory, error) {
+	switch request.Source {
+	case RetrievalCore:
+		return m.retrieveCoreBlocks(ctx, query, request.Limit)
+	case RetrievalRecent:
+		return m.retrieveRecentMemories(ctx, query, request.Limit)
+	case RetrievalText:
+		return m.retrieveTextMemories(ctx, query, request.Limit)
+	case RetrievalVector:
+		return m.retrieveVectorMemories(ctx, query, request.Limit)
+	default:
+		return nil, fmt.Errorf("memory manager: unknown retrieval source %q", request.Source)
+	}
+}
+
+func (m *Manager) retrieveCoreBlocks(
+	ctx context.Context,
+	query Query,
+	limit int,
+) ([]Memory, error) {
+	blocks, err := m.store.ListBlocks(ctx, BlockListInput{
+		Namespaces: query.Namespaces,
+		Limit:      limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	results := make([]Memory, 0, len(blocks))
+	for _, block := range blocks {
+		if !matchesFilters(block.Metadata, query.Filters) {
+			continue
+		}
+		results = append(results, Memory{
+			ID:        block.Name,
+			Namespace: block.Namespace,
+			Role:      RoleCore,
+			Key:       block.Name,
+			Content:   block.Content,
+			Metadata:  cloneMap(block.Metadata),
+			UpdatedAt: block.UpdatedAt,
+		})
+	}
+	return results, nil
+}
+
+func (m *Manager) retrieveRecentMemories(
+	ctx context.Context,
+	query Query,
+	limit int,
+) ([]Memory, error) {
+	roles := filterRoles(query.Roles, func(role Role) bool { return role != RoleCore })
+	results, err := m.store.ListMemories(ctx, MemoryListInput{
+		Namespaces:        query.Namespaces,
+		Roles:             roles,
+		Limit:             limit,
+		Filters:           query.Filters,
+		ValidAt:           query.ValidAt,
+		ObservedAfter:     query.ObservedAfter,
+		ObservedBefore:    query.ObservedBefore,
+		IncludeForgotten:  query.IncludeForgotten,
+		IncludeSuperseded: query.IncludeSuperseded,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return filterMemories(results, query), nil
+}
+
+func (m *Manager) retrieveTextMemories(
+	ctx context.Context,
+	query Query,
+	limit int,
+) ([]Memory, error) {
+	roles := filterRoles(query.Roles, func(role Role) bool { return role != RoleCore })
+	results, err := m.store.SearchMemories(ctx, SearchInput{
+		Namespaces:        query.Namespaces,
+		Roles:             roles,
+		Text:              query.Text,
+		Limit:             limit,
+		Filters:           query.Filters,
+		IncludeRecent:     query.IncludeRecent,
+		ValidAt:           query.ValidAt,
+		ObservedAfter:     query.ObservedAfter,
+		ObservedBefore:    query.ObservedBefore,
+		IncludeForgotten:  query.IncludeForgotten,
+		IncludeSuperseded: query.IncludeSuperseded,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return filterMemories(results, query), nil
+}
+
+func (m *Manager) retrieveVectorMemories(
+	ctx context.Context,
+	query Query,
+	limit int,
+) ([]Memory, error) {
+	vector, err := m.embedder.EmbedContent(ctx, query.Text)
+	if err != nil {
+		return nil, err
+	}
+	filter := cloneMap(query.Filters)
+	if filter == nil {
+		filter = map[string]any{}
+	}
+	if len(query.Namespaces) == 1 {
+		filter["scope"] = string(query.Namespaces[0].Scope)
+		filter["scope_id"] = query.Namespaces[0].ID
+	}
+	roles := filterRoles(query.Roles, func(role Role) bool { return role != RoleCore })
+	if len(roles) == 1 {
+		filter["role"] = string(roles[0])
+	}
+	vectorHits, err := m.vector.Search(ctx, vector, limit, filter)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]Memory, 0, len(vectorHits))
+	for _, hit := range vectorHits {
+		memory, ok := memoryFromVector(hit)
+		if !ok {
+			continue
+		}
+		if !matchesFilters(memory.Metadata, query.Filters) {
+			continue
+		}
+		results = append(results, memory)
+	}
+	return filterMemories(results, query), nil
 }
 
 func (m *Manager) extract(ctx context.Context, candidate Candidate) ([]Candidate, error) {

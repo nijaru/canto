@@ -28,6 +28,7 @@ type MemoryListInput struct {
 	Namespaces        []Namespace
 	Roles             []Role
 	Limit             int
+	Filters           map[string]any
 	ValidAt           *time.Time
 	ObservedAfter     *time.Time
 	ObservedBefore    *time.Time

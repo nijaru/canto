@@ -272,6 +272,9 @@ func (s *CoreStore) ListMemories(
 		if err != nil {
 			return nil, err
 		}
+		if !matchesFilters(memory.Metadata, input.Filters) {
+			continue
+		}
 		memories = append(memories, memory)
 	}
 	return memories, rows.Err()

@@ -7,6 +7,8 @@ import "github.com/nijaru/canto/llm"
 type RetrievalPostprocessor func(query Query, results []Memory) ([]Memory, error)
 
 type RetrievePolicy struct {
+	Planner     RetrievalPlanner
+	Fuser       RetrievalFuser
 	Postprocess RetrievalPostprocessor
 }
 
