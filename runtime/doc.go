@@ -17,9 +17,10 @@
 // via ChildSpec. Waiting children emit durable blocked lifecycle events instead
 // of being reported as completed.
 //
-// Option-based constructors plus Runner.ChildRunner provide the small worker
-// helper layer for hosts that want one obvious way to share timeouts, hooks,
-// and coordinator settings across foreground and background execution paths.
+// Runner also owns a shared child delegation surface via Delegate, SpawnChild,
+// and WaitChild so hosts do not need to manage ChildRunner handles manually.
+// Option-based constructors plus Runner.ChildRunner still provide the helper
+// path for callers that need an explicitly separate child worker.
 //
 // The framework owns execution semantics, lifecycle recording, and concurrency
 // boundaries. Applications still decide decomposition policy, model selection,

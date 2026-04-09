@@ -351,3 +351,70 @@ func TestRunnerCoordinator_RenewsLeaseForLongRunningWork(t *testing.T) {
 		t.Fatalf("content = %q, want slow done", result.Content)
 	}
 }
+
+func TestRunnerDelegate_UsesSharedChildRunner(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("delegate-parent").WithWriter(store)
+	runner := NewRunner(store, &echoAgent{})
+	defer runner.Close()
+	runner.sessions[parent.ID()] = parent
+
+	result, err := runner.Delegate(t.Context(), parent.ID(), ChildSpec{
+		ID:    "child-delegate",
+		Agent: &echoAgent{},
+		Mode:  session.ChildModeFresh,
+		InitialMessages: []llm.Message{
+			{Role: llm.RoleUser, Content: "go"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("delegate: %v", err)
+	}
+	if result.Status != session.ChildStatusCompleted {
+		t.Fatalf("child status = %q, want %q", result.Status, session.ChildStatusCompleted)
+	}
+	if result.Summary != "pong" {
+		t.Fatalf("child summary = %q, want pong", result.Summary)
+	}
+}
+
+func TestRunnerSpawnChildAndWaitChild(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("spawn-parent").WithWriter(store)
+	runner := NewRunner(store, &echoAgent{})
+	defer runner.Close()
+	runner.sessions[parent.ID()] = parent
+
+	ref, err := runner.SpawnChild(t.Context(), parent.ID(), ChildSpec{
+		ID:    "child-spawn",
+		Agent: &echoAgent{},
+		Mode:  session.ChildModeFresh,
+		InitialMessages: []llm.Message{
+			{Role: llm.RoleUser, Content: "go"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("spawn child: %v", err)
+	}
+
+	result, err := runner.WaitChild(t.Context(), ref.ID)
+	if err != nil {
+		t.Fatalf("wait child: %v", err)
+	}
+	if result.Ref.ID != ref.ID {
+		t.Fatalf("child ref id = %q, want %q", result.Ref.ID, ref.ID)
+	}
+	if result.Summary != "pong" {
+		t.Fatalf("child summary = %q, want pong", result.Summary)
+	}
+}

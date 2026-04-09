@@ -33,9 +33,10 @@ type Runner struct {
 	coordinator      Coordinator
 	hooks            *hook.Runner
 
-	queue    *serialQueue
-	mu       sync.Mutex
-	sessions map[string]*session.Session
+	queue       *serialQueue
+	childRunner *ChildRunner
+	mu          sync.Mutex
+	sessions    map[string]*session.Session
 }
 
 // NewRunner creates a Runner with per-session coordination enabled.
@@ -48,6 +49,7 @@ func NewRunner(s session.Store, a agent.Agent, opts ...Option) *Runner {
 		executionTimeout: cfg.executionTimeout,
 		coordinator:      cfg.coordinator,
 		queue:            newSerialQueue(),
+		childRunner:      NewChildRunner(s, runnerChildOptions(cfg)...),
 		hooks:            cfg.hooks,
 		sessions:         make(map[string]*session.Session),
 	}
@@ -57,6 +59,9 @@ func NewRunner(s session.Store, a agent.Agent, opts ...Option) *Runner {
 func (r *Runner) Close() {
 	if r.queue != nil {
 		r.queue.stop()
+	}
+	if r.childRunner != nil {
+		r.childRunner.Close()
 	}
 }
 
@@ -141,18 +146,46 @@ func (r *Runner) ChildRunner(opts ...Option) *ChildRunner {
 	if r == nil {
 		return nil
 	}
-	inherited := []Option{
-		WithWaitTimeout(r.waitTimeout),
-		WithExecutionTimeout(r.executionTimeout),
-	}
-	if r.coordinator != nil {
-		inherited = append(inherited, WithCoordinator(r.coordinator))
-	}
-	if r.hooks != nil {
-		inherited = append(inherited, WithHooks(r.hooks))
-	}
+	inherited := runnerChildOptions(options{
+		waitTimeout:      r.waitTimeout,
+		executionTimeout: r.executionTimeout,
+		coordinator:      r.coordinator,
+		hooks:            r.hooks,
+	})
 	inherited = append(inherited, opts...)
 	return NewChildRunner(r.store, inherited...)
+}
+
+// Delegate executes a child request synchronously against a parent session.
+func (r *Runner) Delegate(
+	ctx context.Context,
+	parentSessionID string,
+	spec ChildSpec,
+) (ChildResult, error) {
+	parent, err := r.getOrLoad(ctx, parentSessionID)
+	if err != nil {
+		return ChildResult{}, err
+	}
+	return r.sharedChildRunner().Run(ctx, parent, spec)
+}
+
+// SpawnChild starts child execution asynchronously against a parent session.
+func (r *Runner) SpawnChild(
+	ctx context.Context,
+	parentSessionID string,
+	spec ChildSpec,
+) (ChildRef, error) {
+	parent, err := r.getOrLoad(ctx, parentSessionID)
+	if err != nil {
+		return ChildRef{}, err
+	}
+	return r.sharedChildRunner().Spawn(ctx, parent, spec)
+}
+
+// WaitChild waits for a previously spawned child on the runner's shared
+// delegation surface.
+func (r *Runner) WaitChild(ctx context.Context, childID string) (ChildResult, error) {
+	return r.sharedChildRunner().Wait(ctx, childID)
 }
 
 // Send appends a user message to the session and runs the agent.
@@ -334,4 +367,30 @@ func (r *Runner) execute(
 	}
 
 	return result, nil
+}
+
+func (r *Runner) sharedChildRunner() *ChildRunner {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.childRunner
+}
+
+func runnerChildOptions(cfg options) []Option {
+	inherited := []Option{
+		WithWaitTimeout(cfg.waitTimeout),
+		WithExecutionTimeout(cfg.executionTimeout),
+	}
+	if cfg.coordinator != nil {
+		inherited = append(inherited, WithCoordinator(cfg.coordinator))
+	}
+	if cfg.hooks != nil {
+		inherited = append(inherited, WithHooks(cfg.hooks))
+	}
+	if cfg.maxConcurrent > 0 {
+		inherited = append(inherited, WithMaxConcurrent(cfg.maxConcurrent))
+	}
+	return inherited
 }
