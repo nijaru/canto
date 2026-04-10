@@ -19,7 +19,7 @@ type FileReferenceOptions struct {
 }
 
 func FileReferencePrompt(
-	root *workspace.Root,
+	root workspace.VirtualFS,
 	opts FileReferenceOptions,
 ) ccontext.RequestProcessor {
 	prefix := opts.Prefix

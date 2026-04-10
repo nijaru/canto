@@ -16,12 +16,12 @@ import (
 
 // ReadFileTool reads a file within a sandboxed root directory.
 type ReadFileTool struct {
-	root *workspace.Root
+	root workspace.VirtualFS
 }
 
 // NewReadFileTool creates a ReadFileTool sandboxed to root.
 // Paths outside root are rejected by the OS.
-func NewReadFileTool(root *workspace.Root) *ReadFileTool {
+func NewReadFileTool(root workspace.VirtualFS) *ReadFileTool {
 	return &ReadFileTool{root: root}
 }
 
@@ -58,11 +58,11 @@ func (t *ReadFileTool) Execute(_ context.Context, args string) (string, error) {
 
 // WriteFileTool writes a file within a sandboxed root directory.
 type WriteFileTool struct {
-	root *workspace.Root
+	root workspace.VirtualFS
 }
 
 // NewWriteFileTool creates a WriteFileTool sandboxed to root.
-func NewWriteFileTool(root *workspace.Root) *WriteFileTool {
+func NewWriteFileTool(root workspace.VirtualFS) *WriteFileTool {
 	return &WriteFileTool{root: root}
 }
 
@@ -117,11 +117,11 @@ func (t *WriteFileTool) ApprovalRequirement(args string) (approval.Requirement, 
 
 // ListDirTool lists the contents of a directory within a sandboxed root.
 type ListDirTool struct {
-	root *workspace.Root
+	root workspace.VirtualFS
 }
 
 // NewListDirTool creates a ListDirTool sandboxed to root.
-func NewListDirTool(root *workspace.Root) *ListDirTool {
+func NewListDirTool(root workspace.VirtualFS) *ListDirTool {
 	return &ListDirTool{root: root}
 }
 
@@ -167,11 +167,11 @@ func (t *ListDirTool) Execute(_ context.Context, args string) (string, error) {
 
 // GlobTool matches files by pattern within a sandboxed root.
 type GlobTool struct {
-	root *workspace.Root
+	root workspace.VirtualFS
 }
 
 // NewGlobTool creates a GlobTool sandboxed to root.
-func NewGlobTool(root *workspace.Root) *GlobTool {
+func NewGlobTool(root workspace.VirtualFS) *GlobTool {
 	return &GlobTool{root: root}
 }
 
@@ -212,7 +212,7 @@ func (t *GlobTool) Execute(ctx context.Context, args string) (string, error) {
 
 // FileTools returns ReadFile, WriteFile, ListDir, and Glob as a slice,
 // all sandboxed to root.
-func FileTools(root *workspace.Root) []tool.Tool {
+func FileTools(root workspace.VirtualFS) []tool.Tool {
 	return []tool.Tool{
 		NewReadFileTool(root),
 		NewWriteFileTool(root),

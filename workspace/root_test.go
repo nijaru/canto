@@ -47,6 +47,31 @@ func TestRootReadWriteListAndGlob(t *testing.T) {
 	}
 }
 
+func TestRootStat(t *testing.T) {
+	dir := t.TempDir()
+
+	root, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+
+	if err := root.WriteFile("nested/hello.txt", []byte("hi"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	info, err := root.Stat("nested/hello.txt")
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if info.IsDir() {
+		t.Fatal("expected file stat, got directory")
+	}
+	if info.Name() != "hello.txt" {
+		t.Fatalf("Stat.Name = %q, want hello.txt", info.Name())
+	}
+}
+
 func TestRootRejectsSymlinkEscapes(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink permissions are environment-dependent on Windows")

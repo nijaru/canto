@@ -103,6 +103,19 @@ func (r *Root) ReadFile(name string) ([]byte, error) {
 	return r.root.ReadFile(name)
 }
 
+// Stat returns file metadata relative to the workspace root.
+func (r *Root) Stat(name string) (fs.FileInfo, error) {
+	if r == nil || r.root == nil {
+		return nil, fmt.Errorf("workspace is not open")
+	}
+	var err error
+	name, err = r.validate(name, true)
+	if err != nil {
+		return nil, err
+	}
+	return r.root.Stat(name)
+}
+
 // WriteFile writes a file relative to the workspace root, creating parent
 // directories inside the workspace if needed.
 func (r *Root) WriteFile(name string, data []byte, perm os.FileMode) error {

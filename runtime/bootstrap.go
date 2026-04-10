@@ -23,7 +23,7 @@ type Bootstrap struct {
 // CaptureBootstrap snapshots the workspace root and available tools.
 func CaptureBootstrap(
 	ctx context.Context,
-	root *workspace.Root,
+	root workspace.VirtualFS,
 	reg *tool.Registry,
 ) (Bootstrap, error) {
 	if err := ctx.Err(); err != nil {
