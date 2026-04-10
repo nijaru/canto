@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nijaru/canto/audit"
 	"github.com/nijaru/canto/safety"
 )
 
@@ -53,6 +54,7 @@ type Executor struct {
 	MaxOutputBytes int
 	Sandbox        safety.Sandbox
 	EnvSanitizer   *safety.EnvSanitizer
+	AuditLogger    audit.Logger
 }
 
 // NewExecutor creates a new executor with the given timeout and max output size.
@@ -98,6 +100,24 @@ func (e *Executor) Run(ctx context.Context, cmd Command) (Result, error) {
 			}
 		}
 		if err := e.Sandbox.Wrap(execCmd, opts); err != nil {
+			if e.AuditLogger != nil {
+				kind := audit.KindSandboxEscapeAttempt
+				if errors.Is(err, safety.ErrSandboxUnavailable) {
+					kind = audit.KindSandboxWrapFailed
+				}
+				_ = e.AuditLogger.Log(context.Background(), audit.Event{
+					Kind:      kind,
+					Tool:      cmd.Name,
+					Category:  string(safety.CategoryExecute),
+					Operation: "sandbox.wrap",
+					Resource:  cmd.Name,
+					Decision:  "deny",
+					Reason:    err.Error(),
+					Metadata: map[string]any{
+						"workdir": cmd.Dir,
+					},
+				})
+			}
 			return Result{}, fmt.Errorf("executor sandbox: %w", err)
 		}
 	}

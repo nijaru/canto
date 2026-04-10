@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/nijaru/canto/approval"
+	"github.com/nijaru/canto/audit"
 )
 
 // Mode defines the execution mode of the agent.
@@ -29,7 +30,8 @@ const (
 
 // Policy is an implementation of approval.Policy that enforces safety modes.
 type Policy struct {
-	mode Mode
+	mode  Mode
+	audit audit.Logger
 }
 
 // NewPolicy creates a new safety policy with the given mode.
@@ -37,38 +39,112 @@ func NewPolicy(mode Mode) *Policy {
 	return &Policy{mode: mode}
 }
 
+// WithAuditLogger configures append-only security logging for policy decisions.
+func (p *Policy) WithAuditLogger(logger audit.Logger) *Policy {
+	if p == nil {
+		return nil
+	}
+	p.audit = logger
+	return p
+}
+
 // Decide implements approval.Policy.
 func (p *Policy) Decide(ctx context.Context, req approval.Request) (approval.Result, bool, error) {
 	switch p.mode {
 	case ModeAuto:
-		return approval.Result{
+		res := approval.Result{
 			Decision: approval.DecisionAllow,
 			Reason:   "Auto mode enabled",
-		}, true, nil
+		}
+		p.logAudit(
+			context.Background(),
+			auditEventForModeDecision(req, res, "security.policy.allowed"),
+		)
+		return res, true, nil
 	case ModeRead:
 		if Category(req.Category) == CategoryRead {
-			return approval.Result{
+			res := approval.Result{
 				Decision: approval.DecisionAllow,
 				Reason:   "Read operation allowed in read mode",
-			}, true, nil
+			}
+			p.logAudit(
+				context.Background(),
+				auditEventForModeDecision(req, res, "security.policy.allowed"),
+			)
+			return res, true, nil
 		}
-		return approval.Result{
+		res := approval.Result{
 			Decision: approval.DecisionDeny,
 			Reason:   "Only read operations allowed in read mode",
-		}, true, nil
+		}
+		p.logAudit(
+			context.Background(),
+			auditEventForModeDecision(req, res, "security.policy.denied"),
+		)
+		return res, true, nil
 	case ModeEdit:
 		if Category(req.Category) == CategoryRead {
-			return approval.Result{
+			res := approval.Result{
 				Decision: approval.DecisionAllow,
 				Reason:   "Read operation allowed in edit mode",
-			}, true, nil
+			}
+			p.logAudit(
+				context.Background(),
+				auditEventForModeDecision(req, res, "security.policy.allowed"),
+			)
+			return res, true, nil
 		}
 		// Write and execute operations require manual approval (not handled by this policy automatically).
+		p.logAudit(context.Background(), audit.Event{
+			Kind:      audit.KindPolicyDeferred,
+			Category:  req.Category,
+			Operation: req.Operation,
+			Resource:  req.Resource,
+			Decision:  "defer",
+			Reason:    "manual approval required",
+		})
 		return approval.Result{}, false, nil
 	default:
-		return approval.Result{
+		res := approval.Result{
 			Decision: approval.DecisionDeny,
 			Reason:   "Unknown safety mode",
-		}, true, nil
+		}
+		p.logAudit(
+			context.Background(),
+			auditEventForModeDecision(req, res, "security.policy.denied"),
+		)
+		return res, true, nil
 	}
+}
+
+func (p *Policy) logAudit(ctx context.Context, event audit.Event) {
+	if p == nil || p.audit == nil {
+		return
+	}
+	_ = p.audit.Log(ctx, event)
+}
+
+func auditEventForModeDecision(req approval.Request, res approval.Result, kind string) audit.Event {
+	return audit.Event{
+		Kind:      kind,
+		SessionID: req.SessionID,
+		Tool:      req.Tool,
+		Category:  req.Category,
+		Operation: req.Operation,
+		Resource:  req.Resource,
+		Decision:  string(res.Decision),
+		Reason:    res.Reason,
+		Metadata:  cloneMetadata(req.Metadata),
+	}
+}
+
+func cloneMetadata(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
 }

@@ -1,12 +1,18 @@
 package safety
 
-import "strings"
+import (
+	"context"
+	"strings"
+
+	"github.com/nijaru/canto/audit"
+)
 
 // EnvSanitizer scrubs sensitive environment variables before subprocess
 // execution while preserving a narrow allowlist of operational defaults.
 type EnvSanitizer struct {
-	Allow []string
-	Deny  []string
+	Allow       []string
+	Deny        []string
+	AuditLogger audit.Logger
 }
 
 // NewEnvSanitizer returns a sanitizer with conservative defaults.
@@ -58,6 +64,17 @@ func (s *EnvSanitizer) Sanitize(env []string) []string {
 		if _, ok := allow[upper]; ok || !s.denied(upper) {
 			out = append(out, entry)
 		}
+	}
+	if s.AuditLogger != nil && len(out) < len(env) {
+		_ = s.AuditLogger.Log(context.Background(), audit.Event{
+			Kind:   audit.KindEnvSanitized,
+			Reason: "environment variables were removed before subprocess execution",
+			Metadata: map[string]any{
+				"original_count": len(env),
+				"kept_count":     len(out),
+				"removed_count":  len(env) - len(out),
+			},
+		})
 	}
 	return out
 }

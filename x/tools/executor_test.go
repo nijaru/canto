@@ -1,12 +1,18 @@
 package tools
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-json-experiment/json"
+
+	"github.com/nijaru/canto/audit"
 	"github.com/nijaru/canto/safety"
 )
 
@@ -19,6 +25,14 @@ func (f *fakeSandbox) Wrap(cmd *exec.Cmd, opts safety.SandboxOptions) error {
 	f.called = true
 	f.opts = opts
 	return nil
+}
+
+type failingSandbox struct {
+	err error
+}
+
+func (f *failingSandbox) Wrap(cmd *exec.Cmd, opts safety.SandboxOptions) error {
+	return f.err
 }
 
 func TestExecutor_RunStructuredResult(t *testing.T) {
@@ -137,5 +151,72 @@ func TestExecutor_AppliesSandboxAndSanitizesEnvironment(t *testing.T) {
 	}
 	if result.Stdout != "ok|" {
 		t.Fatalf("expected sanitized command output %q, got %q", "ok|", result.Stdout)
+	}
+}
+
+func TestExecutor_LogsSandboxFailure(t *testing.T) {
+	var buf bytes.Buffer
+	failing := &failingSandbox{err: errors.New("sandbox failed")}
+	e := &Executor{
+		Timeout:        time.Second,
+		MaxOutputBytes: 1024,
+		Sandbox:        failing,
+		AuditLogger:    audit.NewWriterLogger(&buf),
+	}
+
+	_, err := e.Run(t.Context(), Command{
+		Name: "bash",
+		Args: []string{"-c", "echo hi"},
+	})
+	if err == nil {
+		t.Fatal("expected sandbox error")
+	}
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 audit line, got %d", len(lines))
+	}
+
+	var event audit.Event
+	if err := json.Unmarshal([]byte(lines[0]), &event); err != nil {
+		t.Fatalf("decode audit event: %v", err)
+	}
+	if event.Kind != audit.KindSandboxEscapeAttempt {
+		t.Fatalf("event kind = %q, want %q", event.Kind, audit.KindSandboxEscapeAttempt)
+	}
+	if !strings.Contains(event.Reason, "sandbox failed") {
+		t.Fatalf("expected sandbox failure reason, got %q", event.Reason)
+	}
+}
+
+func TestExecutor_LogsSandboxUnavailable(t *testing.T) {
+	var buf bytes.Buffer
+	failing := &failingSandbox{err: fmt.Errorf("backend missing: %w", safety.ErrSandboxUnavailable)}
+	e := &Executor{
+		Timeout:        time.Second,
+		MaxOutputBytes: 1024,
+		Sandbox:        failing,
+		AuditLogger:    audit.NewWriterLogger(&buf),
+	}
+
+	_, err := e.Run(t.Context(), Command{
+		Name: "bash",
+		Args: []string{"-c", "echo hi"},
+	})
+	if err == nil {
+		t.Fatal("expected sandbox error")
+	}
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 audit line, got %d", len(lines))
+	}
+
+	var event audit.Event
+	if err := json.Unmarshal([]byte(lines[0]), &event); err != nil {
+		t.Fatalf("decode audit event: %v", err)
+	}
+	if event.Kind != audit.KindSandboxWrapFailed {
+		t.Fatalf("event kind = %q, want %q", event.Kind, audit.KindSandboxWrapFailed)
 	}
 }

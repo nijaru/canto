@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/nijaru/canto/audit"
 	"github.com/nijaru/canto/session"
 	"github.com/oklog/ulid/v2"
 )
@@ -53,6 +54,7 @@ type Policy interface {
 
 type Manager struct {
 	policy Policy
+	audit  audit.Logger
 
 	mu      sync.Mutex
 	pending map[string]pendingRequest
@@ -60,6 +62,7 @@ type Manager struct {
 
 type pendingRequest struct {
 	ch       chan Result
+	req      Request
 	resolved bool
 }
 
@@ -68,6 +71,15 @@ func NewManager(policy Policy) *Manager {
 		policy:  policy,
 		pending: make(map[string]pendingRequest),
 	}
+}
+
+// WithAuditLogger configures an append-only security audit logger.
+func (m *Manager) WithAuditLogger(logger audit.Logger) *Manager {
+	if m == nil {
+		return nil
+	}
+	m.audit = logger
+	return m
 }
 
 func (m *Manager) Request(
@@ -94,6 +106,15 @@ func (m *Manager) Request(
 	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.ApprovalRequested, req)); err != nil {
 		return Result{}, err
 	}
+	m.logAudit(context.Background(), audit.Event{
+		Kind:      audit.KindApprovalRequested,
+		SessionID: sess.ID(),
+		Tool:      toolName,
+		Category:  requirement.Category,
+		Operation: requirement.Operation,
+		Resource:  requirement.Resource,
+		Metadata:  cloneMetadata(requirement.Metadata),
+	})
 
 	if m.policy != nil {
 		res, handled, err := m.policy.Decide(ctx, req)
@@ -105,13 +126,17 @@ func (m *Manager) Request(
 			if err := m.appendResolved(ctx, sess, res); err != nil {
 				return Result{}, err
 			}
+			m.logAudit(
+				context.Background(),
+				auditEventForApprovalResolution(sess.ID(), toolName, requirement, res),
+			)
 			return res, nil
 		}
 	}
 
 	ch := make(chan Result, 1)
 	m.mu.Lock()
-	m.pending[req.ID] = pendingRequest{ch: ch}
+	m.pending[req.ID] = pendingRequest{ch: ch, req: req}
 	m.mu.Unlock()
 
 	select {
@@ -131,6 +156,16 @@ func (m *Manager) Request(
 				"tool": toolName,
 			}),
 		)
+		m.logAudit(context.Background(), audit.Event{
+			Kind:      audit.KindApprovalCanceled,
+			SessionID: sess.ID(),
+			Tool:      toolName,
+			Category:  requirement.Category,
+			Operation: requirement.Operation,
+			Resource:  requirement.Resource,
+			Metadata:  cloneMetadata(requirement.Metadata),
+			Reason:    ctx.Err().Error(),
+		})
 		return Result{}, ctx.Err()
 	}
 }
@@ -158,6 +193,21 @@ func (m *Manager) Resolve(requestID string, decision Decision, reason string) er
 		Decision:  decision,
 		Reason:    reason,
 	}
+	kind := audit.KindToolAllowed
+	if decision == DecisionDeny {
+		kind = audit.KindToolDenied
+	}
+	m.logAudit(context.Background(), audit.Event{
+		Kind:      kind,
+		SessionID: pending.req.SessionID,
+		Tool:      pending.req.Tool,
+		Category:  pending.req.Category,
+		Operation: pending.req.Operation,
+		Resource:  pending.req.Resource,
+		Decision:  string(decision),
+		Reason:    reason,
+		Metadata:  cloneMetadata(pending.req.Metadata),
+	})
 	return nil
 }
 
@@ -177,6 +227,35 @@ func (m *Manager) appendResolved(ctx context.Context, sess *session.Session, res
 		"decision": result.Decision,
 		"reason":   result.Reason,
 	}))
+}
+
+func (m *Manager) logAudit(ctx context.Context, event audit.Event) {
+	if m == nil || m.audit == nil {
+		return
+	}
+	_ = m.audit.Log(ctx, event)
+}
+
+func auditEventForApprovalResolution(
+	sessionID, toolName string,
+	requirement Requirement,
+	result Result,
+) audit.Event {
+	kind := audit.KindToolAllowed
+	if result.Decision == DecisionDeny {
+		kind = audit.KindToolDenied
+	}
+	return audit.Event{
+		Kind:      kind,
+		SessionID: sessionID,
+		Tool:      toolName,
+		Category:  requirement.Category,
+		Operation: requirement.Operation,
+		Resource:  requirement.Resource,
+		Decision:  string(result.Decision),
+		Reason:    result.Reason,
+		Metadata:  cloneMetadata(requirement.Metadata),
+	}
 }
 
 func cloneMetadata(src map[string]any) map[string]any {

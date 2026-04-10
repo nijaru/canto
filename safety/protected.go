@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/nijaru/canto/approval"
+	"github.com/nijaru/canto/audit"
 )
 
 // DefaultProtectedPaths returns a standard list of paths that should always
@@ -35,6 +36,15 @@ func IsProtectedPath(target string, paths []string) bool {
 // not perform its own symlink resolution; that is the workspace layer's
 // responsibility.
 func ProtectedPaths(next approval.Policy, paths []string) approval.Policy {
+	return ProtectedPathsWithAudit(next, paths, nil)
+}
+
+// ProtectedPathsWithAudit is the audit-aware form of ProtectedPaths.
+func ProtectedPathsWithAudit(
+	next approval.Policy,
+	paths []string,
+	logger audit.Logger,
+) approval.Policy {
 	protected := make([]string, 0, len(paths))
 	for _, p := range paths {
 		protected = append(protected, filepath.Clean(p))
@@ -45,6 +55,19 @@ func ProtectedPaths(next approval.Policy, paths []string) approval.Policy {
 			cat := Category(req.Category)
 			if (cat == CategoryWrite || cat == CategoryExecute) && req.Resource != "" {
 				if IsProtectedPath(req.Resource, protected) {
+					if logger != nil {
+						_ = logger.Log(context.Background(), audit.Event{
+							Kind:      audit.KindProtectedPathBlocked,
+							SessionID: req.SessionID,
+							Tool:      req.Tool,
+							Category:  req.Category,
+							Operation: req.Operation,
+							Resource:  req.Resource,
+							Decision:  "defer",
+							Reason:    "protected path requires manual approval",
+							Metadata:  cloneMetadata(req.Metadata),
+						})
+					}
 					// Force manual approval by skipping the next policy
 					return approval.Result{}, false, nil
 				}
