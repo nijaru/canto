@@ -31,6 +31,10 @@ const (
 // Storage, merge policy, and UI treatment are left to higher-level apps.
 type ArtifactRef = artifact.Descriptor
 
+// ArtifactKindWorkspaceFileRef marks durable file-reference records that
+// should stay internal to the framework and not surface as child artifacts.
+const ArtifactKindWorkspaceFileRef = "workspace_file_ref"
+
 // ChildRequestedData records a parent request for a child run.
 type ChildRequestedData struct {
 	ChildID         string         `json:"child_id"`
@@ -185,4 +189,10 @@ func (e Event) ChildMergedData() (ChildMergedData, bool, error) {
 
 func (e Event) ArtifactRecordedData() (ArtifactRecordedData, bool, error) {
 	return decodeEventData[ArtifactRecordedData](e, ArtifactRecorded, "artifact recorded")
+}
+
+// IsWorkspaceFileReferenceArtifact reports whether ref is an internal
+// framework record for a file identity seen during prompt construction.
+func IsWorkspaceFileReferenceArtifact(ref ArtifactRef) bool {
+	return ref.Kind == ArtifactKindWorkspaceFileRef
 }

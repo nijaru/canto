@@ -471,6 +471,9 @@ func collectArtifacts(sess *session.Session) []session.ArtifactRef {
 		if err != nil || !ok {
 			continue
 		}
+		if session.IsWorkspaceFileReferenceArtifact(data.Artifact) {
+			continue
+		}
 		artifacts = append(artifacts, data.Artifact)
 	}
 	return artifacts

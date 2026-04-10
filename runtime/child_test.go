@@ -970,6 +970,33 @@ func TestChildRunnerRun_PropagatesChildArtifactsToParent(t *testing.T) {
 	}
 }
 
+func TestCollectArtifactsSkipsWorkspaceFileReferences(t *testing.T) {
+	sess := session.New("artifact-filter")
+	if err := session.RecordArtifact(t.Context(), sess, session.ArtifactRecordedData{
+		Artifact: session.ArtifactRef{
+			ID:   "file-ref-1",
+			Kind: session.ArtifactKindWorkspaceFileRef,
+			URI:  "workspace://notes.txt",
+		},
+	}); err != nil {
+		t.Fatalf("record file ref: %v", err)
+	}
+	if err := session.RecordArtifact(t.Context(), sess, session.ArtifactRecordedData{
+		Artifact: session.ArtifactRef{
+			ID:   "artifact-1",
+			Kind: "note",
+			URI:  "memory://artifact-1",
+		},
+	}); err != nil {
+		t.Fatalf("record artifact: %v", err)
+	}
+
+	artifacts := collectArtifacts(sess)
+	if len(artifacts) != 1 || artifacts[0].ID != "artifact-1" {
+		t.Fatalf("collectArtifacts = %#v", artifacts)
+	}
+}
+
 func TestChildRunnerRun_PreparesAndCleansWorktree(t *testing.T) {
 	repo := initGitRepo(t)
 

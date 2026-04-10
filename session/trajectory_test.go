@@ -128,6 +128,16 @@ func TestExportRunTreeIncludesChildRuns(t *testing.T) {
 	if err := parent.Append(t.Context(), NewArtifactRecordedEvent(parent.ID(), ArtifactRecordedData{
 		ChildID: "child-1",
 		Artifact: ArtifactRef{
+			ID:   "file-ref-1",
+			Kind: ArtifactKindWorkspaceFileRef,
+			URI:  "workspace://notes.txt",
+		},
+	})); err != nil {
+		t.Fatalf("append file ref artifact: %v", err)
+	}
+	if err := parent.Append(t.Context(), NewArtifactRecordedEvent(parent.ID(), ArtifactRecordedData{
+		ChildID: "child-1",
+		Artifact: ArtifactRef{
 			ID:   "artifact-1",
 			Kind: "patch",
 			URI:  "/tmp/patch.diff",

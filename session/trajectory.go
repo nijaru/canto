@@ -306,7 +306,7 @@ func exportRunTree(
 			if err != nil {
 				return nil, err
 			}
-			if !ok || data.ChildID == "" {
+			if !ok || data.ChildID == "" || IsWorkspaceFileReferenceArtifact(data.Artifact) {
 				continue
 			}
 			child := ensureChildRun(childByID, data.ChildID, data.SessionID)
