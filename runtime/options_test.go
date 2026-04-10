@@ -38,6 +38,9 @@ func TestNewRunnerAppliesOptions(t *testing.T) {
 	if runner.hooks != hooks {
 		t.Fatal("expected hooks to be applied")
 	}
+	if runner.scheduler == nil {
+		t.Fatal("expected default scheduler to be applied")
+	}
 }
 
 func TestRunnerChildRunnerInheritsOptions(t *testing.T) {
@@ -125,5 +128,21 @@ func TestNewRunnerBuildsSharedChildRunner(t *testing.T) {
 	}
 	if runner.childRunner.maxConcurrent != 3 {
 		t.Fatalf("shared child max concurrent = %d, want 3", runner.childRunner.maxConcurrent)
+	}
+}
+
+func TestNewRunnerAppliesSchedulerOption(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	scheduler := NewLocalScheduler()
+	runner := NewRunner(store, &echoAgent{}, WithScheduler(scheduler))
+	defer runner.Close()
+
+	if runner.scheduler != scheduler {
+		t.Fatal("expected scheduler option to be applied")
 	}
 }

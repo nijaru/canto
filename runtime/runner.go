@@ -32,6 +32,7 @@ type Runner struct {
 	executionTimeout time.Duration
 	coordinator      Coordinator
 	hooks            *hook.Runner
+	scheduler        Scheduler
 
 	queue       *serialQueue
 	childRunner *ChildRunner
@@ -42,6 +43,10 @@ type Runner struct {
 // NewRunner creates a Runner with per-session coordination enabled.
 func NewRunner(s session.Store, a agent.Agent, opts ...Option) *Runner {
 	cfg := applyOptions(opts)
+	scheduler := cfg.scheduler
+	if scheduler == nil {
+		scheduler = NewLocalScheduler()
+	}
 	return &Runner{
 		store:            s,
 		agent:            a,
@@ -51,12 +56,16 @@ func NewRunner(s session.Store, a agent.Agent, opts ...Option) *Runner {
 		queue:            newSerialQueue(),
 		childRunner:      NewChildRunner(s, runnerChildOptions(cfg)...),
 		hooks:            cfg.hooks,
+		scheduler:        scheduler,
 		sessions:         make(map[string]*session.Session),
 	}
 }
 
 // Close gracefully stops the internal local coordinator and any active goroutines.
 func (r *Runner) Close() {
+	if r.scheduler != nil {
+		r.scheduler.Close()
+	}
 	if r.queue != nil {
 		r.queue.stop()
 	}
@@ -186,6 +195,70 @@ func (r *Runner) SpawnChild(
 // delegation surface.
 func (r *Runner) WaitChild(ctx context.Context, childID string) (ChildResult, error) {
 	return r.sharedChildRunner().Wait(ctx, childID)
+}
+
+// Bootstrap records an environment snapshot as the session's opening system
+// message so the first turn has workspace and tool context up front.
+func (r *Runner) Bootstrap(ctx context.Context, sessionID string, snap Bootstrap) error {
+	sess, err := r.getOrLoad(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	return snap.Append(ctx, sess)
+}
+
+// ScheduleChild queues a child run for future execution.
+func (r *Runner) ScheduleChild(
+	ctx context.Context,
+	parentSessionID string,
+	dueAt time.Time,
+	spec ChildSpec,
+) (ScheduledChild, error) {
+	if r.scheduler == nil {
+		return nil, fmt.Errorf("runner scheduler unavailable")
+	}
+
+	parent, err := r.getOrLoad(ctx, parentSessionID)
+	if err != nil {
+		return nil, err
+	}
+	spec, err = normalizeChildSpec(spec)
+	if err != nil {
+		return nil, err
+	}
+
+	childRunner := r.sharedChildRunner()
+	if childRunner == nil {
+		return nil, fmt.Errorf("runner child runner unavailable")
+	}
+
+	handle := newScheduledChildHandle(ChildRef{
+		ID:              spec.ID,
+		SessionID:       spec.SessionID,
+		ParentSessionID: parent.ID(),
+		AgentID:         spec.Agent.ID(),
+		Mode:            spec.Mode,
+	})
+
+	task, err := r.scheduler.Schedule(ctx, dueAt, func(runCtx context.Context) error {
+		parent, loadErr := r.getOrLoad(runCtx, parentSessionID)
+		if loadErr != nil {
+			handle.finish(ChildResult{
+				Ref: handle.ChildRef(),
+				Err: loadErr,
+			}, loadErr)
+			return loadErr
+		}
+
+		result, runErr := childRunner.Run(runCtx, parent, spec)
+		handle.finish(result, runErr)
+		return runErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	handle.attach(task)
+	return handle, nil
 }
 
 // Send appends a user message to the session and runs the agent.

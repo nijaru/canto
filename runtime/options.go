@@ -11,6 +11,7 @@ type options struct {
 	executionTimeout time.Duration
 	coordinator      Coordinator
 	hooks            *hook.Runner
+	scheduler        Scheduler
 	maxConcurrent    int
 }
 
@@ -45,6 +46,12 @@ func WithCoordinator(coord Coordinator) Option {
 func WithHooks(hooks *hook.Runner) Option {
 	return func(opts *options) {
 		opts.hooks = hooks
+	}
+}
+
+func WithScheduler(s Scheduler) Option {
+	return func(opts *options) {
+		opts.scheduler = s
 	}
 }
 

@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -416,5 +417,136 @@ func TestRunnerSpawnChildAndWaitChild(t *testing.T) {
 	}
 	if result.Summary != "pong" {
 		t.Fatalf("child summary = %q, want pong", result.Summary)
+	}
+}
+
+func TestRunnerScheduleChild_DelaysExecutionUntilDue(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("scheduled-parent").WithWriter(store)
+	runner := NewRunner(store, &echoAgent{})
+	defer runner.Close()
+	runner.sessions[parent.ID()] = parent
+
+	started := make(chan string, 1)
+	release := make(chan struct{})
+	var current int32
+	var maxSeen int32
+
+	dueAt := time.Now().Add(50 * time.Millisecond)
+	handle, err := runner.ScheduleChild(t.Context(), parent.ID(), dueAt, ChildSpec{
+		ID: "scheduled-child",
+		Agent: &blockingAgent{
+			id:      "scheduled-child",
+			started: started,
+			release: release,
+			current: &current,
+			maxSeen: &maxSeen,
+		},
+		Mode: session.ChildModeFresh,
+	})
+	if err != nil {
+		t.Fatalf("schedule child: %v", err)
+	}
+	if got := handle.ScheduleRef(); got.ID == "" || got.DueAt.IsZero() || got.Queued.IsZero() {
+		t.Fatalf("schedule ref not populated: %#v", got)
+	}
+	if got := handle.ChildRef(); got.ID != "scheduled-child" || got.SessionID == "" {
+		t.Fatalf("child ref not populated: %#v", got)
+	}
+
+	select {
+	case id := <-started:
+		t.Fatalf("child %q started before due time", id)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for scheduled child to start")
+	}
+
+	close(release)
+
+	result, err := handle.Wait(t.Context())
+	if err != nil {
+		t.Fatalf("wait scheduled child: %v", err)
+	}
+	if result.Status != session.ChildStatusCompleted {
+		t.Fatalf(
+			"scheduled child status = %q, want %q",
+			result.Status,
+			session.ChildStatusCompleted,
+		)
+	}
+	if result.Summary != "scheduled-child done" {
+		t.Fatalf("scheduled child summary = %q, want %q", result.Summary, "scheduled-child done")
+	}
+	if result.Ref.ID != "scheduled-child" {
+		t.Fatalf("scheduled child ref = %q, want scheduled-child", result.Ref.ID)
+	}
+}
+
+func TestRunnerScheduleChild_CancelBeforeStart(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("scheduled-cancel-parent").WithWriter(store)
+	runner := NewRunner(store, &echoAgent{})
+	defer runner.Close()
+	runner.sessions[parent.ID()] = parent
+
+	started := make(chan string, 1)
+	release := make(chan struct{})
+	var current int32
+	var maxSeen int32
+
+	handle, err := runner.ScheduleChild(
+		t.Context(),
+		parent.ID(),
+		time.Now().Add(time.Hour),
+		ChildSpec{
+			ID: "scheduled-cancel-child",
+			Agent: &blockingAgent{
+				id:      "scheduled-cancel-child",
+				started: started,
+				release: release,
+				current: &current,
+				maxSeen: &maxSeen,
+			},
+			Mode: session.ChildModeFresh,
+		},
+	)
+	if err != nil {
+		t.Fatalf("schedule child: %v", err)
+	}
+
+	if err := handle.Cancel(t.Context()); err != nil {
+		t.Fatalf("cancel scheduled child: %v", err)
+	}
+
+	select {
+	case id := <-started:
+		t.Fatalf("child %q started after cancel", id)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	result, err := handle.Wait(t.Context())
+	if err != nil {
+		t.Fatalf("wait canceled scheduled child: %v", err)
+	}
+	if result.Status != session.ChildStatusCanceled {
+		t.Fatalf("scheduled child status = %q, want %q", result.Status, session.ChildStatusCanceled)
+	}
+	if !errors.Is(result.Err, context.Canceled) {
+		t.Fatalf("scheduled child err = %v, want context.Canceled", result.Err)
 	}
 }

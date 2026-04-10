@@ -130,24 +130,11 @@ func (r *ChildRunner) Spawn(
 	if parent == nil {
 		return ChildRef{}, errors.New("spawn child: nil parent session")
 	}
-	if spec.Agent == nil {
-		return ChildRef{}, errors.New("spawn child: nil agent")
-	}
 
 	r.ensureSemaphore()
 
-	childID := spec.ID
-	if childID == "" {
-		childID = ulid.Make().String()
-	}
-	childSessionID := spec.SessionID
-	if childSessionID == "" {
-		childSessionID = childID
-	}
-	if spec.Mode == "" {
-		spec.Mode = session.ChildModeHandoff
-	}
-	if err := validateChildSpec(spec); err != nil {
+	spec, err := normalizeChildSpec(spec)
+	if err != nil {
 		return ChildRef{}, err
 	}
 
@@ -185,7 +172,7 @@ func (r *ChildRunner) Spawn(
 		})
 	}
 
-	childSess, err := r.materializeChildSession(ctx, parent, childSessionID, spec)
+	childSess, err := r.materializeChildSession(ctx, parent, spec.SessionID, spec)
 	if err != nil {
 		if worktree != nil {
 			worktree.Close()
@@ -194,8 +181,8 @@ func (r *ChildRunner) Spawn(
 	}
 
 	ref := ChildRef{
-		ID:              childID,
-		SessionID:       childSessionID,
+		ID:              spec.ID,
+		SessionID:       spec.SessionID,
 		ParentSessionID: parent.ID(),
 		AgentID:         childAgent.ID(),
 		Mode:            spec.Mode,
@@ -445,6 +432,25 @@ func configureChildAgentWithRuntime(
 		return nil, fmt.Errorf("spawn child: agent %q does not support runtime overrides", a.ID())
 	}
 	return configurable.ConfigureRuntime(cfg), nil
+}
+
+func normalizeChildSpec(spec ChildSpec) (ChildSpec, error) {
+	if spec.Agent == nil {
+		return ChildSpec{}, errors.New("spawn child: nil agent")
+	}
+	if spec.Mode == "" {
+		spec.Mode = session.ChildModeHandoff
+	}
+	if err := validateChildSpec(spec); err != nil {
+		return ChildSpec{}, err
+	}
+	if spec.ID == "" {
+		spec.ID = ulid.Make().String()
+	}
+	if spec.SessionID == "" {
+		spec.SessionID = spec.ID
+	}
+	return spec, nil
 }
 
 func childWaitReason(sess *session.Session) (reason string, externalID string) {
