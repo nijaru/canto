@@ -16,10 +16,10 @@ import (
 )
 
 type EditTool struct {
-	root workspace.VirtualFS
+	root workspace.WorkspaceFS
 }
 
-func NewEditTool(root workspace.VirtualFS) *EditTool {
+func NewEditTool(root workspace.WorkspaceFS) *EditTool {
 	return &EditTool{root: root}
 }
 
@@ -83,10 +83,10 @@ func (t *EditTool) ApprovalRequirement(args string) (approval.Requirement, bool,
 }
 
 type MultiEditTool struct {
-	root workspace.VirtualFS
+	root workspace.WorkspaceFS
 }
 
-func NewMultiEditTool(root workspace.VirtualFS) *MultiEditTool {
+func NewMultiEditTool(root workspace.WorkspaceFS) *MultiEditTool {
 	return &MultiEditTool{root: root}
 }
 
@@ -187,19 +187,19 @@ func (t *MultiEditTool) ApprovalRequirement(args string) (approval.Requirement, 
 	}, true, nil
 }
 
-func EditTools(root workspace.VirtualFS) []tool.Tool {
+func EditTools(root workspace.WorkspaceFS) []tool.Tool {
 	return []tool.Tool{
 		NewEditTool(root),
 		NewMultiEditTool(root),
 	}
 }
 
-func WorkspaceTools(root workspace.VirtualFS) []tool.Tool {
+func WorkspaceTools(root workspace.WorkspaceFS) []tool.Tool {
 	tools := FileTools(root)
 	return append(tools, EditTools(root)...)
 }
 
-func applyEdit(root workspace.VirtualFS, path, before, after string) (string, int, error) {
+func applyEdit(root workspace.WorkspaceFS, path, before, after string) (string, int, error) {
 	data, err := root.ReadFile(path)
 	if err != nil {
 		return "", 0, err

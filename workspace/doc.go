@@ -5,6 +5,6 @@
 // absolute, traversal, over-deep, or symlink-escaping paths before Root
 // delegates to os.Root for capability-based containment.
 //
-// VirtualFS is the first-class rooted filesystem capability. Root currently
+// WorkspaceFS is the first-class rooted filesystem capability. Root currently
 // implements it.
 package workspace
