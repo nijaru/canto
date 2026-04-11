@@ -10,9 +10,11 @@
 // durable changes such as compaction or artifact recording.
 //
 // History is always derived from session.EffectiveMessages rather than the raw
-// transcript, so compaction stays durable across future turns. Offloader and
-// Summarizer persist compaction snapshots back into the session log; Offloader
-// also emits durable artifact descriptors for externalized content.
+// transcript, so compaction and projection checkpoints stay durable across
+// future turns. Offloader and Summarizer persist compaction snapshots back
+// into the session log; projection snapshotting keeps cold-start rebuilds from
+// scanning the full transcript again. Offloader also emits durable artifact
+// descriptors for externalized content.
 // BudgetGuard reports request-capacity state before the provider call and gives
 // later masking/rebuild layers a structured budget status instead of relying on
 // overflow strings.

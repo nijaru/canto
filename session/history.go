@@ -62,6 +62,19 @@ func (e Event) CompactionSnapshot() (CompactionSnapshot, bool, error) {
 	return snapshot, true, nil
 }
 
+// ProjectionSnapshot decodes the payload of a projection snapshot event.
+func (e Event) ProjectionSnapshot() (ProjectionSnapshot, bool, error) {
+	if e.Type != ProjectionSnapshotted {
+		return ProjectionSnapshot{}, false, nil
+	}
+
+	var snapshot ProjectionSnapshot
+	if err := e.UnmarshalData(&snapshot); err != nil {
+		return ProjectionSnapshot{}, true, fmt.Errorf("decode projection event %s: %w", e.ID, err)
+	}
+	return snapshot, true, nil
+}
+
 // ForkOrigin decodes the fork lineage metadata attached to a copied event.
 func (e Event) ForkOrigin() (ForkOrigin, bool, error) {
 	raw, ok := e.Metadata["fork_origin"]
@@ -82,7 +95,7 @@ func (e Event) ForkOrigin() (ForkOrigin, bool, error) {
 }
 
 // EffectiveMessages returns the model-visible session history after applying
-// the latest durable compaction snapshot, if any.
+// the latest durable compaction or projection snapshot, if any.
 func (s *Session) EffectiveMessages() ([]llm.Message, error) {
 	return NewRebuilder().RebuildMessages(s)
 }
@@ -105,8 +118,8 @@ func (s *Session) rawMessagesLocked() ([]llm.Message, error) {
 }
 
 // EffectiveEntries returns the model-visible session history after applying
-// the latest durable compaction snapshot, together with the originating event
-// ID for each message when known.
+// the latest durable compaction or projection snapshot, together with the
+// originating event ID for each message when known.
 func (s *Session) EffectiveEntries() ([]HistoryEntry, error) {
 	return NewRebuilder().RebuildEntries(s)
 }
@@ -139,9 +152,21 @@ func (s *Session) historyEntryFromEvent(e *Event) (HistoryEntry, error) {
 	}, nil
 }
 
-func (s *Session) latestCompactionSnapshot() (CompactionSnapshot, bool, error) {
+func (s *Session) latestDurableSnapshot() (CompactionSnapshot, bool, error) {
 	for i := len(s.events) - 1; i >= 0; i-- {
-		snapshot, ok, err := s.events[i].CompactionSnapshot()
+		snapshot, ok, err := s.events[i].ProjectionSnapshot()
+		if err != nil {
+			return CompactionSnapshot{}, false, err
+		}
+		if ok {
+			if snapshot.CutoffEventID == "" ||
+				(len(snapshot.Entries) == 0 && len(snapshot.Messages) == 0) {
+				continue
+			}
+			return snapshot, true, nil
+		}
+
+		snapshot, ok, err = s.events[i].CompactionSnapshot()
 		if err != nil {
 			return CompactionSnapshot{}, false, err
 		}

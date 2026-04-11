@@ -76,3 +76,24 @@ func TestEventCompactionSnapshotDecode(t *testing.T) {
 		t.Fatalf("unexpected compaction snapshot: %#v", snapshot)
 	}
 }
+
+func TestEventProjectionSnapshotDecode(t *testing.T) {
+	event := NewProjectionSnapshot("sess", ProjectionSnapshot{
+		Strategy:      "count",
+		CutoffEventID: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "projection"},
+		},
+	})
+
+	snapshot, ok, err := event.ProjectionSnapshot()
+	if err != nil {
+		t.Fatalf("decode projection snapshot: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected projection snapshot metadata")
+	}
+	if snapshot.Strategy != "count" || snapshot.CutoffEventID == "" {
+		t.Fatalf("unexpected projection snapshot: %#v", snapshot)
+	}
+}

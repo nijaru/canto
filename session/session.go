@@ -254,7 +254,15 @@ func cloneMetadata(src map[string]any) map[string]any {
 }
 
 func remapForkedEventData(e Event, idMap map[string]string) Event {
-	snapshot, ok, err := e.CompactionSnapshot()
+	snapshot, ok, err := e.ProjectionSnapshot()
+	if err == nil && ok {
+		rewritten, marshalErr := json.Marshal(remapCompactionSnapshot(snapshot, idMap))
+		if marshalErr == nil {
+			e.Data = rewritten
+		}
+		return e
+	}
+	snapshot, ok, err = e.CompactionSnapshot()
 	if err != nil || !ok {
 		return e
 	}

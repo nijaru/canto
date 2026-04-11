@@ -121,3 +121,79 @@ func TestSessionFork_RewritesCompactionSnapshotEventReferences(t *testing.T) {
 		t.Fatalf("unexpected effective history: %#v", messages)
 	}
 }
+
+func TestSessionFork_RewritesProjectionSnapshotEventReferences(t *testing.T) {
+	sess := New("parent")
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: "old user"},
+		{Role: llm.RoleAssistant, Content: "old assistant"},
+		{Role: llm.RoleUser, Content: "recent user"},
+	} {
+		if err := sess.Append(t.Context(), NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+
+	parentEvents := sess.Events()
+	snapshot := ProjectionSnapshot{
+		Strategy:      "count",
+		CutoffEventID: parentEvents[2].ID.String(),
+		Entries: []HistoryEntry{
+			{
+				Message: llm.Message{
+					Role:    llm.RoleSystem,
+					Content: "<conversation_summary>\nsummary\n</conversation_summary>",
+				},
+			},
+			{
+				EventID: parentEvents[2].ID.String(),
+				Message: llm.Message{Role: llm.RoleUser, Content: "recent user"},
+			},
+		},
+	}
+	if err := sess.Append(t.Context(), NewProjectionSnapshot(sess.ID(), snapshot)); err != nil {
+		t.Fatalf("append projection snapshot: %v", err)
+	}
+
+	forked := sess.Fork("child")
+	childEvents := forked.Events()
+	if len(childEvents) != 4 {
+		t.Fatalf("expected 4 child events, got %d", len(childEvents))
+	}
+
+	childSnapshot, ok, err := childEvents[3].ProjectionSnapshot()
+	if err != nil {
+		t.Fatalf("decode child projection snapshot: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected child projection snapshot")
+	}
+	if childSnapshot.CutoffEventID != childEvents[2].ID.String() {
+		t.Fatalf(
+			"child cutoff = %q, want %q",
+			childSnapshot.CutoffEventID,
+			childEvents[2].ID,
+		)
+	}
+	if childSnapshot.Entries[1].EventID != childEvents[2].ID.String() {
+		t.Fatalf(
+			"child entry event_id = %q, want %q",
+			childSnapshot.Entries[1].EventID,
+			childEvents[2].ID,
+		)
+	}
+
+	messages, err := forked.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("effective messages: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected 2 effective messages, got %d", len(messages))
+	}
+	if messages[0].Content != "<conversation_summary>\nsummary\n</conversation_summary>" {
+		t.Fatalf("unexpected effective history: %#v", messages)
+	}
+	if messages[1].Content != "recent user" {
+		t.Fatalf("unexpected effective history: %#v", messages)
+	}
+}

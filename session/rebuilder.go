@@ -11,8 +11,9 @@ import (
 const defaultRebuilderFilesLimit = 5
 
 // Rebuilder standardizes how model-visible history is reconstructed after a
-// durable compaction snapshot. It keeps the append-only event log untouched and
-// materializes a canonical prompt view from snapshot state plus later events.
+// durable compaction or projection snapshot. It keeps the append-only event
+// log untouched and materializes a canonical prompt view from snapshot state
+// plus later events.
 type Rebuilder struct {
 	FilesLimit int
 }
@@ -43,7 +44,7 @@ func (r *Rebuilder) RebuildMessages(sess *Session) ([]llm.Message, error) {
 }
 
 func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) {
-	snapshot, ok, err := sess.latestCompactionSnapshot()
+	snapshot, ok, err := sess.latestDurableSnapshot()
 	if err != nil {
 		return nil, err
 	}
