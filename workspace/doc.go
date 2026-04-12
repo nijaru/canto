@@ -6,5 +6,6 @@
 // delegates to os.Root for capability-based containment.
 //
 // WorkspaceFS is the first-class rooted filesystem capability. Root currently
-// implements it.
+// implements it, and WorkspaceFS-backed search indexing builds on the same
+// rooted substrate.
 package workspace
