@@ -29,12 +29,13 @@ type OutputChunk struct {
 
 // Command describes one subprocess execution.
 type Command struct {
-	Name     string
-	Args     []string
-	Dir      string
-	Env      []string
-	OnOutput func(OutputChunk)
-	Sandbox  *safety.SandboxOptions
+	Name        string
+	Args        []string
+	Dir         string
+	Env         []string
+	SecretNames []string
+	OnOutput    func(OutputChunk)
+	Sandbox     *safety.SandboxOptions
 }
 
 // Result captures the structured outcome of a subprocess run.
@@ -54,6 +55,7 @@ type Executor struct {
 	MaxOutputBytes int
 	Sandbox        safety.Sandbox
 	EnvSanitizer   *safety.EnvSanitizer
+	SecretInjector safety.SecretInjector
 	AuditLogger    audit.Logger
 }
 
@@ -87,6 +89,59 @@ func (e *Executor) Run(ctx context.Context, cmd Command) (Result, error) {
 	}
 	if e.EnvSanitizer != nil {
 		env = e.EnvSanitizer.Sanitize(env)
+	}
+	if len(cmd.SecretNames) > 0 {
+		if e.SecretInjector == nil {
+			if e.AuditLogger != nil {
+				_ = e.AuditLogger.Log(context.Background(), audit.Event{
+					Kind:      audit.KindSecretInjectionFailed,
+					Tool:      cmd.Name,
+					Category:  "execute",
+					Operation: "secret.inject",
+					Resource:  cmd.Name,
+					Decision:  "deny",
+					Reason:    "secret injector is not configured",
+					Metadata: map[string]any{
+						"secret_count": len(cmd.SecretNames),
+					},
+				})
+			}
+			return Result{}, errors.New("executor secret injector is not configured")
+		}
+		injected, err := e.SecretInjector.Inject(runCtx, cmd.SecretNames)
+		if err != nil {
+			if e.AuditLogger != nil {
+				_ = e.AuditLogger.Log(context.Background(), audit.Event{
+					Kind:      audit.KindSecretInjectionFailed,
+					Tool:      cmd.Name,
+					Category:  "execute",
+					Operation: "secret.inject",
+					Resource:  cmd.Name,
+					Decision:  "deny",
+					Reason:    err.Error(),
+					Metadata: map[string]any{
+						"secret_count": len(cmd.SecretNames),
+					},
+				})
+			}
+			return Result{}, fmt.Errorf("executor secret injection: %w", err)
+		}
+		env = append(env, injected...)
+		if e.AuditLogger != nil {
+			_ = e.AuditLogger.Log(context.Background(), audit.Event{
+				Kind:      audit.KindSecretInjected,
+				Tool:      cmd.Name,
+				Category:  "execute",
+				Operation: "secret.inject",
+				Resource:  cmd.Name,
+				Decision:  "allow",
+				Reason:    "secrets injected into subprocess environment",
+				Metadata: map[string]any{
+					"secret_count": len(cmd.SecretNames),
+					"injected":     len(injected),
+				},
+			})
+		}
 	}
 	if len(env) > 0 {
 		execCmd.Env = env

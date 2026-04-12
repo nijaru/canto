@@ -13,18 +13,20 @@ import (
 )
 
 const (
-	KindApprovalRequested    = "security.approval.requested"
-	KindApprovalResolved     = "security.approval.resolved"
-	KindApprovalCanceled     = "security.approval.canceled"
-	KindPolicyAllowed        = "security.policy.allowed"
-	KindPolicyDenied         = "security.policy.denied"
-	KindPolicyDeferred       = "security.policy.deferred"
-	KindToolAllowed          = "security.tool.allowed"
-	KindToolDenied           = "security.tool.denied"
-	KindSandboxEscapeAttempt = "security.sandbox.escape_attempt"
-	KindSandboxWrapFailed    = "security.sandbox.wrap_failed"
-	KindEnvSanitized         = "security.env.sanitized"
-	KindProtectedPathBlocked = "security.path.blocked"
+	KindApprovalRequested     = "security.approval.requested"
+	KindApprovalResolved      = "security.approval.resolved"
+	KindApprovalCanceled      = "security.approval.canceled"
+	KindPolicyAllowed         = "security.policy.allowed"
+	KindPolicyDenied          = "security.policy.denied"
+	KindPolicyDeferred        = "security.policy.deferred"
+	KindToolAllowed           = "security.tool.allowed"
+	KindToolDenied            = "security.tool.denied"
+	KindSandboxEscapeAttempt  = "security.sandbox.escape_attempt"
+	KindSandboxWrapFailed     = "security.sandbox.wrap_failed"
+	KindEnvSanitized          = "security.env.sanitized"
+	KindSecretInjected        = "security.secret.injected"
+	KindSecretInjectionFailed = "security.secret.injection_failed"
+	KindProtectedPathBlocked  = "security.path.blocked"
 )
 
 // Event is one structured security fact in the append-only audit log.

@@ -35,6 +35,18 @@ func (f *failingSandbox) Wrap(cmd *exec.Cmd, opts safety.SandboxOptions) error {
 	return f.err
 }
 
+type fakeSecretInjector struct {
+	env []string
+	err error
+}
+
+func (f *fakeSecretInjector) Inject(ctx context.Context, names []string) ([]string, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return append([]string(nil), f.env...), nil
+}
+
 func TestExecutor_RunStructuredResult(t *testing.T) {
 	e := NewExecutor(time.Second, 1024)
 
@@ -151,6 +163,47 @@ func TestExecutor_AppliesSandboxAndSanitizesEnvironment(t *testing.T) {
 	}
 	if result.Stdout != "ok|" {
 		t.Fatalf("expected sanitized command output %q, got %q", "ok|", result.Stdout)
+	}
+}
+
+func TestExecutor_InjectsSecretsAfterSanitization(t *testing.T) {
+	injector := &fakeSecretInjector{env: []string{"OPENAI_API_KEY=secret"}}
+	e := &Executor{
+		Timeout:        time.Second,
+		MaxOutputBytes: 2048,
+		SecretInjector: injector,
+		EnvSanitizer: &safety.EnvSanitizer{
+			Allow: []string{"PATH"},
+			Deny:  []string{"KEY", "TOKEN"},
+		},
+	}
+
+	result, err := e.Run(t.Context(), Command{
+		Name:        "bash",
+		Args:        []string{"-lc", `printf "%s" "$OPENAI_API_KEY"`},
+		SecretNames: []string{"OPENAI_API_KEY"},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result.Stdout != "secret" {
+		t.Fatalf("expected injected secret output %q, got %q", "secret", result.Stdout)
+	}
+}
+
+func TestExecutor_RejectsSecretRequestsWithoutInjector(t *testing.T) {
+	e := &Executor{
+		Timeout:        time.Second,
+		MaxOutputBytes: 1024,
+	}
+
+	_, err := e.Run(t.Context(), Command{
+		Name:        "bash",
+		Args:        []string{"-lc", `echo hi`},
+		SecretNames: []string{"OPENAI_API_KEY"},
+	})
+	if err == nil {
+		t.Fatal("expected secret injector error")
 	}
 }
 
