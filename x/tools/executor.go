@@ -51,20 +51,22 @@ type Result struct {
 // Executor provides a standardized way to execute commands with timeouts,
 // bounded output capture, and streaming callbacks.
 type Executor struct {
-	Timeout        time.Duration
-	MaxOutputBytes int
-	Sandbox        safety.Sandbox
-	EnvSanitizer   *safety.EnvSanitizer
-	SecretInjector safety.SecretInjector
-	AuditLogger    audit.Logger
+	Timeout          time.Duration
+	MaxOutputBytes   int
+	Sandbox          safety.Sandbox
+	EnvSanitizer     *safety.EnvSanitizer
+	SecretInjector   safety.SecretInjector
+	OutputCompressor OutputCompressor
+	AuditLogger      audit.Logger
 }
 
 // NewExecutor creates a new executor with the given timeout and max output size.
 func NewExecutor(timeout time.Duration, maxOutputBytes int) *Executor {
 	return &Executor{
-		Timeout:        timeout,
-		MaxOutputBytes: maxOutputBytes,
-		EnvSanitizer:   safety.NewEnvSanitizer(),
+		Timeout:          timeout,
+		MaxOutputBytes:   maxOutputBytes,
+		EnvSanitizer:     safety.NewEnvSanitizer(),
+		OutputCompressor: NewLineOutputCompressor(),
 	}
 }
 
@@ -240,6 +242,9 @@ func (e *Executor) Run(ctx context.Context, cmd Command) (Result, error) {
 	result := collector.result()
 	if execCmd.ProcessState != nil {
 		result.ExitCode = execCmd.ProcessState.ExitCode()
+	}
+	if e.OutputCompressor != nil {
+		result = e.OutputCompressor.Compress(result)
 	}
 	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
 		result.TimedOut = true

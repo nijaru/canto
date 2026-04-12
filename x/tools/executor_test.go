@@ -105,6 +105,28 @@ func TestExecutor_Truncation(t *testing.T) {
 	}
 }
 
+func TestExecutor_CompressesRepeatedCombinedOutput(t *testing.T) {
+	e := NewExecutor(time.Second, 1024)
+
+	result, err := e.Run(t.Context(), Command{
+		Name: "bash",
+		Args: []string{"-lc", "printf 'line\\nline\\nline\\n\\nline2\\n'"},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if strings.Contains(result.Combined, "line\nline\nline") {
+		t.Fatalf("expected repeated lines to be compressed, got %q", result.Combined)
+	}
+	if !strings.Contains(result.Combined, "3x line") {
+		t.Fatalf("expected repeated line count, got %q", result.Combined)
+	}
+	if !strings.Contains(result.Combined, "line2") {
+		t.Fatalf("expected trailing content to remain, got %q", result.Combined)
+	}
+}
+
 func TestExecutor_StreamsOutput(t *testing.T) {
 	e := NewExecutor(time.Second, 1024)
 	var chunks []OutputChunk
