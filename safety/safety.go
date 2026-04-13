@@ -5,6 +5,7 @@ import (
 
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/audit"
+	"github.com/nijaru/canto/session"
 )
 
 // Mode defines the execution mode of the agent.
@@ -49,7 +50,11 @@ func (p *Policy) WithAuditLogger(logger audit.Logger) *Policy {
 }
 
 // Decide implements approval.Policy.
-func (p *Policy) Decide(ctx context.Context, req approval.Request) (approval.Result, bool, error) {
+func (p *Policy) Decide(
+	ctx context.Context,
+	sess *session.Session,
+	req approval.Request,
+) (approval.Result, bool, error) {
 	switch p.mode {
 	case ModeAuto:
 		res := approval.Result{

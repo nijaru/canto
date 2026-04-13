@@ -11,13 +11,15 @@ import (
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/audit"
 	"github.com/nijaru/canto/safety"
+	"github.com/nijaru/canto/session"
 )
 
 func TestPolicy_LogsAuditEvents(t *testing.T) {
+	sess := session.New("test")
 	var buf strings.Builder
 	policy := safety.NewPolicy(safety.ModeRead).WithAuditLogger(audit.NewWriterLogger(&buf))
 
-	res, handled, err := policy.Decide(context.Background(), approval.Request{
+	res, handled, err := policy.Decide(context.Background(), sess, approval.Request{
 		SessionID: "s-1",
 		Tool:      "bash",
 		Category:  string(safety.CategoryWrite),
@@ -52,9 +54,10 @@ func TestPolicy_LogsAuditEvents(t *testing.T) {
 }
 
 func TestProtectedPathsWithAudit_LogsBlockedPaths(t *testing.T) {
+	sess := session.New("test")
 	var buf bytes.Buffer
 	autoPolicy := approval.PolicyFunc(
-		func(ctx context.Context, req approval.Request) (approval.Result, bool, error) {
+		func(ctx context.Context, sess *session.Session, req approval.Request) (approval.Result, bool, error) {
 			return approval.Result{Decision: approval.DecisionAllow}, true, nil
 		},
 	)
@@ -65,7 +68,7 @@ func TestProtectedPathsWithAudit_LogsBlockedPaths(t *testing.T) {
 		audit.NewWriterLogger(&buf),
 	)
 
-	res, handled, err := protected.Decide(context.Background(), approval.Request{
+	res, handled, err := protected.Decide(context.Background(), sess, approval.Request{
 		SessionID: "s-2",
 		Tool:      "bash",
 		Category:  string(safety.CategoryWrite),

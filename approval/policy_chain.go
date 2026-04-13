@@ -1,16 +1,24 @@
 package approval
 
-import "context"
+import (
+	"context"
+
+	"github.com/nijaru/canto/session"
+)
 
 // PolicyFunc adapts a function into a Policy.
-type PolicyFunc func(ctx context.Context, req Request) (Result, bool, error)
+type PolicyFunc func(ctx context.Context, sess *session.Session, req Request) (Result, bool, error)
 
 // Decide implements Policy.
-func (f PolicyFunc) Decide(ctx context.Context, req Request) (Result, bool, error) {
+func (f PolicyFunc) Decide(
+	ctx context.Context,
+	sess *session.Session,
+	req Request,
+) (Result, bool, error) {
 	if f == nil {
 		return Result{}, false, nil
 	}
-	return f(ctx, req)
+	return f(ctx, sess, req)
 }
 
 // Chain composes multiple policies in order.
@@ -25,7 +33,11 @@ func NewChain(policies ...Policy) Policy {
 }
 
 // Decide implements Policy.
-func (c Chain) Decide(ctx context.Context, req Request) (Result, bool, error) {
+func (c Chain) Decide(
+	ctx context.Context,
+	sess *session.Session,
+	req Request,
+) (Result, bool, error) {
 	var (
 		res     Result
 		handled bool
@@ -35,7 +47,7 @@ func (c Chain) Decide(ctx context.Context, req Request) (Result, bool, error) {
 		if policy == nil {
 			continue
 		}
-		next, ok, err := policy.Decide(ctx, req)
+		next, ok, err := policy.Decide(ctx, sess, req)
 		if err != nil {
 			return Result{}, false, err
 		}

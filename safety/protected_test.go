@@ -6,12 +6,14 @@ import (
 
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/safety"
+	"github.com/nijaru/canto/session"
 )
 
 func TestProtectedPaths(t *testing.T) {
+	sess := session.New("test")
 	// Base policy that auto-approves everything
 	autoPolicy := approval.PolicyFunc(
-		func(ctx context.Context, req approval.Request) (approval.Result, bool, error) {
+		func(ctx context.Context, sess *session.Session, req approval.Request) (approval.Result, bool, error) {
 			return approval.Result{Decision: approval.DecisionAllow}, true, nil
 		},
 	)
@@ -88,7 +90,7 @@ func TestProtectedPaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res, handled, err := protected.Decide(context.Background(), tt.req)
+			res, handled, err := protected.Decide(context.Background(), sess, tt.req)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

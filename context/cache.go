@@ -74,29 +74,46 @@ func (f PromptCacheFingerprint) String() string {
 }
 
 // CacheAligner returns a RequestProcessor that adds provider-agnostic
-// cache-control markers to the request.
+// cache-control markers to the request to maximize prefix-cache hit rates.
 //
-// It marks the first messageLimit messages with "ephemeral" cache-control and
-// places a single "ephemeral" marker on the last tool (which caches the entire
-// tools array on providers like Anthropic). Providers that ignore CacheControl
-// are unaffected.
-func CacheAligner(messageLimit int) RequestProcessor {
+// It places "ephemeral" markers at predictable stable boundaries:
+// 1. The last system message (preserves system prompt cache during history mutations).
+// 2. The last tool (caches the entire tools array).
+// 3. The final messages in the request, up to historyLimit (caches the recent turn history).
+func CacheAligner(historyLimit int) RequestProcessor {
 	return RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
-			if req == nil {
+			if req == nil || len(req.Messages) == 0 {
 				return nil
 			}
 
-			// Anthropic caching: mark first n messages.
-			for i := 0; i < len(req.Messages) && i < messageLimit; i++ {
-				req.Messages[i].CacheControl = &llm.CacheControl{Type: "ephemeral"}
+			// 1. Mark the last system message to establish a stable prefix that
+			// survives history compaction or masking.
+			lastSystemIdx := -1
+			for i, m := range req.Messages {
+				if m.Role == llm.RoleSystem {
+					lastSystemIdx = i
+				} else if lastSystemIdx != -1 {
+					break // Stop at the first non-system message
+				}
+			}
+			if lastSystemIdx != -1 {
+				req.Messages[lastSystemIdx].CacheControl = &llm.CacheControl{Type: "ephemeral"}
 			}
 
-			// Mark tool list if present.
+			// 2. Mark the last tool.
 			if len(req.Tools) > 0 {
-				// For Anthropic, placing cache_control on the last tool caches the
-				// entire tools array (and system prompt) while only consuming 1 breakpoint.
 				req.Tools[len(req.Tools)-1].CacheControl = &llm.CacheControl{Type: "ephemeral"}
+			}
+
+			// 3. Mark the end of the history.
+			// This caches the full conversation prefix for the next turn.
+			count := 0
+			for i := len(req.Messages) - 1; i > lastSystemIdx && count < historyLimit; i-- {
+				if req.Messages[i].CacheControl == nil {
+					req.Messages[i].CacheControl = &llm.CacheControl{Type: "ephemeral"}
+					count++
+				}
 			}
 
 			return nil

@@ -46,18 +46,25 @@ type Result struct {
 	RequestID string
 	Decision  Decision
 	Reason    string
+	Automated bool // true if decided by policy, false if resolved via Resolve (HITL)
 }
 
 type Policy interface {
-	Decide(ctx context.Context, req Request) (Result, bool, error)
+	Decide(ctx context.Context, sess *session.Session, req Request) (Result, bool, error)
 }
 
+// Manager coordinates tool approval requests across automated policies and
+// human-in-the-loop (HITL) resolution. It includes a circuit breaker that
+// disables automated policies after N consecutive denials.
 type Manager struct {
-	policy Policy
-	audit  audit.Logger
+	policy    Policy
+	audit     audit.Logger
+	threshold int
 
-	mu      sync.Mutex
-	pending map[string]pendingRequest
+	mu                    sync.Mutex
+	pending               map[string]pendingRequest
+	consecutiveDenials    int
+	circuitBreakerTripped bool
 }
 
 type pendingRequest struct {
@@ -68,9 +75,21 @@ type pendingRequest struct {
 
 func NewManager(policy Policy) *Manager {
 	return &Manager{
-		policy:  policy,
-		pending: make(map[string]pendingRequest),
+		policy:    policy,
+		pending:   make(map[string]pendingRequest),
+		threshold: 3, // Default circuit breaker threshold
 	}
+}
+
+// WithThreshold configures the circuit breaker threshold.
+func (m *Manager) WithThreshold(n int) *Manager {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	m.threshold = n
+	m.mu.Unlock()
+	return m
 }
 
 // WithAuditLogger configures an append-only security audit logger.
@@ -80,6 +99,27 @@ func (m *Manager) WithAuditLogger(logger audit.Logger) *Manager {
 	}
 	m.audit = logger
 	return m
+}
+
+// ResetBreaker clears the circuit breaker state.
+func (m *Manager) ResetBreaker() {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.consecutiveDenials = 0
+	m.circuitBreakerTripped = false
+	m.mu.Unlock()
+}
+
+// IsTripped returns true if the circuit breaker has tripped.
+func (m *Manager) IsTripped() bool {
+	if m == nil {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.circuitBreakerTripped
 }
 
 func (m *Manager) Request(
@@ -116,13 +156,30 @@ func (m *Manager) Request(
 		Metadata:  cloneMetadata(requirement.Metadata),
 	})
 
-	if m.policy != nil {
-		res, handled, err := m.policy.Decide(ctx, req)
+	m.mu.Lock()
+	tripped := m.circuitBreakerTripped
+	m.mu.Unlock()
+
+	if m.policy != nil && !tripped {
+		res, handled, err := m.policy.Decide(ctx, sess, req)
 		if err != nil {
 			return Result{}, err
 		}
 		if handled {
 			res.RequestID = req.ID
+			res.Automated = true
+
+			m.mu.Lock()
+			if res.Decision == DecisionDeny {
+				m.consecutiveDenials++
+				if m.threshold > 0 && m.consecutiveDenials >= m.threshold {
+					m.circuitBreakerTripped = true
+				}
+			} else {
+				m.consecutiveDenials = 0
+			}
+			m.mu.Unlock()
+
 			if err := m.appendResolved(ctx, sess, res); err != nil {
 				return Result{}, err
 			}
@@ -188,6 +245,12 @@ func (m *Manager) Resolve(requestID string, decision Decision, reason string) er
 	pending.resolved = true
 	m.pending[requestID] = pending
 	delete(m.pending, requestID)
+
+	if decision == DecisionAllow {
+		m.consecutiveDenials = 0
+		m.circuitBreakerTripped = false
+	}
+
 	pending.ch <- Result{
 		RequestID: requestID,
 		Decision:  decision,

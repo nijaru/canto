@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/nijaru/canto/approval"
 	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -81,4 +82,32 @@ func (p *BudgetGuard) ApplyRequest(
 	}
 
 	return nil
+}
+
+// CircuitBreakerGuard injects a warning into the prompt if the approval manager
+// is in a tripped state (automated approvals disabled).
+type CircuitBreakerGuard struct {
+	Manager *approval.Manager
+}
+
+// NewCircuitBreakerGuard creates a new circuit breaker guard.
+func NewCircuitBreakerGuard(mgr *approval.Manager) *CircuitBreakerGuard {
+	return &CircuitBreakerGuard{Manager: mgr}
+}
+
+func (p *CircuitBreakerGuard) ApplyRequest(
+	ctx context.Context,
+	pr llm.Provider,
+	model string,
+	sess *session.Session,
+	req *llm.Request,
+) error {
+	if p.Manager == nil || !p.Manager.IsTripped() {
+		return nil
+	}
+
+	hint := "Notice: Automated tool approvals are currently disabled due to repeated safety denials. " +
+		"Every subsequent tool call will require manual human approval until the agent demonstrates safe behavior."
+
+	return ccontext.Instructions(hint).ApplyRequest(ctx, pr, model, sess, req)
 }

@@ -161,6 +161,7 @@ func New(
 		ccontext.Instructions(instructions),
 		ccontext.NewLazyTools(t),
 		ccontext.History(),
+		ccontext.CacheAligner(2),
 		ccontext.Capabilities(), // must be last: adapts system/temp for reasoning models
 	)
 

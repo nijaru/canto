@@ -86,9 +86,9 @@ func (m *ObservationMasker) MaskEntries(
 		masked[i] = entry
 
 		status = m.statusForEntries(ctx, p, model, prefix, masked)
-		if !m.shouldMask(status) {
-			break
-		}
+		// Do not break early even if budget is met.
+		// Masking all eligible older messages creates a predictable stable boundary
+		// that prevents the prompt cache from busting on every subsequent turn.
 	}
 
 	return masked, status

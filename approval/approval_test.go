@@ -134,3 +134,73 @@ func TestManager_RequestCancellation(t *testing.T) {
 		t.Fatalf("expected no pending requests after cancel, got %d", got)
 	}
 }
+
+func TestManager_CircuitBreaker(t *testing.T) {
+	policy := &mockDenyPolicy{}
+	mgr := NewManager(policy).WithThreshold(2)
+	sess := session.New("breaker")
+
+	// 1. First automated denial
+	res, err := mgr.Request(context.Background(), sess, "t1", "{}", Requirement{Category: "cat"})
+	if err != nil {
+		t.Fatalf("Request 1: %v", err)
+	}
+	if res.Decision != DecisionDeny || !res.Automated {
+		t.Fatalf("Request 1 result = %+v", res)
+	}
+
+	// 2. Second automated denial (should trip the breaker)
+	res, err = mgr.Request(context.Background(), sess, "t2", "{}", Requirement{Category: "cat"})
+	if err != nil {
+		t.Fatalf("Request 2: %v", err)
+	}
+	if res.Decision != DecisionDeny || !res.Automated {
+		t.Fatalf("Request 2 result = %+v", res)
+	}
+
+	// 3. Third request should bypass policy and wait for HITL
+	done := make(chan Result, 1)
+	go func() {
+		r, e := mgr.Request(context.Background(), sess, "t3", "{}", Requirement{Category: "cat"})
+		if e != nil {
+			t.Errorf("Request 3 error: %v", e)
+			return
+		}
+		done <- r
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	pending := mgr.Pending()
+	if len(pending) != 1 {
+		t.Fatalf("Request 3 should be pending HITL after breaker trip, got %d", len(pending))
+	}
+
+	// 4. Manual approval should reset the breaker
+	if err := mgr.Resolve(pending[0], DecisionAllow, "human override"); err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+
+	res = <-done
+	if res.Decision != DecisionAllow || res.Automated {
+		t.Fatalf("Request 3 resolution = %+v", res)
+	}
+
+	// 5. Next request should use automated policy again
+	res, err = mgr.Request(context.Background(), sess, "t4", "{}", Requirement{Category: "cat"})
+	if err != nil {
+		t.Fatalf("Request 4: %v", err)
+	}
+	if res.Decision != DecisionDeny || !res.Automated {
+		t.Fatalf("Request 4 result = %+v (should be automated denial)", res)
+	}
+}
+
+type mockDenyPolicy struct{}
+
+func (p *mockDenyPolicy) Decide(
+	ctx context.Context,
+	sess *session.Session,
+	req Request,
+) (Result, bool, error) {
+	return Result{Decision: DecisionDeny, Reason: "automated block"}, true, nil
+}

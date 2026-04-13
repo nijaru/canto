@@ -7,6 +7,7 @@ import (
 
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/audit"
+	"github.com/nijaru/canto/session"
 )
 
 // DefaultProtectedPaths returns a standard list of paths that should always
@@ -51,7 +52,7 @@ func ProtectedPathsWithAudit(
 	}
 
 	return approval.PolicyFunc(
-		func(ctx context.Context, req approval.Request) (approval.Result, bool, error) {
+		func(ctx context.Context, sess *session.Session, req approval.Request) (approval.Result, bool, error) {
 			cat := Category(req.Category)
 			if (cat == CategoryWrite || cat == CategoryExecute) && req.Resource != "" {
 				if IsProtectedPath(req.Resource, protected) {
@@ -76,7 +77,7 @@ func ProtectedPathsWithAudit(
 			if next == nil {
 				return approval.Result{}, false, nil
 			}
-			return next.Decide(ctx, req)
+			return next.Decide(ctx, sess, req)
 		},
 	)
 }

@@ -6,10 +6,12 @@ import (
 
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/safety"
+	"github.com/nijaru/canto/session"
 )
 
 func TestPolicy_Decide(t *testing.T) {
 	ctx := context.Background()
+	sess := session.New("test")
 
 	tests := []struct {
 		name         string
@@ -84,7 +86,7 @@ func TestPolicy_Decide(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			policy := safety.NewPolicy(tt.mode)
-			res, handled, err := policy.Decide(ctx, tt.req)
+			res, handled, err := policy.Decide(ctx, sess, tt.req)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

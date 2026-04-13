@@ -118,7 +118,7 @@ func TestCacheAligner(t *testing.T) {
 	}
 
 	for i, m := range req.Messages {
-		if i < 2 {
+		if i == 0 || i == 2 || i == 3 {
 			if m.CacheControl == nil || m.CacheControl.Type != "ephemeral" {
 				t.Errorf("expected message %d to have ephemeral cache control", i)
 			}

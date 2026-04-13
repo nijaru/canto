@@ -4,19 +4,22 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/nijaru/canto/session"
 )
 
 func TestPolicyChain_LastHandledWins(t *testing.T) {
+	sess := session.New("test")
 	chain := NewChain(
-		PolicyFunc(func(context.Context, Request) (Result, bool, error) {
+		PolicyFunc(func(context.Context, *session.Session, Request) (Result, bool, error) {
 			return Result{Decision: DecisionDeny, Reason: "base"}, true, nil
 		}),
-		PolicyFunc(func(context.Context, Request) (Result, bool, error) {
+		PolicyFunc(func(context.Context, *session.Session, Request) (Result, bool, error) {
 			return Result{Decision: DecisionAllow, Reason: "override"}, true, nil
 		}),
 	)
 
-	res, handled, err := chain.Decide(context.Background(), Request{Category: "tool"})
+	res, handled, err := chain.Decide(context.Background(), sess, Request{Category: "tool"})
 	if err != nil {
 		t.Fatalf("Decide: %v", err)
 	}
@@ -29,13 +32,14 @@ func TestPolicyChain_LastHandledWins(t *testing.T) {
 }
 
 func TestPolicyChain_DefersWhenUnmanaged(t *testing.T) {
+	sess := session.New("test")
 	chain := NewChain(
-		PolicyFunc(func(context.Context, Request) (Result, bool, error) {
+		PolicyFunc(func(context.Context, *session.Session, Request) (Result, bool, error) {
 			return Result{}, false, nil
 		}),
 	)
 
-	_, handled, err := chain.Decide(context.Background(), Request{})
+	_, handled, err := chain.Decide(context.Background(), sess, Request{})
 	if err != nil {
 		t.Fatalf("Decide: %v", err)
 	}
@@ -45,14 +49,15 @@ func TestPolicyChain_DefersWhenUnmanaged(t *testing.T) {
 }
 
 func TestPolicyChain_PropagatesErrors(t *testing.T) {
+	sess := session.New("test")
 	want := errors.New("boom")
 	chain := NewChain(
-		PolicyFunc(func(context.Context, Request) (Result, bool, error) {
+		PolicyFunc(func(context.Context, *session.Session, Request) (Result, bool, error) {
 			return Result{}, false, want
 		}),
 	)
 
-	_, _, err := chain.Decide(context.Background(), Request{})
+	_, _, err := chain.Decide(context.Background(), sess, Request{})
 	if !errors.Is(err, want) {
 		t.Fatalf("Decide error = %v, want %v", err, want)
 	}
