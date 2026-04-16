@@ -173,6 +173,22 @@ func TestMemoryPrompt_NilManager(t *testing.T) {
 	}
 }
 
+func TestMemoryPrompt_NilSessionNoops(t *testing.T) {
+	retriever := &stubRetriever{}
+	req := &llm.Request{}
+	proc := MemoryPrompt(retriever, MemoryPromptOptions{})
+	if err := proc.ApplyRequest(t.Context(), nil, "", nil, req); err != nil {
+		t.Fatalf("ApplyRequest: %v", err)
+	}
+	if len(req.Messages) != 0 {
+		t.Fatalf("expected no injected messages, got %#v", req.Messages)
+	}
+	if retriever.last.Text != "" || len(retriever.last.Namespaces) != 0 ||
+		len(retriever.last.Roles) != 0 || retriever.last.Limit != 0 {
+		t.Fatalf("expected retriever to stay untouched, got %#v", retriever.last)
+	}
+}
+
 func TestMemoryPrompt_UsesRetrieverInterface(t *testing.T) {
 	sess := session.New("thread-stub")
 	req := &llm.Request{}

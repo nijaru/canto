@@ -36,7 +36,11 @@ func (t *RememberTool) Spec() llm.Spec {
 					"type": "object",
 				},
 				"importance": map[string]any{"type": "number"},
-				"mode":       map[string]any{"type": "string"},
+				"mode": map[string]any{
+					"type":        "string",
+					"enum":        []string{"sync", "async"},
+					"description": "Optional write mode override. Omit to use the manager's default.",
+				},
 			},
 			"required": []string{"content"},
 		},
@@ -75,7 +79,15 @@ func (t *RememberTool) Execute(ctx context.Context, args string) (string, error)
 	if err != nil {
 		return "", fmt.Errorf("invalid valid_to: %w", err)
 	}
-	mode := memory.WriteMode(input.Mode)
+	mode := memory.WriteMode("")
+	if input.Mode != "" {
+		switch memory.WriteMode(input.Mode) {
+		case memory.WriteSync, memory.WriteAsync:
+			mode = memory.WriteMode(input.Mode)
+		default:
+			return "", fmt.Errorf("invalid mode: %q", input.Mode)
+		}
+	}
 	result, err := t.Writer.Write(ctx, memory.WriteInput{
 		Namespace:  t.Namespace,
 		Role:       role,

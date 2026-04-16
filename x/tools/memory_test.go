@@ -36,6 +36,22 @@ func TestRememberTool_Spec(t *testing.T) {
 	if spec.Description == "" {
 		t.Error("expected non-empty description")
 	}
+	params, ok := spec.Parameters.(map[string]any)
+	if !ok {
+		t.Fatal("expected object spec parameters")
+	}
+	properties, ok := params["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("expected properties map in spec")
+	}
+	modeProp, ok := properties["mode"].(map[string]any)
+	if !ok {
+		t.Fatal("expected mode property in spec")
+	}
+	enum, ok := modeProp["enum"].([]string)
+	if !ok || len(enum) != 2 || enum[0] != "sync" || enum[1] != "async" {
+		t.Fatalf("expected mode enum [sync async], got %#v", modeProp["enum"])
+	}
 }
 
 func TestRecallTool_Spec(t *testing.T) {
@@ -129,6 +145,21 @@ func TestRememberTool_ParsesLifecycleFields(t *testing.T) {
 	}
 	if !strings.Contains(out, "\"Stored\": 1") {
 		t.Fatalf("unexpected output: %s", out)
+	}
+}
+
+func TestRememberTool_RejectsInvalidMode(t *testing.T) {
+	writer := &stubWriter{}
+	tool := &RememberTool{
+		Writer:    writer,
+		Namespace: memory.Namespace{Scope: memory.ScopeUser, ID: "u1"},
+		Role:      memory.RoleSemantic,
+	}
+	if _, err := tool.Execute(t.Context(), `{"content":"fresh","mode":"burst"}`); err == nil {
+		t.Fatal("expected invalid mode to fail")
+	}
+	if writer.last.Content != "" {
+		t.Fatalf("expected writer not to be called, got %#v", writer.last)
 	}
 }
 

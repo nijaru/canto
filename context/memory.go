@@ -39,6 +39,9 @@ func MemoryPrompt(retriever memory.Retriever, opts MemoryPromptOptions) RequestP
 		}
 		query := opts.Query
 		if query == "" {
+			if sess == nil {
+				return nil
+			}
 			messages, err := sess.EffectiveMessages()
 			if err != nil {
 				return err
