@@ -313,29 +313,76 @@ func NewRetryProvider(p Provider) *RetryProvider {
 	}
 }
 
+func normalizedRetryConfig(cfg RetryConfig) RetryConfig {
+	defaults := DefaultRetryConfig()
+	if cfg.MaxAttempts <= 0 {
+		cfg.MaxAttempts = 1
+	}
+	if cfg.MinInterval <= 0 {
+		cfg.MinInterval = defaults.MinInterval
+	}
+	if cfg.MaxInterval <= 0 {
+		cfg.MaxInterval = defaults.MaxInterval
+	}
+	if cfg.MaxInterval < cfg.MinInterval {
+		cfg.MaxInterval = cfg.MinInterval
+	}
+	if cfg.Multiplier <= 0 {
+		cfg.Multiplier = defaults.Multiplier
+	}
+	return cfg
+}
+
+func waitForRetry(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return nil
+		}
+	}
+
+	timer := time.NewTimer(delay)
+	defer func() {
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+	}()
+
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (r *RetryProvider) Generate(ctx context.Context, req *Request) (*Response, error) {
 	var resp *Response
 	var err error
-	interval := r.Config.MinInterval
+	cfg := normalizedRetryConfig(r.Config)
+	interval := cfg.MinInterval
 
-	for i := 0; i < r.Config.MaxAttempts; i++ {
+	for i := 0; i < cfg.MaxAttempts; i++ {
 		resp, err = r.Provider.Generate(ctx, req)
 		if err == nil {
 			return resp, nil
 		}
 
-		if !r.Provider.IsTransient(err) || i == r.Config.MaxAttempts-1 {
+		if !r.Provider.IsTransient(err) || i == cfg.MaxAttempts-1 {
 			return nil, err
 		}
 
-		select {
-		case <-time.After(interval):
-			interval = time.Duration(float64(interval) * r.Config.Multiplier)
-			if interval > r.Config.MaxInterval {
-				interval = r.Config.MaxInterval
-			}
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		if err := waitForRetry(ctx, interval); err != nil {
+			return nil, err
+		}
+		interval = time.Duration(float64(interval) * cfg.Multiplier)
+		if interval > cfg.MaxInterval {
+			interval = cfg.MaxInterval
 		}
 	}
 	return nil, err
@@ -344,26 +391,25 @@ func (r *RetryProvider) Generate(ctx context.Context, req *Request) (*Response, 
 func (r *RetryProvider) Stream(ctx context.Context, req *Request) (Stream, error) {
 	var s Stream
 	var err error
-	interval := r.Config.MinInterval
+	cfg := normalizedRetryConfig(r.Config)
+	interval := cfg.MinInterval
 
-	for i := 0; i < r.Config.MaxAttempts; i++ {
+	for i := 0; i < cfg.MaxAttempts; i++ {
 		s, err = r.Provider.Stream(ctx, req)
 		if err == nil {
 			return s, nil
 		}
 
-		if !r.Provider.IsTransient(err) || i == r.Config.MaxAttempts-1 {
+		if !r.Provider.IsTransient(err) || i == cfg.MaxAttempts-1 {
 			return nil, err
 		}
 
-		select {
-		case <-time.After(interval):
-			interval = time.Duration(float64(interval) * r.Config.Multiplier)
-			if interval > r.Config.MaxInterval {
-				interval = r.Config.MaxInterval
-			}
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		if err := waitForRetry(ctx, interval); err != nil {
+			return nil, err
+		}
+		interval = time.Duration(float64(interval) * cfg.Multiplier)
+		if interval > cfg.MaxInterval {
+			interval = cfg.MaxInterval
 		}
 	}
 	return nil, err
