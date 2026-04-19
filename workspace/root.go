@@ -136,7 +136,21 @@ func (r *Root) WriteFile(name string, data []byte, perm os.FileMode) error {
 	return r.root.WriteFile(name, data, perm)
 }
 
+// Remove deletes a file or empty directory relative to the workspace root.
+func (r *Root) Remove(name string) error {
+	if r == nil || r.root == nil {
+		return fmt.Errorf("workspace is not open")
+	}
+	var err error
+	name, err = r.validate(name, false)
+	if err != nil {
+		return err
+	}
+	return r.root.Remove(name)
+}
+
 // ReadDir lists directory entries relative to the workspace root.
+
 func (r *Root) ReadDir(name string) ([]fs.DirEntry, error) {
 	if r == nil || r.root == nil {
 		return nil, fmt.Errorf("workspace is not open")

@@ -55,6 +55,10 @@ func (f *FS) WriteFile(name string, data []byte, perm os.FileMode) error {
 	return os.ErrPermission
 }
 
+func (f *FS) Remove(name string) error {
+	return os.ErrPermission
+}
+
 func (f *FS) ReadFile(name string) ([]byte, error) {
 	name = path.Clean(strings.TrimPrefix(name, "/"))
 	parts := strings.Split(name, "/")

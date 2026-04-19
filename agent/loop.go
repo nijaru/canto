@@ -236,8 +236,9 @@ func Run(
 			totalUsage.InputTokens += res.Usage.InputTokens
 			totalUsage.OutputTokens += res.Usage.OutputTokens
 			totalUsage.TotalTokens += res.Usage.TotalTokens
+			totalUsage.CacheReadTokens += res.Usage.CacheReadTokens
+			totalUsage.CacheCreationTokens += res.Usage.CacheCreationTokens
 			totalUsage.Cost += res.Usage.Cost
-
 			stopReason = turnStopReasonForTurn(res, s, steps, maxSteps)
 			res.TurnStopReason = stopReason
 			if !yield(res, nil) {
@@ -280,9 +281,10 @@ func RunTurn(
 		totalUsage.InputTokens += stepRes.Usage.InputTokens
 		totalUsage.OutputTokens += stepRes.Usage.OutputTokens
 		totalUsage.TotalTokens += stepRes.Usage.TotalTokens
+		totalUsage.CacheReadTokens += stepRes.Usage.CacheReadTokens
+		totalUsage.CacheCreationTokens += stepRes.Usage.CacheCreationTokens
 		totalUsage.Cost += stepRes.Usage.Cost
 	}
-
 	res.Usage = totalUsage
 
 	// Populate Content from the last assistant message without tool calls.

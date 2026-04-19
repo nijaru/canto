@@ -111,10 +111,12 @@ type Response struct {
 
 // Usage tracks token consumption and cost.
 type Usage struct {
-	InputTokens  int     `json:"input_tokens"`
-	OutputTokens int     `json:"output_tokens"`
-	TotalTokens  int     `json:"total_tokens"`
-	Cost         float64 `json:"cost,omitzero"` // USD
+	InputTokens         int     `json:"input_tokens"`
+	OutputTokens        int     `json:"output_tokens"`
+	CacheReadTokens     int     `json:"cache_read_tokens,omitempty"`
+	CacheCreationTokens int     `json:"cache_creation_tokens,omitempty"`
+	TotalTokens         int     `json:"total_tokens"`
+	Cost                float64 `json:"cost,omitzero"` // USD
 }
 
 // Model describes an LLM model exposed by a provider.

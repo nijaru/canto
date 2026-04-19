@@ -223,9 +223,10 @@ func (w *wrappedProvider) Generate(
 	respAttrs := []attribute.KeyValue{
 		attribute.Int("gen_ai.usage.input_tokens", resp.Usage.InputTokens),
 		attribute.Int("gen_ai.usage.output_tokens", resp.Usage.OutputTokens),
+		attribute.Int("gen_ai.usage.cache_read.input_tokens", resp.Usage.CacheReadTokens),
+		attribute.Int("gen_ai.usage.cache_creation.input_tokens", resp.Usage.CacheCreationTokens),
 		attribute.Int("gen_ai.response.tool_call_count", len(resp.Calls)),
 	}
-
 	if w.recordMessages {
 		if b, err := json.Marshal(resp); err == nil {
 			respAttrs = append(respAttrs, attribute.String("gen_ai.output.messages", string(b)))
@@ -277,7 +278,10 @@ func (w *wrappedStream) Next() (*llm.Chunk, bool) {
 			w.usage.InputTokens += chunk.Usage.InputTokens
 			w.usage.OutputTokens += chunk.Usage.OutputTokens
 			w.usage.TotalTokens += chunk.Usage.TotalTokens
+			w.usage.CacheReadTokens += chunk.Usage.CacheReadTokens
+			w.usage.CacheCreationTokens += chunk.Usage.CacheCreationTokens
 		}
+
 		if w.recordMessages {
 			w.chunks = append(w.chunks, *chunk)
 		}
@@ -298,7 +302,10 @@ func (w *wrappedStream) Close() error {
 	attrs := []attribute.KeyValue{
 		attribute.Int("gen_ai.usage.input_tokens", w.usage.InputTokens),
 		attribute.Int("gen_ai.usage.output_tokens", w.usage.OutputTokens),
+		attribute.Int("gen_ai.usage.cache_read.input_tokens", w.usage.CacheReadTokens),
+		attribute.Int("gen_ai.usage.cache_creation.input_tokens", w.usage.CacheCreationTokens),
 	}
+
 	if w.recordMessages && len(w.chunks) > 0 {
 		if b, err := json.Marshal(w.chunks); err == nil {
 			attrs = append(attrs, attribute.String("gen_ai.output.messages", string(b)))
