@@ -5,20 +5,20 @@ Focus on session durability, context construction, tools, and orchestration. Not
 
 ## Project Structure
 
-| Directory  | Purpose                                                              |
-| ---------- | -------------------------------------------------------------------- |
-| `llm/`     | Layer 1: Provider-agnostic LLM interface, streaming, cost            |
-| `agent/`   | Layer 2: Agent loop (perceive → decide → act → observe)              |
-| `session/` | Layer 3a: Durable append-only event log, JSONL/SQLite stores         |
-| `context/` | Layer 3b: Context engineering pipeline, compaction, KV-cache helpers |
-| `tool/`    | Layer 3c: Tool execution, registry, MCP client/server                |
-| `skill/`   | Layer 3d: Progressive disclosure skill packages (SKILL.md standard)  |
-| `runtime/` | Layer 3e: Session execution, lane queue, heartbeat, workspace config |
-| `memory/`  | Layer 3f: In-context + external memory, SQLite-backed, vector store  |
-| `workspace/` | Rooted, symlink-safe workspace filesystem capability               |
-| `x/`       | Extension packages: graph, swarm, eval, channel, rl, obs, guardrail  |
-| `ai/`      | Local-only AI session context — excluded via `.git/info/exclude`     |
-| `.tasks/`  | Local-only task tracker state — excluded via `.git/info/exclude`     |
+| Directory    | Purpose                                                              |
+| ------------ | -------------------------------------------------------------------- |
+| `llm/`       | Layer 1: Provider-agnostic LLM interface, streaming, cost            |
+| `agent/`     | Layer 2: Agent loop (perceive → decide → act → observe)              |
+| `session/`   | Layer 3a: Durable append-only event log, JSONL/SQLite stores         |
+| `context/`   | Layer 3b: Context engineering pipeline, compaction, KV-cache helpers |
+| `tool/`      | Layer 3c: Tool execution, registry, MCP client/server                |
+| `skill/`     | Layer 3d: Progressive disclosure skill packages (SKILL.md standard)  |
+| `runtime/`   | Layer 3e: Session execution, lane queue, heartbeat, workspace config |
+| `memory/`    | Layer 3f: In-context + external memory, SQLite-backed, vector store  |
+| `workspace/` | Rooted, symlink-safe workspace filesystem capability                 |
+| `x/`         | Extension packages: graph, swarm, eval, channel, rl, obs, guardrail  |
+| `ai/`        | Local-only AI session context — excluded via `.git/info/exclude`     |
+| `.tasks/`    | Local-only task tracker state — excluded via `.git/info/exclude`     |
 
 ### AI Context Organization
 
@@ -29,7 +29,7 @@ Focus on session durability, context construction, tools, and orchestration. Not
 - `ai/STATUS.md` — current state, blockers, active work (read FIRST)
 - `ai/DESIGN.md` — architecture, layer breakdown, interface decisions
 - `ai/DECISIONS.md` — append-only design decisions with rationale
-- `ai/ROADMAP.md` — 4-phase implementation plan and phase gates
+- `ai/PLAN.md` — current phase frontier plus completed sprint archive
 
 **Reference files** (local only, loaded on demand):
 
@@ -82,18 +82,18 @@ Commands that must pass before shipping:
 
 ## Code Standards
 
-| Aspect         | Standard                                                                                     |
-| -------------- | -------------------------------------------------------------------------------------------- |
-| Architecture   | Layers depend downward only; extensions depend on Layer 3, never reverse                     |
-| State          | Session event log is append-only — never mutate or delete events                             |
-| Interfaces     | Keep the 5 core interfaces small; compose from them                                          |
+| Aspect         | Standard                                                                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture   | Layers depend downward only; extensions depend on Layer 3, never reverse                                                                    |
+| State          | Session event log is append-only — never mutate or delete events                                                                            |
+| Interfaces     | Keep the 5 core interfaces small; compose from them                                                                                         |
 | Context        | `RequestProcessor` shapes the in-flight request; `ContextMutator` records durable session or external changes and may declare `SideEffects` |
-| Orchestration  | Graph routing and coordination are Go functions; agent behavior within a turn is LLM-decided |
-| Compaction     | Offload (reversible) before summarize (lossy); never skip to summarize                       |
-| Tool loading   | Lazy when > 20 tools; present `search_tools` meta-tool first                                 |
-| KV cache       | System prompt always first message; never reorder or modify message prefix                   |
-| Error handling | Let errors propagate; catch only to recover                                                  |
-| Naming         | Proportional to scope; no V2/legacy/new markers                                              |
+| Orchestration  | Graph routing and coordination are Go functions; agent behavior within a turn is LLM-decided                                                |
+| Compaction     | Offload (reversible) before summarize (lossy); never skip to summarize                                                                      |
+| Tool loading   | Lazy when > 20 tools; present `search_tools` meta-tool first                                                                                |
+| KV cache       | System prompt always first message; never reorder or modify message prefix                                                                  |
+| Error handling | Let errors propagate; catch only to recover                                                                                                 |
+| Naming         | Proportional to scope; no V2/legacy/new markers                                                                                             |
 
 ## Go Idioms
 
@@ -116,11 +116,11 @@ Use the `go-expert` skill for full guidance. Key modern idioms:
 1. Research prior art → `ai/research/{topic}.md`
 2. Synthesize architecture → `ai/DESIGN.md` or `ai/design/{package}.md`
 3. Record decision → `ai/DECISIONS.md`
-4. Check phase gate → `ai/ROADMAP.md`
+4. Check phase frontier → `ai/PLAN.md`
 5. Implement with TDD — test gates in spec must pass before moving phases
 6. Run `go test ./... && go build ./...`
 7. Update `ai/STATUS.md` with findings
 
 ## Current Focus
 
-See local `ai/STATUS.md` for active work and `ai/ROADMAP.md` for phase status.
+See local `ai/STATUS.md` for active work and `ai/PLAN.md` for phase status.
