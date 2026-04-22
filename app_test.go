@@ -11,6 +11,7 @@ import (
 func TestAgentBuilderSend(t *testing.T) {
 	app, err := NewAgent("hello").
 		Instructions("You are concise.").
+		Model("faux").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "hello"})).
 		Build()
 	if err != nil {
@@ -37,6 +38,7 @@ func TestAgentBuilderRegistersTools(t *testing.T) {
 		},
 	)
 	app, err := NewAgent("tools").
+		Model("faux").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
 		Tools(testTool).
 		Build()
@@ -47,5 +49,17 @@ func TestAgentBuilderRegistersTools(t *testing.T) {
 
 	if _, ok := app.Tools.Get("echo"); !ok {
 		t.Fatal("expected echo tool to be registered")
+	}
+}
+
+func TestAgentBuilderRequiresModel(t *testing.T) {
+	_, err := NewAgent("missing-model").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
+		Build()
+	if err == nil {
+		t.Fatal("expected missing model error")
+	}
+	if err.Error() != "canto app: model is required" {
+		t.Fatalf("error = %q, want model required", err)
 	}
 }

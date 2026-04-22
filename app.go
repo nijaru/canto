@@ -16,8 +16,6 @@ import (
 	"github.com/nijaru/canto/tool"
 )
 
-const defaultModel = "canto-default"
-
 // App is the assembled authoring surface: an agent, runner, registry, and
 // session store. Callers can use the fields directly for full composition.
 type App struct {
@@ -92,8 +90,7 @@ type AgentBuilder struct {
 // NewAgent starts an authoring builder for a Canto app.
 func NewAgent(id string) *AgentBuilder {
 	return &AgentBuilder{
-		id:    id,
-		model: defaultModel,
+		id: id,
 	}
 }
 
@@ -191,6 +188,9 @@ func (b *AgentBuilder) Build() (*App, error) {
 	if b.provider == nil {
 		return nil, fmt.Errorf("canto app: provider is required")
 	}
+	if b.model == "" {
+		return nil, fmt.Errorf("canto app: model is required")
+	}
 
 	registry := b.registry
 	if registry == nil {
@@ -209,14 +209,10 @@ func (b *AgentBuilder) Build() (*App, error) {
 		}
 	}
 
-	model := b.model
-	if model == "" {
-		model = defaultModel
-	}
 	a := agent.New(
 		b.id,
 		b.instructions,
-		model,
+		b.model,
 		b.provider,
 		registry,
 		b.agentOptions...,
