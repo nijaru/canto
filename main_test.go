@@ -1,4 +1,4 @@
-package main
+package canto_test
 
 import (
 	"context"
