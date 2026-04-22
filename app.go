@@ -82,6 +82,7 @@ type AgentBuilder struct {
 	registry     *tool.Registry
 	tools        []tool.Tool
 	store        session.Store
+	ephemeral    bool
 
 	agentOptions   []agent.Option
 	runtimeOptions []runtime.Option
@@ -134,6 +135,15 @@ func (b *AgentBuilder) ToolSet(tools []tool.Tool) *AgentBuilder {
 
 func (b *AgentBuilder) SessionStore(store session.Store) *AgentBuilder {
 	b.store = store
+	b.ephemeral = false
+	return b
+}
+
+// Ephemeral uses an in-memory SQLite session store. This is useful for tests,
+// examples, and short-lived tools where session durability is not needed.
+func (b *AgentBuilder) Ephemeral() *AgentBuilder {
+	b.store = nil
+	b.ephemeral = true
 	return b
 }
 
@@ -202,10 +212,15 @@ func (b *AgentBuilder) Build() (*App, error) {
 
 	store := b.store
 	if store == nil {
+		if !b.ephemeral {
+			return nil, fmt.Errorf(
+				"canto app: session store is required; call SessionStore or Ephemeral",
+			)
+		}
 		var err error
 		store, err = session.NewSQLiteStore(":memory:")
 		if err != nil {
-			return nil, fmt.Errorf("canto app: default session store: %w", err)
+			return nil, fmt.Errorf("canto app: ephemeral session store: %w", err)
 		}
 	}
 

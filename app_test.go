@@ -13,6 +13,7 @@ func TestAgentBuilderSend(t *testing.T) {
 		Instructions("You are concise.").
 		Model("faux").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "hello"})).
+		Ephemeral().
 		Build()
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -41,6 +42,7 @@ func TestAgentBuilderRegistersTools(t *testing.T) {
 		Model("faux").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
 		Tools(testTool).
+		Ephemeral().
 		Build()
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -61,5 +63,18 @@ func TestAgentBuilderRequiresModel(t *testing.T) {
 	}
 	if err.Error() != "canto app: model is required" {
 		t.Fatalf("error = %q, want model required", err)
+	}
+}
+
+func TestAgentBuilderRequiresSessionStore(t *testing.T) {
+	_, err := NewAgent("missing-store").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
+		Build()
+	if err == nil {
+		t.Fatal("expected missing session store error")
+	}
+	if err.Error() != "canto app: session store is required; call SessionStore or Ephemeral" {
+		t.Fatalf("error = %q, want session store required", err)
 	}
 }

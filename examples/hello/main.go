@@ -14,6 +14,7 @@ func main() {
 		Instructions("You are a concise assistant.").
 		Model("faux").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "Hello from Canto."})).
+		Ephemeral().
 		Build()
 	if err != nil {
 		log.Fatal(err)
