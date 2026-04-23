@@ -33,6 +33,8 @@ type Runner struct {
 	coordinator      Coordinator
 	hooks            *hook.Runner
 	scheduler        Scheduler
+	beforeRun        []SessionFunc
+	overflowRecovery overflowRecoveryOptions
 
 	queue       *serialQueue
 	childRunner *ChildRunner
@@ -57,6 +59,8 @@ func NewRunner(s session.Store, a agent.Agent, opts ...Option) *Runner {
 		childRunner:      NewChildRunner(s, runnerChildOptions(cfg)...),
 		hooks:            cfg.hooks,
 		scheduler:        scheduler,
+		beforeRun:        append([]SessionFunc(nil), cfg.beforeRun...),
+		overflowRecovery: cfg.overflowRecovery,
 		sessions:         make(map[string]*session.Session),
 	}
 }
@@ -426,20 +430,45 @@ func (r *Runner) execute(
 		result agent.StepResult
 		err    error
 	)
-	if chunkFn != nil {
-		if s, ok := r.agent.(agent.Streamer); ok {
-			result, err = s.StreamTurn(ctx, sess, chunkFn)
+	for attempt := 0; ; attempt++ {
+		for _, fn := range r.beforeRun {
+			if err := fn(ctx, sess); err != nil {
+				return agent.StepResult{}, err
+			}
+		}
+
+		if chunkFn != nil {
+			if s, ok := r.agent.(agent.Streamer); ok {
+				result, err = s.StreamTurn(ctx, sess, chunkFn)
+			} else {
+				result, err = r.agent.Turn(ctx, sess)
+			}
 		} else {
 			result, err = r.agent.Turn(ctx, sess)
 		}
-	} else {
-		result, err = r.agent.Turn(ctx, sess)
-	}
-	if err != nil {
-		return agent.StepResult{}, err
-	}
 
-	return result, nil
+		if err == nil {
+			return result, nil
+		}
+		if !r.shouldRecoverOverflow(err, attempt) {
+			return agent.StepResult{}, err
+		}
+		if compactErr := r.overflowRecovery.compact(ctx, sess); compactErr != nil {
+			return agent.StepResult{}, fmt.Errorf(
+				"overflow recovery: compact failed: %w (original: %v)",
+				compactErr,
+				err,
+			)
+		}
+	}
+}
+
+func (r *Runner) shouldRecoverOverflow(err error, attempt int) bool {
+	recovery := r.overflowRecovery
+	return recovery.isOverflow != nil &&
+		recovery.compact != nil &&
+		attempt < recovery.maxRetries &&
+		recovery.isOverflow(err)
 }
 
 func (r *Runner) sharedChildRunner() *ChildRunner {

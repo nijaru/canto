@@ -9,6 +9,7 @@ import (
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/approval"
 	ccontext "github.com/nijaru/canto/context"
+	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
@@ -83,6 +84,7 @@ type AgentBuilder struct {
 	tools        []tool.Tool
 	store        session.Store
 	ephemeral    bool
+	compaction   *governor.CompactOptions
 
 	agentOptions   []agent.Option
 	runtimeOptions []runtime.Option
@@ -188,6 +190,13 @@ func (b *AgentBuilder) Mutators(mutators ...ccontext.ContextMutator) *AgentBuild
 	return b
 }
 
+// Compaction enables proactive compaction before each runner execution and
+// overflow recovery retry on context overflow errors.
+func (b *AgentBuilder) Compaction(opts governor.CompactOptions) *AgentBuilder {
+	b.compaction = &opts
+	return b
+}
+
 func (b *AgentBuilder) Build() (*App, error) {
 	if b == nil {
 		return nil, fmt.Errorf("canto app: nil builder")
@@ -200,6 +209,11 @@ func (b *AgentBuilder) Build() (*App, error) {
 	}
 	if b.model == "" {
 		return nil, fmt.Errorf("canto app: model is required")
+	}
+	if b.compaction != nil {
+		if err := validateCompactionOptions(*b.compaction); err != nil {
+			return nil, err
+		}
 	}
 
 	registry := b.registry
@@ -224,18 +238,42 @@ func (b *AgentBuilder) Build() (*App, error) {
 		}
 	}
 
+	provider := b.provider
+	runtimeOptions := append([]runtime.Option(nil), b.runtimeOptions...)
+	if b.compaction != nil {
+		opts := *b.compaction
+		compact := func(ctx context.Context, sess *session.Session) error {
+			_, err := governor.CompactSession(ctx, provider, b.model, sess, opts)
+			return err
+		}
+		runtimeOptions = append(runtimeOptions,
+			runtime.WithBeforeRun(compact),
+			runtime.WithOverflowRecovery(provider.IsContextOverflow, compact, 1),
+		)
+	}
+
 	a := agent.New(
 		b.id,
 		b.instructions,
 		b.model,
-		b.provider,
+		provider,
 		registry,
 		b.agentOptions...,
 	)
 	return &App{
 		Agent:  a,
-		Runner: runtime.NewRunner(store, a, b.runtimeOptions...),
+		Runner: runtime.NewRunner(store, a, runtimeOptions...),
 		Tools:  registry,
 		Store:  store,
 	}, nil
+}
+
+func validateCompactionOptions(opts governor.CompactOptions) error {
+	if opts.MaxTokens <= 0 {
+		return fmt.Errorf("canto app: compaction max tokens must be > 0")
+	}
+	if (opts.Artifacts == nil) == (opts.OffloadDir == "") {
+		return fmt.Errorf("canto app: compaction requires exactly one offload target")
+	}
+	return nil
 }
