@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/nijaru/canto.svg)](https://pkg.go.dev/badge/github.com/nijaru/canto)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Canto is a Go framework for building durable agent backends. It provides primitives for append-only session history, phased context construction, and multi-agent coordination.
+Canto is a Go framework for building durable agent backends. It provides primitives for append-only session history, context construction, tool execution, workspace-safe coding agents, service/API tools, and multi-agent coordination.
 
 > [!WARNING]
 > **Status: Pre-alpha.** Canto is under active development. APIs are unstable and subject to breaking changes.
@@ -13,6 +13,8 @@ Canto is a Go framework for building durable agent backends. It provides primiti
 - **Append-only log**: Every interaction, tool call, and compaction is recorded as a permanent fact.
 - **Durable Sessions**: JSONL or SQLite (FTS5) backends for session persistence and search.
 - **Phased Context**: Separate request building (preview) from state mutation (commit).
+- **Coding Tools**: Stable workspace, edit, shell, and code-execution tools in `coding/`.
+- **Service Tools**: Typed service/API helpers with schemas, approval requirements, metadata, and retries.
 - **Subagent Primitives**: Spawn, monitor, and export child agent runs with linked history.
 - **MCP Support**: Integration with the Model Context Protocol for tool discovery.
 - **Context Governance**: Automated offloading and summarization via the `governor` package.
@@ -31,27 +33,33 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 
-	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm/providers/anthropic"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/canto"
+	"github.com/nijaru/canto/llm"
 )
 
 func main() {
-	ctx := context.Background()
-	p := anthropic.NewProvider(...) // requires API key
+	app, err := canto.NewAgent("assistant").
+		Instructions("You are a concise assistant.").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "Hello from Canto."})).
+		Ephemeral().
+		Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer app.Close()
 
-	// 1. Define an agent
-	a := agent.New("assistant", "You are a helpful gopher.", "claude-3-5-sonnet", p, nil)
-
-	// 2. Start a session
-	sess := session.New("user-session-id")
-
-	// 3. Execute a turn
-	res, _ := a.Turn(ctx, sess)
+	res, err := app.Send(context.Background(), "session-1", "Say hello.")
+	if err != nil {
+		log.Fatal(err)
+	}
 	fmt.Println(res.Content)
 }
 ```
+
+Use `SessionStore(store)` instead of `Ephemeral()` for durable applications.
 
 ## Packages
 
@@ -61,6 +69,8 @@ func main() {
 | `session` | Append-only event log and storage | Semi-stable |
 | `agent` | Core turn-based loops | Active |
 | `runtime` | Coordinator and runner execution | Active |
+| `coding` | Stable workspace, edit, shell, and code execution tools | Active |
+| `service` | Typed service/API tool helpers | Active |
 | `governor` | Context offloading and guards | New |
 | `safety` | Execution modes and tool gating | New |
 | `artifact` | Blob storage and registry | Semi-stable |
@@ -68,7 +78,10 @@ func main() {
 
 ## Examples
 
-- [Quickstart](examples/quickstart/main.go): Basic durable agent loop.
+- [Hello](examples/hello/main.go): Minimal no-credential root-builder agent.
+- [Code Agent](examples/codeagent/main.go): No-credential Claude Code/Codex/Cursor-class reference using durable sessions, workspace tools, approvals, hooks, service tools, and resume.
+- [Service Agent](examples/service-agent/main.go): Typed service/API tool example.
+- [Quickstart](examples/quickstart/main.go): Lower-level durable agent loop.
 - [Subagents](examples/subagents/main.go): Parallel child runs and run-tree export.
 - [Long Horizon](examples/long-horizon/main.go): Context offloading using the `governor`.
 
