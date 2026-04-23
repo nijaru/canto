@@ -15,6 +15,7 @@ import (
 // BashTool executes shell commands.
 type BashTool struct {
 	Executor *Executor
+	Dir      string
 }
 
 var _ tool.StreamingTool = (*BashTool)(nil)
@@ -57,6 +58,7 @@ func (b *BashTool) Execute(ctx context.Context, args string) (string, error) {
 	result, err := executor.Run(ctx, Command{
 		Name: "bash",
 		Args: []string{"-c", input.Command},
+		Dir:  b.Dir,
 	})
 	if err != nil {
 		return result.Combined, err
@@ -87,6 +89,7 @@ func (b *BashTool) ExecuteStreaming(ctx context.Context, args string) iter.Seq2[
 		cmd := Command{
 			Name: "bash",
 			Args: []string{"-c", input.Command},
+			Dir:  b.Dir,
 			OnOutput: func(c OutputChunk) {
 				ch <- item{text: c.Text}
 			},

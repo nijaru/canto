@@ -1,93 +1,257 @@
-//go:build ignore
-
-// codeagent demonstrates a persistent CLI coding assistant.
-// It features:
-// - A durable JSONL session store so conversations persist across runs
-// - Tool registry with Bash and Python execution
-// - Go-native hooks for intercepting lifecycle events (like tool calls)
-//
-// Run: OPENAI_API_KEY=... go run examples/codeagent/main.go <message>
+// codeagent is a no-credential reference for building Claude Code/Codex/Cursor-
+// class agents on Canto primitives.
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/nijaru/canto"
 	"github.com/nijaru/canto/agent"
+	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/hook"
-	"github.com/nijaru/canto/llm/providers"
+	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
+	"github.com/nijaru/canto/safety"
+	"github.com/nijaru/canto/service"
 	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
+	cantotool "github.com/nijaru/canto/tool"
+	"github.com/nijaru/canto/workspace"
 	"github.com/nijaru/canto/x/tools"
 )
 
-const sessionID = "codeagent-session-1"
+const sessionID = "codeagent-reference"
+
+type searchArgs struct {
+	Query string `json:"query" jsonschema:"search query"`
+}
+
+type searchResult struct {
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Snippet string `json:"snippet"`
+}
 
 func main() {
 	ctx := context.Background()
+	rootDir, err := os.MkdirTemp("", "canto-codeagent-*")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer os.RemoveAll(rootDir)
 
-	// 1. Setup tools: bash for file ops, Python for execution
-	reg := tool.NewRegistry()
-	reg.Register(&tools.BashTool{})
-	reg.Register(tools.NewCodeExecutionTool("python"))
+	if err := seedWorkspace(rootDir); err != nil {
+		log.Fatal(err)
+	}
 
-	provider := providers.OpenAI()
+	root, err := workspace.Open(rootDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer root.Close()
 
-	instructions := `You are a coding assistant with access to bash and a Python REPL.
-You help users write, debug, and run code. Use bash to read files, run tests,
-and explore the codebase. Use execute_code for quick Python experiments.
-Always verify your changes work before reporting success.`
+	storePath := filepath.Join(rootDir, ".canto", "sessions.db")
+	if err := os.MkdirAll(filepath.Dir(storePath), 0o755); err != nil {
+		log.Fatal(err)
+	}
+	store, err := session.NewSQLiteStore(storePath)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// 2. Initialize the agent
-	a := agent.New("codeagent", instructions, "gpt-4o", provider, reg,
-		agent.WithMaxSteps(30),
-		agent.WithHooks(hook.NewFunc(
-			"log-tool-use",
-			[]hook.Event{hook.EventPreToolUse},
-			func(ctx context.Context, p *hook.Payload) *hook.Result {
-				toolName, _ := p.Data["tool"].(string)
-				args, _ := p.Data["args"].(string)
-				fmt.Fprintf(os.Stderr, "🔧 [Tool] %s(%v)\n", toolName, args)
-				return &hook.Result{Action: hook.ActionProceed}
-			},
-		)),
+	auditLog := &strings.Builder{}
+	executor := tools.NewExecutor(5*time.Second, 64*1024)
+	executor.SecretInjector = safety.StaticSecretInjector{
+		"EXAMPLE_TOKEN": "redacted",
+	}
+
+	webSearch, err := service.New(service.Config[searchArgs, searchResult]{
+		Name:        "web_search",
+		Description: "Search the web for reference information.",
+		Metadata: cantotool.Metadata{
+			Category:    "service",
+			ReadOnly:    true,
+			Concurrency: cantotool.Parallel,
+		},
+		Execute: func(_ context.Context, args searchArgs) (searchResult, error) {
+			return searchResult{
+				Title:   "Canto coding agents",
+				URL:     "https://example.com/canto-codeagent",
+				Snippet: "Canto composes durable sessions, workspace tools, approvals, hooks, and service tools.",
+			}, nil
+		},
+		Approval: service.ReadOnly("web.search", func(args searchArgs) string {
+			return args.Query
+		}),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	hooks := hook.NewRunner()
+	hooks.Register(hook.NewFunc(
+		"audit-tool-use",
+		[]hook.Event{hook.EventPreToolUse, hook.EventPostToolUse, hook.EventPostToolUseFailure},
+		func(_ context.Context, payload *hook.Payload) *hook.Result {
+			toolName, _ := payload.Data["tool"].(string)
+			if toolName != "" {
+				fmt.Fprintf(auditLog, "%s %s\n", payload.Event, toolName)
+			}
+			return &hook.Result{Action: hook.ActionProceed}
+		},
+	))
+
+	app, err := canto.NewAgent("codeagent").
+		Instructions("Use workspace, shell, and service tools to complete coding tasks. Verify changes before answering.").
+		Model("faux").
+		Provider(scriptedProvider()).
+		SessionStore(store).
+		Tools(referenceTools(root, rootDir, executor, webSearch)...).
+		Approvals(approval.NewManager(safety.NewPolicy(safety.ModeAuto))).
+		Hooks(hooks).
+		AgentOptions(agent.WithMaxSteps(8)).
+		RuntimeOptions(runtime.WithExecutionTimeout(15 * time.Second)).
+		Build()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer app.Close()
+
+	events, err := app.Runner.Watch(ctx, sessionID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer events.Close()
+
+	seen := make(chan []session.EventType, 1)
+	go collectEvents(events, seen)
+
+	result, err := app.Send(
+		ctx,
+		sessionID,
+		"Inspect the project, update README.md, consult web search, run tests, and summarize.",
 	)
-
-	// 3. Initialize persistent storage
-	store, err := session.NewJSONLStore("./data/codeagent")
 	if err != nil {
-		log.Fatalf("failed to create store: %v", err)
+		log.Fatal(err)
 	}
 
-	runner := runtime.NewRunner(store, a)
-
-	// 4. Get input from user (args or prompt)
-	var input string
-	if len(os.Args) > 1 {
-		input = strings.Join(os.Args[1:], " ")
-	} else {
-		fmt.Print(">>> ")
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan()
-		input = scanner.Text()
-	}
-
-	if input == "" {
-		fmt.Fprintln(os.Stderr, "no input provided")
-		os.Exit(1)
-	}
-
-	// 6. Append input and run the agent through the runner's canonical host API
-	result, err := runner.Send(ctx, sessionID, input)
+	resume, err := app.Send(ctx, sessionID, "Resume the session and report the current state.")
 	if err != nil {
-		log.Fatalf("run failed: %v", err)
+		log.Fatal(err)
 	}
 
-	// 7. Output the final assistant response
-	fmt.Println("\n" + result.Content)
+	events.Close()
+	eventTypes := <-seen
+
+	readme, err := root.ReadFile("README.md")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(result.Content)
+	fmt.Println(resume.Content)
+	fmt.Printf("README.md: %s\n", strings.TrimSpace(string(readme)))
+	fmt.Printf("Events: %s\n", eventSummary(eventTypes))
+	fmt.Printf("Audit:\n%s", auditLog.String())
+}
+
+func referenceTools(
+	root workspace.WorkspaceFS,
+	dir string,
+	executor *tools.Executor,
+	webSearch cantotool.Tool,
+) []cantotool.Tool {
+	bash := &tools.BashTool{Executor: executor, Dir: dir}
+	code := tools.NewCodeExecutionTool("python")
+	code.Executor = executor
+
+	out := tools.WorkspaceTools(root)
+	out = append(out, bash, code, webSearch)
+	return out
+}
+
+func scriptedProvider() llm.Provider {
+	return llm.NewFauxProvider(
+		"faux",
+		llm.FauxStep{
+			Calls: []llm.Call{
+				toolCall("list", "list_dir", `{"path":"."}`),
+				toolCall("read", "read_file", `{"path":"README.md"}`),
+				toolCall("search", "web_search", `{"query":"canto coding agent architecture"}`),
+			},
+		},
+		llm.FauxStep{
+			Calls: []llm.Call{
+				toolCall(
+					"edit",
+					"edit",
+					`{"path":"README.md","before":"status: draft","after":"status: verified"}`,
+				),
+				toolCall("bash", "bash", `{"command":"test -f README.md"}`),
+				toolCall("code", "execute_code", `{"code":"print('unit smoke ok')"}`),
+			},
+		},
+		llm.FauxStep{
+			Content: "Updated README.md, checked service context, and verified the workspace smoke test.",
+		},
+		llm.FauxStep{
+			Content: "Session resumed with durable history; README.md remains verified.",
+		},
+	)
+}
+
+func seedWorkspace(root string) error {
+	if err := os.WriteFile(
+		filepath.Join(root, "README.md"),
+		[]byte("project: reference\nstatus: draft\n"),
+		0o644,
+	); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n"), 0o644)
+}
+
+func collectEvents(sub *session.Subscription, done chan<- []session.EventType) {
+	var events []session.EventType
+	for event := range sub.Events() {
+		events = append(events, event.Type)
+	}
+	done <- events
+}
+
+func eventSummary(events []session.EventType) string {
+	counts := make(map[session.EventType]int)
+	for _, event := range events {
+		counts[event]++
+	}
+	names := []session.EventType{
+		session.MessageAdded,
+		session.ToolStarted,
+		session.ToolCompleted,
+		session.ApprovalRequested,
+		session.ApprovalResolved,
+		session.TurnCompleted,
+	}
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		if counts[name] > 0 {
+			parts = append(parts, fmt.Sprintf("%s=%d", name, counts[name]))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+func toolCall(id, name, args string) llm.Call {
+	call := llm.Call{
+		ID:   id,
+		Type: "function",
+	}
+	call.Function.Name = name
+	call.Function.Arguments = args
+	return call
 }

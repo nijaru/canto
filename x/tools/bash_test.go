@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -45,6 +47,41 @@ func TestBashTool_Execute_CommandFailure(t *testing.T) {
 	_, err := b.Execute(context.Background(), `{"command": "exit 1"}`)
 	if err == nil {
 		t.Fatal("expected error for failing command, got nil")
+	}
+}
+
+func TestBashTool_ExecuteUsesDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "marker.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+
+	b := &BashTool{Dir: dir}
+	out, err := b.Execute(t.Context(), `{"command": "cat marker.txt"}`)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if strings.TrimSpace(out) != "ok" {
+		t.Fatalf("output = %q, want ok", out)
+	}
+}
+
+func TestBashTool_ExecuteStreamingUsesDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "marker.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+
+	b := &BashTool{Dir: dir}
+	var deltas []string
+	for delta, err := range b.ExecuteStreaming(t.Context(), `{"command": "cat marker.txt"}`) {
+		if err != nil {
+			t.Fatalf("ExecuteStreaming: %v", err)
+		}
+		deltas = append(deltas, delta)
+	}
+	if strings.TrimSpace(strings.Join(deltas, "")) != "ok" {
+		t.Fatalf("output = %q, want ok", strings.Join(deltas, ""))
 	}
 }
 
