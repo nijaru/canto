@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/workspace"
 )
@@ -31,7 +31,7 @@ type FileReferenceRecorder struct {
 func RecordFileReferences(
 	root workspace.WorkspaceFS,
 	opts FileReferenceOptions,
-) ccontext.ContextMutator {
+) prompt.ContextMutator {
 	return &FileReferenceRecorder{Root: root, Opts: opts}
 }
 
@@ -40,12 +40,12 @@ func RecordFileReferences(
 func FileReferences(
 	root workspace.WorkspaceFS,
 	opts FileReferenceOptions,
-) (ccontext.ContextMutator, ccontext.RequestProcessor) {
+) (prompt.ContextMutator, prompt.RequestProcessor) {
 	return RecordFileReferences(root, opts), FileReferencePrompt(root, opts)
 }
 
-func (r *FileReferenceRecorder) Effects() ccontext.SideEffects {
-	return ccontext.SideEffects{Session: true}
+func (r *FileReferenceRecorder) Effects() prompt.SideEffects {
+	return prompt.SideEffects{Session: true}
 }
 
 func (r *FileReferenceRecorder) Mutate(
@@ -97,8 +97,8 @@ func (r *FileReferenceRecorder) Mutate(
 func FileReferencePrompt(
 	root workspace.WorkspaceFS,
 	opts FileReferenceOptions,
-) ccontext.RequestProcessor {
-	return ccontext.RequestProcessorFunc(func(
+) prompt.RequestProcessor {
+	return prompt.RequestProcessorFunc(func(
 		ctx context.Context,
 		p llm.Provider,
 		model string,

@@ -4,10 +4,10 @@ import (
 	"context"
 
 	"github.com/nijaru/canto/approval"
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
 )
@@ -24,7 +24,7 @@ type Agent interface {
 // original agent instance.
 type RuntimeConfig struct {
 	Tools             *tool.Registry
-	RequestProcessors []ccontext.RequestProcessor
+	RequestProcessors []prompt.RequestProcessor
 }
 
 // RuntimeConfigurable agents can produce a runtime-scoped view of themselves
@@ -44,7 +44,7 @@ type BaseAgent struct {
 	maxParallelTools int // Maximum concurrent tool executions per step
 	provider         llm.Provider
 	tools            *tool.Registry
-	builder          *ccontext.Builder
+	builder          *prompt.Builder
 	hooks            *hook.Runner
 	approvals        *approval.Manager
 }
@@ -110,11 +110,11 @@ func WithApprovalManager(
 }
 
 // WithBuilder replaces the agent's context builder pipeline.
-func WithBuilder(b *ccontext.Builder) Option { return func(a *BaseAgent) { a.builder = b } }
+func WithBuilder(b *prompt.Builder) Option { return func(a *BaseAgent) { a.builder = b } }
 
 // WithRequestProcessors inserts preview-safe request processors into the
 // default builder chain, placed before Capabilities (which must run last).
-func WithRequestProcessors(ps ...ccontext.RequestProcessor) Option {
+func WithRequestProcessors(ps ...prompt.RequestProcessor) Option {
 	return func(a *BaseAgent) {
 		a.builder.InsertRequestProcessorsBeforeLast(ps...)
 	}
@@ -122,7 +122,7 @@ func WithRequestProcessors(ps ...ccontext.RequestProcessor) Option {
 
 // WithMutators inserts commit-time mutators into the default builder chain,
 // preserving mutator order ahead of request shaping during commit builds.
-func WithMutators(ms ...ccontext.ContextMutator) Option {
+func WithMutators(ms ...prompt.ContextMutator) Option {
 	return func(a *BaseAgent) {
 		a.builder.AppendMutators(ms...)
 	}
@@ -157,12 +157,12 @@ func New(
 		hooks:            hook.NewRunner(),
 	}
 
-	a.builder = ccontext.NewBuilder(
-		ccontext.Instructions(instructions),
-		ccontext.NewLazyTools(t),
-		ccontext.History(),
-		ccontext.CacheAligner(2),
-		ccontext.Capabilities(), // must be last: adapts system/temp for reasoning models
+	a.builder = prompt.NewBuilder(
+		prompt.Instructions(instructions),
+		prompt.NewLazyTools(t),
+		prompt.History(),
+		prompt.CacheAligner(2),
+		prompt.Capabilities(), // must be last: adapts system/temp for reasoning models
 	)
 
 	for _, opt := range opts {

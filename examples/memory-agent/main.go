@@ -18,9 +18,9 @@ import (
 	"strings"
 
 	"github.com/nijaru/canto/agent"
-	cantoctx "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm/providers"
 	"github.com/nijaru/canto/memory"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
@@ -88,15 +88,15 @@ Directives: Always search memory before answering. Memorize important new facts.
 	//  2. History            — model-visible conversation transcript
 	//  3. Tools              — tool specs
 	//  4. Capabilities       — MUST be last; adapts system/temp for reasoning models
-	builder := cantoctx.NewBuilder(
-		cantoctx.MemoryPrompt(manager, cantoctx.MemoryPromptOptions{
+	builder := prompt.NewBuilder(
+		prompt.MemoryPrompt(manager, prompt.MemoryPromptOptions{
 			Namespaces: []memory.Namespace{namespace},
 			Roles:      []memory.Role{memory.RoleCore, memory.RoleSemantic, memory.RoleEpisodic},
 			Limit:      5,
 		}),
-		cantoctx.History(),
-		cantoctx.Tools(reg),
-		cantoctx.Capabilities(),
+		prompt.History(),
+		prompt.Tools(reg),
+		prompt.Capabilities(),
 	)
 
 	const instructions = `You are a research assistant with persistent memory across sessions.

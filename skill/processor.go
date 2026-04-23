@@ -6,18 +6,18 @@ import (
 	"strings"
 
 	agentskills "github.com/nijaru/agentskills"
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 )
 
 // ListPrompt injects a summary list of all available skills.
-func ListPrompt(reg *agentskills.Registry) ccontext.RequestProcessor {
+func ListPrompt(reg *agentskills.Registry) prompt.RequestProcessor {
 	return ListPromptWithOptions(reg, ListPromptOptions{})
 }
 
 // PreloadPrompt injects the full instructions for a selected skill set.
-func PreloadPrompt(skills ...*agentskills.Skill) ccontext.RequestProcessor {
+func PreloadPrompt(skills ...*agentskills.Skill) prompt.RequestProcessor {
 	preloaded := make([]*agentskills.Skill, 0, len(skills))
 	for _, skill := range skills {
 		if skill == nil {
@@ -25,7 +25,7 @@ func PreloadPrompt(skills ...*agentskills.Skill) ccontext.RequestProcessor {
 		}
 		preloaded = append(preloaded, skill)
 	}
-	return ccontext.RequestProcessorFunc(
+	return prompt.RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			if len(preloaded) == 0 {
 				return nil
@@ -43,7 +43,7 @@ func PreloadPrompt(skills ...*agentskills.Skill) ccontext.RequestProcessor {
 					sb.WriteByte('\n')
 				}
 			}
-			return ccontext.Instructions(sb.String()).ApplyRequest(ctx, p, model, sess, req)
+			return prompt.Instructions(sb.String()).ApplyRequest(ctx, p, model, sess, req)
 		},
 	)
 }

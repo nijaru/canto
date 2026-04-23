@@ -12,10 +12,10 @@ import (
 	"os"
 
 	"github.com/nijaru/canto/agent"
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/llm/providers"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 )
 
@@ -27,15 +27,15 @@ func main() {
 	offloadDir := "./data/long-horizon-offload"
 	os.MkdirAll(offloadDir, 0o755)
 
-	gov := []ccontext.ContextMutator{
+	gov := []prompt.ContextMutator{
 		governor.NewOffloader(1000, offloadDir),
 		governor.NewSummarizer(1000, provider, "gpt-4o"),
 	}
 
 	// 2. Build a phased context pipeline
-	builder := ccontext.NewBuilder(
-		ccontext.Instructions("You are a helpful assistant."),
-		ccontext.History(),
+	builder := prompt.NewBuilder(
+		prompt.Instructions("You are a helpful assistant."),
+		prompt.History(),
 	)
 	builder.AppendMutators(gov...)
 

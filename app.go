@@ -8,10 +8,10 @@ import (
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/approval"
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
@@ -175,7 +175,7 @@ func (b *AgentBuilder) Hooks(hooks *hook.Runner) *AgentBuilder {
 }
 
 func (b *AgentBuilder) RequestProcessors(
-	processors ...ccontext.RequestProcessor,
+	processors ...prompt.RequestProcessor,
 ) *AgentBuilder {
 	if len(processors) > 0 {
 		b.agentOptions = append(b.agentOptions, agent.WithRequestProcessors(processors...))
@@ -183,7 +183,7 @@ func (b *AgentBuilder) RequestProcessors(
 	return b
 }
 
-func (b *AgentBuilder) Mutators(mutators ...ccontext.ContextMutator) *AgentBuilder {
+func (b *AgentBuilder) Mutators(mutators ...prompt.ContextMutator) *AgentBuilder {
 	if len(mutators) > 0 {
 		b.agentOptions = append(b.agentOptions, agent.WithMutators(mutators...))
 	}

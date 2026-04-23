@@ -10,7 +10,7 @@ Focus on session durability, context construction, tools, and orchestration. Not
 | `llm/`       | Layer 1: Provider-agnostic LLM interface, streaming, cost            |
 | `agent/`     | Layer 2: Agent loop (perceive → decide → act → observe)              |
 | `session/`   | Layer 3a: Durable append-only event log, JSONL/SQLite stores         |
-| `context/`   | Layer 3b: Context engineering pipeline, compaction, KV-cache helpers |
+| `prompt/`   | Layer 3b: Context engineering pipeline, compaction, KV-cache helpers |
 | `tool/`      | Layer 3c: Tool execution, registry, MCP client/server                |
 | `skill/`     | Layer 3d: Progressive disclosure skill packages (SKILL.md standard)  |
 | `runtime/`   | Layer 3e: Session execution, lane queue, heartbeat, workspace config |

@@ -1,4 +1,4 @@
-package context
+package prompt
 
 // SideEffects describes whether a mutator changes durable session or external
 // state beyond request shaping.

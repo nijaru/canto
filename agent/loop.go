@@ -6,10 +6,10 @@ import (
 	"iter"
 
 	"github.com/nijaru/canto/approval"
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
 	"github.com/nijaru/canto/x/tracing"
@@ -19,7 +19,7 @@ type stepConfig struct {
 	ID               string
 	Model            string
 	Provider         llm.Provider
-	Builder          *ccontext.Builder
+	Builder          *prompt.Builder
 	Tools            *tool.Registry
 	Hooks            *hook.Runner
 	Approvals        *approval.Manager
@@ -77,7 +77,7 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 	tracing.EndContext(buildSpan, nil)
 	ctx = buildCtx
 
-	cacheFingerprint, err := ccontext.FingerprintPromptCache(s, req)
+	cacheFingerprint, err := prompt.FingerprintPromptCache(s, req)
 	if err != nil {
 		return StepResult{}, err
 	}

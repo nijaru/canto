@@ -1,4 +1,4 @@
-// Package context builds model requests from durable session state.
+// Package prompt builds model requests from durable session state.
 //
 // The package has two phases:
 //   - Builder.BuildPreview shapes the in-flight request without mutating
@@ -25,4 +25,4 @@
 // the built-in offload-then-summarize compaction path and reporting whether
 // durable compaction occurred. LazyTools derives unlocked tool state from
 // prior search_tools completions recorded in the session.
-package context
+package prompt

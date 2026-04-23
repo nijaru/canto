@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/nijaru/canto/approval"
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 )
 
@@ -44,7 +44,7 @@ func (p *TokenGuard) ApplyRequest(
 	req *llm.Request,
 ) error {
 	// 1. Calculate current token usage
-	currentTokens := ccontext.EstimateMessagesTokens(ctx, pr, model, req.Messages)
+	currentTokens := prompt.EstimateMessagesTokens(ctx, pr, model, req.Messages)
 
 	// 2. Check against budget
 	if p.MaxTokens > 0 && currentTokens > p.MaxTokens {
@@ -109,5 +109,5 @@ func (p *CircuitBreakerGuard) ApplyRequest(
 	hint := "Notice: Automated tool approvals are currently disabled due to repeated safety denials. " +
 		"Every subsequent tool call will require manual human approval until the agent demonstrates safe behavior."
 
-	return ccontext.Instructions(hint).ApplyRequest(ctx, pr, model, sess, req)
+	return prompt.Instructions(hint).ApplyRequest(ctx, pr, model, sess, req)
 }

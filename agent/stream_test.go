@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
 )
@@ -358,8 +358,8 @@ func TestWithRequestProcessorsInsertBeforeCapabilities(t *testing.T) {
 	origLen := len(a.builder.RequestProcessors())
 
 	a2 := New("a2", "", "m", &mockProvider{}, nil,
-		WithRequestProcessors(ccontext.RequestProcessorFunc(noopRequestProcessor)),
-		WithRequestProcessors(ccontext.RequestProcessorFunc(noopRequestProcessor)),
+		WithRequestProcessors(prompt.RequestProcessorFunc(noopRequestProcessor)),
+		WithRequestProcessors(prompt.RequestProcessorFunc(noopRequestProcessor)),
 	)
 	if got := len(a2.builder.RequestProcessors()); got != origLen+2 {
 		t.Errorf("expected %d request processors, got %d", origLen+2, got)
@@ -380,8 +380,8 @@ func TestWithRequestProcessorsAndMutatorsInsertBeforeCapabilities(t *testing.T) 
 	origMutators := len(a.builder.Mutators())
 
 	a2 := New("a2", "", "m", &mockProvider{}, nil,
-		WithRequestProcessors(ccontext.RequestProcessorFunc(noopRequestProcessor)),
-		WithMutators(ccontext.ContextMutatorFunc(noopMutator)),
+		WithRequestProcessors(prompt.RequestProcessorFunc(noopRequestProcessor)),
+		WithMutators(prompt.ContextMutatorFunc(noopMutator)),
 	)
 	if got := len(a2.builder.RequestProcessors()); got != origLen+1 {
 		t.Errorf("expected %d request processors, got %d", origLen+1, got)

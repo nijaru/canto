@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 )
 
@@ -52,7 +52,7 @@ func TestOffloadProcessor(t *testing.T) {
 	req := &llm.Request{
 		Messages: []llm.Message{{Role: llm.RoleSystem, Content: "instructions"}},
 	}
-	if err := ccontext.History().ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
+	if err := prompt.History().ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("history rebuild failed: %v", err)
 	}
 
@@ -81,7 +81,7 @@ func TestOffloadProcessor(t *testing.T) {
 	}
 
 	historyReq := &llm.Request{}
-	if err := ccontext.History().ApplyRequest(context.Background(), nil, "", sess, historyReq); err != nil {
+	if err := prompt.History().ApplyRequest(context.Background(), nil, "", sess, historyReq); err != nil {
 		t.Fatalf("history rebuild failed: %v", err)
 	}
 	if len(historyReq.Messages) != len(history) {
@@ -130,7 +130,7 @@ func TestOffloadProcessor_DuplicateToolOutputsGetDistinctArtifacts(t *testing.T)
 	req := &llm.Request{
 		Messages: []llm.Message{{Role: llm.RoleSystem, Content: "instructions"}},
 	}
-	if err := ccontext.History().ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
+	if err := prompt.History().ApplyRequest(context.Background(), nil, "", sess, req); err != nil {
 		t.Fatalf("history rebuild failed: %v", err)
 	}
 

@@ -1,16 +1,16 @@
-package context_test
+package prompt_test
 
 import (
 	"strings"
 	"testing"
 
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 )
 
 func TestObservationMaskerMaskEntriesMasksOlderLargeToolOutputs(t *testing.T) {
-	masker := ccontext.NewObservationMasker(ccontext.NewBudgetGuard(120))
+	masker := prompt.NewObservationMasker(prompt.NewBudgetGuard(120))
 	masker.MaxContentTokens = 10
 	masker.MinKeepMessages = 2
 
@@ -35,7 +35,7 @@ func TestObservationMaskerMaskEntriesMasksOlderLargeToolOutputs(t *testing.T) {
 	}
 
 	masked, status := masker.MaskEntries(t.Context(), nil, "", nil, entries)
-	if status.Level != ccontext.BudgetWarning {
+	if status.Level != prompt.BudgetWarning {
 		t.Fatalf("expected masked history to fall back out of terminal range, got %s", status.Level)
 	}
 	if masked[1].Message.Content == large {
@@ -53,7 +53,7 @@ func TestObservationMaskerMaskEntriesMasksOlderLargeToolOutputs(t *testing.T) {
 }
 
 func TestObservationMaskerMaskEntriesLeavesHistoryUntouchedBelowBudget(t *testing.T) {
-	masker := ccontext.NewObservationMasker(ccontext.NewBudgetGuard(10_000))
+	masker := prompt.NewObservationMasker(prompt.NewBudgetGuard(10_000))
 	masker.MaxContentTokens = 10
 
 	large := strings.Repeat("large output ", 20)
@@ -65,7 +65,7 @@ func TestObservationMaskerMaskEntriesLeavesHistoryUntouchedBelowBudget(t *testin
 	}
 
 	masked, status := masker.MaskEntries(t.Context(), nil, "", nil, entries)
-	if status.Level != ccontext.BudgetOK {
+	if status.Level != prompt.BudgetOK {
 		t.Fatalf("expected ok status, got %s", status.Level)
 	}
 	if masked[0].Message.Content != large {
@@ -88,7 +88,7 @@ func TestObservationMaskerHistoryProcessorAppendsMaskedHistory(t *testing.T) {
 		}
 	}
 
-	masker := ccontext.NewObservationMasker(ccontext.NewBudgetGuard(80))
+	masker := prompt.NewObservationMasker(prompt.NewBudgetGuard(80))
 	masker.MaxContentTokens = 10
 	masker.MinKeepMessages = 2
 

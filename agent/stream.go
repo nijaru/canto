@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/x/tracing"
 )
@@ -57,7 +57,7 @@ func (a *BaseAgent) StreamStep(
 	tracing.EndContext(buildSpan, nil)
 	ctx = buildCtx
 
-	cacheFingerprint, err := ccontext.FingerprintPromptCache(s, req)
+	cacheFingerprint, err := prompt.FingerprintPromptCache(s, req)
 	if err != nil {
 		return StepResult{}, err
 	}

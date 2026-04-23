@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	agentskills "github.com/nijaru/agentskills"
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 )
 
@@ -191,15 +191,15 @@ type ListPromptOptions struct {
 func ListPromptWithOptions(
 	reg *agentskills.Registry,
 	opts ListPromptOptions,
-) ccontext.RequestProcessor {
+) prompt.RequestProcessor {
 	if reg == nil {
-		return ccontext.RequestProcessorFunc(
+		return prompt.RequestProcessorFunc(
 			func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 				return nil
 			},
 		)
 	}
-	return ccontext.RequestProcessorFunc(
+	return prompt.RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
 			metas, err := selectSkillMetadata(ctx, reg, sess, opts)
 			if err != nil {
@@ -213,7 +213,7 @@ func ListPromptWithOptions(
 			for _, skill := range metas {
 				sb.WriteString(fmt.Sprintf("- %s: %s\n", skill.Name, skill.Description))
 			}
-			return ccontext.Instructions(sb.String()).ApplyRequest(ctx, p, model, sess, req)
+			return prompt.Instructions(sb.String()).ApplyRequest(ctx, p, model, sess, req)
 		},
 	)
 }

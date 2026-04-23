@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 )
 
@@ -17,7 +17,7 @@ const defaultCompactionTimeout = 5 * time.Minute
 // This allows the main CLI/TUI thread to queue incoming user messages without freezing
 // while the agent's durable state is rebuilt.
 type CompactionQueue struct {
-	mutator ccontext.ContextMutator
+	mutator prompt.ContextMutator
 
 	mu      sync.Mutex
 	running bool
@@ -26,24 +26,24 @@ type CompactionQueue struct {
 }
 
 // NewCompactionQueue creates a non-blocking wrapper for a compaction mutator.
-func NewCompactionQueue(m ccontext.ContextMutator) *CompactionQueue {
+func NewCompactionQueue(m prompt.ContextMutator) *CompactionQueue {
 	return &CompactionQueue{
 		mutator: m,
 		done:    make(chan struct{}),
 	}
 }
 
-// Effects delegates to the underlying mutator if it implements ccontext.SideEffects.
-func (q *CompactionQueue) Effects() ccontext.SideEffects {
-	if eff, ok := q.mutator.(interface{ Effects() ccontext.SideEffects }); ok {
+// Effects delegates to the underlying mutator if it implements prompt.SideEffects.
+func (q *CompactionQueue) Effects() prompt.SideEffects {
+	if eff, ok := q.mutator.(interface{ Effects() prompt.SideEffects }); ok {
 		return eff.Effects()
 	}
-	return ccontext.SideEffects{}
+	return prompt.SideEffects{}
 }
 
-// CompactionStrategy delegates to the underlying mutator if it implements ccontext.Compactor.
+// CompactionStrategy delegates to the underlying mutator if it implements prompt.Compactor.
 func (q *CompactionQueue) CompactionStrategy() string {
-	if cmp, ok := q.mutator.(ccontext.Compactor); ok {
+	if cmp, ok := q.mutator.(prompt.Compactor); ok {
 		return cmp.CompactionStrategy()
 	}
 	return "async"

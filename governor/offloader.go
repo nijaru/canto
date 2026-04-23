@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/nijaru/canto/artifact"
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 )
 
@@ -31,8 +31,8 @@ type Offloader struct {
 
 // Effects reports that offloading mutates both session state and external
 // filesystem state.
-func (p *Offloader) Effects() ccontext.SideEffects {
-	return ccontext.SideEffects{
+func (p *Offloader) Effects() prompt.SideEffects {
+	return prompt.SideEffects{
 		Session:  true,
 		External: true,
 	}
@@ -95,10 +95,10 @@ func (p *Offloader) compact(
 	}
 
 	// 1. Calculate usage
-	currentTokens := ccontext.EstimateMessagesTokens(ctx, pr, model, messages)
+	currentTokens := prompt.EstimateMessagesTokens(ctx, pr, model, messages)
 
 	// 2. If usage <= Threshold, do nothing
-	if !ccontext.ExceedsThreshold(currentTokens, p.MaxTokens, p.ThresholdPct) {
+	if !prompt.ExceedsThreshold(currentTokens, p.MaxTokens, p.ThresholdPct) {
 		return nil
 	}
 

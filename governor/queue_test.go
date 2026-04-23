@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 )
 
@@ -31,8 +31,8 @@ func (m *mockMutator) Mutate(
 	return m.err
 }
 
-func (m *mockMutator) Effects() ccontext.SideEffects {
-	return ccontext.SideEffects{Session: true}
+func (m *mockMutator) Effects() prompt.SideEffects {
+	return prompt.SideEffects{Session: true}
 }
 
 func (m *mockMutator) CompactionStrategy() string {

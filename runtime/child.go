@@ -11,9 +11,9 @@ import (
 
 	agentskills "github.com/nijaru/agentskills"
 	"github.com/nijaru/canto/agent"
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/skill"
 	"github.com/nijaru/canto/tool"
@@ -151,7 +151,7 @@ func (r *ChildRunner) Spawn(
 		runtimeCfg.Tools = scopedTools
 	}
 	if len(spec.Skills) > 0 {
-		runtimeCfg.RequestProcessors = []ccontext.RequestProcessor{
+		runtimeCfg.RequestProcessors = []prompt.RequestProcessor{
 			skill.PreloadPrompt(spec.Skills...),
 		}
 	}

@@ -1,12 +1,12 @@
-package context_test
+package prompt_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
+	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 )
 
@@ -38,18 +38,18 @@ func (m *mockBudgetProvider) IsTransient(error) bool       { return false }
 func (m *mockBudgetProvider) IsContextOverflow(error) bool { return false }
 
 func TestBudgetGuardCheckLevels(t *testing.T) {
-	guard := ccontext.NewBudgetGuard(100)
+	guard := prompt.NewBudgetGuard(100)
 
 	cases := []struct {
 		name     string
 		current  int
 		pending  int
-		expected ccontext.BudgetLevel
+		expected prompt.BudgetLevel
 	}{
-		{name: "ok", current: 50, pending: 0, expected: ccontext.BudgetOK},
-		{name: "warning", current: 60, pending: 10, expected: ccontext.BudgetWarning},
-		{name: "critical", current: 75, pending: 15, expected: ccontext.BudgetCritical},
-		{name: "exceeded", current: 90, pending: 10, expected: ccontext.BudgetExceeded},
+		{name: "ok", current: 50, pending: 0, expected: prompt.BudgetOK},
+		{name: "warning", current: 60, pending: 10, expected: prompt.BudgetWarning},
+		{name: "critical", current: 75, pending: 15, expected: prompt.BudgetCritical},
+		{name: "exceeded", current: 90, pending: 10, expected: prompt.BudgetExceeded},
 	}
 
 	for _, tc := range cases {
@@ -63,7 +63,7 @@ func TestBudgetGuardCheckLevels(t *testing.T) {
 }
 
 func TestBudgetGuardCheckNormalizesThresholds(t *testing.T) {
-	guard := &ccontext.BudgetGuard{
+	guard := &prompt.BudgetGuard{
 		MaxTokens:            100,
 		WarningThresholdPct:  -1,
 		CriticalThresholdPct: 0.2,
@@ -79,7 +79,7 @@ func TestBudgetGuardCheckNormalizesThresholds(t *testing.T) {
 			status.CriticalThresholdPct,
 		)
 	}
-	if status.Level != ccontext.BudgetCritical {
+	if status.Level != prompt.BudgetCritical {
 		t.Fatalf("expected critical after normalization, got %s", status.Level)
 	}
 }
@@ -94,16 +94,16 @@ func TestBudgetGuardApplyRequestReportsWarningWithoutError(t *testing.T) {
 		},
 	}
 
-	var seen ccontext.BudgetStatus
-	guard := ccontext.NewBudgetGuard(100)
-	guard.OnStatus = func(status ccontext.BudgetStatus) {
+	var seen prompt.BudgetStatus
+	guard := prompt.NewBudgetGuard(100)
+	guard.OnStatus = func(status prompt.BudgetStatus) {
 		seen = status
 	}
 
 	if err := guard.ApplyRequest(t.Context(), provider, "", sess, req); err != nil {
 		t.Fatalf("expected no error on warning threshold, got %v", err)
 	}
-	if seen.Level != ccontext.BudgetWarning {
+	if seen.Level != prompt.BudgetWarning {
 		t.Fatalf("expected warning callback, got %s", seen.Level)
 	}
 	if !seen.NeedsCompaction() {
@@ -121,17 +121,17 @@ func TestBudgetGuardApplyRequestReturnsTypedThresholdError(t *testing.T) {
 		},
 	}
 
-	guard := ccontext.NewBudgetGuard(100)
+	guard := prompt.NewBudgetGuard(100)
 	err := guard.ApplyRequest(t.Context(), provider, "", sess, req)
 	if err == nil {
 		t.Fatal("expected threshold error, got nil")
 	}
 
-	var thresholdErr *ccontext.BudgetThresholdError
+	var thresholdErr *prompt.BudgetThresholdError
 	if !errors.As(err, &thresholdErr) {
 		t.Fatalf("expected BudgetThresholdError, got %T", err)
 	}
-	if thresholdErr.Status.Level != ccontext.BudgetCritical {
+	if thresholdErr.Status.Level != prompt.BudgetCritical {
 		t.Fatalf("expected critical level, got %s", thresholdErr.Status.Level)
 	}
 	if !thresholdErr.Status.IsTerminal() {
@@ -146,7 +146,7 @@ func TestBudgetGuardApplyRequestNoLimit(t *testing.T) {
 		Messages: []llm.Message{{Role: llm.RoleUser, Content: "huge"}},
 	}
 
-	guard := ccontext.NewBudgetGuard(0)
+	guard := prompt.NewBudgetGuard(0)
 	if err := guard.ApplyRequest(t.Context(), provider, "", sess, req); err != nil {
 		t.Fatalf("expected no error with no limit, got %v", err)
 	}
