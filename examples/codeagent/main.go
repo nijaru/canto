@@ -181,6 +181,7 @@ func scriptedProvider() llm.Provider {
 		llm.FauxStep{
 			Calls: []llm.Call{
 				toolCall("list", "list_dir", `{"path":"."}`),
+				toolCall("glob", "glob", `{"pattern":"*.go"}`),
 				toolCall("read", "read_file", `{"path":"README.md"}`),
 				toolCall("search", "web_search", `{"query":"canto coding agent architecture"}`),
 			},
