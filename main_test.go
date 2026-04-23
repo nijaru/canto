@@ -7,12 +7,12 @@ import (
 	"testing"
 
 	"github.com/nijaru/canto/agent"
+	"github.com/nijaru/canto/coding"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
 	cantotest "github.com/nijaru/canto/x/testing"
-	tools "github.com/nijaru/canto/x/tools"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -24,7 +24,7 @@ func TestMain(t *testing.T) {
 	}
 
 	registry := tool.NewRegistry()
-	registry.Register(&tools.BashTool{})
+	registry.Register(&coding.BashTool{})
 
 	provider := cantotest.NewMockProvider("main",
 		cantotest.Step{

@@ -14,6 +14,7 @@ import (
 	"github.com/nijaru/canto"
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/approval"
+	"github.com/nijaru/canto/coding"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
@@ -22,7 +23,6 @@ import (
 	"github.com/nijaru/canto/session"
 	cantotool "github.com/nijaru/canto/tool"
 	"github.com/nijaru/canto/workspace"
-	"github.com/nijaru/canto/x/tools"
 )
 
 const sessionID = "codeagent-reference"
@@ -65,7 +65,7 @@ func main() {
 	}
 
 	auditLog := &strings.Builder{}
-	executor := tools.NewExecutor(5*time.Second, 64*1024)
+	executor := coding.NewExecutor(5*time.Second, 64*1024)
 	executor.SecretInjector = safety.StaticSecretInjector{
 		"EXAMPLE_TOKEN": "redacted",
 	}
@@ -163,14 +163,14 @@ func main() {
 func referenceTools(
 	root workspace.WorkspaceFS,
 	dir string,
-	executor *tools.Executor,
+	executor *coding.Executor,
 	webSearch cantotool.Tool,
 ) []cantotool.Tool {
-	bash := &tools.BashTool{Executor: executor, Dir: dir}
-	code := tools.NewCodeExecutionTool("python")
+	bash := &coding.BashTool{Executor: executor, Dir: dir}
+	code := coding.NewCodeExecutionTool("python")
 	code.Executor = executor
 
-	out := tools.WorkspaceTools(root)
+	out := coding.WorkspaceTools(root)
 	out = append(out, bash, code, webSearch)
 	return out
 }

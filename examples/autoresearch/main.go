@@ -21,11 +21,11 @@ import (
 	"time"
 
 	"github.com/nijaru/canto/agent"
+	"github.com/nijaru/canto/coding"
 	"github.com/nijaru/canto/llm/providers"
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
-	"github.com/nijaru/canto/x/tools"
 )
 
 const (
@@ -51,7 +51,7 @@ func main() {
 
 	// 1. Setup the Canto agent
 	reg := tool.NewRegistry()
-	reg.Register(&tools.BashTool{})
+	reg.Register(&coding.BashTool{})
 
 	provider := providers.OpenAI()
 

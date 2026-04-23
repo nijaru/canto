@@ -1,4 +1,4 @@
-package tools
+package coding
 
 import "github.com/nijaru/canto/tool"
 
