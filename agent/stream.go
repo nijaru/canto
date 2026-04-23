@@ -2,11 +2,9 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	prompt "github.com/nijaru/canto/prompt"
@@ -188,16 +186,13 @@ func (a *BaseAgent) StreamTurn(
 		return StepResult{}, err
 	}
 
-	var steps int
-	var escalations int
-	var totalUsage llm.Usage
-	var stopReason TurnStopReason
+	state := turnState{}
 	defer func() {
 		data := session.TurnCompletedData{
 			AgentID:        a.ID(),
-			Steps:          steps,
-			Usage:          totalUsage,
-			TurnStopReason: string(stopReason),
+			Steps:          state.steps,
+			Usage:          state.totalUsage,
+			TurnStopReason: string(state.stopReason),
 		}
 		if err != nil {
 			data.Error = err.Error()
@@ -206,58 +201,43 @@ func (a *BaseAgent) StreamTurn(
 	}()
 
 	if a.maxSteps > 0 {
-		for steps < a.maxSteps {
+		for state.steps < a.maxSteps {
 			res, err = a.StreamStep(ctx, s, chunkFn)
 			if err != nil {
-				var budgetErr *governor.BudgetExceededError
-				if errors.As(err, &budgetErr) {
-					stopReason = TurnStopBudgetExhausted
+				outcome := state.handleStepError(
+					ctx,
+					s,
+					a.ID(),
+					a.provider,
+					a.maxEscalations,
+					err,
+				)
+				if outcome.retry {
 					err = nil
-					break
-				}
-				escalation := classifyStepError(err, a.provider)
-				if escalation != nil && escalation.recoverable && escalations < a.maxEscalations {
-					escalations++
-					if appendErr := appendWithheldToolMessage(ctx, s, escalation); appendErr != nil {
-						err = appendErr
-						return
-					}
-					if recordErr := recordEscalationRetry(ctx, s, a.ID(), escalations, escalation); recordErr != nil {
-						err = recordErr
-						return
-					}
 					continue
 				}
-				if escalation != nil && escalation.recoverable {
-					err = hardEscalationError(escalation, escalations)
+				if outcome.err != nil {
+					err = outcome.err
+					return
+				}
+				res = outcome.result
+				err = nil
+				if outcome.stop {
+					break
 				}
 				return
 			}
-			escalations = 0
-			steps++
-			totalUsage.InputTokens += res.Usage.InputTokens
-			totalUsage.OutputTokens += res.Usage.OutputTokens
-			totalUsage.TotalTokens += res.Usage.TotalTokens
-			totalUsage.Cost += res.Usage.Cost
-
-			stopReason = turnStopReasonForTurn(res, s, steps, a.maxSteps)
-			res.TurnStopReason = stopReason
-			if stopReason != "" {
+			outcome := state.handleStepResult(s, res, a.maxSteps)
+			res = outcome.result
+			if outcome.stop {
 				break
 			}
 		}
 	} else {
-		stopReason = TurnStopMaxTurnsHit
+		state.stopReason = TurnStopMaxTurnsHit
 	}
 
-	res.Usage = totalUsage
-	res.TurnStopReason = stopReason
-
-	if steps > 0 {
-		if msg, ok := s.LastAssistantMessage(); ok {
-			res.Content = msg.Content
-		}
-	}
+	res = finalizeTurnResult(s, state, res)
 
 	if a.hooks != nil {
 		a.hooks.Run(ctx, hook.EventStop, hook.SessionMeta{ID: s.ID()}, nil)

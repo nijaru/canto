@@ -2,11 +2,9 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"iter"
 
 	"github.com/nijaru/canto/approval"
-	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	prompt "github.com/nijaru/canto/prompt"
@@ -161,16 +159,13 @@ func Run(
 		ctx, turnSpan := tracing.StartTurn(ctx, a.ID(), s.ID(), model)
 		defer func() { tracing.EndTurn(turnSpan, runErr) }()
 
-		var steps int
-		var escalations int
-		var totalUsage llm.Usage
-		var stopReason TurnStopReason
+		state := turnState{}
 		defer func() {
 			data := session.TurnCompletedData{
 				AgentID:        a.ID(),
-				Steps:          steps,
-				Usage:          totalUsage,
-				TurnStopReason: string(stopReason),
+				Steps:          state.steps,
+				Usage:          state.totalUsage,
+				TurnStopReason: string(state.stopReason),
 			}
 			if runErr != nil {
 				data.Error = runErr.Error()
@@ -187,12 +182,12 @@ func Run(
 		}
 
 		if maxSteps <= 0 {
-			stopReason = TurnStopMaxTurnsHit
-			yield(StepResult{TurnStopReason: stopReason}, nil)
+			state.stopReason = TurnStopMaxTurnsHit
+			yield(StepResult{TurnStopReason: state.stopReason}, nil)
 			return
 		}
 
-		for steps < maxSteps {
+		for state.steps < maxSteps {
 			if err := ctx.Err(); err != nil {
 				runErr = err
 				yield(StepResult{}, err)
@@ -201,51 +196,30 @@ func Run(
 
 			res, err := a.Step(ctx, s)
 			if err != nil {
-				var budgetErr *governor.BudgetExceededError
-				if errors.As(err, &budgetErr) {
-					stopReason = TurnStopBudgetExhausted
-					yield(StepResult{TurnStopReason: stopReason, Usage: totalUsage}, nil)
-					return
-				}
-				escalation := classifyStepError(err, provider)
-				if escalation != nil && escalation.recoverable && escalations < maxEscalations {
-					escalations++
-					if appendErr := appendWithheldToolMessage(ctx, s, escalation); appendErr != nil {
-						runErr = appendErr
-						yield(StepResult{}, appendErr)
-						return
-					}
-					if recordErr := recordEscalationRetry(ctx, s, a.ID(), escalations, escalation); recordErr != nil {
-						runErr = recordErr
-						yield(StepResult{}, recordErr)
-						return
-					}
+				outcome := state.handleStepError(
+					ctx,
+					s,
+					a.ID(),
+					provider,
+					maxEscalations,
+					err,
+				)
+				if outcome.retry {
 					continue
 				}
-				if escalation != nil && escalation.recoverable {
-					runErr = hardEscalationError(escalation, escalations)
-					yield(StepResult{}, runErr)
+				if outcome.err != nil {
+					runErr = outcome.err
+					yield(outcome.result, outcome.yieldErr)
 					return
 				}
-				runErr = err
-				yield(res, err)
+				yield(outcome.yieldResult, nil)
 				return
 			}
-			escalations = 0
-			steps++
-			totalUsage.InputTokens += res.Usage.InputTokens
-			totalUsage.OutputTokens += res.Usage.OutputTokens
-			totalUsage.TotalTokens += res.Usage.TotalTokens
-			totalUsage.CacheReadTokens += res.Usage.CacheReadTokens
-			totalUsage.CacheCreationTokens += res.Usage.CacheCreationTokens
-			totalUsage.Cost += res.Usage.Cost
-			stopReason = turnStopReasonForTurn(res, s, steps, maxSteps)
-			res.TurnStopReason = stopReason
-			if !yield(res, nil) {
+			outcome := state.handleStepResult(s, res, maxSteps)
+			if !yield(outcome.yieldResult, nil) {
 				return
 			}
-
-			if stopReason != "" {
+			if outcome.stop {
 				return
 			}
 		}
@@ -286,13 +260,10 @@ func RunTurn(
 		totalUsage.Cost += stepRes.Usage.Cost
 	}
 	res.Usage = totalUsage
-
-	// Populate Content from the last assistant message without tool calls.
 	if steps > 0 {
 		if msg, ok := s.LastAssistantMessage(); ok {
 			res.Content = msg.Content
 		}
 	}
-
 	return
 }
