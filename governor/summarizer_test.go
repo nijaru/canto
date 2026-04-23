@@ -3,6 +3,7 @@ package governor
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 
 	ccontext "github.com/nijaru/canto/context"
@@ -163,5 +164,122 @@ func TestSummarizerSkipsPreCompactWhenTooFewTurns(t *testing.T) {
 	}
 	if compactCalled {
 		t.Fatal("expected OnPreCompact to stay idle when summarizer has no candidates")
+	}
+}
+
+func TestSummarizerUsesPreviousSummaryUpdatePrompt(t *testing.T) {
+	sess := session.New("update-summary")
+	first := session.NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "original request",
+	})
+	if err := sess.Append(context.Background(), first); err != nil {
+		t.Fatalf("append first: %v", err)
+	}
+	if err := sess.Append(context.Background(), session.NewCompactionEvent(
+		sess.ID(),
+		session.CompactionSnapshot{
+			Strategy:      "summarize",
+			CutoffEventID: first.ID.String(),
+			Entries: []session.HistoryEntry{{
+				Message: llm.Message{
+					Role:    llm.RoleSystem,
+					Content: "<conversation_summary>\nPrevious stable summary\n</conversation_summary>",
+				},
+			}},
+		},
+	)); err != nil {
+		t.Fatalf("append compaction: %v", err)
+	}
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: strings.Repeat("new user details ", 20)},
+		{Role: llm.RoleAssistant, Content: strings.Repeat("new assistant details ", 20)},
+		{Role: llm.RoleUser, Content: strings.Repeat("latest request ", 20)},
+	} {
+		if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+
+	var captured string
+	provider := &mockProvider{
+		id: "mock",
+		genFn: func(ctx context.Context, req *llm.Request) (*llm.Response, error) {
+			captured = req.Messages[len(req.Messages)-1].Content
+			return &llm.Response{Content: "Updated summary"}, nil
+		},
+	}
+	processor := NewSummarizer(100, provider, "mock-model")
+	processor.ThresholdPct = 0.10
+	processor.MinKeepTurns = 1
+
+	if err := processor.Mutate(context.Background(), nil, "", sess); err != nil {
+		t.Fatalf("processor failed: %v", err)
+	}
+	if !strings.Contains(captured, "<existing_summary>") ||
+		!strings.Contains(captured, "Previous stable summary") ||
+		!strings.Contains(captured, "<new_segments>") {
+		t.Fatalf("expected update prompt content, got %q", captured)
+	}
+}
+
+func TestSummarizerSplitTurnSummarizesActivePrefix(t *testing.T) {
+	sess := session.New("split-turn")
+	call := llm.Call{ID: "call-1", Type: "function"}
+	call.Function.Name = "read_file"
+	call.Function.Arguments = `{"path":"README.md"}`
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: strings.Repeat("older user ", 20)},
+		{Role: llm.RoleAssistant, Content: strings.Repeat("older assistant ", 20)},
+		{Role: llm.RoleUser, Content: "inspect README.md"},
+		{Role: llm.RoleAssistant, Calls: []llm.Call{call}},
+		{Role: llm.RoleTool, Name: "read_file", ToolID: "call-1", Content: "README content"},
+	} {
+		if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+
+	var mu sync.Mutex
+	requests := make([]*llm.Request, 0, 2)
+	provider := &mockProvider{
+		id: "mock",
+		genFn: func(ctx context.Context, req *llm.Request) (*llm.Response, error) {
+			mu.Lock()
+			requests = append(requests, req)
+			mu.Unlock()
+			if strings.Contains(req.Messages[0].Content, "active partial turn") {
+				return &llm.Response{Content: "Active tool call prefix summary"}, nil
+			}
+			return &llm.Response{Content: "Stable history summary"}, nil
+		},
+	}
+	processor := NewSummarizer(100, provider, "mock-model")
+	processor.ThresholdPct = 0.10
+	processor.MinKeepTurns = 1
+
+	if err := processor.Mutate(context.Background(), nil, "", sess); err != nil {
+		t.Fatalf("processor failed: %v", err)
+	}
+	if len(requests) != 2 {
+		t.Fatalf("summary requests = %d, want 2", len(requests))
+	}
+
+	entries, err := sess.EffectiveEntries()
+	if err != nil {
+		t.Fatalf("EffectiveEntries: %v", err)
+	}
+	if len(entries) < 2 {
+		t.Fatalf("expected compacted entries, got %d", len(entries))
+	}
+	summary := entries[0].Message.Content
+	for _, want := range []string{
+		"Stable history summary",
+		"## Active Turn Prefix",
+		"Active tool call prefix summary",
+	} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("summary missing %q: %s", want, summary)
+		}
 	}
 }

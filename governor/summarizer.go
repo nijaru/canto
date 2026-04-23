@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	ccontext "github.com/nijaru/canto/context"
 	"github.com/nijaru/canto/llm"
@@ -117,41 +118,124 @@ func (p *Summarizer) summarize(
 		return nil
 	}
 
-	// We format the older messages into a string to prompt the LLM to summarize them
-	var sb strings.Builder
-	for _, m := range candidates {
-		role := strings.ToUpper(string(m.Role))
-		if m.Name != "" {
-			role = fmt.Sprintf("%s (%s)", role, m.Name)
-		}
-		sb.WriteString(fmt.Sprintf("%s: ", role))
-
-		if m.Content != "" {
-			sb.WriteString(m.Content)
-		}
-
-		if len(m.Calls) > 0 {
-			sb.WriteString("\nTOOL CALLS:")
-			for _, call := range m.Calls {
-				sb.WriteString(
-					fmt.Sprintf(
-						"\n- %s(%s) [ID: %s]",
-						call.Function.Name,
-						call.Function.Arguments,
-						call.ID,
-					),
-				)
-			}
-		}
-
-		if m.Role == llm.RoleTool && m.ToolID != "" {
-			sb.WriteString(fmt.Sprintf("\n[TOOL ID: %s]", m.ToolID))
-		}
-
-		sb.WriteString("\n\n")
+	historyCandidates, turnPrefix, splitTurn := splitTurnPrefix(candidates, recentEntries)
+	if len(historyCandidates) == 0 && len(turnPrefix) == 0 {
+		return nil
 	}
 
-	// Generate summary — use update prompt when a previous summary exists.
+	summaryContent, err := p.generateSummary(
+		ctx,
+		systemEntries,
+		formatMessages(historyCandidates),
+		formatMessages(turnPrefix),
+		splitTurn,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Build new messages: system + summary + recent
+	newEntries := cloneHistoryEntries(systemEntries)
+
+	// Extract and track file paths across compaction windows.
+	newRead, newModified := extractFilePaths(candidates)
+	prevRead, prevModified := previousFileLists(sess)
+	allRead := mergeFileLists(newRead, prevRead)
+	allModified := mergeFileLists(newModified, prevModified)
+
+	if len(allRead) > 0 || len(allModified) > 0 {
+		var fileTags strings.Builder
+		if len(allRead) > 0 {
+			fileTags.WriteString("<read-files>\n")
+			for _, f := range allRead {
+				fileTags.WriteString(f + "\n")
+			}
+			fileTags.WriteString("</read-files>\n")
+		}
+		if len(allModified) > 0 {
+			fileTags.WriteString("<modified-files>\n")
+			for _, f := range allModified {
+				fileTags.WriteString(f + "\n")
+			}
+			fileTags.WriteString("</modified-files>\n")
+		}
+		summaryContent = fileTags.String() + summaryContent
+	}
+
+	newEntries = append(newEntries, session.HistoryEntry{
+		Message: llm.Message{
+			Role: llm.RoleSystem,
+			Content: fmt.Sprintf(
+				"<conversation_summary>\n%s\n</conversation_summary>",
+				summaryContent,
+			),
+		},
+	})
+	newEntries = append(newEntries, cloneHistoryEntries(recentEntries)...)
+
+	event := session.NewCompactionEvent(sess.ID(), session.CompactionSnapshot{
+		Strategy:      "summarize",
+		MaxTokens:     p.MaxTokens,
+		ThresholdPct:  p.ThresholdPct,
+		CurrentTokens: currentTokens,
+		CutoffEventID: lastMessageEventID(sess),
+		Entries:       newEntries,
+		ReadFiles:     allRead,
+		ModifiedFiles: allModified,
+	})
+	if err := sess.Append(ctx, event); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p *Summarizer) generateSummary(
+	ctx context.Context,
+	systemEntries []session.HistoryEntry,
+	historyContent string,
+	turnPrefixContent string,
+	splitTurn bool,
+) (string, error) {
+	if !splitTurn {
+		return p.generateHistorySummary(ctx, systemEntries, historyContent)
+	}
+
+	type result struct {
+		text string
+		err  error
+	}
+	historyCh := make(chan result, 1)
+	turnCh := make(chan result, 1)
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		text, err := p.generateHistorySummary(ctx, systemEntries, historyContent)
+		historyCh <- result{text: text, err: err}
+	})
+	wg.Go(func() {
+		text, err := p.generateTurnPrefixSummary(ctx, turnPrefixContent)
+		turnCh <- result{text: text, err: err}
+	})
+	wg.Wait()
+
+	history := <-historyCh
+	turn := <-turnCh
+	if history.err != nil {
+		return "", history.err
+	}
+	if turn.err != nil {
+		return "", turn.err
+	}
+	if strings.TrimSpace(turn.text) == "" {
+		return history.text, nil
+	}
+	return history.text + "\n\n## Active Turn Prefix\n" + turn.text, nil
+}
+
+func (p *Summarizer) generateHistorySummary(
+	ctx context.Context,
+	systemEntries []session.HistoryEntry,
+	content string,
+) (string, error) {
 	const generatePrompt = `You are a concise summarizer for an AI coding agent session.
 
 Summarize the conversation into this structured format:
@@ -205,11 +289,11 @@ Rules:
 		userContent = fmt.Sprintf(
 			"<existing_summary>\n%s\n</existing_summary>\n\n<new_segments>\n%s\n</new_segments>",
 			existingSummary,
-			sb.String(),
+			content,
 		)
 	} else {
 		systemPrompt = generatePrompt
-		userContent = sb.String()
+		userContent = content
 	}
 
 	summarizeMessages := []llm.Message{
@@ -233,61 +317,91 @@ Rules:
 
 	resp, err := p.Provider.Generate(ctx, summarizeReq)
 	if err != nil {
-		return fmt.Errorf("failed to generate summary: %w", err)
+		return "", fmt.Errorf("failed to generate summary: %w", err)
 	}
+	return resp.Content, nil
+}
 
-	// Build new messages: system + summary + recent
-	newEntries := cloneHistoryEntries(systemEntries)
-
-	// Extract and track file paths across compaction windows.
-	newRead, newModified := extractFilePaths(candidates)
-	prevRead, prevModified := previousFileLists(sess)
-	allRead := mergeFileLists(newRead, prevRead)
-	allModified := mergeFileLists(newModified, prevModified)
-
-	summaryContent := resp.Content
-	if len(allRead) > 0 || len(allModified) > 0 {
-		var fileTags strings.Builder
-		if len(allRead) > 0 {
-			fileTags.WriteString("<read-files>\n")
-			for _, f := range allRead {
-				fileTags.WriteString(f + "\n")
-			}
-			fileTags.WriteString("</read-files>\n")
-		}
-		if len(allModified) > 0 {
-			fileTags.WriteString("<modified-files>\n")
-			for _, f := range allModified {
-				fileTags.WriteString(f + "\n")
-			}
-			fileTags.WriteString("</modified-files>\n")
-		}
-		summaryContent = fileTags.String() + summaryContent
+func (p *Summarizer) generateTurnPrefixSummary(
+	ctx context.Context,
+	content string,
+) (string, error) {
+	if strings.TrimSpace(content) == "" {
+		return "", nil
 	}
+	req := &llm.Request{
+		Model: p.Model,
+		Messages: []llm.Message{
+			{
+				Role: llm.RoleSystem,
+				Content: `Summarize this active partial turn for a coding agent.
 
-	newEntries = append(newEntries, session.HistoryEntry{
-		Message: llm.Message{
-			Role: llm.RoleSystem,
-			Content: fmt.Sprintf(
-				"<conversation_summary>\n%s\n</conversation_summary>",
-				summaryContent,
-			),
+The turn was cut before all tool observations could remain in context. Preserve
+the user request, assistant tool calls, tool IDs, arguments, and what result is
+still expected next. Keep it concise.`,
+			},
+			{Role: llm.RoleUser, Content: content},
 		},
-	})
-	newEntries = append(newEntries, cloneHistoryEntries(recentEntries)...)
-
-	event := session.NewCompactionEvent(sess.ID(), session.CompactionSnapshot{
-		Strategy:      "summarize",
-		MaxTokens:     p.MaxTokens,
-		ThresholdPct:  p.ThresholdPct,
-		CurrentTokens: currentTokens,
-		CutoffEventID: lastMessageEventID(sess),
-		Entries:       newEntries,
-		ReadFiles:     allRead,
-		ModifiedFiles: allModified,
-	})
-	if err := sess.Append(ctx, event); err != nil {
-		return err
+		Temperature: 0.0,
 	}
-	return nil
+	resp, err := p.Provider.Generate(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate active turn summary: %w", err)
+	}
+	return resp.Content, nil
+}
+
+func formatMessages(messages []llm.Message) string {
+	var sb strings.Builder
+	for _, m := range messages {
+		role := strings.ToUpper(string(m.Role))
+		if m.Name != "" {
+			role = fmt.Sprintf("%s (%s)", role, m.Name)
+		}
+		sb.WriteString(fmt.Sprintf("%s: ", role))
+
+		if m.Content != "" {
+			sb.WriteString(m.Content)
+		}
+
+		if len(m.Calls) > 0 {
+			sb.WriteString("\nTOOL CALLS:")
+			for _, call := range m.Calls {
+				sb.WriteString(
+					fmt.Sprintf(
+						"\n- %s(%s) [ID: %s]",
+						call.Function.Name,
+						call.Function.Arguments,
+						call.ID,
+					),
+				)
+			}
+		}
+
+		if m.Role == llm.RoleTool && m.ToolID != "" {
+			sb.WriteString(fmt.Sprintf("\n[TOOL ID: %s]", m.ToolID))
+		}
+
+		sb.WriteString("\n\n")
+	}
+	return sb.String()
+}
+
+func splitTurnPrefix(
+	candidates []llm.Message,
+	recentEntries []session.HistoryEntry,
+) ([]llm.Message, []llm.Message, bool) {
+	if len(candidates) == 0 || len(recentEntries) == 0 {
+		return candidates, nil, false
+	}
+	firstRecent := recentEntries[0].Message.Role
+	if firstRecent == llm.RoleUser || firstRecent == llm.RoleSystem {
+		return candidates, nil, false
+	}
+	for i := len(candidates) - 1; i >= 0; i-- {
+		if candidates[i].Role == llm.RoleUser {
+			return candidates[:i], candidates[i:], true
+		}
+	}
+	return candidates, nil, false
 }
