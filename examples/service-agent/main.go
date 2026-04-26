@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -25,16 +26,21 @@ type searchResult struct {
 }
 
 func main() {
-	ctx := context.Background()
+	if err := run(context.Background(), os.Stdout); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run(ctx context.Context, w io.Writer) error {
 	dir, err := os.MkdirTemp("", "canto-service-agent-*")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer os.RemoveAll(dir)
 
 	store, err := session.NewSQLiteStore(filepath.Join(dir, "sessions.db"))
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	searchTool, err := service.New(service.Config[searchArgs, searchResult]{
@@ -57,7 +63,7 @@ func main() {
 		}),
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	provider := llm.NewFauxProvider(
@@ -80,15 +86,16 @@ func main() {
 		Tools(searchTool).
 		Build()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer app.Close()
 
 	res, err := app.Send(ctx, "service-session", "Find how Canto should expose service tools.")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	fmt.Println(res.Content)
+	_, err = fmt.Fprintln(w, res.Content)
+	return err
 }
 
 func toolCall(id, name, args string) llm.Call {

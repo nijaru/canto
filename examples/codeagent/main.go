@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -38,30 +39,35 @@ type searchResult struct {
 }
 
 func main() {
-	ctx := context.Background()
+	if err := run(context.Background(), os.Stdout); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run(ctx context.Context, w io.Writer) error {
 	rootDir, err := os.MkdirTemp("", "canto-codeagent-*")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer os.RemoveAll(rootDir)
 
 	if err := seedWorkspace(rootDir); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	root, err := workspace.Open(rootDir)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer root.Close()
 
 	storePath := filepath.Join(rootDir, ".canto", "sessions.db")
 	if err := os.MkdirAll(filepath.Dir(storePath), 0o755); err != nil {
-		log.Fatal(err)
+		return err
 	}
 	store, err := session.NewSQLiteStore(storePath)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	auditLog := &strings.Builder{}
@@ -90,7 +96,7 @@ func main() {
 		}),
 	})
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	hooks := hook.NewRunner()
@@ -118,13 +124,13 @@ func main() {
 		RuntimeOptions(runtime.WithExecutionTimeout(15 * time.Second)).
 		Build()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer app.Close()
 
 	events, err := app.Runner.Watch(ctx, sessionID)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer events.Close()
 
@@ -137,12 +143,12 @@ func main() {
 		"Inspect the project, update README.md, consult web search, run tests, and summarize.",
 	)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	resume, err := app.Send(ctx, sessionID, "Resume the session and report the current state.")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	events.Close()
@@ -150,14 +156,15 @@ func main() {
 
 	readme, err := root.ReadFile("README.md")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	fmt.Println(result.Content)
-	fmt.Println(resume.Content)
-	fmt.Printf("README.md: %s\n", strings.TrimSpace(string(readme)))
-	fmt.Printf("Events: %s\n", eventSummary(eventTypes))
-	fmt.Printf("Audit:\n%s", auditLog.String())
+	fmt.Fprintln(w, result.Content)
+	fmt.Fprintln(w, resume.Content)
+	fmt.Fprintf(w, "README.md: %s\n", strings.TrimSpace(string(readme)))
+	fmt.Fprintf(w, "Events: %s\n", eventSummary(eventTypes))
+	_, err = fmt.Fprintf(w, "Audit:\n%s", auditLog.String())
+	return err
 }
 
 func referenceTools(
