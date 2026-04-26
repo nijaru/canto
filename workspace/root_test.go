@@ -72,6 +72,33 @@ func TestRootStat(t *testing.T) {
 	}
 }
 
+func TestRootMkdirAllAndRemove(t *testing.T) {
+	dir := t.TempDir()
+
+	root, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+
+	if err := root.MkdirAll("nested/child", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if info, err := root.Stat("nested/child"); err != nil || !info.IsDir() {
+		t.Fatalf("Stat nested/child = %#v, %v; want directory", info, err)
+	}
+
+	if err := root.WriteFile("nested/child/hello.txt", []byte("hi"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := root.Remove("nested/child/hello.txt"); err != nil {
+		t.Fatalf("Remove file: %v", err)
+	}
+	if _, err := root.Stat("nested/child/hello.txt"); !os.IsNotExist(err) {
+		t.Fatalf("removed file stat error = %v, want not exist", err)
+	}
+}
+
 func TestRootRejectsSymlinkEscapes(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink permissions are environment-dependent on Windows")

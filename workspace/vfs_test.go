@@ -1,16 +1,24 @@
 package workspace
 
 import (
+	"context"
+	"io/fs"
 	"os"
+	"path"
+	"slices"
+	"strings"
 	"testing"
+	"time"
 )
 
 type mockFS struct {
 	WorkspaceFS
 	data map[string]string
+	dirs map[string]struct{}
 }
 
 func (m *mockFS) ReadFile(name string) ([]byte, error) {
+	name = path.Clean(name)
 	if d, ok := m.data[name]; ok {
 		return []byte(d), nil
 	}
@@ -18,18 +26,121 @@ func (m *mockFS) ReadFile(name string) ([]byte, error) {
 }
 
 func (m *mockFS) WriteFile(name string, data []byte, perm os.FileMode) error {
+	name = path.Clean(name)
+	if m.dirs == nil {
+		m.dirs = make(map[string]struct{})
+	}
+	for dir := path.Dir(name); dir != "." && dir != "/"; dir = path.Dir(dir) {
+		m.dirs[dir] = struct{}{}
+	}
 	m.data[name] = string(data)
 	return nil
 }
 
-func (m *mockFS) MkdirAll(path string, perm os.FileMode) error { return nil }
-func (m *mockFS) Remove(name string) error {
-	delete(m.data, name)
+func (m *mockFS) MkdirAll(name string, perm os.FileMode) error {
+	if m.dirs == nil {
+		m.dirs = make(map[string]struct{})
+	}
+	name = path.Clean(name)
+	for dir := name; dir != "." && dir != "/"; dir = path.Dir(dir) {
+		m.dirs[dir] = struct{}{}
+	}
 	return nil
+}
+
+func (m *mockFS) Remove(name string) error {
+	name = path.Clean(name)
+	delete(m.data, name)
+	delete(m.dirs, name)
+	return nil
+}
+
+func (m *mockFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	name = path.Clean(name)
+	entries := map[string]fs.DirEntry{}
+	for file := range m.data {
+		if path.Dir(file) == name {
+			entries[path.Base(file)] = testDirEntry{name: path.Base(file)}
+		}
+	}
+	for dir := range m.dirs {
+		if path.Dir(dir) == name {
+			entries[path.Base(dir)] = testDirEntry{name: path.Base(dir), isDir: true}
+		}
+	}
+	res := make([]fs.DirEntry, 0, len(entries))
+	for _, entry := range entries {
+		res = append(res, entry)
+	}
+	slices.SortFunc(res, func(a, b fs.DirEntry) int {
+		return strings.Compare(a.Name(), b.Name())
+	})
+	if len(res) == 0 {
+		return nil, os.ErrNotExist
+	}
+	return res, nil
+}
+
+func (m *mockFS) Stat(name string) (fs.FileInfo, error) {
+	name = path.Clean(name)
+	if content, ok := m.data[name]; ok {
+		return testFileInfo{name: path.Base(name), size: int64(len(content))}, nil
+	}
+	if _, ok := m.dirs[name]; ok {
+		return testFileInfo{name: path.Base(name), mode: os.ModeDir, isDir: true}, nil
+	}
+	return nil, os.ErrNotExist
+}
+
+func (m *mockFS) Glob(_ context.Context, pattern string) ([]string, error) {
+	var matches []string
+	for file := range m.data {
+		ok, err := path.Match(pattern, file)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			matches = append(matches, file)
+		}
+	}
+	slices.Sort(matches)
+	return matches, nil
 }
 
 func (m *mockFS) Path() string { return "mock://" }
 func (m *mockFS) Close() error { return nil }
+
+type testDirEntry struct {
+	name  string
+	isDir bool
+}
+
+func (e testDirEntry) Name() string { return e.name }
+func (e testDirEntry) IsDir() bool  { return e.isDir }
+func (e testDirEntry) Type() fs.FileMode {
+	if e.isDir {
+		return os.ModeDir
+	}
+	return 0
+}
+
+func (e testDirEntry) Info() (fs.FileInfo, error) {
+	return testFileInfo{name: e.name, mode: e.Type(), isDir: e.isDir}, nil
+}
+
+type testFileInfo struct {
+	name  string
+	size  int64
+	mode  os.FileMode
+	isDir bool
+}
+
+func (i testFileInfo) Name() string       { return i.name }
+func (i testFileInfo) Size() int64        { return i.size }
+func (i testFileInfo) Mode() os.FileMode  { return i.mode }
+func (i testFileInfo) ModTime() time.Time { return time.Time{} }
+func (i testFileInfo) IsDir() bool        { return i.isDir }
+func (i testFileInfo) Sys() any           { return nil }
 
 func TestOverlayFS(t *testing.T) {
 	base := &mockFS{data: map[string]string{"base.txt": "base content"}}
@@ -118,6 +229,64 @@ func TestOverlayFS(t *testing.T) {
 	}
 }
 
+func TestOverlayFS_ReadDirStatAndDiscard(t *testing.T) {
+	base := &mockFS{
+		data: map[string]string{
+			"base.txt":        "base",
+			"nested/base.txt": "nested base",
+		},
+		dirs: map[string]struct{}{"nested": {}},
+	}
+	overlay := NewOverlayFS(base)
+
+	if err := overlay.WriteFile("nested/spec.txt", []byte("spec"), 0o644); err != nil {
+		t.Fatalf("WriteFile nested/spec.txt: %v", err)
+	}
+	if err := overlay.MkdirAll("empty/child", 0o755); err != nil {
+		t.Fatalf("MkdirAll empty/child: %v", err)
+	}
+	if err := overlay.Remove("base.txt"); err != nil {
+		t.Fatalf("Remove base.txt: %v", err)
+	}
+
+	entries, err := overlay.ReadDir(".")
+	if err != nil {
+		t.Fatalf("ReadDir .: %v", err)
+	}
+	names := entryNames(entries)
+	if !slices.Equal(names, []string{"empty", "nested"}) {
+		t.Fatalf("root entries = %#v, want empty,nested", names)
+	}
+
+	entries, err = overlay.ReadDir("nested")
+	if err != nil {
+		t.Fatalf("ReadDir nested: %v", err)
+	}
+	names = entryNames(entries)
+	if !slices.Equal(names, []string{"base.txt", "spec.txt"}) {
+		t.Fatalf("nested entries = %#v, want base.txt,spec.txt", names)
+	}
+
+	info, err := overlay.Stat("nested/spec.txt")
+	if err != nil {
+		t.Fatalf("Stat nested/spec.txt: %v", err)
+	}
+	if info.Name() != "spec.txt" || info.Size() != 4 || info.IsDir() {
+		t.Fatalf("unexpected spec file info: %#v", info)
+	}
+	if _, err := overlay.Stat("base.txt"); !os.IsNotExist(err) {
+		t.Fatalf("deleted base.txt stat error = %v, want not exist", err)
+	}
+
+	overlay.Discard()
+	if got, err := overlay.ReadFile("base.txt"); err != nil || string(got) != "base" {
+		t.Fatalf("discard should restore base.txt, got %q err %v", string(got), err)
+	}
+	if _, err := overlay.ReadFile("nested/spec.txt"); !os.IsNotExist(err) {
+		t.Fatalf("discard should remove spec file, got %v", err)
+	}
+}
+
 func TestMultiFS(t *testing.T) {
 	base := &mockFS{data: map[string]string{"base.txt": "base content"}}
 	mount := &mockFS{data: map[string]string{"mount.txt": "mount content"}}
@@ -148,4 +317,74 @@ func TestMultiFS(t *testing.T) {
 	if !os.IsNotExist(err) {
 		t.Errorf("expected NotExist for memory/missing.txt, got %v", err)
 	}
+}
+
+func TestMultiFSRoutesMountedOperations(t *testing.T) {
+	base := &mockFS{
+		data: map[string]string{"base.txt": "base content"},
+		dirs: map[string]struct{}{},
+	}
+	mount := &mockFS{
+		data: map[string]string{"mount.txt": "mount content"},
+		dirs: map[string]struct{}{},
+	}
+
+	multi := NewMultiFS(base)
+	multi.Mount("memory", mount)
+
+	if err := multi.WriteFile("memory/new.txt", []byte("mounted write"), 0o644); err != nil {
+		t.Fatalf("mounted WriteFile: %v", err)
+	}
+	if _, ok := base.data["memory/new.txt"]; ok {
+		t.Fatal("mounted write should not hit base filesystem")
+	}
+	if got := mount.data["new.txt"]; got != "mounted write" {
+		t.Fatalf("mounted data = %q, want mounted write", got)
+	}
+
+	if err := multi.MkdirAll("memory/docs", 0o755); err != nil {
+		t.Fatalf("mounted MkdirAll: %v", err)
+	}
+	if _, ok := mount.dirs["docs"]; !ok {
+		t.Fatal("mounted directory was not created")
+	}
+
+	info, err := multi.Stat("memory/new.txt")
+	if err != nil {
+		t.Fatalf("mounted Stat: %v", err)
+	}
+	if info.Name() != "new.txt" || info.Size() != int64(len("mounted write")) {
+		t.Fatalf("unexpected mounted stat: %#v", info)
+	}
+
+	entries, err := multi.ReadDir(".")
+	if err != nil {
+		t.Fatalf("ReadDir root: %v", err)
+	}
+	names := entryNames(entries)
+	if !slices.Equal(names, []string{"base.txt", "memory"}) {
+		t.Fatalf("root entries = %#v, want base.txt,memory", names)
+	}
+
+	if err := multi.Remove("memory/new.txt"); err != nil {
+		t.Fatalf("mounted Remove: %v", err)
+	}
+	if _, ok := mount.data["new.txt"]; ok {
+		t.Fatal("mounted remove should delete from mount")
+	}
+
+	if err := multi.WriteFile("base2.txt", []byte("base write"), 0o644); err != nil {
+		t.Fatalf("base WriteFile: %v", err)
+	}
+	if got := base.data["base2.txt"]; got != "base write" {
+		t.Fatalf("base data = %q, want base write", got)
+	}
+}
+
+func entryNames(entries []fs.DirEntry) []string {
+	names := make([]string, len(entries))
+	for i, entry := range entries {
+		names[i] = entry.Name()
+	}
+	return names
 }
