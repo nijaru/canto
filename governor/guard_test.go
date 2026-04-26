@@ -166,7 +166,7 @@ func TestCircuitBreakerGuard(t *testing.T) {
 	pr := &mockGuardProvider{}
 
 	policy := &mockDenyPolicy{}
-	mgr := approval.NewManager(policy).WithThreshold(1)
+	mgr := approval.NewGate(policy).WithThreshold(1)
 
 	// 1. Trip the breaker
 	_, _ = mgr.Request(ctx, sess, "t1", "{}", approval.Requirement{Category: "cat"})

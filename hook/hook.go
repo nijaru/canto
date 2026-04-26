@@ -56,8 +56,8 @@ type Result struct {
 	Error  error
 }
 
-// Hook interface defines a lifecycle hook.
-type Hook interface {
+// Handler interface defines a lifecycle hook.
+type Handler interface {
 	Name() string
 	Events() []Event
 	Execute(ctx context.Context, payload *Payload) *Result
@@ -161,34 +161,34 @@ func (h *Command) Execute(ctx context.Context, payload *Payload) *Result {
 	return &Result{Action: ActionProceed, Output: output, Error: nil}
 }
 
-// Func runs an in-process Go function, avoiding subprocess overhead.
-type Func struct {
+// funcHandler runs an in-process Go function, avoiding subprocess overhead.
+type funcHandler struct {
 	name   string
 	events []Event
 	fn     func(ctx context.Context, payload *Payload) *Result
 }
 
-// NewFunc creates an in-process hook from a function.
-func NewFunc(
+// FromFunc creates an in-process hook from a function.
+func FromFunc(
 	name string,
 	events []Event,
 	fn func(ctx context.Context, payload *Payload) *Result,
-) *Func {
-	return &Func{name: name, events: events, fn: fn}
+) *funcHandler {
+	return &funcHandler{name: name, events: events, fn: fn}
 }
 
-func (h *Func) Name() string { return h.name }
+func (h *funcHandler) Name() string { return h.name }
 
-func (h *Func) Events() []Event { return h.events }
+func (h *funcHandler) Events() []Event { return h.events }
 
-func (h *Func) Execute(ctx context.Context, payload *Payload) *Result {
+func (h *funcHandler) Execute(ctx context.Context, payload *Payload) *Result {
 	return h.fn(ctx, payload)
 }
 
 // Runner manages and executes hooks.
 type Runner struct {
 	mu    sync.RWMutex
-	hooks []Hook
+	hooks []Handler
 }
 
 // NewRunner creates a new hook runner.
@@ -197,7 +197,7 @@ func NewRunner() *Runner {
 }
 
 // Register adds a hook to the runner.
-func (r *Runner) Register(h Hook) {
+func (r *Runner) Register(h Handler) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.hooks = append(r.hooks, h)
@@ -220,7 +220,7 @@ func (r *Runner) Run(
 	var results []*Result
 
 	r.mu.RLock()
-	hooks := make([]Hook, len(r.hooks))
+	hooks := make([]Handler, len(r.hooks))
 	copy(hooks, r.hooks)
 	r.mu.RUnlock()
 

@@ -150,7 +150,7 @@ func runTools(
 	calls []llm.Call,
 	r *tool.Registry,
 	h *hook.Runner,
-	approvals *approval.Manager,
+	approvals *approval.Gate,
 	handoffTargets []string,
 	maxParallel int,
 	assistantMessageID string,
@@ -199,7 +199,7 @@ func preflightTools(
 	calls []llm.Call,
 	r *tool.Registry,
 	h *hook.Runner,
-	approvals *approval.Manager,
+	approvals *approval.Gate,
 	assistantMessageID string,
 ) []preflightResult {
 	results := make([]preflightResult, len(calls))
@@ -582,7 +582,7 @@ func executeToolWithHooks(
 	call llm.Call,
 	r *tool.Registry,
 	h *hook.Runner,
-	approvals *approval.Manager,
+	approvals *approval.Gate,
 ) toolResult {
 	pfResults := preflightTools(ctx, s, []llm.Call{call}, r, h, approvals, "")
 	execResults := executeTools(ctx, s, pfResults, r, h, 1)

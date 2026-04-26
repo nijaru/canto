@@ -50,19 +50,19 @@ type Logger interface {
 	Log(ctx context.Context, event Event) error
 }
 
-// WriterLogger writes audit events as JSONL to an arbitrary writer.
-type WriterLogger struct {
+// StreamLogger writes audit events as JSONL to an arbitrary writer.
+type StreamLogger struct {
 	mu sync.Mutex
 	w  io.Writer
 }
 
-// NewWriterLogger wraps w with a Logger implementation.
-func NewWriterLogger(w io.Writer) *WriterLogger {
-	return &WriterLogger{w: w}
+// NewStreamLogger wraps w with a Logger implementation.
+func NewStreamLogger(w io.Writer) *StreamLogger {
+	return &StreamLogger{w: w}
 }
 
 // Log appends event as one JSON line.
-func (l *WriterLogger) Log(ctx context.Context, event Event) error {
+func (l *StreamLogger) Log(ctx context.Context, event Event) error {
 	if l == nil || l.w == nil {
 		return errors.New("audit logger is nil")
 	}
@@ -90,7 +90,7 @@ func (l *WriterLogger) Log(ctx context.Context, event Event) error {
 
 // JSONLLogger writes audit events to a JSONL file.
 type JSONLLogger struct {
-	*WriterLogger
+	*StreamLogger
 	closer io.Closer
 }
 
@@ -107,7 +107,7 @@ func NewJSONLLogger(path string) (*JSONLLogger, error) {
 		return nil, err
 	}
 	return &JSONLLogger{
-		WriterLogger: NewWriterLogger(f),
+		StreamLogger: NewStreamLogger(f),
 		closer:       f,
 	}, nil
 }

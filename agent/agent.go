@@ -46,7 +46,7 @@ type BaseAgent struct {
 	tools            *tool.Registry
 	builder          *prompt.Builder
 	hooks            *hook.Runner
-	approvals        *approval.Manager
+	approvals        *approval.Gate
 }
 
 // ID returns the agent's unique identifier.
@@ -91,7 +91,7 @@ func WithMaxParallelTools(n int) Option { return func(a *BaseAgent) { a.maxParal
 func WithMaxEscalations(n int) Option { return func(a *BaseAgent) { a.maxEscalations = n } }
 
 // WithHooks appends one or more hooks to the agent's hook runner.
-func WithHooks(hs ...hook.Hook) Option {
+func WithHooks(hs ...hook.Handler) Option {
 	return func(a *BaseAgent) {
 		for _, h := range hs {
 			a.hooks.Register(h)
@@ -102,9 +102,9 @@ func WithHooks(hs ...hook.Hook) Option {
 // WithHookRunner replaces the agent's hook runner.
 func WithHookRunner(h *hook.Runner) Option { return func(a *BaseAgent) { a.hooks = h } }
 
-// WithApprovalManager configures a reusable approval manager for gated tool execution.
-func WithApprovalManager(
-	m *approval.Manager,
+// WithApprovalGate configures a reusable approval gate for gated tool execution.
+func WithApprovalGate(
+	m *approval.Gate,
 ) Option {
 	return func(a *BaseAgent) { a.approvals = m }
 }

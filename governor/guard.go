@@ -84,14 +84,14 @@ func (p *BudgetGuard) ApplyRequest(
 	return nil
 }
 
-// CircuitBreakerGuard injects a warning into the prompt if the approval manager
+// CircuitBreakerGuard injects a warning into the prompt if the approval gate
 // is in a tripped state (automated approvals disabled).
 type CircuitBreakerGuard struct {
-	Manager *approval.Manager
+	Manager *approval.Gate
 }
 
 // NewCircuitBreakerGuard creates a new circuit breaker guard.
-func NewCircuitBreakerGuard(mgr *approval.Manager) *CircuitBreakerGuard {
+func NewCircuitBreakerGuard(mgr *approval.Gate) *CircuitBreakerGuard {
 	return &CircuitBreakerGuard{Manager: mgr}
 }
 

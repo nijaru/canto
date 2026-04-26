@@ -12,7 +12,7 @@
 // exhausts its step budget. The turn stop state is exposed on StepResult.
 //
 // Extend the default builder with WithRequestProcessors and WithMutators, and
-// configure gated tool execution with WithApprovalManager when a host needs
+// configure gated tool execution with WithApprovalGate when a host needs
 // pause/resume approval flow. Use WithBudgetGuard for clean budget exhaustion
 // stops, WithHooks for ordinary lifecycle hooks, and WithHookRunner only when
 // replacing the hook runner wholesale.

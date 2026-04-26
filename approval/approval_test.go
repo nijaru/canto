@@ -10,7 +10,7 @@ import (
 )
 
 func TestManager_RequestResolveAllow(t *testing.T) {
-	mgr := NewManager(nil)
+	mgr := NewGate(nil)
 	sess := session.New("allow")
 
 	done := make(chan Result, 1)
@@ -47,7 +47,7 @@ func TestManager_RequestResolveAllow(t *testing.T) {
 }
 
 func TestManager_RequestResolveDeny(t *testing.T) {
-	mgr := NewManager(nil)
+	mgr := NewGate(nil)
 	sess := session.New("deny")
 
 	done := make(chan error, 1)
@@ -84,7 +84,7 @@ func TestManager_RequestResolveDeny(t *testing.T) {
 }
 
 func TestManager_DuplicateAndLateDecisionRejected(t *testing.T) {
-	mgr := NewManager(nil)
+	mgr := NewGate(nil)
 	sess := session.New("dup")
 
 	go func() {
@@ -108,7 +108,7 @@ func TestManager_DuplicateAndLateDecisionRejected(t *testing.T) {
 }
 
 func TestManager_RequestCancellation(t *testing.T) {
-	mgr := NewManager(nil)
+	mgr := NewGate(nil)
 	sess := session.New("cancel")
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -137,7 +137,7 @@ func TestManager_RequestCancellation(t *testing.T) {
 
 func TestManager_CircuitBreaker(t *testing.T) {
 	policy := &mockDenyPolicy{}
-	mgr := NewManager(policy).WithThreshold(2)
+	mgr := NewGate(policy).WithThreshold(2)
 	sess := session.New("breaker")
 
 	// 1. First automated denial

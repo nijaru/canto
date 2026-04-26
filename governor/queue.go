@@ -10,13 +10,13 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-const defaultCompactionTimeout = 5 * time.Minute
+const defaultCompactTimeout = 5 * time.Minute
 
-// CompactionQueue manages background compaction tasks.
+// CompactQueue manages background compaction tasks.
 // It wraps an underlying ContextMutator (like Summarizer) and runs it asynchronously.
 // This allows the main CLI/TUI thread to queue incoming user messages without freezing
 // while the agent's durable state is rebuilt.
-type CompactionQueue struct {
+type CompactQueue struct {
 	mutator prompt.ContextMutator
 
 	mu      sync.Mutex
@@ -25,16 +25,16 @@ type CompactionQueue struct {
 	err     error
 }
 
-// NewCompactionQueue creates a non-blocking wrapper for a compaction mutator.
-func NewCompactionQueue(m prompt.ContextMutator) *CompactionQueue {
-	return &CompactionQueue{
+// NewCompactQueue creates a non-blocking wrapper for a compaction mutator.
+func NewCompactQueue(m prompt.ContextMutator) *CompactQueue {
+	return &CompactQueue{
 		mutator: m,
 		done:    make(chan struct{}),
 	}
 }
 
 // Effects delegates to the underlying mutator if it implements prompt.SideEffects.
-func (q *CompactionQueue) Effects() prompt.SideEffects {
+func (q *CompactQueue) Effects() prompt.SideEffects {
 	if eff, ok := q.mutator.(interface{ Effects() prompt.SideEffects }); ok {
 		return eff.Effects()
 	}
@@ -42,7 +42,7 @@ func (q *CompactionQueue) Effects() prompt.SideEffects {
 }
 
 // CompactionStrategy delegates to the underlying mutator if it implements prompt.Compactor.
-func (q *CompactionQueue) CompactionStrategy() string {
+func (q *CompactQueue) CompactionStrategy() string {
 	if cmp, ok := q.mutator.(prompt.Compactor); ok {
 		return cmp.CompactionStrategy()
 	}
@@ -51,7 +51,7 @@ func (q *CompactionQueue) CompactionStrategy() string {
 
 // Mutate triggers the underlying mutator asynchronously if it is not already running.
 // It returns immediately without error. Call Wait() to block until completion if needed.
-func (q *CompactionQueue) Mutate(
+func (q *CompactQueue) Mutate(
 	ctx context.Context,
 	p llm.Provider,
 	model string,
@@ -69,7 +69,7 @@ func (q *CompactionQueue) Mutate(
 	q.mu.Unlock()
 
 	// Detach context so background compaction isn't killed if the immediate request finishes
-	bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), defaultCompactionTimeout)
+	bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), defaultCompactTimeout)
 
 	go func() {
 		defer func() {
@@ -91,7 +91,7 @@ func (q *CompactionQueue) Mutate(
 }
 
 // IsCompacting returns true if a compaction is currently running.
-func (q *CompactionQueue) IsCompacting() bool {
+func (q *CompactQueue) IsCompacting() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	return q.running
@@ -99,7 +99,7 @@ func (q *CompactionQueue) IsCompacting() bool {
 
 // Wait blocks until the current compaction finishes, returning its error.
 // If no compaction is running, it returns nil immediately.
-func (q *CompactionQueue) Wait(ctx context.Context) error {
+func (q *CompactQueue) Wait(ctx context.Context) error {
 	q.mu.Lock()
 	running := q.running
 	done := q.done

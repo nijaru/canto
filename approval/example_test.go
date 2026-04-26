@@ -32,7 +32,7 @@ func ExamplePolicyFunc_shellClassifierSeam() {
 		},
 	)
 
-	manager := approval.NewManager(shellPolicy)
+	manager := approval.NewGate(shellPolicy)
 	sess := session.New("s")
 	res, err := manager.Request(
 		context.Background(),

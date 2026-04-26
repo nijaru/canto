@@ -10,13 +10,13 @@ import (
 )
 
 func TestEvaluateApprovalCases(t *testing.T) {
-	manager := approval.NewManager(nil)
+	manager := approval.NewGate(nil)
 	sess := session.New("approval-eval")
 
 	results := EvaluateApprovalCases(t.Context(), manager, sess, []ApprovalCase{
 		{
 			Name: "allow request",
-			Run: func(ctx context.Context, manager *approval.Manager, sess *session.Session) error {
+			Run: func(ctx context.Context, manager *approval.Gate, sess *session.Session) error {
 				done := make(chan error, 1)
 				go func() {
 					_, err := manager.Request(ctx, sess, "bash", "{}", approval.Requirement{
@@ -39,7 +39,7 @@ func TestEvaluateApprovalCases(t *testing.T) {
 		},
 		{
 			Name: "deny request",
-			Run: func(ctx context.Context, manager *approval.Manager, sess *session.Session) error {
+			Run: func(ctx context.Context, manager *approval.Gate, sess *session.Session) error {
 				done := make(chan error, 1)
 				go func() {
 					res, err := manager.Request(ctx, sess, "write_file", "{}", approval.Requirement{

@@ -59,7 +59,7 @@ func TestEnvSanitizerLogsAuditEvents(t *testing.T) {
 	sanitizer := &safety.EnvSanitizer{
 		Allow:       []string{"PATH", "SAFE_VAR"},
 		Deny:        []string{"TOKEN"},
-		AuditLogger: audit.NewWriterLogger(&buf),
+		AuditLogger: audit.NewStreamLogger(&buf),
 	}
 
 	got := sanitizer.Sanitize([]string{

@@ -85,7 +85,7 @@ func TestPolicy_Decide(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			policy := safety.NewPolicy(tt.mode)
+			policy := safety.NewConfig(tt.mode)
 			res, handled, err := policy.Decide(ctx, sess, tt.req)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)

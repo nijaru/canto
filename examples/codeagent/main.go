@@ -100,7 +100,7 @@ func run(ctx context.Context, w io.Writer) error {
 	}
 
 	hooks := hook.NewRunner()
-	hooks.Register(hook.NewFunc(
+	hooks.Register(hook.FromFunc(
 		"audit-tool-use",
 		[]hook.Event{hook.EventPreToolUse, hook.EventPostToolUse, hook.EventPostToolUseFailure},
 		func(_ context.Context, payload *hook.Payload) *hook.Result {
@@ -118,7 +118,7 @@ func run(ctx context.Context, w io.Writer) error {
 		Provider(scriptedProvider()).
 		SessionStore(store).
 		Tools(referenceTools(root, rootDir, executor, webSearch)...).
-		Approvals(approval.NewManager(safety.NewPolicy(safety.ModeAuto))).
+		Approvals(approval.NewGate(safety.NewConfig(safety.ModeAuto))).
 		Hooks(hooks).
 		AgentOptions(agent.WithMaxSteps(8)).
 		RuntimeOptions(runtime.WithExecutionTimeout(15 * time.Second)).

@@ -11,7 +11,7 @@ func TestHookRunner(t *testing.T) {
 	runner := NewRunner()
 	meta := SessionMeta{ID: "test-session"}
 
-	// 1. Success Hook
+	// 1. Success Handler
 	hookSuccess := NewCommand(
 		"success-hook",
 		[]Event{EventSessionStart},
@@ -20,7 +20,7 @@ func TestHookRunner(t *testing.T) {
 		2*time.Second,
 	)
 
-	// 2. Log Hook (Exit 1)
+	// 2. Log Handler (Exit 1)
 	hookLog := NewCommand(
 		"log-hook",
 		[]Event{EventSessionStart},
@@ -29,7 +29,7 @@ func TestHookRunner(t *testing.T) {
 		2*time.Second,
 	)
 
-	// 3. Block Hook (Exit 2)
+	// 3. Block Handler (Exit 2)
 	hookBlock := NewCommand(
 		"block-hook",
 		[]Event{EventPreToolUse},
@@ -83,7 +83,7 @@ func TestHookRunner(t *testing.T) {
 
 func TestFuncHook(t *testing.T) {
 	called := false
-	h := NewFunc(
+	h := FromFunc(
 		"test-func",
 		[]Event{EventSessionStart},
 		func(_ context.Context, p *Payload) *Result {
@@ -112,7 +112,7 @@ func TestFuncHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !called {
-		t.Fatal("Func fn not called")
+		t.Fatal("funcHandler fn not called")
 	}
 	if len(results) != 1 || results[0].Output != "ok" {
 		t.Fatalf("unexpected results: %+v", results)
@@ -123,7 +123,7 @@ func TestFuncHook(t *testing.T) {
 }
 
 func TestFuncHook_Block(t *testing.T) {
-	h := NewFunc(
+	h := FromFunc(
 		"blocker",
 		[]Event{EventPreToolUse},
 		func(_ context.Context, _ *Payload) *Result {

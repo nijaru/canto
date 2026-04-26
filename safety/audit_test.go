@@ -17,7 +17,7 @@ import (
 func TestPolicy_LogsAuditEvents(t *testing.T) {
 	sess := session.New("test")
 	var buf strings.Builder
-	policy := safety.NewPolicy(safety.ModeRead).WithAuditLogger(audit.NewWriterLogger(&buf))
+	policy := safety.NewConfig(safety.ModeRead).WithAuditLogger(audit.NewStreamLogger(&buf))
 
 	res, handled, err := policy.Decide(context.Background(), sess, approval.Request{
 		SessionID: "s-1",
@@ -65,7 +65,7 @@ func TestProtectedPathsWithAudit_LogsBlockedPaths(t *testing.T) {
 	protected := safety.ProtectedPathsWithAudit(
 		autoPolicy,
 		[]string{".git", ".env"},
-		audit.NewWriterLogger(&buf),
+		audit.NewStreamLogger(&buf),
 	)
 
 	res, handled, err := protected.Decide(context.Background(), sess, approval.Request{

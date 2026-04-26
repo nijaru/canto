@@ -29,19 +29,19 @@ const (
 	CategoryExecute Category = "execute"
 )
 
-// Policy is an implementation of approval.Policy that enforces safety modes.
-type Policy struct {
+// Config is an approval.Policy implementation that enforces safety modes.
+type Config struct {
 	mode  Mode
 	audit audit.Logger
 }
 
-// NewPolicy creates a new safety policy with the given mode.
-func NewPolicy(mode Mode) *Policy {
-	return &Policy{mode: mode}
+// NewConfig creates a new safety config with the given mode.
+func NewConfig(mode Mode) *Config {
+	return &Config{mode: mode}
 }
 
 // WithAuditLogger configures append-only security logging for policy decisions.
-func (p *Policy) WithAuditLogger(logger audit.Logger) *Policy {
+func (p *Config) WithAuditLogger(logger audit.Logger) *Config {
 	if p == nil {
 		return nil
 	}
@@ -50,7 +50,7 @@ func (p *Policy) WithAuditLogger(logger audit.Logger) *Policy {
 }
 
 // Decide implements approval.Policy.
-func (p *Policy) Decide(
+func (p *Config) Decide(
 	ctx context.Context,
 	sess *session.Session,
 	req approval.Request,
@@ -122,7 +122,7 @@ func (p *Policy) Decide(
 	}
 }
 
-func (p *Policy) logAudit(ctx context.Context, event audit.Event) {
+func (p *Config) logAudit(ctx context.Context, event audit.Event) {
 	if p == nil || p.audit == nil {
 		return
 	}

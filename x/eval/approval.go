@@ -9,7 +9,7 @@ import (
 
 type ApprovalCase struct {
 	Name        string
-	Run         func(context.Context, *approval.Manager, *session.Session) error
+	Run         func(context.Context, *approval.Gate, *session.Session) error
 	ExpectError string
 }
 
@@ -21,7 +21,7 @@ type ApprovalCaseResult struct {
 
 func EvaluateApprovalCases(
 	ctx context.Context,
-	manager *approval.Manager,
+	manager *approval.Gate,
 	sess *session.Session,
 	cases []ApprovalCase,
 ) []ApprovalCaseResult {

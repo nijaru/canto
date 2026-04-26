@@ -20,7 +20,7 @@ type stepConfig struct {
 	Builder          *prompt.Builder
 	Tools            *tool.Registry
 	Hooks            *hook.Runner
-	Approvals        *approval.Manager
+	Approvals        *approval.Gate
 	MaxParallelTools int
 }
 

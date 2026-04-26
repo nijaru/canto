@@ -159,9 +159,9 @@ func (b *AgentBuilder) RuntimeOptions(opts ...runtime.Option) *AgentBuilder {
 	return b
 }
 
-func (b *AgentBuilder) Approvals(manager *approval.Manager) *AgentBuilder {
+func (b *AgentBuilder) Approvals(manager *approval.Gate) *AgentBuilder {
 	if manager != nil {
-		b.agentOptions = append(b.agentOptions, agent.WithApprovalManager(manager))
+		b.agentOptions = append(b.agentOptions, agent.WithApprovalGate(manager))
 	}
 	return b
 }

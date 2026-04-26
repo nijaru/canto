@@ -503,7 +503,7 @@ func TestStepPreToolHookCanRewriteCall(t *testing.T) {
 	))
 
 	runner := hook.NewRunner()
-	runner.Register(hook.NewFunc(
+	runner.Register(hook.FromFunc(
 		"rewrite-call",
 		[]hook.Event{hook.EventPreToolUse},
 		func(_ context.Context, p *hook.Payload) *hook.Result {
@@ -582,7 +582,7 @@ func TestStepPostToolHookCanRewriteOutput(t *testing.T) {
 	))
 
 	runner := hook.NewRunner()
-	runner.Register(hook.NewFunc(
+	runner.Register(hook.FromFunc(
 		"redact-output",
 		[]hook.Event{hook.EventPostToolUse},
 		func(_ context.Context, _ *hook.Payload) *hook.Result {
@@ -969,7 +969,7 @@ func TestRunTools_PreflightCompletesBeforeParallelExecution(t *testing.T) {
 	reg.Register(makeTool("b"))
 
 	hooks := hook.NewRunner()
-	hooks.Register(hook.NewFunc(
+	hooks.Register(hook.FromFunc(
 		"preflight-recorder",
 		[]hook.Event{hook.EventPreToolUse},
 		func(_ context.Context, payload *hook.Payload) *hook.Result {
@@ -1697,7 +1697,7 @@ func TestRunTools_PanicRecovery(t *testing.T) {
 func TestRunTools_ApprovalAllow(t *testing.T) {
 	reg := tool.NewRegistry()
 	reg.Register(&gatedTool{simpleTool{name: "gated", output: "ok"}})
-	manager := approval.NewManager(nil)
+	manager := approval.NewGate(nil)
 	s := session.New("s-approval-allow")
 	calls := []llm.Call{{
 		ID:   "c1",
@@ -1743,7 +1743,7 @@ func TestRunTools_ApprovalAllow(t *testing.T) {
 func TestRunTools_ApprovalDeny(t *testing.T) {
 	reg := tool.NewRegistry()
 	reg.Register(&gatedTool{simpleTool{name: "gated", output: "ok"}})
-	manager := approval.NewManager(nil)
+	manager := approval.NewGate(nil)
 	s := session.New("s-approval-deny")
 	calls := []llm.Call{{
 		ID:   "c1",

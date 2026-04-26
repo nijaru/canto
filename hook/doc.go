@@ -1,6 +1,6 @@
 // Package hook executes lifecycle hooks around sessions and tool use.
 //
-// Hooks may run as subprocess Commands or in-process Func implementations.
+// Hooks may run as subprocess Commands or in-process funcHandler implementations.
 // Runner fans out hooks registered for each Event and interprets their result
 // as proceed, log-only, or block. Hooks may also return structured Data for
 // event-specific mutation handled by the caller.

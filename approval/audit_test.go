@@ -15,7 +15,7 @@ import (
 
 func TestManager_LogsAuditEvents(t *testing.T) {
 	var buf bytes.Buffer
-	mgr := NewManager(nil).WithAuditLogger(audit.NewWriterLogger(&buf))
+	mgr := NewGate(nil).WithAuditLogger(audit.NewStreamLogger(&buf))
 	sess := session.New("audit")
 
 	done := make(chan Result, 1)

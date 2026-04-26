@@ -53,10 +53,10 @@ type Policy interface {
 	Decide(ctx context.Context, sess *session.Session, req Request) (Result, bool, error)
 }
 
-// Manager coordinates tool approval requests across automated policies and
+// Gate coordinates tool approval requests across automated policies and
 // human-in-the-loop (HITL) resolution. It includes a circuit breaker that
 // disables automated policies after N consecutive denials.
-type Manager struct {
+type Gate struct {
 	policy    Policy
 	audit     audit.Logger
 	threshold int
@@ -73,8 +73,8 @@ type pendingRequest struct {
 	resolved bool
 }
 
-func NewManager(policy Policy) *Manager {
-	return &Manager{
+func NewGate(policy Policy) *Gate {
+	return &Gate{
 		policy:    policy,
 		pending:   make(map[string]pendingRequest),
 		threshold: 3, // Default circuit breaker threshold
@@ -82,7 +82,7 @@ func NewManager(policy Policy) *Manager {
 }
 
 // WithThreshold configures the circuit breaker threshold.
-func (m *Manager) WithThreshold(n int) *Manager {
+func (m *Gate) WithThreshold(n int) *Gate {
 	if m == nil {
 		return nil
 	}
@@ -93,7 +93,7 @@ func (m *Manager) WithThreshold(n int) *Manager {
 }
 
 // WithAuditLogger configures an append-only security audit logger.
-func (m *Manager) WithAuditLogger(logger audit.Logger) *Manager {
+func (m *Gate) WithAuditLogger(logger audit.Logger) *Gate {
 	if m == nil {
 		return nil
 	}
@@ -102,7 +102,7 @@ func (m *Manager) WithAuditLogger(logger audit.Logger) *Manager {
 }
 
 // ResetBreaker clears the circuit breaker state.
-func (m *Manager) ResetBreaker() {
+func (m *Gate) ResetBreaker() {
 	if m == nil {
 		return
 	}
@@ -113,7 +113,7 @@ func (m *Manager) ResetBreaker() {
 }
 
 // IsTripped returns true if the circuit breaker has tripped.
-func (m *Manager) IsTripped() bool {
+func (m *Gate) IsTripped() bool {
 	if m == nil {
 		return false
 	}
@@ -122,7 +122,7 @@ func (m *Manager) IsTripped() bool {
 	return m.circuitBreakerTripped
 }
 
-func (m *Manager) Request(
+func (m *Gate) Request(
 	ctx context.Context,
 	sess *session.Session,
 	toolName string,
@@ -227,7 +227,7 @@ func (m *Manager) Request(
 	}
 }
 
-func (m *Manager) Resolve(requestID string, decision Decision, reason string) error {
+func (m *Gate) Resolve(requestID string, decision Decision, reason string) error {
 	if decision != DecisionAllow && decision != DecisionDeny {
 		return ErrInvalidDecision
 	}
@@ -274,7 +274,7 @@ func (m *Manager) Resolve(requestID string, decision Decision, reason string) er
 	return nil
 }
 
-func (m *Manager) Pending() []string {
+func (m *Gate) Pending() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	ids := make([]string, 0, len(m.pending))
@@ -284,7 +284,7 @@ func (m *Manager) Pending() []string {
 	return ids
 }
 
-func (m *Manager) appendResolved(ctx context.Context, sess *session.Session, result Result) error {
+func (m *Gate) appendResolved(ctx context.Context, sess *session.Session, result Result) error {
 	return sess.Append(ctx, session.NewEvent(sess.ID(), session.ApprovalResolved, map[string]any{
 		"id":       result.RequestID,
 		"decision": result.Decision,
@@ -292,7 +292,7 @@ func (m *Manager) appendResolved(ctx context.Context, sess *session.Session, res
 	}))
 }
 
-func (m *Manager) logAudit(ctx context.Context, event audit.Event) {
+func (m *Gate) logAudit(ctx context.Context, event audit.Event) {
 	if m == nil || m.audit == nil {
 		return
 	}

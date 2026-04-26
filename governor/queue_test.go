@@ -39,9 +39,9 @@ func (m *mockMutator) CompactionStrategy() string {
 	return "mock"
 }
 
-func TestCompactionQueue_AsyncExecution(t *testing.T) {
+func TestCompactQueue_AsyncExecution(t *testing.T) {
 	mutator := &mockMutator{delay: 50 * time.Millisecond}
-	queue := governor.NewCompactionQueue(mutator)
+	queue := governor.NewCompactQueue(mutator)
 
 	if queue.IsCompacting() {
 		t.Fatal("should not be compacting initially")
@@ -70,9 +70,9 @@ func TestCompactionQueue_AsyncExecution(t *testing.T) {
 	}
 }
 
-func TestCompactionQueue_SkipsConcurrentCalls(t *testing.T) {
+func TestCompactQueue_SkipsConcurrentCalls(t *testing.T) {
 	mutator := &mockMutator{delay: 50 * time.Millisecond}
-	queue := governor.NewCompactionQueue(mutator)
+	queue := governor.NewCompactQueue(mutator)
 
 	_ = queue.Mutate(context.Background(), nil, "model", nil)
 	_ = queue.Mutate(context.Background(), nil, "model", nil) // Should be skipped
@@ -84,10 +84,10 @@ func TestCompactionQueue_SkipsConcurrentCalls(t *testing.T) {
 	}
 }
 
-func TestCompactionQueue_PropagatesError(t *testing.T) {
+func TestCompactQueue_PropagatesError(t *testing.T) {
 	expectedErr := errors.New("compaction failed")
 	mutator := &mockMutator{err: expectedErr}
-	queue := governor.NewCompactionQueue(mutator)
+	queue := governor.NewCompactQueue(mutator)
 
 	_ = queue.Mutate(context.Background(), nil, "model", nil)
 	err := queue.Wait(context.Background())
@@ -97,9 +97,9 @@ func TestCompactionQueue_PropagatesError(t *testing.T) {
 	}
 }
 
-func TestCompactionQueue_SequentialCycles(t *testing.T) {
+func TestCompactQueue_SequentialCycles(t *testing.T) {
 	mutator := &mockMutator{delay: 10 * time.Millisecond}
-	queue := governor.NewCompactionQueue(mutator)
+	queue := governor.NewCompactQueue(mutator)
 
 	for i := 0; i < 3; i++ {
 		err := queue.Mutate(context.Background(), nil, "model", nil)

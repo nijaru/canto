@@ -236,7 +236,7 @@ func TestExecutor_LogsSandboxFailure(t *testing.T) {
 		Timeout:        time.Second,
 		MaxOutputBytes: 1024,
 		Sandbox:        failing,
-		AuditLogger:    audit.NewWriterLogger(&buf),
+		AuditLogger:    audit.NewStreamLogger(&buf),
 	}
 
 	_, err := e.Run(t.Context(), Command{
@@ -271,7 +271,7 @@ func TestExecutor_LogsSandboxUnavailable(t *testing.T) {
 		Timeout:        time.Second,
 		MaxOutputBytes: 1024,
 		Sandbox:        failing,
-		AuditLogger:    audit.NewWriterLogger(&buf),
+		AuditLogger:    audit.NewStreamLogger(&buf),
 	}
 
 	_, err := e.Run(t.Context(), Command{
