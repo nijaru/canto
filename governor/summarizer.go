@@ -236,7 +236,7 @@ func (p *Summarizer) generateHistorySummary(
 	systemEntries []session.HistoryEntry,
 	content string,
 ) (string, error) {
-	const generatePrompt = `You are a concise summarizer for a durable AI agent session.
+	const generatePrompt = `You summarize agent sessions.
 
 Summarize the conversation into this structured format:
 
@@ -260,7 +260,7 @@ Anything that MUST be preserved — error states, partial work, active investiga
 
 Be specific. Preserve file paths, function names, and error messages. Do not summarize away actionable details.`
 
-	const updatePrompt = `You are a concise summarizer for a durable AI agent session.
+	const updatePrompt = `You summarize agent sessions.
 
 You have an existing summary and new conversation segments. UPDATE the existing
 summary to incorporate the new information. Follow the same structured format:
@@ -334,7 +334,7 @@ func (p *Summarizer) generateTurnPrefixSummary(
 		Messages: []llm.Message{
 			{
 				Role: llm.RoleSystem,
-				Content: `Summarize this active partial turn for a durable AI agent.
+				Content: `Summarize this active partial agent turn.
 
 The turn was cut before all tool observations could remain in context. Preserve
 the user request, assistant tool calls, tool IDs, arguments, and what result is

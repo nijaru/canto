@@ -11,7 +11,7 @@
 //
 // ChildRunner builds on the same model for parent/child orchestration:
 // materialize a child session, record durable lifecycle events in the parent,
-// and execute the child agent through one delegation surface. Spawn/Wait is the
+// and execute the child agent through one delegation API. Spawn/Wait is the
 // asynchronous path; Run is the synchronous convenience wrapper. Runner adds
 // scheduled child delegation on top of the same substrate. Runner also exposes
 // Bootstrap snapshots for seeding a session with workspace and tool context at
@@ -19,7 +19,7 @@
 // Detached execution is explicit via ChildSpec. Waiting children emit durable
 // blocked lifecycle events instead of being reported as completed.
 //
-// Runner also owns a shared child delegation surface via Delegate, SpawnChild,
+// Runner also owns a shared child delegation API via Delegate, SpawnChild,
 // and WaitChild so hosts do not need to manage ChildRunner handles manually.
 // Option-based constructors plus Runner.ChildRunner still provide the helper
 // path for callers that need an explicitly separate child worker.

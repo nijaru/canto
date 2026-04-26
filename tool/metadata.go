@@ -18,7 +18,7 @@ type Example struct {
 	Arguments   string `json:"arguments,omitzero"`
 }
 
-// Metadata carries framework-side scheduling and policy hints for a tool.
+// Metadata carries scheduling and policy hints for a tool.
 type Metadata struct {
 	Category    string          `json:"category,omitzero"`
 	ReadOnly    bool            `json:"read_only,omitzero"`
@@ -27,13 +27,13 @@ type Metadata struct {
 	Examples    []Example       `json:"examples,omitzero"`
 }
 
-// MetadataTool is an optional extension for tools that expose framework-side metadata.
+// MetadataTool is an optional extension for tools that expose metadata.
 type MetadataTool interface {
 	Tool
 	Metadata() Metadata
 }
 
-// MetadataFor returns the framework-side metadata for a tool, if any.
+// MetadataFor returns metadata for a tool, if any.
 func MetadataFor(t Tool) Metadata {
 	if mt, ok := t.(MetadataTool); ok {
 		return mt.Metadata()

@@ -23,7 +23,7 @@ type MemoryCapabilities struct {
 // MemoryService is the current memory-shaped public contract.
 //
 // It stays intentionally small: expose the future verbs without replacing the
-// existing experimental surface or freezing backend details too early.
+// existing experimental API or freezing backend details too early.
 type MemoryService interface {
 	Remember(ctx context.Context, input WriteInput) (WriteResult, error)
 	RememberBatch(ctx context.Context, inputs []WriteInput) (WriteResult, error)

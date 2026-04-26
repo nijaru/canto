@@ -1,6 +1,6 @@
 // Package agent provides the turn-based agent loop over durable sessions.
 //
-// BaseAgent is the default implementation. New wires a default context.Builder
+// BaseAgent is the default implementation. New wires a default prompt.Builder
 // chain with instructions, tool definitions, effective history, and model
 // capability adaptation.
 //

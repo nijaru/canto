@@ -248,7 +248,7 @@ func TestSummarizerSplitTurnSummarizesActivePrefix(t *testing.T) {
 			mu.Lock()
 			requests = append(requests, req)
 			mu.Unlock()
-			if strings.Contains(req.Messages[0].Content, "active partial turn") {
+			if strings.Contains(req.Messages[0].Content, "partial agent turn") {
 				return &llm.Response{Content: "Active tool call prefix summary"}, nil
 			}
 			return &llm.Response{Content: "Stable history summary"}, nil

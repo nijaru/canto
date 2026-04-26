@@ -36,7 +36,7 @@ func Func(
 	return FuncWithMetadata(name, desc, schema, Metadata{}, fn)
 }
 
-// FuncWithMetadata constructs a Tool from a function with framework-side metadata.
+// FuncWithMetadata constructs a Tool from a function with metadata.
 func FuncWithMetadata(
 	name, desc string,
 	schema any,

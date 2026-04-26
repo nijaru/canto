@@ -196,7 +196,7 @@ func (r *Runner) SpawnChild(
 }
 
 // WaitChild waits for a previously spawned child on the runner's shared
-// delegation surface.
+// delegation API.
 func (r *Runner) WaitChild(ctx context.Context, childID string) (ChildResult, error) {
 	return r.sharedChildRunner().Wait(ctx, childID)
 }

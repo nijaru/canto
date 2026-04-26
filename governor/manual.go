@@ -28,7 +28,7 @@ type CompactResult struct {
 }
 
 // CompactSession runs durable manual compaction against sess using the
-// framework's built-in offload-then-summarize pipeline.
+// built-in offload-then-summarize pipeline.
 //
 // The returned result reports whether the session appended any new durable
 // compaction snapshots during the call.

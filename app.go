@@ -1,5 +1,5 @@
-// Package canto provides a small authoring surface over Canto's core
-// primitives. The lower-level packages remain the source of truth.
+// Package canto provides a small builder over Canto's core primitives. The
+// lower-level packages remain the source of truth.
 package canto
 
 import (
@@ -17,8 +17,8 @@ import (
 	"github.com/nijaru/canto/tool"
 )
 
-// App is the assembled authoring surface: an agent, runner, registry, and
-// session store. Callers can use the fields directly for full composition.
+// App is an assembled agent, runner, registry, and session store. Callers can
+// use the fields directly for full composition.
 type App struct {
 	Agent  agent.Agent
 	Runner *runtime.Runner

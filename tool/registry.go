@@ -48,7 +48,7 @@ func (r *Registry) Specs() []*llm.Spec {
 	return res
 }
 
-// Entries returns the registered tools with their framework-side metadata.
+// Entries returns the registered tools with their metadata.
 func (r *Registry) Entries() []ToolEntry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -71,7 +71,7 @@ func (r *Registry) Entries() []ToolEntry {
 	return res
 }
 
-// Metadata returns framework-side metadata for a tool by name.
+// Metadata returns metadata for a tool by name.
 func (r *Registry) Metadata(name string) (Metadata, bool) {
 	t, ok := r.Get(name)
 	if !ok {

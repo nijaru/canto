@@ -15,7 +15,7 @@
 //     originating message-event IDs when known.
 //   - Artifact events carry durable artifact descriptors and provenance rather
 //     than embedding artifact bodies directly in the log.
-//   - RecordArtifact and StoreArtifact provide the standard framework path for
+//   - RecordArtifact and StoreArtifact provide the standard path for
 //     recording external descriptors or persisting new artifact bodies while
 //     emitting artifact_recorded events.
 //
