@@ -64,10 +64,10 @@ func TestMemoryPrompt_InjectsRetrievedMemory(t *testing.T) {
 		t.Fatalf("ApplyRequest: %v", err)
 	}
 	if len(req.Messages) != 1 {
-		t.Fatalf("expected 1 injected system message, got %d", len(req.Messages))
+		t.Fatalf("expected 1 injected context message, got %d", len(req.Messages))
 	}
-	if req.Messages[0].Role != llm.RoleSystem {
-		t.Fatalf("expected system role, got %s", req.Messages[0].Role)
+	if req.Messages[0].Role != llm.RoleUser {
+		t.Fatalf("expected user context role, got %s", req.Messages[0].Role)
 	}
 	if req.Messages[0].Content == "" ||
 		!containsAll(req.Messages[0].Content, "Archivist", "User likes tea") {
@@ -103,12 +103,18 @@ func TestMemoryPrompt_ReplacesExistingBlock(t *testing.T) {
 		t.Fatalf("ApplyRequest: %v", err)
 	}
 
-	content := req.Messages[0].Content
-	if strings.Contains(content, "old memory") {
-		t.Fatalf("expected old memory block to be replaced: %q", content)
+	if len(req.Messages) != 2 {
+		t.Fatalf("expected system instructions plus memory context, got %#v", req.Messages)
 	}
-	if !containsAll(content, "Updated", "Original system text.") {
-		t.Fatalf("expected updated memory block plus original instructions: %q", content)
+	systemContent := req.Messages[0].Content
+	memoryContent := req.Messages[1].Content
+	if strings.Contains(systemContent, "old memory") ||
+		strings.Contains(memoryContent, "old memory") {
+		t.Fatalf("expected old memory block to be replaced: %#v", req.Messages)
+	}
+	if !containsAll(systemContent, "Original system text.") ||
+		!containsAll(memoryContent, "Updated") {
+		t.Fatalf("expected separated instructions and updated memory: %#v", req.Messages)
 	}
 }
 

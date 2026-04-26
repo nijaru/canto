@@ -104,7 +104,7 @@ func (s *Session) rawMessagesLocked() ([]llm.Message, error) {
 	res := make([]llm.Message, 0, len(s.events)/2+1)
 	for i := range s.events {
 		e := &s.events[i]
-		if e.Type != MessageAdded {
+		if e.Type != MessageAdded && e.Type != ContextAdded {
 			continue
 		}
 
@@ -128,7 +128,7 @@ func (s *Session) rawEntriesLocked() ([]HistoryEntry, error) {
 	res := make([]HistoryEntry, 0, len(s.events)/2+1)
 	for i := range s.events {
 		e := &s.events[i]
-		if e.Type != MessageAdded {
+		if e.Type != MessageAdded && e.Type != ContextAdded {
 			continue
 		}
 
@@ -142,6 +142,17 @@ func (s *Session) rawEntriesLocked() ([]HistoryEntry, error) {
 }
 
 func (s *Session) historyEntryFromEvent(e *Event) (HistoryEntry, error) {
+	if e.Type == ContextAdded {
+		entry, err := e.ensureContextEntry()
+		if err != nil {
+			return HistoryEntry{}, err
+		}
+		return HistoryEntry{
+			EventID: e.ID.String(),
+			Message: contextEntryMessage(*entry),
+		}, nil
+	}
+
 	msg, err := e.ensureMessage()
 	if err != nil {
 		return HistoryEntry{}, err

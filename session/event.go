@@ -15,6 +15,7 @@ type EventType string
 
 const (
 	MessageAdded  EventType = "message_added"
+	ContextAdded  EventType = "context_added"
 	Handoff       EventType = "handoff"
 	ExternalInput EventType = "external_input"
 

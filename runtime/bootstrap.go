@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
 	"github.com/nijaru/canto/workspace"
@@ -93,18 +92,18 @@ func (b Bootstrap) Render() string {
 	return out.String()
 }
 
-// Message returns the bootstrap snapshot as a system message.
-func (b Bootstrap) Message() llm.Message {
-	return llm.Message{
-		Role:    llm.RoleSystem,
+// Context returns the bootstrap snapshot as durable model-visible context.
+func (b Bootstrap) Context() session.ContextEntry {
+	return session.ContextEntry{
+		Kind:    session.ContextKindBootstrap,
 		Content: b.Render(),
 	}
 }
 
-// Append records the bootstrap snapshot as the first system message in sess.
+// Append records the bootstrap snapshot as durable model-visible context.
 func (b Bootstrap) Append(ctx context.Context, sess *session.Session) error {
 	if sess == nil {
 		return errors.New("bootstrap: nil session")
 	}
-	return sess.Append(ctx, session.NewMessage(sess.ID(), b.Message()))
+	return sess.AppendContext(ctx, b.Context())
 }

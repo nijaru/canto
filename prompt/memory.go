@@ -85,7 +85,7 @@ func MemoryPrompt(retriever memory.Retriever, opts MemoryPromptOptions) RequestP
 			)
 		}
 		sb.WriteString("</memory_context>")
-		injectSystemBlock(req, memoryPromptRegex, sb.String())
+		injectContextBlock(req, memoryPromptRegex, sb.String())
 		return nil
 	})
 }

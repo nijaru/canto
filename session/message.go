@@ -11,7 +11,8 @@ func UserMessage(content string) llm.Message {
 	return llm.Message{Role: llm.RoleUser, Content: content}
 }
 
-// SystemMessage creates a plain system message.
+// SystemMessage creates a provider-style system message. Durable session
+// context should use ContextEntry via NewContext or AppendContext instead.
 func SystemMessage(content string) llm.Message {
 	return llm.Message{Role: llm.RoleSystem, Content: content}
 }

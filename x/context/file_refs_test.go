@@ -35,8 +35,8 @@ func TestFileReferencePrompt(t *testing.T) {
 	if len(req.Messages) != 1 {
 		t.Fatalf("expected 1 injected message, got %d", len(req.Messages))
 	}
-	if req.Messages[0].Role != llm.RoleSystem {
-		t.Fatalf("expected system role, got %s", req.Messages[0].Role)
+	if req.Messages[0].Role != llm.RoleUser {
+		t.Fatalf("expected user context role, got %s", req.Messages[0].Role)
 	}
 	if req.Messages[0].Content == "" ||
 		!contains(req.Messages[0].Content, "notes.txt", "hello from file", "sha256:") {

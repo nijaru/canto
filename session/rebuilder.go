@@ -60,7 +60,7 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 	cutoffSeen := false
 	for i := range sess.events {
 		e := &sess.events[i]
-		if e.Type != MessageAdded {
+		if e.Type != MessageAdded && e.Type != ContextAdded {
 			continue
 		}
 		if !cutoffSeen {
@@ -119,10 +119,10 @@ func (r *Rebuilder) fileContextEntry(snapshot CompactionSnapshot) (HistoryEntry,
 	sb.WriteString("</working_set>")
 
 	return HistoryEntry{
-		Message: llm.Message{
-			Role:    llm.RoleUser,
+		Message: contextEntryMessage(ContextEntry{
+			Kind:    ContextKindWorkingSet,
 			Content: sb.String(),
-		},
+		}),
 	}, true
 }
 

@@ -160,17 +160,29 @@ var fileReferenceRegex = regexp.MustCompile(`(?s)<file_references>.*?</file_refe
 
 func injectFileReferences(req *llm.Request, block string) {
 	for i, msg := range req.Messages {
-		if msg.Role != llm.RoleSystem {
+		if msg.Role == llm.RoleSystem || msg.Role == llm.RoleDeveloper {
+			if loc := fileReferenceRegex.FindStringIndex(msg.Content); loc != nil {
+				req.Messages[i].Content = strings.TrimSpace(
+					msg.Content[:loc[0]] + msg.Content[loc[1]:],
+				)
+			}
 			continue
 		}
 		if loc := fileReferenceRegex.FindStringIndex(msg.Content); loc != nil {
 			req.Messages[i].Content = msg.Content[:loc[0]] + block + "\n\n" + msg.Content[loc[1]:]
-		} else {
-			req.Messages[i].Content = block + "\n\n" + msg.Content
+			req.Messages[i].Role = llm.RoleUser
+			return
 		}
-		return
 	}
-	req.Messages = append([]llm.Message{{Role: llm.RoleSystem, Content: block}}, req.Messages...)
+
+	idx := 0
+	for idx < len(req.Messages) &&
+		(req.Messages[idx].Role == llm.RoleSystem || req.Messages[idx].Role == llm.RoleDeveloper) {
+		idx++
+	}
+	req.Messages = append(req.Messages, llm.Message{})
+	copy(req.Messages[idx+1:], req.Messages[idx:])
+	req.Messages[idx] = llm.Message{Role: llm.RoleUser, Content: block}
 }
 
 type resolvedFileReference struct {

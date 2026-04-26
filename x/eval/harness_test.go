@@ -36,12 +36,15 @@ func TestHarborConnectorBootstrapsHarnessContext(t *testing.T) {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 
-	msgs := sess.Messages()
+	msgs, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
 	if got, want := len(msgs), 1; got != want {
 		t.Fatalf("message count: got %d want %d", got, want)
 	}
-	if msgs[0].Role != llm.RoleSystem {
-		t.Fatalf("bootstrap role: got %s want %s", msgs[0].Role, llm.RoleSystem)
+	if msgs[0].Role != llm.RoleUser {
+		t.Fatalf("bootstrap role: got %s want %s", msgs[0].Role, llm.RoleUser)
 	}
 	for _, want := range []string{
 		"Harness: Harbor",
@@ -92,12 +95,15 @@ func TestSWEBenchConnectorBootstrapsHarnessContext(t *testing.T) {
 		t.Fatalf("Bootstrap: %v", err)
 	}
 
-	msgs := sess.Messages()
+	msgs, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
 	if got, want := len(msgs), 1; got != want {
 		t.Fatalf("message count: got %d want %d", got, want)
 	}
-	if msgs[0].Role != llm.RoleSystem {
-		t.Fatalf("bootstrap role: got %s want %s", msgs[0].Role, llm.RoleSystem)
+	if msgs[0].Role != llm.RoleUser {
+		t.Fatalf("bootstrap role: got %s want %s", msgs[0].Role, llm.RoleUser)
 	}
 	for _, want := range []string{
 		"Harness: SWE-bench",

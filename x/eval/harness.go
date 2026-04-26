@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
 
@@ -65,10 +64,10 @@ func (e HarnessEnvironment) Bootstrap(ctx context.Context, sess *session.Session
 		return nil
 	}
 
-	return sess.Append(ctx, session.NewEvent(sess.ID(), session.MessageAdded, llm.Message{
-		Role:    llm.RoleSystem,
+	return sess.AppendContext(ctx, session.ContextEntry{
+		Kind:    session.ContextKindHarness,
 		Content: content,
-	}))
+	})
 }
 
 func (e HarnessEnvironment) render() string {

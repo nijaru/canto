@@ -72,7 +72,7 @@ func (i *Indexer) Watch(ctx context.Context, sess *session.Session) {
 				if !ok {
 					return
 				}
-				if e.Type == session.MessageAdded {
+				if e.Type == session.MessageAdded || e.Type == session.ContextAdded {
 					i.indexMessage(watchCtx, sess.ID(), e)
 				}
 			}
@@ -81,6 +81,11 @@ func (i *Indexer) Watch(ctx context.Context, sess *session.Session) {
 }
 
 func (i *Indexer) indexMessage(ctx context.Context, sessionID string, e session.Event) {
+	if e.Type == session.ContextAdded {
+		i.indexContext(ctx, sessionID, e)
+		return
+	}
+
 	var msg llm.Message
 	if err := json.Unmarshal(e.Data, &msg); err != nil {
 		i.handleError(fmt.Errorf("indexer: unmarshal message: %w", err))
@@ -106,6 +111,37 @@ func (i *Indexer) indexMessage(ctx context.Context, sessionID string, e session.
 		"event_id":   e.ID.String(),
 		"role":       string(msg.Role),
 		"content":    msg.Content,
+	}
+
+	if err := i.store.Upsert(ctx, id, vector, metadata); err != nil {
+		i.handleError(fmt.Errorf("indexer: upsert %s: %w", id, err))
+	}
+}
+
+func (i *Indexer) indexContext(ctx context.Context, sessionID string, e session.Event) {
+	var entry session.ContextEntry
+	if err := json.Unmarshal(e.Data, &entry); err != nil {
+		i.handleError(fmt.Errorf("indexer: unmarshal context: %w", err))
+		return
+	}
+	if entry.Content == "" {
+		return
+	}
+
+	id := fmt.Sprintf("%s:%s", sessionID, e.ID.String())
+
+	vector, err := i.embedder.EmbedContent(ctx, entry.Content)
+	if err != nil {
+		i.handleError(fmt.Errorf("indexer: embed %s: %w", id, err))
+		return
+	}
+
+	metadata := map[string]any{
+		"session_id": sessionID,
+		"event_id":   e.ID.String(),
+		"role":       "context",
+		"kind":       string(entry.Kind),
+		"content":    entry.Content,
 	}
 
 	if err := i.store.Upsert(ctx, id, vector, metadata); err != nil {

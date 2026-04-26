@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -315,6 +316,32 @@ func Instructions(instructions string) RequestProcessor {
 			return nil
 		},
 	)
+}
+
+func injectContextBlock(req *llm.Request, blockRegex *regexp.Regexp, block string) {
+	for i, m := range req.Messages {
+		if m.Role == llm.RoleSystem || m.Role == llm.RoleDeveloper {
+			if loc := blockRegex.FindStringIndex(m.Content); loc != nil {
+				req.Messages[i].Content = strings.TrimSpace(m.Content[:loc[0]] + m.Content[loc[1]:])
+			}
+			continue
+		}
+		if loc := blockRegex.FindStringIndex(m.Content); loc != nil {
+			req.Messages[i].Content = m.Content[:loc[0]] + block + "\n\n" + m.Content[loc[1]:]
+			req.Messages[i].Role = llm.RoleUser
+			return
+		}
+	}
+
+	idx := 0
+	for idx < len(req.Messages) &&
+		(req.Messages[idx].Role == llm.RoleSystem || req.Messages[idx].Role == llm.RoleDeveloper) {
+		idx++
+	}
+	msg := llm.Message{Role: llm.RoleUser, Content: block}
+	req.Messages = append(req.Messages, llm.Message{})
+	copy(req.Messages[idx+1:], req.Messages[idx:])
+	req.Messages[idx] = msg
 }
 
 // injectSystemBlock prepends block into the first system message in req,

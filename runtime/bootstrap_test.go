@@ -55,7 +55,7 @@ func TestCaptureBootstrapBuildsDeterministicSnapshot(t *testing.T) {
 	}
 }
 
-func TestRunnerBootstrapAppendsSystemSnapshot(t *testing.T) {
+func TestRunnerBootstrapAppendsContextSnapshot(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -81,11 +81,18 @@ func TestRunnerBootstrapAppendsSystemSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load session: %v", err)
 	}
-	if len(reloaded.Messages()) == 0 {
-		t.Fatal("expected bootstrap system message")
+	if len(reloaded.Messages()) != 0 {
+		t.Fatalf("expected bootstrap outside transcript, got %#v", reloaded.Messages())
 	}
-	if got := reloaded.Messages()[0]; got.Role != llm.RoleSystem ||
+	messages, err := reloaded.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("effective messages: %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("expected bootstrap context message, got %#v", messages)
+	}
+	if got := messages[0]; got.Role != llm.RoleUser ||
 		!strings.Contains(got.Content, "/workspace") {
-		t.Fatalf("bootstrap message = %#v", got)
+		t.Fatalf("bootstrap context = %#v", got)
 	}
 }

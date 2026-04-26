@@ -201,8 +201,8 @@ func (r *Runner) WaitChild(ctx context.Context, childID string) (ChildResult, er
 	return r.sharedChildRunner().Wait(ctx, childID)
 }
 
-// Bootstrap records an environment snapshot as the session's opening system
-// message so the first turn has workspace and tool context up front.
+// Bootstrap records an environment snapshot as model-visible context so the
+// first turn has workspace and tool context up front.
 func (r *Runner) Bootstrap(ctx context.Context, sessionID string, snap Bootstrap) error {
 	sess, err := r.getOrLoad(ctx, sessionID)
 	if err != nil {
