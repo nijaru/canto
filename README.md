@@ -76,6 +76,14 @@ Use `SessionStore(store)` instead of `Ephemeral()` for durable applications.
 | `artifact` | Blob storage and registry | Semi-stable |
 | `x/` | Swarm, Graph, and evaluation patterns | Experimental |
 
+## Provider Support
+
+Canto's M1 provider contract is documented in
+[docs/providers.md](docs/providers.md). In short: `llm.NewFauxProvider`,
+OpenAI, and Anthropic are the supported alpha paths; OpenRouter, Gemini, and
+Ollama are provisional OpenAI-compatible adapters; custom OpenAI-compatible
+endpoints are bring-your-own validation.
+
 ## Examples
 
 - [Hello](examples/hello/main.go): Minimal no-credential root-builder agent.
