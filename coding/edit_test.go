@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nijaru/canto/safety"
 	"github.com/nijaru/canto/workspace"
 )
 
@@ -79,5 +80,24 @@ func TestMultiEditTool_AllOrNothing(t *testing.T) {
 	bData, _ := root.ReadFile("b.txt")
 	if string(aData) != "alpha" || string(bData) != "beta" {
 		t.Fatalf("files changed on failed multi_edit: %q %q", string(aData), string(bData))
+	}
+}
+
+func TestMultiEditTool_ApprovalRequirementIsWrite(t *testing.T) {
+	root := openEditRoot(t)
+	req, ok, err := NewMultiEditTool(root).ApprovalRequirement(
+		`{"edits":[{"path":"a.txt"},{"path":"b.txt"}]}`,
+	)
+	if err != nil {
+		t.Fatalf("ApprovalRequirement: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected approval requirement")
+	}
+	if req.Category != string(safety.CategoryWrite) {
+		t.Fatalf("category = %q, want %q", req.Category, safety.CategoryWrite)
+	}
+	if req.Resource != "a.txt,b.txt" {
+		t.Fatalf("resource = %q, want a.txt,b.txt", req.Resource)
 	}
 }

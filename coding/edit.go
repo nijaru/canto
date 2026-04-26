@@ -181,7 +181,7 @@ func (t *MultiEditTool) ApprovalRequirement(args string) (approval.Requirement, 
 		paths = append(paths, edit.Path)
 	}
 	return approval.Requirement{
-		Category:  "workspace",
+		Category:  string(safety.CategoryWrite),
 		Operation: "multi_edit",
 		Resource:  strings.Join(paths, ","),
 	}, true, nil
