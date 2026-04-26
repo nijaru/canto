@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -108,6 +109,31 @@ func (t *blockingTool) Metadata() tool.Metadata { return t.metadata }
 func (t *blockingTool) Execute(_ context.Context, _ string) (string, error) {
 	close(t.started)
 	<-t.release
+	return t.name, nil
+}
+
+type orderedTool struct {
+	name     string
+	metadata tool.Metadata
+	started  chan struct{}
+	release  <-chan struct{}
+}
+
+func (t *orderedTool) Spec() llm.Spec {
+	return llm.Spec{
+		Name:        t.name,
+		Description: "An ordered test tool",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+	}
+}
+
+func (t *orderedTool) Metadata() tool.Metadata { return t.metadata }
+
+func (t *orderedTool) Execute(_ context.Context, _ string) (string, error) {
+	close(t.started)
+	if t.release != nil {
+		<-t.release
+	}
 	return t.name, nil
 }
 
@@ -904,6 +930,177 @@ func TestStepToolConcurrencyPartitioningPreservesSerializedBarriers(t *testing.T
 	}
 	if msgs[4].Name != "serial_c" || msgs[4].Content != "serial_c" {
 		t.Fatalf("unexpected third tool result: %+v", msgs[4])
+	}
+}
+
+func TestRunTools_PreflightCompletesBeforeParallelExecution(t *testing.T) {
+	preflightDone := make(chan struct{})
+	var (
+		mu             sync.Mutex
+		preflightCount int
+		executions     []string
+	)
+
+	makeTool := func(name string) tool.Tool {
+		return tool.FuncWithMetadata(
+			name,
+			"records execution",
+			map[string]any{"type": "object"},
+			tool.Metadata{Concurrency: tool.Parallel},
+			func(_ context.Context, _ string) (string, error) {
+				select {
+				case <-preflightDone:
+				default:
+					return "", fmt.Errorf("%s executed before preflight completed", name)
+				}
+				mu.Lock()
+				executions = append(executions, name)
+				mu.Unlock()
+				return name, nil
+			},
+		)
+	}
+
+	reg := tool.NewRegistry()
+	reg.Register(makeTool("a"))
+	reg.Register(makeTool("b"))
+
+	hooks := hook.NewRunner()
+	hooks.Register(hook.NewFunc(
+		"preflight-recorder",
+		[]hook.Event{hook.EventPreToolUse},
+		func(_ context.Context, payload *hook.Payload) *hook.Result {
+			mu.Lock()
+			defer mu.Unlock()
+			if len(executions) > 0 {
+				return &hook.Result{
+					Action: hook.ActionBlock,
+					Error:  fmt.Errorf("execution started before all preflight hooks completed"),
+				}
+			}
+			preflightCount++
+			if preflightCount == 2 {
+				close(preflightDone)
+			}
+			return &hook.Result{Action: hook.ActionProceed}
+		},
+	))
+
+	s := session.New("s-preflight-before-execute")
+	calls := []llm.Call{
+		{
+			ID:   "c1",
+			Type: "function",
+			Function: struct {
+				Name      string `json:"name"`
+				Arguments string `json:"arguments"`
+			}{Name: "a", Arguments: `{}`},
+		},
+		{
+			ID:   "c2",
+			Type: "function",
+			Function: struct {
+				Name      string `json:"name"`
+				Arguments string `json:"arguments"`
+			}{Name: "b", Arguments: `{}`},
+		},
+	}
+
+	res, err := runTools(context.Background(), s, calls, reg, hooks, nil, nil, 2, "step-1")
+	if err != nil {
+		t.Fatalf("runTools: %v", err)
+	}
+	if len(res.ToolResults) != 2 {
+		t.Fatalf("expected 2 tool results, got %d", len(res.ToolResults))
+	}
+	if preflightCount != 2 {
+		t.Fatalf("expected 2 preflight hooks, got %d", preflightCount)
+	}
+}
+
+func TestRunTools_ParallelResultsEmitInSourceOrder(t *testing.T) {
+	releaseA := make(chan struct{})
+	toolA := &orderedTool{
+		name:     "a",
+		metadata: tool.Metadata{Concurrency: tool.Parallel},
+		started:  make(chan struct{}),
+		release:  releaseA,
+	}
+	toolB := &orderedTool{
+		name:     "b",
+		metadata: tool.Metadata{Concurrency: tool.Parallel},
+		started:  make(chan struct{}),
+	}
+
+	reg := tool.NewRegistry()
+	reg.Register(toolA)
+	reg.Register(toolB)
+	s := session.New("s-parallel-source-order")
+	calls := []llm.Call{
+		{
+			ID:   "c1",
+			Type: "function",
+			Function: struct {
+				Name      string `json:"name"`
+				Arguments string `json:"arguments"`
+			}{Name: "a", Arguments: `{}`},
+		},
+		{
+			ID:   "c2",
+			Type: "function",
+			Function: struct {
+				Name      string `json:"name"`
+				Arguments string `json:"arguments"`
+			}{Name: "b", Arguments: `{}`},
+		},
+	}
+
+	done := make(chan struct {
+		res StepResult
+		err error
+	}, 1)
+	go func() {
+		res, err := runTools(context.Background(), s, calls, reg, nil, nil, nil, 2, "step-1")
+		done <- struct {
+			res StepResult
+			err error
+		}{res: res, err: err}
+	}()
+
+	for name, ch := range map[string]<-chan struct{}{
+		"a": toolA.started,
+		"b": toolB.started,
+	} {
+		select {
+		case <-ch:
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for %s to start", name)
+		}
+	}
+	close(releaseA)
+
+	var out struct {
+		res StepResult
+		err error
+	}
+	select {
+	case out = <-done:
+	case <-time.After(time.Second):
+		t.Fatal("runTools did not complete")
+	}
+	if out.err != nil {
+		t.Fatalf("runTools: %v", out.err)
+	}
+	if len(out.res.ToolResults) != 2 {
+		t.Fatalf("expected 2 tool results, got %d", len(out.res.ToolResults))
+	}
+	if out.res.ToolResults[0].Name != "a" || out.res.ToolResults[1].Name != "b" {
+		t.Fatalf("tool results out of source order: %#v", out.res.ToolResults)
+	}
+
+	msgs := s.Messages()
+	if len(msgs) != 2 || msgs[0].Name != "a" || msgs[1].Name != "b" {
+		t.Fatalf("session tool messages out of source order: %#v", msgs)
 	}
 }
 

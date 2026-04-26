@@ -25,14 +25,13 @@ type toolResult struct {
 
 // preflightResult holds the outcome of sequential validation for one tool call.
 type preflightResult struct {
-	call        llm.Call
-	index       int
-	stepID      string
-	tool        tool.Tool
-	metadata    tool.Metadata
-	output      string // non-empty if preflight produced output (error or hook context)
-	err         error  // non-nil if preflight blocked execution
-	skipExecute bool   // true if execution should be skipped (preflight handled it)
+	call           llm.Call
+	idempotencyKey string
+	tool           tool.Tool
+	metadata       tool.Metadata
+	output         string // non-empty if preflight produced output (error or hook context)
+	err            error  // non-nil if preflight blocked execution
+	skipExecute    bool   // true if execution should be skipped (preflight handled it)
 }
 
 func hookContextOutput(event hook.Event, results []*hook.Result) string {
@@ -208,8 +207,6 @@ func preflightTools(
 
 	for i, call := range calls {
 		results[i].call = call
-		results[i].index = i
-		results[i].stepID = assistantMessageID
 
 		// PreToolUse hooks — run sequentially so they can inspect sibling state.
 		var metadata tool.Metadata
@@ -342,6 +339,7 @@ func preflightTools(
 		}
 
 		idempotencyKey := toolIdempotencyKey(s.ID(), assistantMessageID, call, i)
+		results[i].idempotencyKey = idempotencyKey
 		decision, err := fence.Validate(s, idempotencyKey)
 		if err != nil {
 			results[i].err = err
@@ -350,17 +348,6 @@ func preflightTools(
 		}
 		if decision.Action == tool.ReplayReuse {
 			results[i].output = hookOutput + decision.Output
-			results[i].skipExecute = true
-			continue
-		}
-
-		if err := s.Append(ctx, session.NewToolStartedEvent(s.ID(), session.ToolStartedData{
-			Tool:           call.Function.Name,
-			Arguments:      call.Function.Arguments,
-			ID:             call.ID,
-			IdempotencyKey: idempotencyKey,
-		})); err != nil {
-			results[i].err = err
 			results[i].skipExecute = true
 			continue
 		}
@@ -500,6 +487,15 @@ func executeTool(
 		return toolResult{call: call, output: output}
 	}
 
+	if err := s.Append(ctx, session.NewToolStartedEvent(s.ID(), session.ToolStartedData{
+		Tool:           call.Function.Name,
+		Arguments:      call.Function.Arguments,
+		ID:             call.ID,
+		IdempotencyKey: pf.idempotencyKey,
+	})); err != nil {
+		return toolResult{call: call, output: output, err: err}
+	}
+
 	var execErr error
 	if st, ok := t.(tool.StreamingTool); ok {
 		for delta, err := range st.ExecuteStreaming(ctx, call.Function.Arguments) {
@@ -570,7 +566,7 @@ func executeTool(
 	if err := s.Append(ctx, session.NewToolCompletedEvent(s.ID(), session.ToolCompletedData{
 		Tool:           call.Function.Name,
 		ID:             call.ID,
-		IdempotencyKey: toolIdempotencyKey(s.ID(), pf.stepID, call, pf.index),
+		IdempotencyKey: pf.idempotencyKey,
 		Output:         output,
 	})); err != nil {
 		res.err = err
