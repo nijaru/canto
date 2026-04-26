@@ -10,7 +10,7 @@ import (
 )
 
 func ExamplePolicyFunc_shellClassifierSeam() {
-	// Ion or another host can provide this policy without Canto owning the
+	// A host can provide this policy without Canto owning the
 	// command heuristics. The example is deliberately tiny: real products can
 	// parse POSIX shell, check cwd/path policy, and inspect user trust state.
 	shellPolicy := approval.PolicyFunc(

@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/nijaru/canto.svg)](https://pkg.go.dev/badge/github.com/nijaru/canto)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Canto is a Go framework for building durable agent backends. It provides primitives for append-only session history, context construction, tool execution, workspace-safe coding agents, service/API tools, and multi-agent coordination.
+Canto is a Go framework for building durable agent backends. It provides primitives for append-only session history, context construction, tool execution, workspace-safe tools, service/API tools, and multi-agent coordination.
 
 > [!WARNING]
 > **Status: Pre-alpha.** Canto is under active development. APIs are unstable and subject to breaking changes.

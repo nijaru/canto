@@ -39,9 +39,9 @@ Before first alpha:
 - OpenAI and Anthropic provider paths must keep their local unit coverage green.
 - Provisional providers must build and pass shared provider tests, but they do
   not need live integration tests for M1.
-- Ion validation may choose any provider, but Canto's alpha contract is only the
-  matrix above. If Ion needs stronger guarantees for a provisional provider,
-  that becomes a Canto task or an explicit Ion-side acceptance risk.
+- Consumer validation may choose any provider, but Canto's alpha contract is
+  only the matrix above. If a host needs stronger guarantees for a provisional
+  provider, that becomes a Canto task or an explicit host-side acceptance risk.
 
 ## Configuration Notes
 

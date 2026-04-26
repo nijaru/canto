@@ -236,7 +236,7 @@ func (p *Summarizer) generateHistorySummary(
 	systemEntries []session.HistoryEntry,
 	content string,
 ) (string, error) {
-	const generatePrompt = `You are a concise summarizer for an AI coding agent session.
+	const generatePrompt = `You are a concise summarizer for a durable AI agent session.
 
 Summarize the conversation into this structured format:
 
@@ -247,7 +247,7 @@ What the user is trying to accomplish (1-2 sentences).
 Known limitations, requirements, or constraints discovered.
 
 ## Progress
-What has been done so far. Include key file operations and their outcomes.
+What has been done so far. Include key tool actions and their outcomes.
 
 ## Key Decisions
 Important architectural or implementation decisions made, with brief rationale.
@@ -256,11 +256,11 @@ Important architectural or implementation decisions made, with brief rationale.
 What should happen next, in order.
 
 ## Critical Context
-Anything that MUST be preserved — error states, partial work, active investigations, file paths being modified.
+Anything that MUST be preserved — error states, partial work, active investigations, tool results, resource identifiers, and paths being modified.
 
 Be specific. Preserve file paths, function names, and error messages. Do not summarize away actionable details.`
 
-	const updatePrompt = `You are a concise summarizer for an AI coding agent session.
+	const updatePrompt = `You are a concise summarizer for a durable AI agent session.
 
 You have an existing summary and new conversation segments. UPDATE the existing
 summary to incorporate the new information. Follow the same structured format:
@@ -334,7 +334,7 @@ func (p *Summarizer) generateTurnPrefixSummary(
 		Messages: []llm.Message{
 			{
 				Role: llm.RoleSystem,
-				Content: `Summarize this active partial turn for a coding agent.
+				Content: `Summarize this active partial turn for a durable AI agent.
 
 The turn was cut before all tool observations could remain in context. Preserve
 the user request, assistant tool calls, tool IDs, arguments, and what result is
