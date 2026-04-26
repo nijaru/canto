@@ -1,0 +1,109 @@
+# Defaults
+
+Canto keeps agent behavior in the host. It provides the prompt pipeline, durable
+state, and tool plumbing; the host provides the agent's role, workflow, policy,
+and default tool set.
+
+## Agent Construction
+
+Use `canto.NewAgent` for normal applications:
+
+```go
+app, err := canto.NewAgent("assistant").
+	Instructions("You are a concise assistant.").
+	Model("gpt-5.4").
+	Provider(provider).
+	SessionStore(store).
+	Tools(tools...).
+	Build()
+```
+
+Use `agent.New` when you need the lower-level `agent.Agent` without the root
+builder assembling a `runtime.Runner`, `tool.Registry`, and `session.Store`.
+
+This split is intentional:
+
+| API | Use when |
+| :--- | :--- |
+| `canto.NewAgent` | You want the conventional path: agent + runner + registry + store. |
+| `agent.New` | You are composing your own runner, graph, test harness, or custom framework layer. |
+| `prompt.NewBuilder` | You need full control over request processors and commit-time mutators. |
+
+## Instructions
+
+`Instructions(...)` is host text. Canto inserts it as the leading system
+message through `prompt.Instructions`.
+
+If a system message already exists in the request, Canto prepends the
+instructions to that message. If no system message exists, Canto creates one.
+For models that do not use the `system` role, `prompt.Capabilities` rewrites the
+message to the model's configured instruction role.
+
+Canto does not ship a default persona. Empty instructions mean Canto adds no
+agent-role prompt.
+
+## Default Prompt Pipeline
+
+`agent.New` and `canto.NewAgent(...).Build()` use this request pipeline:
+
+1. `prompt.Instructions(instructions)` — insert host instructions.
+2. `prompt.NewLazyTools(registry)` — expose tool specs or `search_tools`.
+3. `prompt.History()` — append the durable effective session history.
+4. `prompt.CacheAligner(2)` — preserve a stable prompt prefix around the system
+   prompt and recent history.
+5. `prompt.Capabilities()` — adapt the request to model capabilities. This must
+   run last.
+
+The builder can also run commit-time mutators before request construction, such
+as compaction or artifact recording.
+
+## Text Canto May Add
+
+Most Canto text is opt-in. The default agent path only adds text when the
+corresponding feature is enabled or triggered.
+
+| Source | When added | Text shape |
+| :--- | :--- | :--- |
+| `Instructions(...)` | Host supplies instructions | Host-provided system text. |
+| `prompt.NewLazyTools` | Registry has more than 20 tools, or tools marked `Deferred` | Short hint that additional tools are available through `search_tools`. |
+| `runtime.Bootstrap` | Host calls `Runner.Bootstrap` | `# Workspace Snapshot` with cwd, root files, and tool names. |
+| `prompt.MemoryPrompt` | Host adds the memory request processor | `<memory_context>...</memory_context>`. |
+| `skill.PreloadPrompt` | Host preloads skills | `Preloaded Skills:` plus selected skill instructions. |
+| `governor.CircuitBreakerGuard` | Approval circuit breaker is tripped and host installed the guard | Notice that automated approvals are disabled. |
+| `governor.Summarizer` | Host enables summarization compaction | Internal summarizer prompt; result is stored as a compacted system summary. |
+
+## Default Tools
+
+Canto registers no domain tools by default. The host decides which tools an
+agent can call.
+
+Available tool modules:
+
+| Module | Tools |
+| :--- | :--- |
+| `coding.WorkspaceTools(root)` | `read_file`, `write_file`, `list_dir`, `glob`, `edit`, `multi_edit`. |
+| `coding.BashTool` | `bash`, using `coding.Executor`. |
+| `coding.NewCodeExecutionTool(language)` | `execute_code` for a configured language. |
+| `service.New` | Typed service/API tools from Go handlers. |
+| `agent.HandoffTool(target)` | Transfer to another agent. |
+| `runtime.NewInputGate().Tool(sess)` | `request_human_input`. |
+| `governor.NewCompactTool` | Manual compaction tool. |
+| `skill` tools | Skill read/manage tools and skill prompt processors. |
+| `tool/mcp` | MCP-discovered tools wrapped as Canto tools. |
+| `tool.NewSearchTool` | `search_tools`; inserted automatically by lazy tool loading when needed. |
+
+For coding agents, `coding.WorkspaceTools` plus `BashTool` is the current
+reference set. It is not a Canto-wide default.
+
+## Convention
+
+Canto follows the common SDK convention:
+
+- instructions/system prompt are supplied by the host;
+- tools are explicit and modular;
+- optional features add their own small prompt blocks;
+- lower-level APIs remain available for custom runtimes.
+
+The main Canto difference is durable state: prompt history comes from the
+append-only session log and compaction snapshots, not from a caller-managed
+message slice.

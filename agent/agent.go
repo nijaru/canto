@@ -137,7 +137,7 @@ func WithBudgetGuard(limit float64) Option {
 // WithModel overrides the model used for LLM calls.
 func WithModel(m string) Option { return func(a *BaseAgent) { a.model = m } }
 
-// New creates a BaseAgent with a default context builder chain.
+// New creates a BaseAgent with a default prompt builder chain.
 // Optional opts are applied after defaults are set.
 func New(
 	id, instructions, model string,

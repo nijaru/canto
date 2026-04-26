@@ -84,6 +84,13 @@ OpenAI, and Anthropic are the supported alpha paths; OpenRouter, Gemini, and
 Ollama are provisional OpenAI-compatible adapters; custom OpenAI-compatible
 endpoints are bring-your-own validation.
 
+## Defaults
+
+Canto's default prompt and tool contract is documented in
+[docs/defaults.md](docs/defaults.md). Canto provides the prompt pipeline,
+session history, lazy tool loading, and optional feature blocks; hosts provide
+agent instructions and choose which tools are registered.
+
 ## Examples
 
 - [Hello](examples/hello/main.go): Minimal no-credential root-builder agent.
