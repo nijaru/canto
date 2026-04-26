@@ -12,6 +12,7 @@ import (
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
 )
@@ -57,13 +58,15 @@ func (m *flakyProvider) IsTransient(err error) bool {
 
 type recordingProvider struct {
 	mockProvider
-	lastTools []string
+	lastMessages []llm.Message
+	lastTools    []string
 }
 
 func (p *recordingProvider) Generate(
 	_ context.Context,
 	req *llm.Request,
 ) (*llm.Response, error) {
+	p.lastMessages = append(p.lastMessages[:0], req.Messages...)
 	p.lastTools = p.lastTools[:0]
 	for _, spec := range req.Tools {
 		p.lastTools = append(p.lastTools, spec.Name)
@@ -1314,6 +1317,45 @@ func TestBaseAgentConfigureRuntimeOverridesPromptToolSet(t *testing.T) {
 
 	if got := strings.Join(provider.lastTools, ","); got != "beta" {
 		t.Fatalf("provider tool set = %q, want beta", got)
+	}
+}
+
+func TestBaseAgentConfigureRuntimeProcessorsRunBeforeCacheAlignment(t *testing.T) {
+	provider := &recordingProvider{}
+	base := New("a", "base", "m", provider, nil)
+	configurable, ok := any(base).(RuntimeConfigurable)
+	if !ok {
+		t.Fatal("expected BaseAgent to implement RuntimeConfigurable")
+	}
+
+	runtimeAgent := configurable.ConfigureRuntime(RuntimeConfig{
+		RequestProcessors: []prompt.RequestProcessor{
+			prompt.RequestProcessorFunc(
+				func(
+					ctx context.Context,
+					p llm.Provider,
+					model string,
+					sess *session.Session,
+					req *llm.Request,
+				) error {
+					return prompt.Instructions("runtime").ApplyRequest(ctx, p, model, sess, req)
+				},
+			),
+		},
+	})
+	if _, err := runtimeAgent.Turn(t.Context(), userSession("s-runtime-cache", "hi")); err != nil {
+		t.Fatalf("turn: %v", err)
+	}
+
+	if len(provider.lastMessages) == 0 {
+		t.Fatal("expected provider request messages")
+	}
+	system := provider.lastMessages[0]
+	if got, want := system.Content, "runtime\n\nbase"; got != want {
+		t.Fatalf("system content = %q, want %q", got, want)
+	}
+	if system.CacheControl == nil {
+		t.Fatal("expected cache alignment to include runtime system instructions")
 	}
 }
 

@@ -70,7 +70,7 @@ func (a *BaseAgent) ConfigureRuntime(cfg RuntimeConfig) Agent {
 		if clone.builder == a.builder {
 			clone.builder = a.builder.Clone()
 		}
-		clone.builder.InsertRequestProcessorsBeforeLast(cfg.RequestProcessors...)
+		clone.builder.InsertRequestProcessorsBeforeCache(cfg.RequestProcessors...)
 	}
 	return &clone
 }
@@ -116,7 +116,7 @@ func WithBuilder(b *prompt.Builder) Option { return func(a *BaseAgent) { a.build
 // default builder chain, placed before Capabilities (which must run last).
 func WithRequestProcessors(ps ...prompt.RequestProcessor) Option {
 	return func(a *BaseAgent) {
-		a.builder.InsertRequestProcessorsBeforeLast(ps...)
+		a.builder.InsertRequestProcessorsBeforeCache(ps...)
 	}
 }
 

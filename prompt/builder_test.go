@@ -204,6 +204,34 @@ func TestBuilderPhasedHelpersSupportRequestProcessorsAndMutators(t *testing.T) {
 	}
 }
 
+func TestBuilderInsertRequestProcessorsBeforeCache(t *testing.T) {
+	builder := NewBuilder(
+		Instructions("base"),
+		History(),
+		CacheAligner(2),
+		Capabilities(),
+	)
+	builder.InsertRequestProcessorsBeforeCache(RequestProcessorFunc(
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
+			return Instructions("custom").ApplyRequest(ctx, p, model, sess, req)
+		},
+	))
+
+	req := &llm.Request{}
+	if err := builder.BuildPreview(t.Context(), nil, "", session.New("cache-order"), req); err != nil {
+		t.Fatalf("BuildPreview: %v", err)
+	}
+	if len(req.Messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(req.Messages))
+	}
+	if got, want := req.Messages[0].Content, "custom\n\nbase"; got != want {
+		t.Fatalf("system content = %q, want %q", got, want)
+	}
+	if req.Messages[0].CacheControl == nil {
+		t.Fatal("expected cache alignment to see custom system content")
+	}
+}
+
 type dummyMutator struct{ strategy string }
 
 func (m *dummyMutator) Mutate(

@@ -21,13 +21,21 @@ import (
 //   - Tool IDs: normalizes tool-call IDs deterministically so tool results
 //     stay aligned when conversations move between providers.
 func Capabilities() RequestProcessor {
-	return RequestProcessorFunc(
-		func(ctx context.Context, p llm.Provider, model string, _ *session.Session, req *llm.Request) error {
-			if p == nil {
-				return nil
-			}
-			llm.TransformRequestForCapabilities(req, p.Capabilities(model))
-			return nil
-		},
-	)
+	return capabilitiesProcessor{}
+}
+
+type capabilitiesProcessor struct{}
+
+func (c capabilitiesProcessor) ApplyRequest(
+	ctx context.Context,
+	p llm.Provider,
+	model string,
+	_ *session.Session,
+	req *llm.Request,
+) error {
+	if p == nil {
+		return nil
+	}
+	llm.TransformRequestForCapabilities(req, p.Capabilities(model))
+	return nil
 }

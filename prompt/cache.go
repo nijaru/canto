@@ -81,42 +81,49 @@ func (f PromptCacheFingerprint) String() string {
 // 2. The last tool (caches the entire tools array).
 // 3. The final messages in the request, up to historyLimit (caches the recent turn history).
 func CacheAligner(historyLimit int) RequestProcessor {
-	return RequestProcessorFunc(
-		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
-			if req == nil || len(req.Messages) == 0 {
-				return nil
-			}
+	return cacheAlignerProcessor{historyLimit: historyLimit}
+}
 
-			// 1. Mark the last system message to establish a stable prefix that
-			// survives history compaction or masking.
-			lastSystemIdx := -1
-			for i, m := range req.Messages {
-				if m.Role == llm.RoleSystem {
-					lastSystemIdx = i
-				} else if lastSystemIdx != -1 {
-					break // Stop at the first non-system message
-				}
-			}
-			if lastSystemIdx != -1 {
-				req.Messages[lastSystemIdx].CacheControl = &llm.CacheControl{Type: "ephemeral"}
-			}
+type cacheAlignerProcessor struct {
+	historyLimit int
+}
 
-			// 2. Mark the last tool.
-			if len(req.Tools) > 0 {
-				req.Tools[len(req.Tools)-1].CacheControl = &llm.CacheControl{Type: "ephemeral"}
-			}
+func (c cacheAlignerProcessor) ApplyRequest(
+	ctx context.Context,
+	p llm.Provider,
+	model string,
+	sess *session.Session,
+	req *llm.Request,
+) error {
+	if req == nil || len(req.Messages) == 0 {
+		return nil
+	}
 
-			// 3. Mark the end of the history.
-			// This caches the full conversation prefix for the next turn.
-			count := 0
-			for i := len(req.Messages) - 1; i > lastSystemIdx && count < historyLimit; i-- {
-				if req.Messages[i].CacheControl == nil {
-					req.Messages[i].CacheControl = &llm.CacheControl{Type: "ephemeral"}
-					count++
-				}
-			}
+	// Mark the last leading system message to establish a stable prefix that
+	// survives history compaction or masking.
+	lastSystemIdx := -1
+	for i, m := range req.Messages {
+		if m.Role == llm.RoleSystem {
+			lastSystemIdx = i
+		} else if lastSystemIdx != -1 {
+			break
+		}
+	}
+	if lastSystemIdx != -1 {
+		req.Messages[lastSystemIdx].CacheControl = &llm.CacheControl{Type: "ephemeral"}
+	}
 
-			return nil
-		},
-	)
+	if len(req.Tools) > 0 {
+		req.Tools[len(req.Tools)-1].CacheControl = &llm.CacheControl{Type: "ephemeral"}
+	}
+
+	count := 0
+	for i := len(req.Messages) - 1; i > lastSystemIdx && count < c.historyLimit; i-- {
+		if req.Messages[i].CacheControl == nil {
+			req.Messages[i].CacheControl = &llm.CacheControl{Type: "ephemeral"}
+			count++
+		}
+	}
+
+	return nil
 }

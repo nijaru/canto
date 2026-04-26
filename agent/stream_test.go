@@ -353,7 +353,7 @@ func TestBaseAgentImplementsStreamer(t *testing.T) {
 // Builder options
 // ---------------------------------------------------------------------------
 
-func TestWithRequestProcessorsInsertBeforeCapabilities(t *testing.T) {
+func TestWithRequestProcessorsInsertBeforeCacheAndCapabilities(t *testing.T) {
 	a := New("a", "", "m", &mockProvider{}, nil)
 	origLen := len(a.builder.RequestProcessors())
 
@@ -364,17 +364,16 @@ func TestWithRequestProcessorsInsertBeforeCapabilities(t *testing.T) {
 	if got := len(a2.builder.RequestProcessors()); got != origLen+2 {
 		t.Errorf("expected %d request processors, got %d", origLen+2, got)
 	}
-	// Last processor must still be Capabilities (not our sentinels).
-	// We can check the sentinels
-	// are NOT at position len-1 by verifying they are at len-3 and len-2.
+	// Custom processors should land before cache alignment and Capabilities.
 	ps := a2.builder.RequestProcessors()
 	n := len(ps)
 	_ = ps[n-1] // Capabilities: just confirm no panic
-	_ = ps[n-2] // second sentinel
-	_ = ps[n-3] // first sentinel
+	_ = ps[n-2] // CacheAligner
+	_ = ps[n-3] // second sentinel
+	_ = ps[n-4] // first sentinel
 }
 
-func TestWithRequestProcessorsAndMutatorsInsertBeforeCapabilities(t *testing.T) {
+func TestWithRequestProcessorsAndMutatorsInsertBeforeCacheAndCapabilities(t *testing.T) {
 	a := New("a", "", "m", &mockProvider{}, nil)
 	origLen := len(a.builder.RequestProcessors())
 	origMutators := len(a.builder.Mutators())
@@ -393,7 +392,8 @@ func TestWithRequestProcessorsAndMutatorsInsertBeforeCapabilities(t *testing.T) 
 	ps := a2.builder.RequestProcessors()
 	n := len(ps)
 	_ = ps[n-1] // Capabilities
-	_ = ps[n-2] // request processor
+	_ = ps[n-2] // CacheAligner
+	_ = ps[n-3] // request processor
 }
 
 func noopRequestProcessor(

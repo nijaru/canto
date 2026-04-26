@@ -1,4 +1,4 @@
-# Defaults
+# Prompts and Tools
 
 Canto keeps agent behavior in the host. It provides the prompt pipeline, durable
 state, and tool plumbing; the host provides the agent's role, workflow, policy,
@@ -42,7 +42,7 @@ message to the model's configured instruction role.
 Canto does not ship a default persona. Empty instructions mean Canto adds no
 agent-role prompt.
 
-## Default Prompt Pipeline
+## Prompt Pipeline
 
 `agent.New` and `canto.NewAgent(...).Build()` use this request pipeline:
 
@@ -56,6 +56,29 @@ agent-role prompt.
 
 The builder can also run commit-time mutators before request construction, such
 as compaction or artifact recording.
+
+The order is deterministic. Request processors are stored in an ordered slice
+and run in that order. In the default agent path, custom request processors are
+inserted before cache alignment and model capability adaptation, so custom
+system blocks and tool changes are included in cache markers.
+
+## Cache Stability
+
+Canto keeps the common path cache-friendly by making the stable prefix
+automatic:
+
+- system instructions and feature prompt blocks are assembled before history;
+- tool schemas are sorted by the registry before request construction;
+- cache alignment runs after host prompt/tool processors;
+- model capability adaptation runs last, so provider-specific role rewrites are
+  deterministic for the selected model.
+
+Adding, removing, or changing instructions, feature blocks, or tool schemas
+necessarily changes the cache prefix. Processors that add timestamps, random
+text, or request-specific data to the leading system message will also reduce
+cache reuse. Hosts that need tighter control can use `prompt.NewBuilder`
+directly, but the default agent path is ordered for prefix-cache reuse without
+extra setup.
 
 ## Text Canto May Add
 
@@ -72,7 +95,7 @@ corresponding feature is enabled or triggered.
 | `governor.CircuitBreakerGuard` | Approval circuit breaker is tripped and host installed the guard | Notice that automated approvals are disabled. |
 | `governor.Summarizer` | Host enables summarization compaction | Internal summarizer prompt; result is stored as a compacted system summary. |
 
-## Default Tools
+## Tools
 
 Canto registers no domain tools by default. The host decides which tools an
 agent can call.

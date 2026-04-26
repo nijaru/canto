@@ -140,9 +140,39 @@ func (b *Builder) InsertRequestProcessorsBeforeLast(processors ...RequestProcess
 	b.requestProcessors = merged
 }
 
+// InsertRequestProcessorsBeforeCache inserts preview-safe request processors
+// before cache alignment and model capability adaptation. This is the usual
+// insertion point for host prompt and tool processors because cache markers
+// should see the final prompt prefix and tool list.
+func (b *Builder) InsertRequestProcessorsBeforeCache(processors ...RequestProcessor) {
+	if len(processors) == 0 {
+		return
+	}
+	idx := b.cacheBoundaryIndex()
+	if idx < 0 {
+		b.InsertRequestProcessorsBeforeLast(processors...)
+		return
+	}
+	merged := make([]RequestProcessor, 0, len(b.requestProcessors)+len(processors))
+	merged = append(merged, b.requestProcessors[:idx]...)
+	merged = append(merged, processors...)
+	merged = append(merged, b.requestProcessors[idx:]...)
+	b.requestProcessors = merged
+}
+
+func (b *Builder) cacheBoundaryIndex() int {
+	for i, proc := range b.requestProcessors {
+		switch proc.(type) {
+		case cacheAlignerProcessor, *cacheAlignerProcessor, capabilitiesProcessor, *capabilitiesProcessor:
+			return i
+		}
+	}
+	return -1
+}
+
 // ReplaceToolRegistryProcessors swaps any tool-registry-bound request
 // processors to the provided registry. If the builder has no such processor,
-// it inserts a LazyTools processor before the final capabilities pass.
+// it inserts a LazyTools processor before cache alignment.
 func (b *Builder) ReplaceToolRegistryProcessors(reg *tool.Registry) {
 	replaced := false
 	for i, proc := range b.requestProcessors {
@@ -156,7 +186,7 @@ func (b *Builder) ReplaceToolRegistryProcessors(reg *tool.Registry) {
 	if replaced {
 		return
 	}
-	b.InsertRequestProcessorsBeforeLast(NewLazyTools(reg))
+	b.InsertRequestProcessorsBeforeCache(NewLazyTools(reg))
 }
 
 // PrependMutators inserts commit-time mutators at the front of the mutator chain.
