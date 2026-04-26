@@ -119,6 +119,8 @@ func (r *Rebuilder) fileContextEntry(snapshot CompactionSnapshot) (HistoryEntry,
 	sb.WriteString("</working_set>")
 
 	return HistoryEntry{
+		EventType:   ContextAdded,
+		ContextKind: ContextKindWorkingSet,
 		Message: contextEntryMessage(ContextEntry{
 			Kind:    ContextKindWorkingSet,
 			Content: sb.String(),
@@ -151,6 +153,9 @@ func uniqueSorted(items []string) []string {
 func normalizeTranscriptEntries(entries []HistoryEntry) []HistoryEntry {
 	for i := range entries {
 		entries[i].Message = normalizeTranscriptMessage(entries[i].Message)
+		if entries[i].EventType == ContextAdded && entries[i].ContextKind == "" {
+			entries[i].ContextKind = ContextKindGeneric
+		}
 	}
 	return entries
 }
@@ -165,6 +170,12 @@ func normalizeTranscriptMessage(msg llm.Message) llm.Message {
 }
 
 func isDurableContextEntry(entry HistoryEntry) bool {
+	if entry.EventType == ContextAdded {
+		return true
+	}
+
+	// Older snapshots did not persist HistoryEntry.EventType. Keep recognizing
+	// the built-in context blocks so those snapshots rebuild in the same order.
 	content := entry.Message.Content
 	return strings.Contains(content, "<conversation_summary>") ||
 		strings.Contains(content, "<working_set>")

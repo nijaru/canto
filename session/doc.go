@@ -16,7 +16,7 @@
 //   - EffectiveMessages returns the model-visible history after durable
 //     compaction snapshots are applied.
 //   - EffectiveEntries returns the same model-visible history together with
-//     originating message-event IDs when known.
+//     originating event IDs and context markers when known.
 //   - Artifact events carry durable artifact descriptors and provenance rather
 //     than embedding artifact bodies directly in the log.
 //   - RecordArtifact and StoreArtifact provide the standard path for

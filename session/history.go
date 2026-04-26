@@ -11,8 +11,10 @@ import (
 // HistoryEntry captures a model-visible message together with its originating
 // message event ID when one exists.
 type HistoryEntry struct {
-	EventID string      `json:"event_id,omitzero"`
-	Message llm.Message `json:"message"`
+	EventID     string      `json:"event_id,omitzero"`
+	EventType   EventType   `json:"event_type,omitzero"`
+	ContextKind ContextKind `json:"context_kind,omitzero"`
+	Message     llm.Message `json:"message"`
 }
 
 // CompactionSnapshot captures the model-visible history after a compaction step.
@@ -104,7 +106,7 @@ func (s *Session) rawMessagesLocked() ([]llm.Message, error) {
 	res := make([]llm.Message, 0, len(s.events)/2+1)
 	for i := range s.events {
 		e := &s.events[i]
-		if e.Type != MessageAdded && e.Type != ContextAdded {
+		if e.Type != MessageAdded {
 			continue
 		}
 
@@ -148,8 +150,10 @@ func (s *Session) historyEntryFromEvent(e *Event) (HistoryEntry, error) {
 			return HistoryEntry{}, err
 		}
 		return HistoryEntry{
-			EventID: e.ID.String(),
-			Message: contextEntryMessage(*entry),
+			EventID:     e.ID.String(),
+			EventType:   ContextAdded,
+			ContextKind: entry.Kind,
+			Message:     contextEntryMessage(*entry),
 		}, nil
 	}
 
@@ -158,8 +162,9 @@ func (s *Session) historyEntryFromEvent(e *Event) (HistoryEntry, error) {
 		return HistoryEntry{}, err
 	}
 	return HistoryEntry{
-		EventID: e.ID.String(),
-		Message: normalizeTranscriptMessage(*msg),
+		EventID:   e.ID.String(),
+		EventType: MessageAdded,
+		Message:   normalizeTranscriptMessage(*msg),
 	}, nil
 }
 
