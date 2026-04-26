@@ -95,43 +95,39 @@ func TestSummarizer(t *testing.T) {
 		t.Fatalf("history rebuild failed: %v", err)
 	}
 
-	if len(req.Messages) != 5 { // 1 system + 1 summary + 3 recent
-		t.Fatalf("expected 5 messages, got %d", len(req.Messages))
+	if len(req.Messages) != 4 { // 1 summary + 3 recent
+		t.Fatalf("expected 4 messages, got %d", len(req.Messages))
 	}
 
-	if req.Messages[0].Role != llm.RoleSystem {
-		t.Errorf("expected first message to be system, got %s", req.Messages[0].Role)
-	}
-
-	if req.Messages[1].Role != llm.RoleSystem {
+	if req.Messages[0].Role != llm.RoleUser {
 		t.Errorf(
-			"expected second message to be summary (system role), got %s",
-			req.Messages[1].Role,
+			"expected first message to be summary transcript context, got %s",
+			req.Messages[0].Role,
 		)
 	}
 
 	expectedSummary := "<conversation_summary>\nSummarized conversation\n</conversation_summary>"
-	if req.Messages[1].Content != expectedSummary {
+	if req.Messages[0].Content != expectedSummary {
 		t.Errorf(
 			"expected summary content '%s', got '%s'",
 			expectedSummary,
-			req.Messages[1].Content,
+			req.Messages[0].Content,
 		)
 	}
 
-	if req.Messages[4].Content != "Hello 4"+longStr {
-		t.Errorf("expected last message to be 'Hello 4...', got '%s'", req.Messages[4].Content)
+	if req.Messages[3].Content != "Hello 4"+longStr {
+		t.Errorf("expected last message to be 'Hello 4...', got '%s'", req.Messages[3].Content)
 	}
 
 	historyReq := &llm.Request{}
 	if err := prompt.History().ApplyRequest(context.Background(), nil, "", sess, historyReq); err != nil {
 		t.Fatalf("history rebuild failed: %v", err)
 	}
-	if len(historyReq.Messages) != 5 {
-		t.Fatalf("expected 5 rebuilt history messages, got %d", len(historyReq.Messages))
+	if len(historyReq.Messages) != 4 {
+		t.Fatalf("expected 4 rebuilt history messages, got %d", len(historyReq.Messages))
 	}
-	if historyReq.Messages[1].Content != expectedSummary {
-		t.Fatalf("expected persisted summary, got %q", historyReq.Messages[1].Content)
+	if historyReq.Messages[0].Content != expectedSummary {
+		t.Fatalf("expected persisted summary, got %q", historyReq.Messages[0].Content)
 	}
 }
 

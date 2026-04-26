@@ -148,7 +148,7 @@ func (s *Session) historyEntryFromEvent(e *Event) (HistoryEntry, error) {
 	}
 	return HistoryEntry{
 		EventID: e.ID.String(),
-		Message: *msg,
+		Message: normalizeTranscriptMessage(*msg),
 	}, nil
 }
 

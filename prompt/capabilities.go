@@ -33,9 +33,15 @@ func (c capabilitiesProcessor) ApplyRequest(
 	_ *session.Session,
 	req *llm.Request,
 ) error {
+	if err := llm.ValidateRequest(req); err != nil {
+		return err
+	}
 	if p == nil {
 		return nil
 	}
 	llm.TransformRequestForCapabilities(req, p.Capabilities(model))
+	if err := llm.ValidateRequest(req); err != nil {
+		return err
+	}
 	return nil
 }

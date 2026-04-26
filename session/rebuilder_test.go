@@ -69,11 +69,11 @@ func TestRebuilderRebuildEntriesInjectsWorkingSetAfterSummary(t *testing.T) {
 	if len(entries) != 3 {
 		t.Fatalf("expected 3 entries, got %d", len(entries))
 	}
-	if entries[0].Message.Role != llm.RoleSystem ||
+	if entries[0].Message.Role != llm.RoleUser ||
 		!strings.Contains(entries[0].Message.Content, "<conversation_summary>") {
 		t.Fatalf("expected summary first, got %#v", entries[0])
 	}
-	if entries[1].Message.Role != llm.RoleSystem ||
+	if entries[1].Message.Role != llm.RoleUser ||
 		!strings.Contains(entries[1].Message.Content, "<working_set>") {
 		t.Fatalf("expected working set second, got %#v", entries[1])
 	}
@@ -176,11 +176,11 @@ func TestRebuilderRebuildEntriesUsesLatestProjectionSnapshot(t *testing.T) {
 	if len(entries) != 4 {
 		t.Fatalf("expected 4 entries, got %d", len(entries))
 	}
-	if entries[0].Message.Role != llm.RoleSystem ||
+	if entries[0].Message.Role != llm.RoleUser ||
 		!strings.Contains(entries[0].Message.Content, "<conversation_summary>") {
 		t.Fatalf("expected summary first, got %#v", entries[0])
 	}
-	if entries[1].Message.Role != llm.RoleSystem ||
+	if entries[1].Message.Role != llm.RoleUser ||
 		!strings.Contains(entries[1].Message.Content, "<working_set>") {
 		t.Fatalf("expected working set second, got %#v", entries[1])
 	}

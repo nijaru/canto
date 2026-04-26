@@ -283,13 +283,13 @@ func TestCompactSessionOffloadsBeforeSummarize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EffectiveMessages: %v", err)
 	}
-	if len(effective) != 4 {
-		t.Fatalf("expected compacted effective history of 4 messages, got %d", len(effective))
+	if len(effective) != 3 {
+		t.Fatalf("expected compacted effective history of 3 messages, got %d", len(effective))
 	}
-	if effective[1].Content != "<conversation_summary>\nSummarized conversation\n</conversation_summary>" {
-		t.Fatalf("unexpected summary message: %q", effective[1].Content)
+	if effective[0].Content != "<conversation_summary>\nSummarized conversation\n</conversation_summary>" {
+		t.Fatalf("unexpected summary message: %q", effective[0].Content)
 	}
-	if effective[2].Content != "recent question" || effective[3].Content != "recent answer" {
+	if effective[1].Content != "recent question" || effective[2].Content != "recent answer" {
 		t.Fatalf("unexpected recent messages after compaction: %#v", effective)
 	}
 }

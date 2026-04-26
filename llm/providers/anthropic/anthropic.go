@@ -76,6 +76,10 @@ func (p *Provider) ID() string {
 }
 
 func (p *Provider) Generate(ctx context.Context, req *llm.Request) (*llm.Response, error) {
+	if err := llm.ValidateRequest(req); err != nil {
+		return nil, err
+	}
+
 	params := p.convertRequest(req)
 	var opts []option.RequestOption
 	if req.ThinkingBudget > 0 {
@@ -147,6 +151,10 @@ func (p *Provider) Generate(ctx context.Context, req *llm.Request) (*llm.Respons
 }
 
 func (p *Provider) Stream(ctx context.Context, req *llm.Request) (llm.Stream, error) {
+	if err := llm.ValidateRequest(req); err != nil {
+		return nil, err
+	}
+
 	params := p.convertRequest(req)
 	var opts []option.RequestOption
 	if req.ThinkingBudget > 0 {

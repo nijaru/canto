@@ -104,7 +104,7 @@ func TestReplayerPreservesCompactedHistoryProjections(t *testing.T) {
 	if len(messages) != 2 {
 		t.Fatalf("expected 2 effective messages, got %d", len(messages))
 	}
-	if messages[0].Role != llm.RoleSystem || messages[1].Content != "recent user" {
+	if messages[0].Role != llm.RoleUser || messages[1].Content != "recent user" {
 		t.Fatalf("unexpected effective messages: %#v", messages)
 	}
 }

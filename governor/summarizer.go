@@ -97,16 +97,16 @@ func (p *Summarizer) summarize(
 		p.OnPreCompact(ctx, sess)
 	}
 
-	// Strategy: Keep system messages and the last N turns.
+	// Strategy: Keep durable context entries and the last N turns.
 	// Summarize the rest.
-	var systemEntries []session.HistoryEntry
+	var contextEntries []session.HistoryEntry
 	var candidates []llm.Message
 	var recentEntries []session.HistoryEntry
 
 	for i, entry := range entries {
 		m := entry.Message
-		if m.Role == llm.RoleSystem {
-			systemEntries = append(systemEntries, entry)
+		if isDurableContextEntry(entry) {
+			contextEntries = append(contextEntries, entry)
 		} else if i >= numMessages-p.MinKeepTurns {
 			recentEntries = append(recentEntries, entry)
 		} else {
@@ -125,7 +125,7 @@ func (p *Summarizer) summarize(
 
 	summaryContent, err := p.generateSummary(
 		ctx,
-		systemEntries,
+		contextEntries,
 		formatMessages(historyCandidates),
 		formatMessages(turnPrefix),
 		splitTurn,
@@ -134,8 +134,8 @@ func (p *Summarizer) summarize(
 		return err
 	}
 
-	// Build new messages: system + summary + recent
-	newEntries := cloneHistoryEntries(systemEntries)
+	// Build new messages: durable context + summary + recent
+	newEntries := cloneHistoryEntries(contextEntries)
 
 	// Extract and track file paths across compaction windows.
 	newRead, newModified := extractFilePaths(candidates)
@@ -164,7 +164,7 @@ func (p *Summarizer) summarize(
 
 	newEntries = append(newEntries, session.HistoryEntry{
 		Message: llm.Message{
-			Role: llm.RoleSystem,
+			Role: llm.RoleUser,
 			Content: fmt.Sprintf(
 				"<conversation_summary>\n%s\n</conversation_summary>",
 				summaryContent,
@@ -191,13 +191,13 @@ func (p *Summarizer) summarize(
 
 func (p *Summarizer) generateSummary(
 	ctx context.Context,
-	systemEntries []session.HistoryEntry,
+	contextEntries []session.HistoryEntry,
 	historyContent string,
 	turnPrefixContent string,
 	splitTurn bool,
 ) (string, error) {
 	if !splitTurn {
-		return p.generateHistorySummary(ctx, systemEntries, historyContent)
+		return p.generateHistorySummary(ctx, contextEntries, historyContent)
 	}
 
 	type result struct {
@@ -208,7 +208,7 @@ func (p *Summarizer) generateSummary(
 	turnCh := make(chan result, 1)
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		text, err := p.generateHistorySummary(ctx, systemEntries, historyContent)
+		text, err := p.generateHistorySummary(ctx, contextEntries, historyContent)
 		historyCh <- result{text: text, err: err}
 	})
 	wg.Go(func() {
@@ -233,7 +233,7 @@ func (p *Summarizer) generateSummary(
 
 func (p *Summarizer) generateHistorySummary(
 	ctx context.Context,
-	systemEntries []session.HistoryEntry,
+	contextEntries []session.HistoryEntry,
 	content string,
 ) (string, error) {
 	const generatePrompt = `You summarize agent sessions.
@@ -279,7 +279,7 @@ Rules:
 - Keep the summary compact. Do not let it grow unboundedly across updates.
 - Be specific. Preserve file paths, function names, and error messages.`
 
-	existingSummary, hasPrevious := extractPreviousSummary(systemEntries)
+	existingSummary, hasPrevious := extractPreviousSummary(contextEntries)
 
 	var systemPrompt string
 	var userContent string

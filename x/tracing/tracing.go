@@ -199,6 +199,10 @@ func (w *wrappedProvider) Generate(
 	ctx context.Context,
 	req *llm.Request,
 ) (*llm.Response, error) {
+	if err := llm.ValidateRequest(req); err != nil {
+		return nil, err
+	}
+
 	attrs := []attribute.KeyValue{
 		attribute.String("gen_ai.request.model", req.Model),
 		attribute.Int("gen_ai.request.message_count", len(req.Messages)),
@@ -238,6 +242,10 @@ func (w *wrappedProvider) Generate(
 }
 
 func (w *wrappedProvider) Stream(ctx context.Context, req *llm.Request) (llm.Stream, error) {
+	if err := llm.ValidateRequest(req); err != nil {
+		return nil, err
+	}
+
 	attrs := []attribute.KeyValue{
 		attribute.String("gen_ai.request.model", req.Model),
 		attribute.Int("gen_ai.request.message_count", len(req.Messages)),

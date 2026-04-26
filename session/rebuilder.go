@@ -52,9 +52,9 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 		return sess.rawEntriesLocked()
 	}
 
-	entries := slices.Clone(snapshot.entries())
+	entries := normalizeTranscriptEntries(slices.Clone(snapshot.entries()))
 	if fileEntry, ok := r.fileContextEntry(snapshot); ok {
-		entries = insertAfterLeadingSystemEntries(entries, fileEntry)
+		entries = insertAfterDurableContextEntries(entries, fileEntry)
 	}
 
 	cutoffSeen := false
@@ -120,15 +120,15 @@ func (r *Rebuilder) fileContextEntry(snapshot CompactionSnapshot) (HistoryEntry,
 
 	return HistoryEntry{
 		Message: llm.Message{
-			Role:    llm.RoleSystem,
+			Role:    llm.RoleUser,
 			Content: sb.String(),
 		},
 	}, true
 }
 
-func insertAfterLeadingSystemEntries(entries []HistoryEntry, extra HistoryEntry) []HistoryEntry {
+func insertAfterDurableContextEntries(entries []HistoryEntry, extra HistoryEntry) []HistoryEntry {
 	idx := 0
-	for idx < len(entries) && entries[idx].Message.Role == llm.RoleSystem {
+	for idx < len(entries) && isDurableContextEntry(entries[idx]) {
 		idx++
 	}
 	res := make([]HistoryEntry, 0, len(entries)+1)
@@ -146,6 +146,28 @@ func uniqueSorted(items []string) []string {
 	slices.Sort(out)
 	out = slices.Compact(out)
 	return out
+}
+
+func normalizeTranscriptEntries(entries []HistoryEntry) []HistoryEntry {
+	for i := range entries {
+		entries[i].Message = normalizeTranscriptMessage(entries[i].Message)
+	}
+	return entries
+}
+
+func normalizeTranscriptMessage(msg llm.Message) llm.Message {
+	if msg.Role != llm.RoleSystem && msg.Role != llm.RoleDeveloper {
+		return msg
+	}
+	msg.Role = llm.RoleUser
+	msg.CacheControl = nil
+	return msg
+}
+
+func isDurableContextEntry(entry HistoryEntry) bool {
+	content := entry.Message.Content
+	return strings.Contains(content, "<conversation_summary>") ||
+		strings.Contains(content, "<working_set>")
 }
 
 func subtract(items, remove []string) []string {
