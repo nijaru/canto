@@ -173,13 +173,20 @@ func referenceTools(
 	executor *coding.Executor,
 	webSearch cantotool.Tool,
 ) []cantotool.Tool {
-	bash := &coding.BashTool{Executor: executor, Dir: dir}
+	shell := &coding.ShellTool{Executor: executor, Dir: dir}
 	code := coding.NewCodeExecutionTool("python")
 	code.Executor = executor
 
-	out := coding.WorkspaceTools(root)
-	out = append(out, bash, code, webSearch)
-	return out
+	return []cantotool.Tool{
+		coding.NewReadFileTool(root),
+		coding.NewWriteFileTool(root),
+		coding.NewListDirTool(root),
+		coding.NewEditTool(root),
+		coding.NewMultiEditTool(root),
+		shell,
+		code,
+		webSearch,
+	}
 }
 
 func scriptedProvider() llm.Provider {
@@ -188,7 +195,6 @@ func scriptedProvider() llm.Provider {
 		llm.FauxStep{
 			Calls: []llm.Call{
 				toolCall("list", "list_dir", `{"path":"."}`),
-				toolCall("glob", "glob", `{"pattern":"*.go"}`),
 				toolCall("read", "read_file", `{"path":"README.md"}`),
 				toolCall("search", "web_search", `{"query":"canto coding agent architecture"}`),
 			},
@@ -200,7 +206,7 @@ func scriptedProvider() llm.Provider {
 					"edit",
 					`{"path":"README.md","before":"status: draft","after":"status: verified"}`,
 				),
-				toolCall("bash", "bash", `{"command":"test -f README.md"}`),
+				toolCall("shell", "shell", `{"command":"test -f README.md"}`),
 				toolCall("code", "execute_code", `{"code":"print('unit smoke ok')"}`),
 			},
 		},

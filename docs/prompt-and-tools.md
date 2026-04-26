@@ -104,8 +104,12 @@ Available tool modules:
 
 | Module | Tools |
 | :--- | :--- |
-| `coding.WorkspaceTools(root)` | `read_file`, `write_file`, `list_dir`, `glob`, `edit`, `multi_edit`. |
-| `coding.BashTool` | `bash`, using `coding.Executor`. |
+| `coding.NewReadFileTool(root)` | `read_file`. |
+| `coding.NewWriteFileTool(root)` | `write_file`. |
+| `coding.NewListDirTool(root)` | `list_dir`. |
+| `coding.NewEditTool(root)` | `edit`. |
+| `coding.NewMultiEditTool(root)` | `multi_edit`. |
+| `coding.ShellTool` | `shell`, using `coding.Executor`; defaults to `sh -c` and can be configured for another shell or wrapper. |
 | `coding.NewCodeExecutionTool(language)` | `execute_code` for a configured language. |
 | `service.New` | Typed service/API tools from Go handlers. |
 | `agent.HandoffTool(target)` | Transfer to another agent. |
@@ -115,8 +119,9 @@ Available tool modules:
 | `tool/mcp` | MCP-discovered tools wrapped as Canto tools. |
 | `tool.NewSearchTool` | `search_tools`; inserted automatically by lazy tool loading when needed. |
 
-For coding agents, `coding.WorkspaceTools` plus `BashTool` is the current
-reference set. It is not a Canto-wide default.
+Canto does not provide coding-agent tool presets. Hosts assemble the exact tool
+set they want. Search and glob behavior should usually come from the configured
+shell, a host-owned code index, or MCP tools rather than a Canto default.
 
 ## Convention
 

@@ -12,19 +12,21 @@ import (
 	"github.com/nijaru/canto/tool"
 )
 
-// BashTool executes shell commands.
-type BashTool struct {
-	Executor *Executor
-	Dir      string
+// ShellTool executes shell commands.
+type ShellTool struct {
+	Executor    *Executor
+	Dir         string
+	Shell       string
+	CommandFlag string
 }
 
-var _ tool.StreamingTool = (*BashTool)(nil)
+var _ tool.StreamingTool = (*ShellTool)(nil)
 
 // Spec returns the tool specification.
-func (b *BashTool) Spec() llm.Spec {
+func (b *ShellTool) Spec() llm.Spec {
 	return llm.Spec{
-		Name:        "bash",
-		Description: "Execute a bash command and return its output. WARNING: This tool executes arbitrary shell commands with no sandboxing. Only use with trusted inputs.",
+		Name:        "shell",
+		Description: "Execute a shell command and return its output. WARNING: This tool executes arbitrary shell commands with no sandboxing. Only use with trusted inputs.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -41,9 +43,7 @@ func (b *BashTool) Spec() llm.Spec {
 // Execute runs the shell command.
 // WARNING: This tool is prone to command injection if the LLM is not trusted
 // or if the inputs are not properly sanitized. Use with caution in production.
-func (b *BashTool) Execute(ctx context.Context, args string) (string, error) {
-	// Parse arguments (simple JSON extraction or just assume it's correctly formatted)
-	// For Phase 1, we'll keep it simple.
+func (b *ShellTool) Execute(ctx context.Context, args string) (string, error) {
 	var input struct {
 		Command string `json:"command"`
 	}
@@ -56,8 +56,8 @@ func (b *BashTool) Execute(ctx context.Context, args string) (string, error) {
 		executor = DefaultExecutor
 	}
 	result, err := executor.Run(ctx, Command{
-		Name: "bash",
-		Args: []string{"-c", input.Command},
+		Name: b.shell(),
+		Args: []string{b.commandFlag(), input.Command},
 		Dir:  b.Dir,
 	})
 	if err != nil {
@@ -66,7 +66,7 @@ func (b *BashTool) Execute(ctx context.Context, args string) (string, error) {
 	return result.Combined, nil
 }
 
-func (b *BashTool) ExecuteStreaming(ctx context.Context, args string) iter.Seq2[string, error] {
+func (b *ShellTool) ExecuteStreaming(ctx context.Context, args string) iter.Seq2[string, error] {
 	return func(yield func(string, error) bool) {
 		var input struct {
 			Command string `json:"command"`
@@ -87,8 +87,8 @@ func (b *BashTool) ExecuteStreaming(ctx context.Context, args string) iter.Seq2[
 		}
 		ch := make(chan item, 10)
 		cmd := Command{
-			Name: "bash",
-			Args: []string{"-c", input.Command},
+			Name: b.shell(),
+			Args: []string{b.commandFlag(), input.Command},
 			Dir:  b.Dir,
 			OnOutput: func(c OutputChunk) {
 				ch <- item{text: c.Text}
@@ -111,7 +111,7 @@ func (b *BashTool) ExecuteStreaming(ctx context.Context, args string) iter.Seq2[
 	}
 }
 
-func (b *BashTool) ApprovalRequirement(args string) (approval.Requirement, bool, error) {
+func (b *ShellTool) ApprovalRequirement(args string) (approval.Requirement, bool, error) {
 	var input struct {
 		Command string `json:"command"`
 	}
@@ -123,4 +123,18 @@ func (b *BashTool) ApprovalRequirement(args string) (approval.Requirement, bool,
 		Operation: "exec",
 		Resource:  input.Command,
 	}, true, nil
+}
+
+func (b *ShellTool) shell() string {
+	if b.Shell != "" {
+		return b.Shell
+	}
+	return "sh"
+}
+
+func (b *ShellTool) commandFlag() string {
+	if b.CommandFlag != "" {
+		return b.CommandFlag
+	}
+	return "-c"
 }

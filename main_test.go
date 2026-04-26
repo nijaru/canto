@@ -24,7 +24,7 @@ func TestMain(t *testing.T) {
 	}
 
 	registry := tool.NewRegistry()
-	registry.Register(&coding.BashTool{})
+	registry.Register(&coding.ShellTool{})
 
 	provider := cantotest.NewMockProvider("main",
 		cantotest.Step{
@@ -37,7 +37,7 @@ func TestMain(t *testing.T) {
 						Name      string `json:"name"`
 						Arguments string `json:"arguments"`
 					}{
-						Name:      "bash",
+						Name:      "shell",
 						Arguments: `{"command": "ls"}`,
 					},
 				},

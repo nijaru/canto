@@ -10,7 +10,6 @@ import (
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/safety"
-	"github.com/nijaru/canto/tool"
 	"github.com/nijaru/canto/workspace"
 )
 
@@ -163,60 +162,4 @@ func (t *ListDirTool) Execute(_ context.Context, args string) (string, error) {
 		fmt.Fprintf(&sb, "%s\t%s\n", kind, e.Name())
 	}
 	return sb.String(), nil
-}
-
-// GlobTool matches files by pattern within a sandboxed root.
-type GlobTool struct {
-	root workspace.WorkspaceFS
-}
-
-// NewGlobTool creates a GlobTool sandboxed to root.
-func NewGlobTool(root workspace.WorkspaceFS) *GlobTool {
-	return &GlobTool{root: root}
-}
-
-func (t *GlobTool) Spec() llm.Spec {
-	return llm.Spec{
-		Name:        "glob",
-		Description: "Find files matching a glob pattern within the workspace. Uses filepath.Match syntax: * matches any sequence of non-separator characters, ? matches any single non-separator character. Single directory level only; use list_dir for recursive exploration.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"pattern": map[string]any{
-					"type":        "string",
-					"description": "Glob pattern using filepath.Match syntax, e.g. \"*.go\" or \"src/*.ts\".",
-				},
-			},
-			"required": []string{"pattern"},
-		},
-	}
-}
-
-func (t *GlobTool) Execute(ctx context.Context, args string) (string, error) {
-	var input struct {
-		Pattern string `json:"pattern"`
-	}
-	if err := json.Unmarshal([]byte(args), &input); err != nil {
-		return "", fmt.Errorf("invalid args: %w", err)
-	}
-	matches, err := t.root.Glob(ctx, input.Pattern)
-	if err != nil {
-		return "", err
-	}
-
-	if len(matches) == 0 {
-		return "(no matches)", nil
-	}
-	return strings.Join(matches, "\n"), nil
-}
-
-// FileTools returns ReadFile, WriteFile, ListDir, and Glob as a slice,
-// all sandboxed to root.
-func FileTools(root workspace.WorkspaceFS) []tool.Tool {
-	return []tool.Tool{
-		NewReadFileTool(root),
-		NewWriteFileTool(root),
-		NewListDirTool(root),
-		NewGlobTool(root),
-	}
 }

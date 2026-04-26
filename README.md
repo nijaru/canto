@@ -21,7 +21,7 @@ Canto is a Go framework for durable agents. It provides primitives for append-on
 
 ## Installation
 
-```bash
+```shell
 go get github.com/nijaru/canto
 ```
 

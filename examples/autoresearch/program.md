@@ -10,6 +10,6 @@ Rules:
 3. Keep changes simple and idiomatic where possible.
 4. Try one specific performance hypothesis per run. Don't bundle 5 different optimizations at once unless they are tightly coupled.
 5. If an optimization fails, do not try that exact approach again. Look at the context to learn why it failed.
-6. Maintain a `scratchpad.md` file using the bash tool. Before proposing a code change, log your hypothesis, what you are trying, and track which ideas failed so you don't repeat them across long sessions.
+6. Maintain a `scratchpad.md` file using the shell tool. Before proposing a code change, log your hypothesis, what you are trying, and track which ideas failed so you don't repeat them across long sessions.
 
 Propose your next code change now by modifying `target.go`. Do NOT output any "DONE" or "COMPLETE" signals. The loop runs indefinitely until the human stops it.

@@ -11,7 +11,6 @@ import (
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/safety"
-	"github.com/nijaru/canto/tool"
 	"github.com/nijaru/canto/workspace"
 )
 
@@ -185,18 +184,6 @@ func (t *MultiEditTool) ApprovalRequirement(args string) (approval.Requirement, 
 		Operation: "multi_edit",
 		Resource:  strings.Join(paths, ","),
 	}, true, nil
-}
-
-func EditTools(root workspace.WorkspaceFS) []tool.Tool {
-	return []tool.Tool{
-		NewEditTool(root),
-		NewMultiEditTool(root),
-	}
-}
-
-func WorkspaceTools(root workspace.WorkspaceFS) []tool.Tool {
-	tools := FileTools(root)
-	return append(tools, EditTools(root)...)
 }
 
 func applyEdit(root workspace.WorkspaceFS, path, before, after string) (string, int, error) {

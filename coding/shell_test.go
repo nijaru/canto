@@ -8,11 +8,11 @@ import (
 	"testing"
 )
 
-func TestBashTool_Spec(t *testing.T) {
-	b := &BashTool{}
+func TestShellTool_Spec(t *testing.T) {
+	b := &ShellTool{}
 	spec := b.Spec()
-	if spec.Name != "bash" {
-		t.Errorf("expected name 'bash', got %q", spec.Name)
+	if spec.Name != "shell" {
+		t.Errorf("expected name 'shell', got %q", spec.Name)
 	}
 	if spec.Description == "" {
 		t.Error("expected non-empty description")
@@ -22,8 +22,8 @@ func TestBashTool_Spec(t *testing.T) {
 	}
 }
 
-func TestBashTool_Execute_Echo(t *testing.T) {
-	b := &BashTool{}
+func TestShellTool_Execute_Echo(t *testing.T) {
+	b := &ShellTool{}
 	out, err := b.Execute(context.Background(), `{"command": "echo hello"}`)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -33,16 +33,16 @@ func TestBashTool_Execute_Echo(t *testing.T) {
 	}
 }
 
-func TestBashTool_Execute_InvalidJSON(t *testing.T) {
-	b := &BashTool{}
+func TestShellTool_Execute_InvalidJSON(t *testing.T) {
+	b := &ShellTool{}
 	_, err := b.Execute(context.Background(), `not-json`)
 	if err == nil {
 		t.Fatal("expected error for invalid JSON, got nil")
 	}
 }
 
-func TestBashTool_Execute_CommandFailure(t *testing.T) {
-	b := &BashTool{}
+func TestShellTool_Execute_CommandFailure(t *testing.T) {
+	b := &ShellTool{}
 	// Non-zero exit: error is returned; output contains only command stdout/stderr.
 	_, err := b.Execute(context.Background(), `{"command": "exit 1"}`)
 	if err == nil {
@@ -50,13 +50,13 @@ func TestBashTool_Execute_CommandFailure(t *testing.T) {
 	}
 }
 
-func TestBashTool_ExecuteUsesDir(t *testing.T) {
+func TestShellTool_ExecuteUsesDir(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "marker.txt"), []byte("ok"), 0o644); err != nil {
 		t.Fatalf("write marker: %v", err)
 	}
 
-	b := &BashTool{Dir: dir}
+	b := &ShellTool{Dir: dir}
 	out, err := b.Execute(t.Context(), `{"command": "cat marker.txt"}`)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -66,13 +66,36 @@ func TestBashTool_ExecuteUsesDir(t *testing.T) {
 	}
 }
 
-func TestBashTool_ExecuteStreamingUsesDir(t *testing.T) {
+func TestShellTool_ExecuteUsesConfiguredShell(t *testing.T) {
+	dir := t.TempDir()
+	shellPath := filepath.Join(dir, "test-shell")
+	if err := os.WriteFile(
+		shellPath,
+		[]byte("#!/bin/sh\nprintf '%s:%s' \"$1\" \"$2\"\n"),
+		0o755,
+	); err != nil {
+		t.Fatalf("write shell: %v", err)
+	}
+
+	out, err := (&ShellTool{
+		Shell:       shellPath,
+		CommandFlag: "--run",
+	}).Execute(t.Context(), `{"command":"echo hello"}`)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if out != "--run:echo hello" {
+		t.Fatalf("output = %q, want configured shell invocation", out)
+	}
+}
+
+func TestShellTool_ExecuteStreamingUsesDir(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "marker.txt"), []byte("ok"), 0o644); err != nil {
 		t.Fatalf("write marker: %v", err)
 	}
 
-	b := &BashTool{Dir: dir}
+	b := &ShellTool{Dir: dir}
 	var deltas []string
 	for delta, err := range b.ExecuteStreaming(t.Context(), `{"command": "cat marker.txt"}`) {
 		if err != nil {
@@ -85,8 +108,8 @@ func TestBashTool_ExecuteStreamingUsesDir(t *testing.T) {
 	}
 }
 
-func TestBashTool_ExecuteStreaming(t *testing.T) {
-	b := &BashTool{}
+func TestShellTool_ExecuteStreaming(t *testing.T) {
+	b := &ShellTool{}
 	ctx := context.Background()
 	args := `{"command": "echo hello"}`
 

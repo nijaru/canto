@@ -17,7 +17,7 @@ func TestRun(t *testing.T) {
 		"Updated README.md, checked service context, and verified the workspace smoke test.",
 		"Session resumed with durable history; README.md remains verified.",
 		"README.md: project: reference\nstatus: verified",
-		"Events: message_added=13, tool_started=7, tool_completed=7, approval_requested=4, approval_resolved=4, turn_completed=2",
+		"Events: message_added=12, tool_started=6, tool_completed=6, approval_requested=4, approval_resolved=4, turn_completed=2",
 		"PreToolUse web_search",
 		"PostToolUse execute_code",
 	} {

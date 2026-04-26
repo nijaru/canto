@@ -2,8 +2,6 @@ package coding
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -86,52 +84,6 @@ func TestListDir(t *testing.T) {
 	}
 }
 
-func TestGlob(t *testing.T) {
-	dir := t.TempDir()
-
-	// Write files directly (glob walks root FS).
-	if err := os.WriteFile(filepath.Join(dir, "main.go"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "main_test.go"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "README.md"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	root, err := workspace.Open(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer root.Close()
-
-	g := NewGlobTool(root)
-	out, err := g.Execute(context.Background(), `{"pattern":"*.go"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out, "main.go") {
-		t.Fatalf("missing main.go in: %q", out)
-	}
-	if strings.Contains(out, "README.md") {
-		t.Fatalf("unexpected README.md in: %q", out)
-	}
-}
-
-func TestGlob_NoMatches(t *testing.T) {
-	root := openTestRoot(t)
-
-	g := NewGlobTool(root)
-	out, err := g.Execute(context.Background(), `{"pattern":"*.rs"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out != "(no matches)" {
-		t.Fatalf("output = %q, want no-matches message", out)
-	}
-}
-
 func TestReadFile_Missing(t *testing.T) {
 	root := openTestRoot(t)
 
@@ -139,13 +91,5 @@ func TestReadFile_Missing(t *testing.T) {
 	_, err := r.Execute(context.Background(), `{"path":"nope.txt"}`)
 	if err == nil {
 		t.Fatal("expected error reading missing file")
-	}
-}
-
-func TestFileTools_Count(t *testing.T) {
-	root := openTestRoot(t)
-	tools := FileTools(root)
-	if len(tools) != 4 {
-		t.Fatalf("FileTools returned %d tools, want 4", len(tools))
 	}
 }

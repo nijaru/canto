@@ -51,7 +51,7 @@ func main() {
 
 	// 1. Setup the Canto agent
 	reg := tool.NewRegistry()
-	reg.Register(&coding.BashTool{})
+	reg.Register(&coding.ShellTool{})
 
 	provider := providers.OpenAI()
 
