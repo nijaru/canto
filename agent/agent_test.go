@@ -74,6 +74,16 @@ func (p *recordingProvider) Generate(
 	return &llm.Response{Content: "ok"}, nil
 }
 
+type developerRoleRecordingProvider struct {
+	recordingProvider
+}
+
+func (p *developerRoleRecordingProvider) Capabilities(string) llm.Capabilities {
+	caps := llm.DefaultCapabilities()
+	caps.SystemRole = llm.RoleDeveloper
+	return caps
+}
+
 // simpleTool is an inline tool for use in tests.
 type simpleTool struct {
 	name   string
@@ -1356,6 +1366,22 @@ func TestBaseAgentConfigureRuntimeProcessorsRunBeforeCacheAlignment(t *testing.T
 	}
 	if system.CacheControl == nil {
 		t.Fatal("expected cache alignment to include runtime system instructions")
+	}
+}
+
+func TestBaseAgentDefaultBuilderLeavesProviderCapabilityPrepToProvider(t *testing.T) {
+	provider := &developerRoleRecordingProvider{}
+	a := New("a", "base", "m", provider, nil)
+
+	if _, err := a.Turn(t.Context(), userSession("s-neutral-provider-prep", "hi")); err != nil {
+		t.Fatalf("turn: %v", err)
+	}
+
+	if len(provider.lastMessages) == 0 {
+		t.Fatal("expected provider request messages")
+	}
+	if got := provider.lastMessages[0].Role; got != llm.RoleSystem {
+		t.Fatalf("default builder preformatted provider role = %q, want neutral system", got)
 	}
 }
 
