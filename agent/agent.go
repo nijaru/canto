@@ -113,7 +113,7 @@ func WithApprovalGate(
 func WithBuilder(b *prompt.Builder) Option { return func(a *BaseAgent) { a.builder = b } }
 
 // WithRequestProcessors inserts preview-safe request processors into the
-// default builder chain, placed before Capabilities (which must run last).
+// default builder chain before cache alignment.
 func WithRequestProcessors(ps ...prompt.RequestProcessor) Option {
 	return func(a *BaseAgent) {
 		a.builder.InsertRequestProcessorsBeforeCache(ps...)
@@ -162,7 +162,6 @@ func New(
 		prompt.NewLazyTools(t),
 		prompt.History(),
 		prompt.CacheAligner(2),
-		prompt.Capabilities(), // must be last: adapts system/temp for reasoning models
 	)
 
 	for _, opt := range opts {

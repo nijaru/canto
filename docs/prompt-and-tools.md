@@ -36,8 +36,9 @@ message through `prompt.Instructions`.
 
 If a system message already exists in the request, Canto prepends the
 instructions to that message. If no system message exists, Canto creates one.
-For models that do not use the `system` role, `prompt.Capabilities` rewrites the
-message to the model's configured instruction role.
+For models that do not use the `system` role, built-in providers prepare a
+provider-specific request copy at send time and rewrite the message to the
+model's configured instruction role there.
 
 Canto does not ship a default persona. Empty instructions mean Canto adds no
 agent-role prompt.
@@ -52,16 +53,16 @@ agent-role prompt.
    context is placed before the transcript and recorded as the cache prefix.
 4. `prompt.CacheAligner(2)` — preserve the stable prompt prefix and recent
    history.
-5. `prompt.Capabilities()` — adapt the request to model capabilities. This must
-   run last.
 
 The builder can also run commit-time mutators before request construction, such
 as compaction or artifact recording.
 
 The order is deterministic. Request processors are stored in an ordered slice
 and run in that order. In the default agent path, custom request processors are
-inserted before cache alignment and model capability adaptation, so custom
-system blocks and tool changes are included in cache markers.
+inserted before cache alignment, so custom system blocks and tool changes are
+included in cache markers. Provider-specific model capability adaptation happens
+at the built-in provider send boundary on a request copy, not during prompt
+construction.
 
 ## Cache Stability
 
@@ -74,8 +75,8 @@ automatic:
 - request-specific context blocks are inserted after that stable prefix;
 - tool schemas are sorted by the registry before request construction;
 - cache alignment runs after host prompt/tool processors;
-- model capability adaptation runs last, so provider-specific role rewrites are
-  deterministic for the selected model.
+- provider-specific role/thinking/tool rewrites happen on a copy when the
+  selected provider sends the request.
 
 Adding, removing, or changing instructions, feature blocks, or tool schemas
 necessarily changes the cache prefix. Processors that add timestamps, random

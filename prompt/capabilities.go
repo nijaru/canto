@@ -7,9 +7,15 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-// Capabilities adapts Request fields to match the model's
-// capability constraints. It must run last in the request-shaping chain, after
-// all other request processors have populated the request.
+// Capabilities adapts Request fields to match the model's capability
+// constraints inside the prompt pipeline. Built-in providers already prepare
+// provider-specific request copies at send time, so most callers should not add
+// this processor. It is for custom providers that expect callers to perform
+// capability adaptation before Provider.Generate or Provider.Stream.
+//
+// Deprecated: implement capability preparation in the provider with
+// llm.PrepareRequestForCapabilities so resolver/failover paths do not mutate a
+// neutral request before the final provider is selected.
 //
 // Handles:
 //   - SystemRole != RoleSystem: rewrites system messages to the declared role.

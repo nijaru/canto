@@ -116,7 +116,7 @@ func (b *Builder) PrependRequestProcessors(processors ...RequestProcessor) {
 }
 
 // AppendRequestProcessors adds preview-safe request processors after the
-// existing prompt shapers and before cache alignment/capability adaptation.
+// existing prompt shapers and before cache alignment.
 func (b *Builder) AppendRequestProcessors(processors ...RequestProcessor) {
 	if len(processors) == 0 {
 		return
@@ -153,7 +153,7 @@ func (b *Builder) InsertRequestProcessorsBeforeLast(processors ...RequestProcess
 }
 
 // InsertRequestProcessorsBeforeCache inserts preview-safe request processors
-// before cache alignment and model capability adaptation. This is the usual
+// before cache alignment. This is the usual
 // insertion point for host prompt and tool processors because cache markers
 // should see the final prompt prefix and tool list.
 func (b *Builder) InsertRequestProcessorsBeforeCache(processors ...RequestProcessor) {

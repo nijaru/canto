@@ -239,10 +239,14 @@ type Provider interface {
 	// ID returns the unique identifier for this provider.
 	ID() string
 
-	// Generate executes a non-streaming completion request.
+	// Generate executes a non-streaming completion request. Providers receive a
+	// neutral request draft and should prepare a provider-specific copy with
+	// PrepareRequestForCapabilities before converting it to wire format.
 	Generate(ctx context.Context, req *Request) (*Response, error)
 
-	// Stream executes a streaming completion request.
+	// Stream executes a streaming completion request. Providers receive a neutral
+	// request draft and should prepare a provider-specific copy with
+	// PrepareRequestForCapabilities before converting it to wire format.
 	Stream(ctx context.Context, req *Request) (Stream, error)
 
 	// Models returns the list of models supported by this provider.
@@ -255,7 +259,6 @@ type Provider interface {
 	Cost(ctx context.Context, model string, usage Usage) float64
 
 	// Capabilities returns the feature set supported by the given model.
-	// Use this to adapt requests for reasoning models that have constraints.
 	Capabilities(model string) Capabilities
 
 	// IsTransient returns true if the given error is retryable (e.g. 429, 503).
