@@ -272,10 +272,12 @@ type Provider interface {
 
 // RetryConfig controls the backoff behavior for a RetryProvider.
 type RetryConfig struct {
-	MaxAttempts int
-	MinInterval time.Duration
-	MaxInterval time.Duration
-	Multiplier  float64
+	MaxAttempts  int
+	MinInterval  time.Duration
+	MaxInterval  time.Duration
+	Multiplier   float64
+	RetryForever bool
+	OnRetry      func(RetryEvent)
 }
 
 // DefaultRetryConfig returns a safe default for production LLM usage.
@@ -286,6 +288,13 @@ func DefaultRetryConfig() RetryConfig {
 		MaxInterval: 10 * time.Second,
 		Multiplier:  2.0,
 	}
+}
+
+// RetryEvent describes a transient provider failure that will be retried.
+type RetryEvent struct {
+	Attempt int
+	Delay   time.Duration
+	Err     error
 }
 
 // Stream defines the interface for a streaming LLM response.
@@ -326,7 +335,9 @@ func NewRetryProvider(p Provider) *RetryProvider {
 
 func normalizedRetryConfig(cfg RetryConfig) RetryConfig {
 	defaults := DefaultRetryConfig()
-	if cfg.MaxAttempts <= 0 {
+	if cfg.RetryForever {
+		cfg.MaxAttempts = 0
+	} else if cfg.MaxAttempts <= 0 {
 		cfg.MaxAttempts = 1
 	}
 	if cfg.MinInterval <= 0 {
@@ -342,6 +353,16 @@ func normalizedRetryConfig(cfg RetryConfig) RetryConfig {
 		cfg.Multiplier = defaults.Multiplier
 	}
 	return cfg
+}
+
+func retryLimitReached(cfg RetryConfig, attempt int) bool {
+	return !cfg.RetryForever && attempt >= cfg.MaxAttempts
+}
+
+func notifyRetry(cfg RetryConfig, event RetryEvent) {
+	if cfg.OnRetry != nil {
+		cfg.OnRetry(event)
+	}
 }
 
 func waitForRetry(ctx context.Context, delay time.Duration) error {
@@ -378,16 +399,17 @@ func (r *RetryProvider) Generate(ctx context.Context, req *Request) (*Response, 
 	cfg := normalizedRetryConfig(r.Config)
 	interval := cfg.MinInterval
 
-	for i := 0; i < cfg.MaxAttempts; i++ {
+	for i := 0; ; i++ {
 		resp, err = r.Provider.Generate(ctx, req)
 		if err == nil {
 			return resp, nil
 		}
 
-		if !r.Provider.IsTransient(err) || i == cfg.MaxAttempts-1 {
+		if !r.Provider.IsTransient(err) || retryLimitReached(cfg, i+1) {
 			return nil, err
 		}
 
+		notifyRetry(cfg, RetryEvent{Attempt: i + 1, Delay: interval, Err: err})
 		if err := waitForRetry(ctx, interval); err != nil {
 			return nil, err
 		}
@@ -405,16 +427,17 @@ func (r *RetryProvider) Stream(ctx context.Context, req *Request) (Stream, error
 	cfg := normalizedRetryConfig(r.Config)
 	interval := cfg.MinInterval
 
-	for i := 0; i < cfg.MaxAttempts; i++ {
+	for i := 0; ; i++ {
 		s, err = r.Provider.Stream(ctx, req)
 		if err == nil {
 			return s, nil
 		}
 
-		if !r.Provider.IsTransient(err) || i == cfg.MaxAttempts-1 {
+		if !r.Provider.IsTransient(err) || retryLimitReached(cfg, i+1) {
 			return nil, err
 		}
 
+		notifyRetry(cfg, RetryEvent{Attempt: i + 1, Delay: interval, Err: err})
 		if err := waitForRetry(ctx, interval); err != nil {
 			return nil, err
 		}

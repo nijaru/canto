@@ -110,3 +110,54 @@ func TestRetryProvider_CancelsDuringBackoff(t *testing.T) {
 		t.Fatalf("expected a single attempt before cancellation, got %d", inner.generateCalls)
 	}
 }
+
+func TestRetryProvider_RetriesForeverUntilContextCancel(t *testing.T) {
+	inner := &retryProviderStub{
+		generateFn: func(context.Context, *Request) (*Response, error) {
+			return nil, errors.New("transient")
+		},
+		isTransientFn: func(error) bool { return true },
+	}
+	var events []RetryEvent
+	rp := &RetryProvider{
+		Provider: inner,
+		Config: RetryConfig{
+			RetryForever: true,
+			MinInterval:  1 * time.Millisecond,
+			MaxInterval:  1 * time.Millisecond,
+			Multiplier:   2,
+			OnRetry: func(event RetryEvent) {
+				events = append(events, event)
+			},
+		},
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	go func() {
+		for {
+			if inner.generateCalls >= 3 {
+				cancel()
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	resp, err := rp.Generate(ctx, &Request{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got resp=%#v err=%v", resp, err)
+	}
+	if inner.generateCalls < 3 {
+		t.Fatalf(
+			"expected retry loop to continue until cancellation, got %d calls",
+			inner.generateCalls,
+		)
+	}
+	if len(events) < 2 {
+		t.Fatalf("expected retry events, got %d", len(events))
+	}
+	if events[0].Attempt != 1 {
+		t.Fatalf("first retry attempt = %d, want 1", events[0].Attempt)
+	}
+}
