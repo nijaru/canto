@@ -1,5 +1,29 @@
 package llm
 
+// Clone returns a deep copy of r's mutable request fields.
+func (r *Request) Clone() *Request {
+	if r == nil {
+		return nil
+	}
+	clone := *r
+	clone.Messages = cloneMessages(r.Messages)
+	if len(r.Tools) > 0 {
+		clone.Tools = make([]*Spec, len(r.Tools))
+		for i, spec := range r.Tools {
+			if spec == nil {
+				continue
+			}
+			copied := *spec
+			if spec.CacheControl != nil {
+				cacheControl := *spec.CacheControl
+				copied.CacheControl = &cacheControl
+			}
+			clone.Tools[i] = &copied
+		}
+	}
+	return &clone
+}
+
 // InsertMessage inserts msg at index and keeps CachePrefixMessages aligned.
 // If the insertion is inside the current cache prefix, the prefix grows with it.
 func (r *Request) InsertMessage(index int, msg Message) {
@@ -48,4 +72,29 @@ func (r *Request) insertMessage(index int, msg Message) {
 	r.Messages = append(r.Messages, Message{})
 	copy(r.Messages[index+1:], r.Messages[index:])
 	r.Messages[index] = msg
+}
+
+func cloneMessages(messages []Message) []Message {
+	if len(messages) == 0 {
+		return nil
+	}
+	cloned := make([]Message, len(messages))
+	for i, msg := range messages {
+		cloned[i] = cloneMessage(msg)
+	}
+	return cloned
+}
+
+func cloneMessage(msg Message) Message {
+	if len(msg.ThinkingBlocks) > 0 {
+		msg.ThinkingBlocks = append([]ThinkingBlock(nil), msg.ThinkingBlocks...)
+	}
+	if len(msg.Calls) > 0 {
+		msg.Calls = append([]Call(nil), msg.Calls...)
+	}
+	if msg.CacheControl != nil {
+		cacheControl := *msg.CacheControl
+		msg.CacheControl = &cacheControl
+	}
+	return msg
 }

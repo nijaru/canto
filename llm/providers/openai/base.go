@@ -60,11 +60,12 @@ func (b *Base) Cost(ctx context.Context, model string, usage llm.Usage) float64 
 
 // Generate handles the OpenAI-compatible chat completion.
 func (b *Base) Generate(ctx context.Context, req *llm.Request) (*llm.Response, error) {
-	if err := llm.ValidateRequest(req); err != nil {
+	prepared, err := llm.PrepareRequestForCapabilities(req, b.Capabilities(req.Model))
+	if err != nil {
 		return nil, err
 	}
 
-	resp, err := b.Client.CreateChatCompletion(ctx, b.ConvertRequest(req))
+	resp, err := b.Client.CreateChatCompletion(ctx, b.ConvertRequest(prepared))
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +80,7 @@ func (b *Base) Generate(ctx context.Context, req *llm.Request) (*llm.Response, e
 		OutputTokens: resp.Usage.CompletionTokens,
 		TotalTokens:  resp.Usage.TotalTokens,
 	}
-	usage.Cost = b.Cost(ctx, req.Model, usage)
+	usage.Cost = b.Cost(ctx, prepared.Model, usage)
 
 	return &llm.Response{
 		Content: choice.Message.Content,
@@ -90,11 +91,12 @@ func (b *Base) Generate(ctx context.Context, req *llm.Request) (*llm.Response, e
 
 // Stream handles the OpenAI-compatible streaming chat completion.
 func (b *Base) Stream(ctx context.Context, req *llm.Request) (llm.Stream, error) {
-	if err := llm.ValidateRequest(req); err != nil {
+	prepared, err := llm.PrepareRequestForCapabilities(req, b.Capabilities(req.Model))
+	if err != nil {
 		return nil, err
 	}
 
-	stream, err := b.Client.CreateChatCompletionStream(ctx, b.ConvertRequest(req))
+	stream, err := b.Client.CreateChatCompletionStream(ctx, b.ConvertRequest(prepared))
 	if err != nil {
 		return nil, err
 	}

@@ -29,6 +29,18 @@ func TransformRequestForCapabilities(req *Request, caps Capabilities) {
 	synthesizeMissingToolResults(req)
 }
 
+// PrepareRequestForCapabilities returns a provider-ready copy of req adapted
+// to caps. The original request remains neutral and can be prepared again for a
+// different provider or model.
+func PrepareRequestForCapabilities(req *Request, caps Capabilities) (*Request, error) {
+	prepared := req.Clone()
+	TransformRequestForCapabilities(prepared, caps)
+	if err := ValidateRequest(prepared); err != nil {
+		return nil, err
+	}
+	return prepared, nil
+}
+
 func rewriteSystemMessages(req *Request, targetRole Role) {
 	for i, m := range req.Messages {
 		if m.Role != RoleSystem {

@@ -199,6 +199,63 @@ func TestTransformRequestForCapabilitiesKeepsCachePrefixForSuffixToolResults(t *
 	}
 }
 
+func TestPrepareRequestForCapabilitiesLeavesOriginalReusable(t *testing.T) {
+	req := &Request{
+		Temperature: 0.7,
+		Messages: []Message{
+			{Role: RoleSystem, Content: "system"},
+			{
+				Role:      RoleAssistant,
+				Content:   "answer",
+				Reasoning: "because",
+				ThinkingBlocks: []ThinkingBlock{
+					{Type: "thinking", Thinking: "step"},
+				},
+				Calls: []Call{{
+					ID:   "call 1",
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{Name: "search", Arguments: "{}"},
+				}},
+			},
+		},
+	}
+
+	openAIReady, err := PrepareRequestForCapabilities(req, Capabilities{
+		SystemRole:  RoleDeveloper,
+		Temperature: false,
+	})
+	if err != nil {
+		t.Fatalf("prepare openai: %v", err)
+	}
+	anthropicReady, err := PrepareRequestForCapabilities(req, Capabilities{
+		SystemRole:  RoleSystem,
+		Temperature: true,
+		Thinking:    true,
+	})
+	if err != nil {
+		t.Fatalf("prepare anthropic: %v", err)
+	}
+
+	if req.Messages[0].Role != RoleSystem ||
+		req.Messages[1].Reasoning == "" ||
+		len(req.Messages[1].ThinkingBlocks) != 1 {
+		t.Fatalf("original request was mutated: %#v", req.Messages)
+	}
+	if openAIReady.Messages[0].Role != RoleDeveloper ||
+		openAIReady.Temperature != 0 ||
+		len(openAIReady.Messages[1].ThinkingBlocks) != 0 {
+		t.Fatalf("unexpected openai prepared request: %#v", openAIReady)
+	}
+	if anthropicReady.Messages[0].Role != RoleSystem ||
+		anthropicReady.Temperature != 0.7 ||
+		len(anthropicReady.Messages[1].ThinkingBlocks) != 1 {
+		t.Fatalf("unexpected anthropic prepared request: %#v", anthropicReady)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(substr) == 0 || (len(s) >= len(substr) && stringsContains(s, substr))
 }

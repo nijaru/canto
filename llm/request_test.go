@@ -2,6 +2,46 @@ package llm
 
 import "testing"
 
+func TestRequestCloneKeepsOriginalNeutral(t *testing.T) {
+	req := &Request{
+		Temperature:         0.7,
+		CachePrefixMessages: 1,
+		Messages: []Message{{
+			Role:           RoleSystem,
+			Content:        "system",
+			ThinkingBlocks: []ThinkingBlock{{Type: "thinking", Thinking: "secret"}},
+			Calls: []Call{{
+				ID:   "call 1",
+				Type: "function",
+				Function: struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				}{Name: "read", Arguments: "{}"},
+			}},
+			CacheControl: &CacheControl{Type: "ephemeral"},
+		}},
+		Tools: []*Spec{{
+			Name:         "read",
+			CacheControl: &CacheControl{Type: "ephemeral"},
+		}},
+	}
+
+	clone := req.Clone()
+	clone.Messages[0].Role = RoleUser
+	clone.Messages[0].ThinkingBlocks[0].Thinking = "changed"
+	clone.Messages[0].Calls[0].ID = "changed"
+	clone.Messages[0].CacheControl.Type = "changed"
+	clone.Tools[0].CacheControl.Type = "changed"
+
+	if req.Messages[0].Role != RoleSystem ||
+		req.Messages[0].ThinkingBlocks[0].Thinking != "secret" ||
+		req.Messages[0].Calls[0].ID != "call 1" ||
+		req.Messages[0].CacheControl.Type != "ephemeral" ||
+		req.Tools[0].CacheControl.Type != "ephemeral" {
+		t.Fatalf("clone mutation leaked into original: %#v", req)
+	}
+}
+
 func TestRequestPrependMessageExtendsCachePrefix(t *testing.T) {
 	req := &Request{
 		CachePrefixMessages: 1,

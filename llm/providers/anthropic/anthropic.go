@@ -76,13 +76,14 @@ func (p *Provider) ID() string {
 }
 
 func (p *Provider) Generate(ctx context.Context, req *llm.Request) (*llm.Response, error) {
-	if err := llm.ValidateRequest(req); err != nil {
+	prepared, err := llm.PrepareRequestForCapabilities(req, p.Capabilities(req.Model))
+	if err != nil {
 		return nil, err
 	}
 
-	params := p.convertRequest(req)
+	params := p.convertRequest(prepared)
 	var opts []option.RequestOption
-	if req.ThinkingBudget > 0 {
+	if prepared.ThinkingBudget > 0 {
 		opts = append(opts, option.WithHeader("anthropic-beta", "interleaved-thinking-2025-05-14"))
 	}
 	resp, err := p.client.Messages.New(ctx, params, opts...)
@@ -95,7 +96,7 @@ func (p *Provider) Generate(ctx context.Context, req *llm.Request) (*llm.Respons
 		OutputTokens: int(resp.Usage.OutputTokens),
 		TotalTokens:  int(resp.Usage.InputTokens + resp.Usage.OutputTokens),
 	}
-	usage.Cost = p.Cost(ctx, req.Model, usage)
+	usage.Cost = p.Cost(ctx, prepared.Model, usage)
 
 	res := &llm.Response{
 		Usage: usage,
@@ -133,7 +134,7 @@ func (p *Provider) Generate(ctx context.Context, req *llm.Request) (*llm.Respons
 			res.Calls = append(res.Calls, call)
 
 			// If this was a forced structured output, promote its input to Content.
-			if rf := req.ResponseFormat; rf != nil && rf.Type == llm.ResponseFormatJSONSchema {
+			if rf := prepared.ResponseFormat; rf != nil && rf.Type == llm.ResponseFormatJSONSchema {
 				name := rf.Name
 				if name == "" {
 					name = "json_response"
@@ -151,19 +152,20 @@ func (p *Provider) Generate(ctx context.Context, req *llm.Request) (*llm.Respons
 }
 
 func (p *Provider) Stream(ctx context.Context, req *llm.Request) (llm.Stream, error) {
-	if err := llm.ValidateRequest(req); err != nil {
+	prepared, err := llm.PrepareRequestForCapabilities(req, p.Capabilities(req.Model))
+	if err != nil {
 		return nil, err
 	}
 
-	params := p.convertRequest(req)
+	params := p.convertRequest(prepared)
 	var opts []option.RequestOption
-	if req.ThinkingBudget > 0 {
+	if prepared.ThinkingBudget > 0 {
 		opts = append(opts, option.WithHeader("anthropic-beta", "interleaved-thinking-2025-05-14"))
 	}
 	stream := p.client.Messages.NewStreaming(ctx, params, opts...)
 
 	targetName := ""
-	if rf := req.ResponseFormat; rf != nil && rf.Type == llm.ResponseFormatJSONSchema {
+	if rf := prepared.ResponseFormat; rf != nil && rf.Type == llm.ResponseFormatJSONSchema {
 		targetName = rf.Name
 		if targetName == "" {
 			targetName = "json_response"
@@ -173,7 +175,7 @@ func (p *Provider) Stream(ctx context.Context, req *llm.Request) (llm.Stream, er
 	return &Stream{
 		stream:     stream,
 		targetName: targetName,
-		model:      req.Model,
+		model:      prepared.Model,
 		p:          p,
 		ctx:        ctx,
 	}, nil
