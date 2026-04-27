@@ -142,12 +142,17 @@ func (a *BaseAgent) StreamStep(
 		ThinkingBlocks: thinkingBlocks,
 		Calls:          calls,
 	}
+	llm.RecordUsage(ctx, provider.ID(), req.Model, usage)
+	if !hasAssistantPayload(msg) {
+		res.Usage = usage
+		return
+	}
+
 	e := session.NewEvent(s.ID(), session.MessageAdded, msg)
 	e.Cost = usage.Cost
 	if err = s.Append(ctx, e); err != nil {
 		return
 	}
-	llm.RecordUsage(ctx, provider.ID(), req.Model, usage)
 
 	// Execute tool calls in parallel and append results to the session.
 	handoffTargets := getHandoffTargets(a.tools)

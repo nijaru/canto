@@ -104,12 +104,16 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 		Reasoning: resp.Reasoning,
 		Calls:     resp.Calls,
 	}
+	llm.RecordUsage(ctx, provider.ID(), req.Model, resp.Usage)
+	if !hasAssistantPayload(msg) {
+		return
+	}
+
 	e := session.NewEvent(s.ID(), session.MessageAdded, msg)
 	e.Cost = resp.Usage.Cost
 	if err = s.Append(ctx, e); err != nil {
 		return
 	}
-	llm.RecordUsage(ctx, provider.ID(), req.Model, resp.Usage)
 
 	// Execute tool calls in parallel and append results to the session.
 	handoffTargets := getHandoffTargets(cfg.Tools)

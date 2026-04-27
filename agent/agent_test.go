@@ -390,6 +390,30 @@ func TestStepNoToolCalls(t *testing.T) {
 	}
 }
 
+func TestStepSkipsEmptyAssistantMessage(t *testing.T) {
+	usage := llm.Usage{InputTokens: 4, OutputTokens: 1, TotalTokens: 5}
+	p := &mockProvider{
+		responses: []*llm.Response{
+			{Usage: usage},
+		},
+	}
+	a := New("test-agent", "You are helpful.", "gpt-4", p, nil)
+	s := userSession("s-empty-step", "Hi!")
+
+	result, err := a.Step(t.Context(), s)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Usage.TotalTokens != usage.TotalTokens {
+		t.Fatalf("usage = %+v, want %+v", result.Usage, usage)
+	}
+
+	msgs := s.Messages()
+	if len(msgs) != 1 {
+		t.Fatalf("expected only user message, got %#v", msgs)
+	}
+}
+
 func TestNewAgentUsesLazyToolsByDefault(t *testing.T) {
 	reg := tool.NewRegistry()
 	for i := range 25 {

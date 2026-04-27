@@ -115,6 +115,30 @@ func TestStreamStepNilChunkFn(t *testing.T) {
 	}
 }
 
+func TestStreamStepSkipsEmptyAssistantMessage(t *testing.T) {
+	usage := &llm.Usage{InputTokens: 4, OutputTokens: 1, TotalTokens: 5}
+	p := &streamMockProvider{
+		chunks: [][]llm.Chunk{
+			{{Usage: usage}},
+		},
+	}
+	a := New("a", "sys", "m", p, nil)
+	s := userSession("s-empty-stream", "hi")
+
+	result, err := a.StreamStep(t.Context(), s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Usage.TotalTokens != usage.TotalTokens {
+		t.Fatalf("usage = %+v, want %+v", result.Usage, *usage)
+	}
+
+	msgs := s.Messages()
+	if len(msgs) != 1 {
+		t.Fatalf("expected only user message, got %#v", msgs)
+	}
+}
+
 func TestStreamStepWithToolCall(t *testing.T) {
 	call := llm.Call{ID: "c1", Type: "function"}
 	call.Function.Name = "greet"
