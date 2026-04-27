@@ -97,6 +97,50 @@ func TestLazyToolProcessor_DeferredToolsStayHiddenBelowThreshold(t *testing.T) {
 	}
 }
 
+func TestLazyToolProcessor_PreservesCachePrefixWhenInsertedAfterHistory(t *testing.T) {
+	reg := makeRegistry(25)
+	p := NewLazyTools(reg)
+	p.Threshold = 10
+
+	sess := session.New("s-lazy-cache")
+	if err := sess.AppendContext(t.Context(), session.ContextEntry{
+		Kind:      session.ContextKindBootstrap,
+		Placement: session.ContextPlacementPrefix,
+		Content:   "stable context",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(t.Context(), session.NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "hello",
+	})); err != nil {
+		t.Fatal(err)
+	}
+
+	req := &llm.Request{}
+	if err := History().ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatal(err)
+	}
+	if req.CachePrefixMessages != 1 {
+		t.Fatalf("cache prefix before lazy tools = %d, want 1", req.CachePrefixMessages)
+	}
+
+	if err := p.ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatal(err)
+	}
+
+	if req.CachePrefixMessages != 2 {
+		t.Fatalf("cache prefix after lazy tools = %d, want 2", req.CachePrefixMessages)
+	}
+	if req.Messages[0].Role != llm.RoleSystem ||
+		!strings.Contains(req.Messages[0].Content, "Additional tools are available") {
+		t.Fatalf("expected lazy tool hint to be prepended as system, got %#v", req.Messages[0])
+	}
+	if req.Messages[1].Content != "stable context" || req.Messages[2].Content != "hello" {
+		t.Fatalf("unexpected message order after lazy tools: %#v", req.Messages)
+	}
+}
+
 func TestSearchUnlockedTools(t *testing.T) {
 	sess := session.New("s-tools")
 	specs := []llm.Spec{{Name: "tool_1", Description: "desc of tool_1"}}

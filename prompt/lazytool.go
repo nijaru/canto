@@ -142,4 +142,7 @@ func injectSystemHint(req *llm.Request, hint string) {
 	req.Messages = append(req.Messages, llm.Message{})
 	copy(req.Messages[1:], req.Messages)
 	req.Messages[0] = sys
+	if req.CachePrefixMessages > 0 {
+		req.CachePrefixMessages++
+	}
 }
