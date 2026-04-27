@@ -163,6 +163,9 @@ func (p *Summarizer) summarize(
 	}
 
 	newEntries = append(newEntries, session.HistoryEntry{
+		EventType:   session.ContextAdded,
+		ContextKind: session.ContextKindSummary,
+		Placement:   session.ContextPlacementPrefix,
 		Message: llm.Message{
 			Role: llm.RoleUser,
 			Content: fmt.Sprintf(

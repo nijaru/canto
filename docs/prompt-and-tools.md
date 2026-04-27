@@ -48,9 +48,10 @@ agent-role prompt.
 
 1. `prompt.Instructions(instructions)` — insert host instructions.
 2. `prompt.NewLazyTools(registry)` — expose tool specs or `search_tools`.
-3. `prompt.History()` — append the durable effective session history.
-4. `prompt.CacheAligner(2)` — preserve a stable prompt prefix around the system
-   prompt and recent history.
+3. `prompt.History()` — append durable context and transcript history. Stable
+   context is placed before the transcript and recorded as the cache prefix.
+4. `prompt.CacheAligner(2)` — preserve the stable prompt prefix and recent
+   history.
 5. `prompt.Capabilities()` — adapt the request to model capabilities. This must
    run last.
 
@@ -68,6 +69,9 @@ Canto keeps the common path cache-friendly by making the stable prefix
 automatic:
 
 - system instructions and feature prompt blocks are assembled before history;
+- durable stable context, such as bootstrap snapshots and compaction summaries,
+  is placed before the transcript as non-privileged user-role context;
+- request-specific context blocks are inserted after that stable prefix;
 - tool schemas are sorted by the registry before request construction;
 - cache alignment runs after host prompt/tool processors;
 - model capability adaptation runs last, so provider-specific role rewrites are
@@ -93,7 +97,7 @@ corresponding feature is enabled or triggered.
 | `prompt.MemoryPrompt` | Host adds the memory request processor | `<memory_context>...</memory_context>`. |
 | `skill.PreloadPrompt` | Host preloads skills | `Preloaded Skills:` plus selected skill instructions. |
 | `governor.CircuitBreakerGuard` | Approval circuit breaker is tripped and host installed the guard | Notice that automated approvals are disabled. |
-| `governor.Summarizer` | Host enables summarization compaction | Internal summarizer prompt; result is stored as a compacted system summary. |
+| `governor.Summarizer` | Host enables summarization compaction | Internal summarizer prompt; result is stored as non-privileged stable context. |
 
 ## Tools
 

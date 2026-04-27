@@ -58,7 +58,9 @@ func TestEffectiveEntriesPreserveContextMarkers(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("expected context plus transcript, got %#v", entries)
 	}
-	if entries[0].EventType != ContextAdded || entries[0].ContextKind != ContextKindHarness {
+	if entries[0].EventType != ContextAdded ||
+		entries[0].ContextKind != ContextKindHarness ||
+		entries[0].Placement != ContextPlacementPrefix {
 		t.Fatalf("expected context markers on first entry, got %#v", entries[0])
 	}
 	if entries[1].EventType != MessageAdded || entries[1].ContextKind != "" {
@@ -107,6 +109,10 @@ func TestRebuilderKeepsWorkingSetAfterDurableContextEntries(t *testing.T) {
 	}
 	if rebuilt[1].ContextKind != ContextKindWorkingSet {
 		t.Fatalf("expected working set after durable context, got %#v", rebuilt[1])
+	}
+	if rebuilt[0].Placement != ContextPlacementPrefix ||
+		rebuilt[1].Placement != ContextPlacementPrefix {
+		t.Fatalf("expected stable context prefix placements, got %#v", rebuilt[:2])
 	}
 	if !strings.Contains(rebuilt[1].Message.Content, "agent/handoff.go") {
 		t.Fatalf("expected working set file reference, got %#v", rebuilt[1].Message)

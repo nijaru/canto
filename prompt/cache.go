@@ -34,7 +34,11 @@ func FingerprintPromptCache(
 	}
 
 	prefix := req.Messages
-	if sess != nil {
+	if req.CachePrefixLen > 0 {
+		if req.CachePrefixLen < len(req.Messages) {
+			prefix = req.Messages[:req.CachePrefixLen]
+		}
+	} else if sess != nil {
 		history, err := sess.EffectiveMessages()
 		if err != nil {
 			return PromptCacheFingerprint{}, err
@@ -99,18 +103,19 @@ func (c cacheAlignerProcessor) ApplyRequest(
 		return nil
 	}
 
-	// Mark the last leading system message to establish a stable prefix that
-	// survives history compaction or masking.
-	lastSystemIdx := -1
-	for i, m := range req.Messages {
-		if m.Role == llm.RoleSystem {
-			lastSystemIdx = i
-		} else if lastSystemIdx != -1 {
-			break
+	prefixEnd := req.CachePrefixLen
+	if prefixEnd <= 0 || prefixEnd > len(req.Messages) {
+		prefixEnd = 0
+		for i, m := range req.Messages {
+			if m.Role == llm.RoleSystem {
+				prefixEnd = i + 1
+			} else if prefixEnd != 0 {
+				break
+			}
 		}
 	}
-	if lastSystemIdx != -1 {
-		req.Messages[lastSystemIdx].CacheControl = &llm.CacheControl{Type: "ephemeral"}
+	if prefixEnd > 0 {
+		req.Messages[prefixEnd-1].CacheControl = &llm.CacheControl{Type: "ephemeral"}
 	}
 
 	if len(req.Tools) > 0 {
@@ -118,7 +123,7 @@ func (c cacheAlignerProcessor) ApplyRequest(
 	}
 
 	count := 0
-	for i := len(req.Messages) - 1; i > lastSystemIdx && count < c.historyLimit; i-- {
+	for i := len(req.Messages) - 1; i >= prefixEnd && count < c.historyLimit; i-- {
 		if req.Messages[i].CacheControl == nil {
 			req.Messages[i].CacheControl = &llm.CacheControl{Type: "ephemeral"}
 			count++

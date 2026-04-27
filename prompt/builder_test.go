@@ -99,6 +99,40 @@ func TestHistoryUsesLatestCompactionSnapshot(t *testing.T) {
 	}
 }
 
+func TestHistoryPlacesPrefixContextBeforeTranscript(t *testing.T) {
+	sess := session.New("prefix-context")
+	if err := sess.AppendUser(t.Context(), "first user"); err != nil {
+		t.Fatalf("AppendUser: %v", err)
+	}
+	if err := sess.AppendContext(t.Context(), session.ContextEntry{
+		Kind:      session.ContextKindGeneric,
+		Placement: session.ContextPlacementPrefix,
+		Content:   "stable workspace context",
+	}); err != nil {
+		t.Fatalf("AppendContext: %v", err)
+	}
+	if err := sess.AppendUser(t.Context(), "second user"); err != nil {
+		t.Fatalf("AppendUser: %v", err)
+	}
+
+	req := &llm.Request{
+		Messages: []llm.Message{{Role: llm.RoleSystem, Content: "system"}},
+	}
+	if err := History().ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatalf("History: %v", err)
+	}
+
+	if req.CachePrefixLen != 2 {
+		t.Fatalf("expected system plus stable context prefix, got %d", req.CachePrefixLen)
+	}
+	if got := req.Messages[1].Content; got != "stable workspace context" {
+		t.Fatalf("expected stable context before transcript, got %q", got)
+	}
+	if req.Messages[2].Content != "first user" || req.Messages[3].Content != "second user" {
+		t.Fatalf("expected transcript after stable context, got %#v", req.Messages)
+	}
+}
+
 func TestHistoryDemotesSessionSystemMessagesToTranscriptContext(t *testing.T) {
 	sess := session.New("system-history")
 	for _, msg := range []llm.Message{

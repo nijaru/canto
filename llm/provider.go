@@ -92,6 +92,10 @@ type Request struct {
 	Temperature    float64         `json:"temperature"`
 	MaxTokens      int             `json:"max_tokens,omitzero"`
 	ResponseFormat *ResponseFormat `json:"response_format,omitzero"`
+	// CachePrefixLen is the number of leading messages Canto expects to stay
+	// stable across ordinary turn growth. Provider adapters ignore it; prompt
+	// cache helpers use it to place provider-neutral cache markers.
+	CachePrefixLen int `json:"-"`
 	// ReasoningEffort controls the depth of internal reasoning for OpenAI o-series
 	// models. Accepted values: "low", "medium", "high". Empty means provider default.
 	ReasoningEffort string `json:"reasoning_effort,omitzero"`

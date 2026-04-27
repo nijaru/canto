@@ -257,11 +257,24 @@ func validateCompactionOrder(mutators []ContextMutator) error {
 func History() RequestProcessor {
 	return RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
-			messages, err := sess.EffectiveMessages()
+			entries, err := sess.EffectiveEntries()
 			if err != nil {
 				return err
 			}
-			req.Messages = append(req.Messages, messages...)
+			for _, entry := range entries {
+				if entry.EventType == session.ContextAdded &&
+					entry.Placement == session.ContextPlacementPrefix {
+					req.Messages = append(req.Messages, entry.Message)
+				}
+			}
+			req.CachePrefixLen = len(req.Messages)
+			for _, entry := range entries {
+				if entry.EventType == session.ContextAdded &&
+					entry.Placement == session.ContextPlacementPrefix {
+					continue
+				}
+				req.Messages = append(req.Messages, entry.Message)
+			}
 			return nil
 		},
 	)
@@ -334,9 +347,12 @@ func injectContextBlock(req *llm.Request, blockRegex *regexp.Regexp, block strin
 	}
 
 	idx := 0
-	for idx < len(req.Messages) &&
+	for idx < len(req.Messages) && req.CachePrefixLen <= 0 &&
 		(req.Messages[idx].Role == llm.RoleSystem || req.Messages[idx].Role == llm.RoleDeveloper) {
 		idx++
+	}
+	if req.CachePrefixLen > 0 && req.CachePrefixLen <= len(req.Messages) {
+		idx = req.CachePrefixLen
 	}
 	msg := llm.Message{Role: llm.RoleUser, Content: block}
 	req.Messages = append(req.Messages, llm.Message{})

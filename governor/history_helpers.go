@@ -22,8 +22,11 @@ func cloneHistoryEntries(entries []session.HistoryEntry) []session.HistoryEntry 
 	res := make([]session.HistoryEntry, 0, len(entries))
 	for _, entry := range entries {
 		res = append(res, session.HistoryEntry{
-			EventID: entry.EventID,
-			Message: entry.Message,
+			EventID:     entry.EventID,
+			EventType:   entry.EventType,
+			ContextKind: entry.ContextKind,
+			Placement:   entry.Placement,
+			Message:     entry.Message,
 		})
 	}
 	return res
@@ -74,6 +77,10 @@ func extractPreviousSummary(entries []session.HistoryEntry) (string, bool) {
 }
 
 func isDurableContextEntry(entry session.HistoryEntry) bool {
+	if entry.EventType == session.ContextAdded &&
+		entry.Placement == session.ContextPlacementPrefix {
+		return true
+	}
 	content := entry.Message.Content
 	return strings.Contains(content, "<conversation_summary>") ||
 		strings.Contains(content, "<working_set>")

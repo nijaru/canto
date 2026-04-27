@@ -18,18 +18,29 @@ const (
 	ContextKindWorkingSet ContextKind = "working_set"
 )
 
+// ContextPlacement controls where durable context is placed in the model-visible
+// request relative to the conversational transcript.
+type ContextPlacement string
+
+const (
+	// ContextPlacementHistory replays context in the ordinary history suffix.
+	ContextPlacementHistory ContextPlacement = "history"
+	// ContextPlacementPrefix replays stable context before the transcript so
+	// common prompt-cache prefixes survive ordinary turn growth.
+	ContextPlacementPrefix ContextPlacement = "prefix"
+)
+
 // ContextEntry is durable, model-visible context. It is replayed into prompt
 // history as ordinary user-role context, never as a system/developer message.
 type ContextEntry struct {
-	Kind    ContextKind `json:"kind,omitzero"`
-	Content string      `json:"content"`
+	Kind      ContextKind      `json:"kind,omitzero"`
+	Placement ContextPlacement `json:"placement,omitzero"`
+	Content   string           `json:"content"`
 }
 
 // NewContext creates a context-added event.
 func NewContext(sessionID string, entry ContextEntry) Event {
-	if entry.Kind == "" {
-		entry.Kind = ContextKindGeneric
-	}
+	normalizeContextEntry(&entry)
 	return NewEvent(sessionID, ContextAdded, entry)
 }
 
@@ -47,10 +58,23 @@ func (e *Event) ensureContextEntry() (*ContextEntry, error) {
 	if err := e.UnmarshalData(&entry); err != nil {
 		return nil, err
 	}
+	normalizeContextEntry(&entry)
+	return &entry, nil
+}
+
+func normalizeContextEntry(entry *ContextEntry) {
 	if entry.Kind == "" {
 		entry.Kind = ContextKindGeneric
 	}
-	return &entry, nil
+	if entry.Placement != "" {
+		return
+	}
+	switch entry.Kind {
+	case ContextKindBootstrap, ContextKindHarness, ContextKindSummary, ContextKindWorkingSet:
+		entry.Placement = ContextPlacementPrefix
+	default:
+		entry.Placement = ContextPlacementHistory
+	}
 }
 
 func contextEntryMessage(entry ContextEntry) llm.Message {

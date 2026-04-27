@@ -96,6 +96,75 @@ func TestFingerprintPromptCacheChangesOnPrefixOrToolSchema(t *testing.T) {
 	}
 }
 
+func TestFingerprintPromptCacheUsesExplicitPrefixBoundary(t *testing.T) {
+	req1 := &llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "system"},
+			{Role: llm.RoleUser, Content: "stable context"},
+			{Role: llm.RoleUser, Content: "history one"},
+		},
+		CachePrefixLen: 2,
+	}
+	req2 := &llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "system"},
+			{Role: llm.RoleUser, Content: "stable context"},
+			{Role: llm.RoleUser, Content: "history two"},
+		},
+		CachePrefixLen: 2,
+	}
+	changedPrefix := &llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "system"},
+			{Role: llm.RoleUser, Content: "changed stable context"},
+			{Role: llm.RoleUser, Content: "history one"},
+		},
+		CachePrefixLen: 2,
+	}
+
+	fp1, err := FingerprintPromptCache(nil, req1)
+	if err != nil {
+		t.Fatalf("fingerprint req1: %v", err)
+	}
+	fp2, err := FingerprintPromptCache(nil, req2)
+	if err != nil {
+		t.Fatalf("fingerprint req2: %v", err)
+	}
+	changedFP, err := FingerprintPromptCache(nil, changedPrefix)
+	if err != nil {
+		t.Fatalf("fingerprint changed prefix: %v", err)
+	}
+	if fp1 != fp2 {
+		t.Fatalf("expected history suffix to be excluded, got %v vs %v", fp1, fp2)
+	}
+	if fp1 == changedFP {
+		t.Fatal("expected prefix context mutation to change fingerprint")
+	}
+}
+
+func TestInjectContextBlockRespectsCachePrefixBoundary(t *testing.T) {
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "system"},
+			{Role: llm.RoleUser, Content: "stable context"},
+			{Role: llm.RoleUser, Content: "history"},
+		},
+		CachePrefixLen: 2,
+	}
+
+	injectContextBlock(req, memoryPromptRegex, "<memory_context>\ncurrent\n</memory_context>")
+
+	if req.CachePrefixLen != 2 {
+		t.Fatalf("expected cache prefix boundary to remain stable, got %d", req.CachePrefixLen)
+	}
+	if req.Messages[1].Content != "stable context" {
+		t.Fatalf("expected stable context to remain in prefix, got %#v", req.Messages)
+	}
+	if req.Messages[2].Content != "<memory_context>\ncurrent\n</memory_context>" {
+		t.Fatalf("expected dynamic context after prefix, got %#v", req.Messages)
+	}
+}
+
 func TestCacheAligner(t *testing.T) {
 	req := &llm.Request{
 		Messages: []llm.Message{
@@ -139,5 +208,32 @@ func TestCacheAligner(t *testing.T) {
 				t.Errorf("expected tool %d to NOT have cache control", i)
 			}
 		}
+	}
+}
+
+func TestCacheAlignerMarksExplicitPrefixBoundary(t *testing.T) {
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "system"},
+			{Role: llm.RoleUser, Content: "stable context"},
+			{Role: llm.RoleUser, Content: "history"},
+		},
+		CachePrefixLen: 2,
+	}
+
+	if err := CacheAligner(1).ApplyRequest(context.Background(), nil, "", nil, req); err != nil {
+		t.Fatalf("CacheAligner: %v", err)
+	}
+
+	if req.Messages[0].CacheControl != nil {
+		t.Fatalf("expected only prefix boundary marked, got %#v", req.Messages[0].CacheControl)
+	}
+	if req.Messages[1].CacheControl == nil ||
+		req.Messages[1].CacheControl.Type != "ephemeral" {
+		t.Fatalf("expected stable context boundary marker, got %#v", req.Messages[1])
+	}
+	if req.Messages[2].CacheControl == nil ||
+		req.Messages[2].CacheControl.Type != "ephemeral" {
+		t.Fatalf("expected recent history marker, got %#v", req.Messages[2])
 	}
 }

@@ -8,8 +8,10 @@
 //     prompt view from durable snapshots plus later appended events.
 //   - MessageAdded events are conversational transcript. ContextAdded events
 //     are model-visible context, replayed as ordinary user-role context rather
-//     than privileged instructions. Lifecycle, handoff, approval, and audit
-//     events are durable but hidden from prompt history by default.
+//     than privileged instructions. Stable ContextAdded entries can be placed
+//     before the transcript for prompt-cache reuse. Lifecycle, handoff,
+//     approval, and audit events are durable but hidden from prompt history by
+//     default.
 //   - ProjectionSnapshotter appends durable rebuild checkpoints on time/count
 //     policies so the rebuilder can fast-path cold starts and long transcripts.
 //   - Messages returns the raw transcript exactly as messages were emitted.
