@@ -99,6 +99,46 @@ func TestExportRun(t *testing.T) {
 	}
 }
 
+func TestExportRunIncludesModelVisibleContextInTurnInput(t *testing.T) {
+	sess := New("context-run")
+	if err := sess.AppendContext(t.Context(), ContextEntry{
+		Kind:    ContextKindBootstrap,
+		Content: "workspace context",
+	}); err != nil {
+		t.Fatalf("AppendContext: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "Hello",
+	})); err != nil {
+		t.Fatalf("append user: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleAssistant,
+		Content: "Hi",
+	})); err != nil {
+		t.Fatalf("append assistant: %v", err)
+	}
+
+	traj, err := ExportRun(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(traj.Turns) != 1 {
+		t.Fatalf("expected 1 turn, got %d", len(traj.Turns))
+	}
+	input := traj.Turns[0].Input
+	if len(input) != 2 {
+		t.Fatalf("expected context plus user input, got %#v", input)
+	}
+	if input[0].Role != llm.RoleUser || input[0].Content != "workspace context" {
+		t.Fatalf("expected context first, got %#v", input[0])
+	}
+	if input[1].Role != llm.RoleUser || input[1].Content != "Hello" {
+		t.Fatalf("expected user input second, got %#v", input[1])
+	}
+}
+
 func TestExportRunTreeIncludesChildRuns(t *testing.T) {
 	parent := New("parent")
 	child := New("child-session")

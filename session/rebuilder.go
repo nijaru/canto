@@ -64,13 +64,13 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 	cutoffSeen := false
 	for i := range sess.events {
 		e := &sess.events[i]
-		if e.Type != MessageAdded && e.Type != ContextAdded {
-			continue
-		}
 		if !cutoffSeen {
 			if e.ID.String() == snapshot.CutoffEventID {
 				cutoffSeen = true
 			}
+			continue
+		}
+		if e.Type != MessageAdded && e.Type != ContextAdded {
 			continue
 		}
 

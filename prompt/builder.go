@@ -261,22 +261,28 @@ func History() RequestProcessor {
 			if err != nil {
 				return err
 			}
-			prefixContextMessages := 0
-			for _, entry := range entries {
-				if entry.EventType == session.ContextAdded &&
-					entry.ContextPlacement == session.ContextPlacementPrefix {
-					prefixContextMessages++
-				} else if prefixContextMessages > 0 {
-					break
-				}
-			}
-			req.CachePrefixMessages = len(req.Messages) + prefixContextMessages
+			req.CachePrefixMessages = len(req.Messages) + countPrefixContextMessages(entries)
 			for _, entry := range entries {
 				req.Messages = append(req.Messages, entry.Message)
 			}
 			return nil
 		},
 	)
+}
+
+func countPrefixContextMessages(entries []session.HistoryEntry) int {
+	count := 0
+	for _, entry := range entries {
+		if entry.EventType == session.ContextAdded &&
+			entry.ContextPlacement == session.ContextPlacementPrefix {
+			count++
+			continue
+		}
+		if count > 0 {
+			break
+		}
+	}
+	return count
 }
 
 // Tools appends tool definitions to the LLM request.
@@ -325,6 +331,9 @@ func Instructions(instructions string) RequestProcessor {
 			req.Messages = append(req.Messages, llm.Message{})
 			copy(req.Messages[1:], req.Messages)
 			req.Messages[0] = sys
+			if req.CachePrefixMessages > 0 {
+				req.CachePrefixMessages++
+			}
 			return nil
 		},
 	)
@@ -378,4 +387,7 @@ func injectSystemBlock(req *llm.Request, blockRegex *regexp.Regexp, block string
 	req.Messages = append(req.Messages, llm.Message{})
 	copy(req.Messages[1:], req.Messages)
 	req.Messages[0] = sys
+	if req.CachePrefixMessages > 0 {
+		req.CachePrefixMessages++
+	}
 }

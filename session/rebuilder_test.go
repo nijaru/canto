@@ -194,3 +194,45 @@ func TestRebuilderRebuildEntriesUsesLatestProjectionSnapshot(t *testing.T) {
 		t.Fatalf("expected post-snapshot entry last, got %q", entries[3].Message.Content)
 	}
 }
+
+func TestRebuilderAcceptsSnapshotCutoffOnHiddenEvent(t *testing.T) {
+	sess := New("hidden-cutoff")
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "before",
+	})); err != nil {
+		t.Fatalf("append before: %v", err)
+	}
+	hidden := NewEvent(sess.ID(), TurnStarted, map[string]string{"turn": "1"})
+	if err := sess.Append(t.Context(), hidden); err != nil {
+		t.Fatalf("append hidden event: %v", err)
+	}
+	snapshot := ProjectionSnapshot{
+		Strategy:      string(ProjectionTriggerManual),
+		CutoffEventID: hidden.ID.String(),
+		Entries: []HistoryEntry{{
+			EventID: sess.Events()[0].ID.String(),
+			Message: llm.Message{Role: llm.RoleUser, Content: "before"},
+		}},
+	}
+	if err := sess.Append(t.Context(), NewProjectionSnapshot(sess.ID(), snapshot)); err != nil {
+		t.Fatalf("append projection snapshot: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleAssistant,
+		Content: "after",
+	})); err != nil {
+		t.Fatalf("append after: %v", err)
+	}
+
+	entries, err := NewRebuilder().RebuildEntries(sess)
+	if err != nil {
+		t.Fatalf("RebuildEntries: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected snapshot entry plus post-cutoff message, got %#v", entries)
+	}
+	if entries[0].Message.Content != "before" || entries[1].Message.Content != "after" {
+		t.Fatalf("unexpected rebuilt entries: %#v", entries)
+	}
+}

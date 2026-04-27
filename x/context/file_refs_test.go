@@ -123,6 +123,47 @@ func TestFileReferencePromptDeduplicatesAcrossSession(t *testing.T) {
 	}
 }
 
+func TestFileReferencePromptRespectsCachePrefixBoundary(t *testing.T) {
+	root, err := workspace.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("workspace.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+	if err := root.WriteFile("notes.txt", []byte("hello from file"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	sess := session.New("refs-prefix")
+	if err := sess.Append(t.Context(), session.NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "please inspect @notes.txt",
+	})); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "system"},
+			{Role: llm.RoleUser, Content: "stable context"},
+			{Role: llm.RoleUser, Content: "history"},
+		},
+		CachePrefixMessages: 2,
+	}
+	proc := FileReferencePrompt(root, FileReferenceOptions{})
+	if err := proc.ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatalf("ApplyRequest: %v", err)
+	}
+	if req.CachePrefixMessages != 2 {
+		t.Fatalf("expected cache prefix boundary to remain stable, got %d", req.CachePrefixMessages)
+	}
+	if req.Messages[1].Content != "stable context" {
+		t.Fatalf("expected stable context to remain in prefix, got %#v", req.Messages)
+	}
+	if !contains(req.Messages[2].Content, "notes.txt", "hello from file") {
+		t.Fatalf("expected file references after prefix, got %#v", req.Messages)
+	}
+}
+
 func contains(s string, parts ...string) bool {
 	for _, part := range parts {
 		if !strings.Contains(s, part) {

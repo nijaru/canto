@@ -133,6 +133,36 @@ func TestHistoryPlacesPrefixContextBeforeTranscript(t *testing.T) {
 	}
 }
 
+func TestLateInstructionsPreserveCachePrefixBoundary(t *testing.T) {
+	sess := session.New("late-instructions")
+	if err := sess.AppendContext(t.Context(), session.ContextEntry{
+		Kind:    session.ContextKindBootstrap,
+		Content: "stable context",
+	}); err != nil {
+		t.Fatalf("AppendContext: %v", err)
+	}
+	if err := sess.AppendUser(t.Context(), "hello"); err != nil {
+		t.Fatalf("AppendUser: %v", err)
+	}
+
+	req := &llm.Request{}
+	if err := History().ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if err := Instructions("late system").ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatalf("Instructions: %v", err)
+	}
+
+	if req.CachePrefixMessages != 2 {
+		t.Fatalf("expected system plus context cache prefix, got %d", req.CachePrefixMessages)
+	}
+	if req.Messages[0].Role != llm.RoleSystem ||
+		req.Messages[1].Content != "stable context" ||
+		req.Messages[2].Content != "hello" {
+		t.Fatalf("unexpected message order: %#v", req.Messages)
+	}
+}
+
 func TestHistoryDemotesSessionSystemMessagesToTranscriptContext(t *testing.T) {
 	sess := session.New("system-history")
 	for _, msg := range []llm.Message{

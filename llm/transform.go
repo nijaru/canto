@@ -26,7 +26,7 @@ func TransformRequestForCapabilities(req *Request, caps Capabilities) {
 	if !caps.Thinking {
 		flattenUnsupportedThinking(req.Messages)
 	}
-	req.Messages = synthesizeMissingToolResults(req.Messages)
+	synthesizeMissingToolResults(req)
 }
 
 func rewriteSystemMessages(req *Request, targetRole Role) {
@@ -83,9 +83,10 @@ func appendThinkingText(content, reasoning string, blocks []ThinkingBlock) strin
 	return content + "\n\n" + strings.Join(parts, "\n\n")
 }
 
-func synthesizeMissingToolResults(messages []Message) []Message {
-	if len(messages) == 0 {
-		return nil
+func synthesizeMissingToolResults(req *Request) {
+	if len(req.Messages) == 0 {
+		req.Messages = nil
+		return
 	}
 
 	type pendingCall struct {
@@ -95,8 +96,13 @@ func synthesizeMissingToolResults(messages []Message) []Message {
 
 	var transformed []Message
 	var pending []pendingCall
+	insertedBeforePrefix := 0
+	originalPrefix := req.CachePrefixMessages
 
-	flushPending := func() {
+	flushPending := func(beforeOriginalIndex int) {
+		if originalPrefix > 0 && beforeOriginalIndex <= originalPrefix {
+			insertedBeforePrefix += len(pending)
+		}
 		for _, call := range pending {
 			transformed = append(transformed, Message{
 				Role:    RoleTool,
@@ -108,9 +114,9 @@ func synthesizeMissingToolResults(messages []Message) []Message {
 		pending = pending[:0]
 	}
 
-	for _, msg := range messages {
+	for i, msg := range req.Messages {
 		if msg.Role != RoleTool && len(pending) > 0 {
-			flushPending()
+			flushPending(i)
 		}
 
 		transformed = append(transformed, msg)
@@ -139,10 +145,13 @@ func synthesizeMissingToolResults(messages []Message) []Message {
 	}
 
 	if len(pending) > 0 {
-		flushPending()
+		flushPending(len(req.Messages))
 	}
 
-	return transformed
+	req.Messages = transformed
+	if originalPrefix > 0 {
+		req.CachePrefixMessages = originalPrefix + insertedBeforePrefix
+	}
 }
 
 func normalizeToolIDs(messages []Message) {

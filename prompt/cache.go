@@ -81,9 +81,10 @@ func (f PromptCacheFingerprint) String() string {
 // cache-control markers to the request to maximize prefix-cache hit rates.
 //
 // It places "ephemeral" markers at predictable stable boundaries:
-// 1. The last system message (preserves system prompt cache during history mutations).
-// 2. The last tool (caches the entire tools array).
-// 3. The final messages in the request, up to historyLimit (caches the recent turn history).
+//  1. The explicit stable prefix boundary when req.CachePrefixMessages is set,
+//     otherwise the last leading system message.
+//  2. The last tool (caches the entire tools array).
+//  3. The final messages in the request, up to historyLimit (caches the recent turn history).
 func CacheAligner(historyLimit int) RequestProcessor {
 	return cacheAlignerProcessor{historyLimit: historyLimit}
 }

@@ -166,6 +166,12 @@ func exportRun(sess *Session) (*RunLog, error) {
 		traj.TotalCost += e.Cost
 
 		switch e.Type {
+		case ContextAdded:
+			entry, err := e.ensureContextEntry()
+			if err != nil {
+				continue
+			}
+			inputBuffer = append(inputBuffer, contextEntryMessage(*entry))
 		case MessageAdded:
 			msg, err := e.ensureMessage()
 			if err != nil {
