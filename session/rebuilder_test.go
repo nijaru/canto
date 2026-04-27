@@ -30,6 +30,111 @@ func TestRebuilderRebuildEntriesWithoutCompactionFallsBackToRawHistory(t *testin
 	}
 }
 
+func TestRebuilderDropsEmptyAssistantMessagesFromRawHistory(t *testing.T) {
+	sess := New("raw-empty-assistant")
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: "before"},
+		{Role: llm.RoleAssistant},
+		{Role: llm.RoleAssistant, Content: "after"},
+	} {
+		if err := sess.Append(t.Context(), NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+
+	messages, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected empty assistant to be omitted, got %#v", messages)
+	}
+	if messages[0].Content != "before" || messages[1].Content != "after" {
+		t.Fatalf("unexpected effective messages: %#v", messages)
+	}
+}
+
+func TestRebuilderPreservesAssistantPayloadKinds(t *testing.T) {
+	call := llm.Call{ID: "call-1", Type: "function"}
+	call.Function.Name = "read"
+	call.Function.Arguments = `{"path":"README.md"}`
+
+	sess := New("assistant-payload-kinds")
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleAssistant, Reasoning: "reasoning only"},
+		{Role: llm.RoleAssistant, ThinkingBlocks: []llm.ThinkingBlock{{Type: "thinking", Thinking: "thinking only"}}},
+		{Role: llm.RoleAssistant, Calls: []llm.Call{call}},
+		{Role: llm.RoleTool, ToolID: "call-1", Name: "read", Content: "result"},
+	} {
+		if err := sess.Append(t.Context(), NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+
+	messages, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	if len(messages) != 4 {
+		t.Fatalf("expected all payload-bearing messages to remain, got %#v", messages)
+	}
+	if messages[0].Reasoning == "" || len(messages[1].ThinkingBlocks) != 1 ||
+		len(messages[2].Calls) != 1 || messages[3].Role != llm.RoleTool {
+		t.Fatalf("unexpected effective messages: %#v", messages)
+	}
+}
+
+func TestRebuilderDropsEmptyAssistantMessagesFromSnapshots(t *testing.T) {
+	sess := New("snapshot-empty-assistant")
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: "old"},
+		{Role: llm.RoleAssistant, Content: "cutoff"},
+	} {
+		if err := sess.Append(t.Context(), NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+
+	events := sess.Events()
+	snapshot := ProjectionSnapshot{
+		Strategy:      string(ProjectionTriggerManual),
+		CutoffEventID: events[1].ID.String(),
+		Entries: []HistoryEntry{
+			{
+				Message: llm.Message{
+					Role:    llm.RoleSystem,
+					Content: "<conversation_summary>\nsummary\n</conversation_summary>",
+				},
+			},
+			{Message: llm.Message{Role: llm.RoleAssistant}},
+			{Message: llm.Message{Role: llm.RoleUser, Content: "kept"}},
+		},
+	}
+	if err := sess.Append(t.Context(), NewProjectionSnapshot(sess.ID(), snapshot)); err != nil {
+		t.Fatalf("append projection snapshot: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{Role: llm.RoleAssistant})); err != nil {
+		t.Fatalf("append post-snapshot empty assistant: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{Role: llm.RoleAssistant, Content: "after"})); err != nil {
+		t.Fatalf("append post-snapshot assistant: %v", err)
+	}
+
+	messages, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	if len(messages) != 3 {
+		t.Fatalf("expected snapshot and post-snapshot empty assistants omitted, got %#v", messages)
+	}
+	if messages[0].Role != llm.RoleUser ||
+		!strings.Contains(messages[0].Content, "<conversation_summary>") ||
+		messages[1].Content != "kept" ||
+		messages[2].Content != "after" {
+		t.Fatalf("unexpected effective messages: %#v", messages)
+	}
+}
+
 func TestRebuilderRebuildEntriesInjectsWorkingSetAfterSummary(t *testing.T) {
 	sess := New("compacted")
 	oldUser := llm.Message{Role: llm.RoleUser, Content: "old"}

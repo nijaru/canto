@@ -53,10 +53,10 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 		if err != nil {
 			return nil, err
 		}
-		return arrangePromptEntries(entries), nil
+		return arrangePromptEntries(normalizeEffectiveEntries(entries)), nil
 	}
 
-	entries := normalizeTranscriptEntries(slices.Clone(snapshot.entries()))
+	entries := normalizeEffectiveEntries(slices.Clone(snapshot.entries()))
 	if fileEntry, ok := r.fileContextEntry(snapshot); ok {
 		entries = insertAfterDurableContextEntries(entries, fileEntry)
 	}
@@ -77,6 +77,11 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 		entry, err := sess.historyEntryFromEvent(e)
 		if err != nil {
 			return nil, fmt.Errorf("effective history: decode message %s: %w", e.ID, err)
+		}
+		var ok bool
+		entry, ok = normalizeEffectiveEntry(entry)
+		if !ok {
+			continue
 		}
 		entries = append(entries, entry)
 	}
@@ -156,22 +161,45 @@ func uniqueSorted(items []string) []string {
 	return out
 }
 
-func normalizeTranscriptEntries(entries []HistoryEntry) []HistoryEntry {
-	for i := range entries {
-		entries[i].Message = normalizeTranscriptMessage(entries[i].Message)
-		if entries[i].EventType == "" {
-			inferLegacyContextMarkers(&entries[i])
+func normalizeEffectiveEntries(entries []HistoryEntry) []HistoryEntry {
+	out := entries[:0]
+	for _, entry := range entries {
+		entry, ok := normalizeEffectiveEntry(entry)
+		if !ok {
+			continue
 		}
-		if entries[i].EventType == ContextAdded && entries[i].ContextKind == "" {
-			entries[i].ContextKind = ContextKindGeneric
-		}
-		if entries[i].EventType == ContextAdded && entries[i].ContextPlacement == "" {
-			entry := ContextEntry{Kind: entries[i].ContextKind}
-			normalizeContextEntry(&entry)
-			entries[i].ContextPlacement = entry.Placement
-		}
+		out = append(out, entry)
 	}
-	return entries
+	return out
+}
+
+func normalizeEffectiveEntry(entry HistoryEntry) (HistoryEntry, bool) {
+	entry.Message = normalizeTranscriptMessage(entry.Message)
+	if entry.EventType == "" {
+		inferLegacyContextMarkers(&entry)
+	}
+	if entry.EventType == ContextAdded && entry.ContextKind == "" {
+		entry.ContextKind = ContextKindGeneric
+	}
+	if entry.EventType == ContextAdded && entry.ContextPlacement == "" {
+		contextEntry := ContextEntry{Kind: entry.ContextKind}
+		normalizeContextEntry(&contextEntry)
+		entry.ContextPlacement = contextEntry.Placement
+	}
+	if entry.EventType != ContextAdded && !validModelMessage(entry.Message) {
+		return HistoryEntry{}, false
+	}
+	return entry, true
+}
+
+func validModelMessage(msg llm.Message) bool {
+	if msg.Role != llm.RoleAssistant {
+		return true
+	}
+	return strings.TrimSpace(msg.Content) != "" ||
+		strings.TrimSpace(msg.Reasoning) != "" ||
+		len(msg.ThinkingBlocks) > 0 ||
+		len(msg.Calls) > 0
 }
 
 func inferLegacyContextMarkers(entry *HistoryEntry) {
