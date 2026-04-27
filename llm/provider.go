@@ -272,12 +272,13 @@ type Provider interface {
 
 // RetryConfig controls the backoff behavior for a RetryProvider.
 type RetryConfig struct {
-	MaxAttempts  int
-	MinInterval  time.Duration
-	MaxInterval  time.Duration
-	Multiplier   float64
-	RetryForever bool
-	OnRetry      func(RetryEvent)
+	MaxAttempts               int
+	MinInterval               time.Duration
+	MaxInterval               time.Duration
+	Multiplier                float64
+	RetryForever              bool
+	RetryForeverTransportOnly bool
+	OnRetry                   func(RetryEvent)
 }
 
 // DefaultRetryConfig returns a safe default for production LLM usage.
@@ -318,8 +319,8 @@ type Chunk struct {
 	Usage *Usage `json:"usage,omitempty"`
 }
 
-// RetryProvider wraps an LLM provider and automatically retries transient errors
-// (rate limits, service unavailable) with exponential backoff.
+// RetryProvider wraps an LLM provider and automatically retries transient
+// errors with exponential backoff.
 type RetryProvider struct {
 	Provider
 	Config RetryConfig
@@ -335,7 +336,7 @@ func NewRetryProvider(p Provider) *RetryProvider {
 
 func normalizedRetryConfig(cfg RetryConfig) RetryConfig {
 	defaults := DefaultRetryConfig()
-	if cfg.RetryForever {
+	if cfg.RetryForever && !cfg.RetryForeverTransportOnly {
 		cfg.MaxAttempts = 0
 	} else if cfg.MaxAttempts <= 0 {
 		cfg.MaxAttempts = 1
@@ -355,8 +356,16 @@ func normalizedRetryConfig(cfg RetryConfig) RetryConfig {
 	return cfg
 }
 
-func retryLimitReached(cfg RetryConfig, attempt int) bool {
-	return !cfg.RetryForever && attempt >= cfg.MaxAttempts
+func retryLimitReached(cfg RetryConfig, attempt int, err error) bool {
+	if cfg.RetryForever {
+		if !cfg.RetryForeverTransportOnly {
+			return false
+		}
+		if IsTransientTransportError(err) {
+			return false
+		}
+	}
+	return attempt >= cfg.MaxAttempts
 }
 
 func notifyRetry(cfg RetryConfig, event RetryEvent) {
@@ -405,7 +414,7 @@ func (r *RetryProvider) Generate(ctx context.Context, req *Request) (*Response, 
 			return resp, nil
 		}
 
-		if !r.Provider.IsTransient(err) || retryLimitReached(cfg, i+1) {
+		if !r.Provider.IsTransient(err) || retryLimitReached(cfg, i+1, err) {
 			return nil, err
 		}
 
@@ -433,7 +442,7 @@ func (r *RetryProvider) Stream(ctx context.Context, req *Request) (Stream, error
 			return s, nil
 		}
 
-		if !r.Provider.IsTransient(err) || retryLimitReached(cfg, i+1) {
+		if !r.Provider.IsTransient(err) || retryLimitReached(cfg, i+1, err) {
 			return nil, err
 		}
 

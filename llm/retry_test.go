@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"errors"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -159,5 +160,74 @@ func TestRetryProvider_RetriesForeverUntilContextCancel(t *testing.T) {
 	}
 	if events[0].Attempt != 1 {
 		t.Fatalf("first retry attempt = %d, want 1", events[0].Attempt)
+	}
+}
+
+func TestRetryProvider_RetryForeverTransportOnlyStopsProviderErrors(t *testing.T) {
+	providerErr := errors.New("rate limited")
+	inner := &retryProviderStub{
+		generateFn: func(context.Context, *Request) (*Response, error) {
+			return nil, providerErr
+		},
+		isTransientFn: func(error) bool { return true },
+	}
+	rp := &RetryProvider{
+		Provider: inner,
+		Config: RetryConfig{
+			MaxAttempts:               2,
+			RetryForever:              true,
+			RetryForeverTransportOnly: true,
+			MinInterval:               1 * time.Millisecond,
+			MaxInterval:               1 * time.Millisecond,
+			Multiplier:                2,
+		},
+	}
+
+	resp, err := rp.Generate(t.Context(), &Request{})
+	if !errors.Is(err, providerErr) {
+		t.Fatalf("expected provider error, got resp=%#v err=%v", resp, err)
+	}
+	if inner.generateCalls != 2 {
+		t.Fatalf("generate calls = %d, want bounded 2 attempts", inner.generateCalls)
+	}
+}
+
+func TestRetryProvider_RetryForeverTransportOnlyKeepsTransportErrors(t *testing.T) {
+	inner := &retryProviderStub{
+		generateFn: func(context.Context, *Request) (*Response, error) {
+			return nil, syscall.ECONNRESET
+		},
+		isTransientFn: func(error) bool { return true },
+	}
+	rp := &RetryProvider{
+		Provider: inner,
+		Config: RetryConfig{
+			MaxAttempts:               1,
+			RetryForever:              true,
+			RetryForeverTransportOnly: true,
+			MinInterval:               1 * time.Millisecond,
+			MaxInterval:               1 * time.Millisecond,
+			Multiplier:                2,
+		},
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	go func() {
+		for {
+			if inner.generateCalls >= 3 {
+				cancel()
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	resp, err := rp.Generate(ctx, &Request{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got resp=%#v err=%v", resp, err)
+	}
+	if inner.generateCalls < 3 {
+		t.Fatalf("generate calls = %d, want retry until cancellation", inner.generateCalls)
 	}
 }
