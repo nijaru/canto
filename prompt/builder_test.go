@@ -122,8 +122,8 @@ func TestHistoryPlacesPrefixContextBeforeTranscript(t *testing.T) {
 		t.Fatalf("History: %v", err)
 	}
 
-	if req.CachePrefixLen != 2 {
-		t.Fatalf("expected system plus stable context prefix, got %d", req.CachePrefixLen)
+	if req.CachePrefixMessages != 2 {
+		t.Fatalf("expected system plus stable context prefix, got %d", req.CachePrefixMessages)
 	}
 	if got := req.Messages[1].Content; got != "stable workspace context" {
 		t.Fatalf("expected stable context before transcript, got %q", got)

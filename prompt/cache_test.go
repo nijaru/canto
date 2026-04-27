@@ -103,7 +103,7 @@ func TestFingerprintPromptCacheUsesExplicitPrefixBoundary(t *testing.T) {
 			{Role: llm.RoleUser, Content: "stable context"},
 			{Role: llm.RoleUser, Content: "history one"},
 		},
-		CachePrefixLen: 2,
+		CachePrefixMessages: 2,
 	}
 	req2 := &llm.Request{
 		Messages: []llm.Message{
@@ -111,7 +111,7 @@ func TestFingerprintPromptCacheUsesExplicitPrefixBoundary(t *testing.T) {
 			{Role: llm.RoleUser, Content: "stable context"},
 			{Role: llm.RoleUser, Content: "history two"},
 		},
-		CachePrefixLen: 2,
+		CachePrefixMessages: 2,
 	}
 	changedPrefix := &llm.Request{
 		Messages: []llm.Message{
@@ -119,7 +119,7 @@ func TestFingerprintPromptCacheUsesExplicitPrefixBoundary(t *testing.T) {
 			{Role: llm.RoleUser, Content: "changed stable context"},
 			{Role: llm.RoleUser, Content: "history one"},
 		},
-		CachePrefixLen: 2,
+		CachePrefixMessages: 2,
 	}
 
 	fp1, err := FingerprintPromptCache(nil, req1)
@@ -149,13 +149,13 @@ func TestInjectContextBlockRespectsCachePrefixBoundary(t *testing.T) {
 			{Role: llm.RoleUser, Content: "stable context"},
 			{Role: llm.RoleUser, Content: "history"},
 		},
-		CachePrefixLen: 2,
+		CachePrefixMessages: 2,
 	}
 
 	injectContextBlock(req, memoryPromptRegex, "<memory_context>\ncurrent\n</memory_context>")
 
-	if req.CachePrefixLen != 2 {
-		t.Fatalf("expected cache prefix boundary to remain stable, got %d", req.CachePrefixLen)
+	if req.CachePrefixMessages != 2 {
+		t.Fatalf("expected cache prefix boundary to remain stable, got %d", req.CachePrefixMessages)
 	}
 	if req.Messages[1].Content != "stable context" {
 		t.Fatalf("expected stable context to remain in prefix, got %#v", req.Messages)
@@ -218,7 +218,7 @@ func TestCacheAlignerMarksExplicitPrefixBoundary(t *testing.T) {
 			{Role: llm.RoleUser, Content: "stable context"},
 			{Role: llm.RoleUser, Content: "history"},
 		},
-		CachePrefixLen: 2,
+		CachePrefixMessages: 2,
 	}
 
 	if err := CacheAligner(1).ApplyRequest(context.Background(), nil, "", nil, req); err != nil {

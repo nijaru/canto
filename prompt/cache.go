@@ -34,9 +34,9 @@ func FingerprintPromptCache(
 	}
 
 	prefix := req.Messages
-	if req.CachePrefixLen > 0 {
-		if req.CachePrefixLen < len(req.Messages) {
-			prefix = req.Messages[:req.CachePrefixLen]
+	if req.CachePrefixMessages > 0 {
+		if req.CachePrefixMessages < len(req.Messages) {
+			prefix = req.Messages[:req.CachePrefixMessages]
 		}
 	} else if sess != nil {
 		history, err := sess.EffectiveMessages()
@@ -103,7 +103,7 @@ func (c cacheAlignerProcessor) ApplyRequest(
 		return nil
 	}
 
-	prefixEnd := req.CachePrefixLen
+	prefixEnd := req.CachePrefixMessages
 	if prefixEnd <= 0 || prefixEnd > len(req.Messages) {
 		prefixEnd = 0
 		for i, m := range req.Messages {

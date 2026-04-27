@@ -261,18 +261,17 @@ func History() RequestProcessor {
 			if err != nil {
 				return err
 			}
+			prefixContextMessages := 0
 			for _, entry := range entries {
 				if entry.EventType == session.ContextAdded &&
-					entry.Placement == session.ContextPlacementPrefix {
-					req.Messages = append(req.Messages, entry.Message)
+					entry.ContextPlacement == session.ContextPlacementPrefix {
+					prefixContextMessages++
+				} else if prefixContextMessages > 0 {
+					break
 				}
 			}
-			req.CachePrefixLen = len(req.Messages)
+			req.CachePrefixMessages = len(req.Messages) + prefixContextMessages
 			for _, entry := range entries {
-				if entry.EventType == session.ContextAdded &&
-					entry.Placement == session.ContextPlacementPrefix {
-					continue
-				}
 				req.Messages = append(req.Messages, entry.Message)
 			}
 			return nil
@@ -347,12 +346,12 @@ func injectContextBlock(req *llm.Request, blockRegex *regexp.Regexp, block strin
 	}
 
 	idx := 0
-	for idx < len(req.Messages) && req.CachePrefixLen <= 0 &&
+	for idx < len(req.Messages) && req.CachePrefixMessages <= 0 &&
 		(req.Messages[idx].Role == llm.RoleSystem || req.Messages[idx].Role == llm.RoleDeveloper) {
 		idx++
 	}
-	if req.CachePrefixLen > 0 && req.CachePrefixLen <= len(req.Messages) {
-		idx = req.CachePrefixLen
+	if req.CachePrefixMessages > 0 && req.CachePrefixMessages <= len(req.Messages) {
+		idx = req.CachePrefixMessages
 	}
 	msg := llm.Message{Role: llm.RoleUser, Content: block}
 	req.Messages = append(req.Messages, llm.Message{})

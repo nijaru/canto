@@ -11,11 +11,11 @@ import (
 // HistoryEntry captures a model-visible message together with its originating
 // message event ID when one exists.
 type HistoryEntry struct {
-	EventID     string           `json:"event_id,omitzero"`
-	EventType   EventType        `json:"event_type,omitzero"`
-	ContextKind ContextKind      `json:"context_kind,omitzero"`
-	Placement   ContextPlacement `json:"placement,omitzero"`
-	Message     llm.Message      `json:"message"`
+	EventID          string           `json:"event_id,omitzero"`
+	EventType        EventType        `json:"event_type,omitzero"`
+	ContextKind      ContextKind      `json:"context_kind,omitzero"`
+	ContextPlacement ContextPlacement `json:"placement,omitzero"`
+	Message          llm.Message      `json:"message"`
 }
 
 // CompactionSnapshot captures the model-visible history after a compaction step.
@@ -151,11 +151,11 @@ func (s *Session) historyEntryFromEvent(e *Event) (HistoryEntry, error) {
 			return HistoryEntry{}, err
 		}
 		return HistoryEntry{
-			EventID:     e.ID.String(),
-			EventType:   ContextAdded,
-			ContextKind: entry.Kind,
-			Placement:   entry.Placement,
-			Message:     contextEntryMessage(*entry),
+			EventID:          e.ID.String(),
+			EventType:        ContextAdded,
+			ContextKind:      entry.Kind,
+			ContextPlacement: entry.Placement,
+			Message:          contextEntryMessage(*entry),
 		}, nil
 	}
 

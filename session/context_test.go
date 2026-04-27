@@ -60,11 +60,44 @@ func TestEffectiveEntriesPreserveContextMarkers(t *testing.T) {
 	}
 	if entries[0].EventType != ContextAdded ||
 		entries[0].ContextKind != ContextKindHarness ||
-		entries[0].Placement != ContextPlacementPrefix {
+		entries[0].ContextPlacement != ContextPlacementPrefix {
 		t.Fatalf("expected context markers on first entry, got %#v", entries[0])
 	}
 	if entries[1].EventType != MessageAdded || entries[1].ContextKind != "" {
 		t.Fatalf("expected transcript markers on second entry, got %#v", entries[1])
+	}
+}
+
+func TestEffectiveEntriesPlacePrefixContextBeforeTranscript(t *testing.T) {
+	sess := New("context-entry-order-session")
+	if err := sess.AppendUser(t.Context(), "first user"); err != nil {
+		t.Fatalf("AppendUser first: %v", err)
+	}
+	if err := sess.AppendContext(t.Context(), ContextEntry{
+		Kind:      ContextKindGeneric,
+		Placement: ContextPlacementPrefix,
+		Content:   "stable context",
+	}); err != nil {
+		t.Fatalf("AppendContext: %v", err)
+	}
+	if err := sess.AppendUser(t.Context(), "second user"); err != nil {
+		t.Fatalf("AppendUser second: %v", err)
+	}
+
+	entries, err := sess.EffectiveEntries()
+	if err != nil {
+		t.Fatalf("EffectiveEntries: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected context plus transcript, got %#v", entries)
+	}
+	if entries[0].ContextPlacement != ContextPlacementPrefix ||
+		entries[0].Message.Content != "stable context" {
+		t.Fatalf("expected prefix context first, got %#v", entries)
+	}
+	if entries[1].Message.Content != "first user" ||
+		entries[2].Message.Content != "second user" {
+		t.Fatalf("expected transcript after prefix context, got %#v", entries)
 	}
 }
 
@@ -110,8 +143,8 @@ func TestRebuilderKeepsWorkingSetAfterDurableContextEntries(t *testing.T) {
 	if rebuilt[1].ContextKind != ContextKindWorkingSet {
 		t.Fatalf("expected working set after durable context, got %#v", rebuilt[1])
 	}
-	if rebuilt[0].Placement != ContextPlacementPrefix ||
-		rebuilt[1].Placement != ContextPlacementPrefix {
+	if rebuilt[0].ContextPlacement != ContextPlacementPrefix ||
+		rebuilt[1].ContextPlacement != ContextPlacementPrefix {
 		t.Fatalf("expected stable context prefix placements, got %#v", rebuilt[:2])
 	}
 	if !strings.Contains(rebuilt[1].Message.Content, "agent/handoff.go") {

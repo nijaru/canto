@@ -49,7 +49,11 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 		return nil, err
 	}
 	if !ok {
-		return sess.rawEntriesLocked()
+		entries, err := sess.rawEntriesLocked()
+		if err != nil {
+			return nil, err
+		}
+		return arrangePromptEntries(entries), nil
 	}
 
 	entries := normalizeTranscriptEntries(slices.Clone(snapshot.entries()))
@@ -119,9 +123,9 @@ func (r *Rebuilder) fileContextEntry(snapshot CompactionSnapshot) (HistoryEntry,
 	sb.WriteString("</working_set>")
 
 	return HistoryEntry{
-		EventType:   ContextAdded,
-		ContextKind: ContextKindWorkingSet,
-		Placement:   ContextPlacementPrefix,
+		EventType:        ContextAdded,
+		ContextKind:      ContextKindWorkingSet,
+		ContextPlacement: ContextPlacementPrefix,
 		Message: contextEntryMessage(ContextEntry{
 			Kind:      ContextKindWorkingSet,
 			Placement: ContextPlacementPrefix,
@@ -161,10 +165,10 @@ func normalizeTranscriptEntries(entries []HistoryEntry) []HistoryEntry {
 		if entries[i].EventType == ContextAdded && entries[i].ContextKind == "" {
 			entries[i].ContextKind = ContextKindGeneric
 		}
-		if entries[i].EventType == ContextAdded && entries[i].Placement == "" {
+		if entries[i].EventType == ContextAdded && entries[i].ContextPlacement == "" {
 			entry := ContextEntry{Kind: entries[i].ContextKind}
 			normalizeContextEntry(&entry)
-			entries[i].Placement = entry.Placement
+			entries[i].ContextPlacement = entry.Placement
 		}
 	}
 	return entries
@@ -175,11 +179,11 @@ func inferLegacyContextMarkers(entry *HistoryEntry) {
 	case strings.Contains(entry.Message.Content, "<conversation_summary>"):
 		entry.EventType = ContextAdded
 		entry.ContextKind = ContextKindSummary
-		entry.Placement = ContextPlacementPrefix
+		entry.ContextPlacement = ContextPlacementPrefix
 	case strings.Contains(entry.Message.Content, "<working_set>"):
 		entry.EventType = ContextAdded
 		entry.ContextKind = ContextKindWorkingSet
-		entry.Placement = ContextPlacementPrefix
+		entry.ContextPlacement = ContextPlacementPrefix
 	}
 }
 
@@ -230,7 +234,7 @@ func isDurableContextEntry(entry HistoryEntry) bool {
 }
 
 func isPrefixContextEntry(entry HistoryEntry) bool {
-	return entry.EventType == ContextAdded && entry.Placement == ContextPlacementPrefix
+	return entry.EventType == ContextAdded && entry.ContextPlacement == ContextPlacementPrefix
 }
 
 func subtract(items, remove []string) []string {
