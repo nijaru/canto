@@ -204,6 +204,9 @@ func (b *Base) IsTransient(err error) bool {
 	if err == nil {
 		return false
 	}
+	if llm.IsTransientTransportError(err) {
+		return true
+	}
 	var apiErr *openai.APIError
 	if errors.As(err, &apiErr) {
 		switch apiErr.HTTPStatusCode {

@@ -504,6 +504,9 @@ func (p *Provider) IsTransient(err error) bool {
 	if err == nil {
 		return false
 	}
+	if llm.IsTransientTransportError(err) {
+		return true
+	}
 	var sdkErr *sdk.Error
 	if errors.As(err, &sdkErr) {
 		switch sdkErr.StatusCode {
