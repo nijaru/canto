@@ -50,7 +50,7 @@ func (m *ObservationMasker) History() RequestProcessor {
 		masked, _ := m.MaskEntries(ctx, p, model, req.Messages, entries)
 		req.CachePrefixMessages = len(req.Messages) + countPrefixContextMessages(masked)
 		for _, entry := range masked {
-			req.Messages = append(req.Messages, entry.Message)
+			req.AppendMessage(entry.Message)
 		}
 		return nil
 	})

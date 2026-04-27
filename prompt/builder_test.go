@@ -346,6 +346,31 @@ func TestBuilderInsertRequestProcessorsBeforeCache(t *testing.T) {
 	}
 }
 
+func TestBuilderAppendRequestProcessorsBeforeCacheFinalizers(t *testing.T) {
+	builder := NewBuilder(
+		Instructions("base"),
+		History(),
+		CacheAligner(2),
+		Capabilities(),
+	)
+	builder.AppendRequestProcessors(RequestProcessorFunc(
+		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
+			return Instructions("appended").ApplyRequest(ctx, p, model, sess, req)
+		},
+	))
+
+	req := &llm.Request{}
+	if err := builder.BuildPreview(t.Context(), nil, "", session.New("append-cache-order"), req); err != nil {
+		t.Fatalf("BuildPreview: %v", err)
+	}
+	if got, want := req.Messages[0].Content, "appended\n\nbase"; got != want {
+		t.Fatalf("system content = %q, want %q", got, want)
+	}
+	if req.Messages[0].CacheControl == nil {
+		t.Fatal("expected cache alignment to run after appended processor")
+	}
+}
+
 type dummyMutator struct{ strategy string }
 
 func (m *dummyMutator) Mutate(

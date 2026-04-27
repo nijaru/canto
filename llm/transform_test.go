@@ -169,6 +169,36 @@ func TestTransformRequestForCapabilitiesAdjustsCachePrefixForSyntheticToolResult
 	}
 }
 
+func TestTransformRequestForCapabilitiesKeepsCachePrefixForSuffixToolResults(t *testing.T) {
+	req := &Request{
+		CachePrefixMessages: 1,
+		Messages: []Message{
+			{Role: RoleSystem, Content: "system"},
+			{
+				Role: RoleAssistant,
+				Calls: []Call{{
+					ID:   "call-a",
+					Type: "function",
+					Function: struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					}{Name: "search", Arguments: "{}"},
+				}},
+			},
+			{Role: RoleUser, Content: "continue"},
+		},
+	}
+
+	TransformRequestForCapabilities(req, DefaultCapabilities())
+
+	if req.CachePrefixMessages != 1 {
+		t.Fatalf("cache prefix messages = %d, want 1", req.CachePrefixMessages)
+	}
+	if len(req.Messages) != 4 || req.Messages[2].Role != RoleTool {
+		t.Fatalf("expected synthetic tool result in suffix, got %#v", req.Messages)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(substr) == 0 || (len(s) >= len(substr) && stringsContains(s, substr))
 }

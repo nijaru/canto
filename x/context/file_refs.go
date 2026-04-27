@@ -175,17 +175,7 @@ func injectFileReferences(req *llm.Request, block string) {
 		}
 	}
 
-	idx := 0
-	for idx < len(req.Messages) && req.CachePrefixMessages <= 0 &&
-		(req.Messages[idx].Role == llm.RoleSystem || req.Messages[idx].Role == llm.RoleDeveloper) {
-		idx++
-	}
-	if req.CachePrefixMessages > 0 && req.CachePrefixMessages <= len(req.Messages) {
-		idx = req.CachePrefixMessages
-	}
-	req.Messages = append(req.Messages, llm.Message{})
-	copy(req.Messages[idx+1:], req.Messages[idx:])
-	req.Messages[idx] = llm.Message{Role: llm.RoleUser, Content: block}
+	req.InsertAfterCachePrefix(llm.Message{Role: llm.RoleUser, Content: block})
 }
 
 type resolvedFileReference struct {

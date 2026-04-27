@@ -115,9 +115,20 @@ func (b *Builder) PrependRequestProcessors(processors ...RequestProcessor) {
 		b.requestProcessors...)
 }
 
-// AppendRequestProcessors adds preview-safe request processors to the end of
-// the request-shaping chain.
+// AppendRequestProcessors adds preview-safe request processors after the
+// existing prompt shapers and before cache alignment/capability adaptation.
 func (b *Builder) AppendRequestProcessors(processors ...RequestProcessor) {
+	if len(processors) == 0 {
+		return
+	}
+	if idx := b.cacheBoundaryIndex(); idx >= 0 {
+		merged := make([]RequestProcessor, 0, len(b.requestProcessors)+len(processors))
+		merged = append(merged, b.requestProcessors[:idx]...)
+		merged = append(merged, processors...)
+		merged = append(merged, b.requestProcessors[idx:]...)
+		b.requestProcessors = merged
+		return
+	}
 	b.requestProcessors = append(b.requestProcessors, processors...)
 }
 
@@ -263,7 +274,7 @@ func History() RequestProcessor {
 			}
 			req.CachePrefixMessages = len(req.Messages) + countPrefixContextMessages(entries)
 			for _, entry := range entries {
-				req.Messages = append(req.Messages, entry.Message)
+				req.AppendMessage(entry.Message)
 			}
 			return nil
 		},
@@ -328,12 +339,7 @@ func Instructions(instructions string) RequestProcessor {
 			}
 
 			sys := llm.Message{Role: llm.RoleSystem, Content: instructions}
-			req.Messages = append(req.Messages, llm.Message{})
-			copy(req.Messages[1:], req.Messages)
-			req.Messages[0] = sys
-			if req.CachePrefixMessages > 0 {
-				req.CachePrefixMessages++
-			}
+			req.PrependMessage(sys)
 			return nil
 		},
 	)
@@ -354,18 +360,8 @@ func injectContextBlock(req *llm.Request, blockRegex *regexp.Regexp, block strin
 		}
 	}
 
-	idx := 0
-	for idx < len(req.Messages) && req.CachePrefixMessages <= 0 &&
-		(req.Messages[idx].Role == llm.RoleSystem || req.Messages[idx].Role == llm.RoleDeveloper) {
-		idx++
-	}
-	if req.CachePrefixMessages > 0 && req.CachePrefixMessages <= len(req.Messages) {
-		idx = req.CachePrefixMessages
-	}
 	msg := llm.Message{Role: llm.RoleUser, Content: block}
-	req.Messages = append(req.Messages, llm.Message{})
-	copy(req.Messages[idx+1:], req.Messages[idx:])
-	req.Messages[idx] = msg
+	req.InsertAfterCachePrefix(msg)
 }
 
 // injectSystemBlock prepends block into the first system message in req,
@@ -384,10 +380,5 @@ func injectSystemBlock(req *llm.Request, blockRegex *regexp.Regexp, block string
 		return
 	}
 	sys := llm.Message{Role: llm.RoleSystem, Content: block}
-	req.Messages = append(req.Messages, llm.Message{})
-	copy(req.Messages[1:], req.Messages)
-	req.Messages[0] = sys
-	if req.CachePrefixMessages > 0 {
-		req.CachePrefixMessages++
-	}
+	req.PrependMessage(sys)
 }

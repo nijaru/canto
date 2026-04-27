@@ -93,8 +93,10 @@ type Request struct {
 	MaxTokens      int             `json:"max_tokens,omitzero"`
 	ResponseFormat *ResponseFormat `json:"response_format,omitzero"`
 	// CachePrefixMessages is the number of leading messages Canto expects to
-	// stay stable across ordinary turn growth. Provider adapters ignore it;
-	// prompt cache helpers use it to place provider-neutral cache markers.
+	// stay stable across ordinary turn growth. Use Request's message insertion
+	// methods when changing Messages so this boundary stays aligned. Provider
+	// adapters ignore it; prompt cache helpers use it to place provider-neutral
+	// cache markers.
 	CachePrefixMessages int `json:"-"`
 	// ReasoningEffort controls the depth of internal reasoning for OpenAI o-series
 	// models. Accepted values: "low", "medium", "high". Empty means provider default.

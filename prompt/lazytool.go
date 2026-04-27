@@ -139,10 +139,5 @@ func injectSystemHint(req *llm.Request, hint string) {
 	}
 	// No system message yet — prepend one.
 	sys := llm.Message{Role: llm.RoleSystem, Content: hint}
-	req.Messages = append(req.Messages, llm.Message{})
-	copy(req.Messages[1:], req.Messages)
-	req.Messages[0] = sys
-	if req.CachePrefixMessages > 0 {
-		req.CachePrefixMessages++
-	}
+	req.PrependMessage(sys)
 }

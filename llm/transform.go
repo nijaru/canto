@@ -90,8 +90,9 @@ func synthesizeMissingToolResults(req *Request) {
 	}
 
 	type pendingCall struct {
-		id   string
-		name string
+		id       string
+		name     string
+		inPrefix bool
 	}
 
 	var transformed []Message
@@ -99,11 +100,11 @@ func synthesizeMissingToolResults(req *Request) {
 	insertedBeforePrefix := 0
 	originalPrefix := req.CachePrefixMessages
 
-	flushPending := func(beforeOriginalIndex int) {
-		if originalPrefix > 0 && beforeOriginalIndex <= originalPrefix {
-			insertedBeforePrefix += len(pending)
-		}
+	flushPending := func() {
 		for _, call := range pending {
+			if call.inPrefix {
+				insertedBeforePrefix++
+			}
 			transformed = append(transformed, Message{
 				Role:    RoleTool,
 				Name:    call.name,
@@ -116,7 +117,7 @@ func synthesizeMissingToolResults(req *Request) {
 
 	for i, msg := range req.Messages {
 		if msg.Role != RoleTool && len(pending) > 0 {
-			flushPending(i)
+			flushPending()
 		}
 
 		transformed = append(transformed, msg)
@@ -124,8 +125,9 @@ func synthesizeMissingToolResults(req *Request) {
 		if msg.Role == RoleAssistant {
 			for _, call := range msg.Calls {
 				pending = append(pending, pendingCall{
-					id:   call.ID,
-					name: call.Function.Name,
+					id:       call.ID,
+					name:     call.Function.Name,
+					inPrefix: originalPrefix > 0 && i < originalPrefix,
 				})
 			}
 			continue
@@ -145,7 +147,7 @@ func synthesizeMissingToolResults(req *Request) {
 	}
 
 	if len(pending) > 0 {
-		flushPending(len(req.Messages))
+		flushPending()
 	}
 
 	req.Messages = transformed
