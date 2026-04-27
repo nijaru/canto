@@ -38,14 +38,15 @@ type ChildRunLog struct {
 
 // RunTurn represents a single perceive-decide-act-observe loop.
 type RunTurn struct {
-	TurnID      string         `json:"turn_id"`
-	Timestamp   time.Time      `json:"timestamp"`
-	Input       []llm.Message  `json:"input"`
-	Output      llm.Message    `json:"output"`
-	ToolCalls   []llm.Call     `json:"tool_calls,omitzero"`
-	ToolResults []llm.Message  `json:"tool_results,omitzero"`
-	Cost        float64        `json:"cost"`
-	Metrics     map[string]any `json:"metrics,omitzero"`
+	TurnID       string         `json:"turn_id"`
+	Timestamp    time.Time      `json:"timestamp"`
+	Input        []llm.Message  `json:"input"`
+	InputEntries []HistoryEntry `json:"input_entries,omitzero"`
+	Output       llm.Message    `json:"output"`
+	ToolCalls    []llm.Call     `json:"tool_calls,omitzero"`
+	ToolResults  []llm.Message  `json:"tool_results,omitzero"`
+	Cost         float64        `json:"cost"`
+	Metrics      map[string]any `json:"metrics,omitzero"`
 }
 
 // Episode is a compressed record of a completed agent run.
@@ -159,7 +160,7 @@ func exportRun(sess *Session) (*RunLog, error) {
 	}
 
 	var currentTurn *RunTurn
-	var inputBuffer []llm.Message
+	var inputBuffer []HistoryEntry
 
 	for i := range events {
 		e := &events[i]
@@ -167,36 +168,37 @@ func exportRun(sess *Session) (*RunLog, error) {
 
 		switch e.Type {
 		case ContextAdded:
-			entry, err := e.ensureContextEntry()
+			entry, err := sess.historyEntryFromEvent(e)
 			if err != nil {
 				continue
 			}
-			inputBuffer = append(inputBuffer, contextEntryMessage(*entry))
+			inputBuffer = append(inputBuffer, entry)
 		case MessageAdded:
-			msg, err := e.ensureMessage()
+			entry, err := sess.historyEntryFromEvent(e)
 			if err != nil {
 				continue
 			}
+			msg := entry.Message
 
 			if msg.Role == llm.RoleUser || msg.Role == llm.RoleSystem {
-				inputBuffer = append(inputBuffer, *msg)
+				inputBuffer = append(inputBuffer, entry)
 			} else if msg.Role == llm.RoleAssistant {
 				if currentTurn != nil {
 					traj.Turns = append(traj.Turns, *currentTurn)
 				}
 				currentTurn = &RunTurn{
-					TurnID:    e.ID.String(),
-					Timestamp: e.Timestamp,
-					Input:     make([]llm.Message, len(inputBuffer)),
-					Output:    *msg,
-					ToolCalls: msg.Calls,
-					Cost:      e.Cost,
+					TurnID:       e.ID.String(),
+					Timestamp:    e.Timestamp,
+					Input:        historyEntriesToMessages(inputBuffer),
+					InputEntries: append([]HistoryEntry(nil), inputBuffer...),
+					Output:       msg,
+					ToolCalls:    msg.Calls,
+					Cost:         e.Cost,
 				}
-				copy(currentTurn.Input, inputBuffer)
 				inputBuffer = inputBuffer[:0] // Reset input for next turn without re-allocating
 			} else if msg.Role == llm.RoleTool && currentTurn != nil {
-				currentTurn.ToolResults = append(currentTurn.ToolResults, *msg)
-				inputBuffer = append(inputBuffer, *msg)
+				currentTurn.ToolResults = append(currentTurn.ToolResults, msg)
+				inputBuffer = append(inputBuffer, entry)
 			}
 		}
 	}
@@ -206,6 +208,14 @@ func exportRun(sess *Session) (*RunLog, error) {
 	}
 
 	return traj, nil
+}
+
+func historyEntriesToMessages(entries []HistoryEntry) []llm.Message {
+	messages := make([]llm.Message, 0, len(entries))
+	for _, entry := range entries {
+		messages = append(messages, entry.Message)
+	}
+	return messages
 }
 
 func exportRunTree(

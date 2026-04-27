@@ -137,6 +137,50 @@ func TestExportRunIncludesModelVisibleContextInTurnInput(t *testing.T) {
 	if input[1].Role != llm.RoleUser || input[1].Content != "Hello" {
 		t.Fatalf("expected user input second, got %#v", input[1])
 	}
+	entries := traj.Turns[0].InputEntries
+	if len(entries) != 2 {
+		t.Fatalf("expected context plus user input entries, got %#v", entries)
+	}
+	if entries[0].EventType != ContextAdded ||
+		entries[0].ContextKind != ContextKindBootstrap {
+		t.Fatalf("expected typed context entry first, got %#v", entries[0])
+	}
+	if entries[1].EventType != MessageAdded {
+		t.Fatalf("expected transcript entry second, got %#v", entries[1])
+	}
+}
+
+func TestExportRunDemotesPrivilegedTranscriptInput(t *testing.T) {
+	sess := New("export-system")
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleSystem,
+		Content: "durable notice",
+	})); err != nil {
+		t.Fatalf("append system: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleAssistant,
+		Content: "ok",
+	})); err != nil {
+		t.Fatalf("append assistant: %v", err)
+	}
+
+	traj, err := ExportRun(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(traj.Turns) != 1 || len(traj.Turns[0].Input) != 1 {
+		t.Fatalf("unexpected trajectory: %#v", traj)
+	}
+	if traj.Turns[0].Input[0].Role != llm.RoleUser {
+		t.Fatalf(
+			"expected exported durable system input to be demoted, got %#v",
+			traj.Turns[0].Input[0],
+		)
+	}
+	if traj.Turns[0].InputEntries[0].EventType != MessageAdded {
+		t.Fatalf("expected transcript marker, got %#v", traj.Turns[0].InputEntries[0])
+	}
 }
 
 func TestExportRunTreeIncludesChildRuns(t *testing.T) {

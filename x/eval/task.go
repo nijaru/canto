@@ -37,21 +37,32 @@ func (t TaskSpec) Instruction() string { return t.InstructionText }
 // Environment returns the task environment.
 func (t TaskSpec) Environment() Environment { return t.Env }
 
-// StaticEnvironment is a simple Environment that appends a fixed message seed.
+// StaticEnvironment is a simple Environment that appends fixed context and
+// optional transcript seed messages.
 type StaticEnvironment struct {
 	EnvironmentID string
-	Messages      []llm.Message
+	Context       []session.ContextEntry
+	Transcript    []llm.Message
 }
 
 // ID returns the environment identifier.
 func (e StaticEnvironment) ID() string { return e.EnvironmentID }
 
-// Bootstrap appends the environment's seed messages to the session.
+// Bootstrap appends the environment's context and transcript seeds to the session.
 func (e StaticEnvironment) Bootstrap(ctx context.Context, sess *session.Session) error {
 	if sess == nil {
 		return fmt.Errorf("eval: nil session")
 	}
-	for _, msg := range e.Messages {
+
+	for _, entry := range e.Context {
+		if entry.Kind == "" {
+			entry.Kind = session.ContextKindHarness
+		}
+		if err := sess.AppendContext(ctx, entry); err != nil {
+			return err
+		}
+	}
+	for _, msg := range e.Transcript {
 		if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.MessageAdded, msg)); err != nil {
 			return err
 		}

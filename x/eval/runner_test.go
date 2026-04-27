@@ -18,8 +18,8 @@ func TestParallelRunnerRun(t *testing.T) {
 		InstructionText: "solve the task",
 		Env: eval.StaticEnvironment{
 			EnvironmentID: "env-1",
-			Messages: []llm.Message{
-				{Role: llm.RoleSystem, Content: "environment ready"},
+			Context: []session.ContextEntry{
+				{Content: "environment ready"},
 			},
 		},
 	}
@@ -85,8 +85,13 @@ func TestParallelRunnerRun(t *testing.T) {
 		if len(input) != 2 {
 			t.Fatalf("result[%d]: input len = %d, want 2", i, len(input))
 		}
-		if input[0].Role != llm.RoleSystem || input[0].Content != "environment ready" {
-			t.Fatalf("result[%d]: env seed = %+v, want system environment ready", i, input[0])
+		if input[0].Role != llm.RoleUser || input[0].Content != "environment ready" {
+			t.Fatalf("result[%d]: env seed = %+v, want user environment ready", i, input[0])
+		}
+		entry := traj.Turns[0].InputEntries[0]
+		if entry.EventType != session.ContextAdded ||
+			entry.ContextKind != session.ContextKindHarness {
+			t.Fatalf("result[%d]: env entry = %+v, want harness context", i, entry)
 		}
 		if input[1].Role != llm.RoleUser || input[1].Content != "solve the task" {
 			t.Fatalf("result[%d]: task seed = %+v, want user solve the task", i, input[1])
