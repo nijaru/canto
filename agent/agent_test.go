@@ -56,6 +56,15 @@ func (m *flakyProvider) IsTransient(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "transient")
 }
 
+type errorProvider struct {
+	mockProvider
+	err error
+}
+
+func (p *errorProvider) Generate(context.Context, *llm.Request) (*llm.Response, error) {
+	return nil, p.err
+}
+
 type recordingProvider struct {
 	mockProvider
 	lastMessages []llm.Message
@@ -411,6 +420,79 @@ func TestStepSkipsEmptyAssistantMessage(t *testing.T) {
 	msgs := s.Messages()
 	if len(msgs) != 1 {
 		t.Fatalf("expected only user message, got %#v", msgs)
+	}
+}
+
+func TestStepSkipsWhitespaceOnlyAssistantMessage(t *testing.T) {
+	p := &mockProvider{
+		responses: []*llm.Response{
+			{Content: " \n\t ", Reasoning: "  "},
+		},
+	}
+	a := New("test-agent", "You are helpful.", "gpt-4", p, nil)
+	s := userSession("s-whitespace-step", "Hi!")
+
+	if _, err := a.Step(t.Context(), s); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	msgs := s.Messages()
+	if len(msgs) != 1 {
+		t.Fatalf("expected only user message, got %#v", msgs)
+	}
+}
+
+func TestStepPreservesReasoningOnlyAssistantMessage(t *testing.T) {
+	p := &mockProvider{
+		responses: []*llm.Response{
+			{Reasoning: "reasoning only"},
+		},
+	}
+	a := New("test-agent", "You are helpful.", "gpt-4", p, nil)
+	s := userSession("s-reasoning-step", "Hi!")
+
+	if _, err := a.Step(t.Context(), s); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	msgs := s.Messages()
+	if len(msgs) != 2 {
+		t.Fatalf("expected assistant reasoning message, got %#v", msgs)
+	}
+	if msgs[1].Reasoning != "reasoning only" {
+		t.Fatalf("reasoning = %q, want reasoning only", msgs[1].Reasoning)
+	}
+}
+
+func TestTurnRecordsTerminalEventOnProviderError(t *testing.T) {
+	providerErr := fmt.Errorf("provider unavailable")
+	a := New("test-agent", "You are helpful.", "gpt-4", &errorProvider{err: providerErr}, nil)
+	s := userSession("s-provider-error-turn", "Hi!")
+
+	_, err := a.Turn(t.Context(), s)
+	if err == nil {
+		t.Fatal("expected provider error")
+	}
+
+	var found bool
+	for _, ev := range s.Events() {
+		if ev.Type != session.TurnCompleted {
+			continue
+		}
+		data, ok, err := ev.TurnCompletedData()
+		if err != nil {
+			t.Fatalf("decode turn completed: %v", err)
+		}
+		if !ok {
+			continue
+		}
+		found = true
+		if !strings.Contains(data.Error, providerErr.Error()) {
+			t.Fatalf("turn error = %q, want %q", data.Error, providerErr.Error())
+		}
+	}
+	if !found {
+		t.Fatal("expected turn completed event")
 	}
 }
 
