@@ -8,6 +8,7 @@ type ToolCompletedData struct {
 	ID             string `json:"id"`
 	IdempotencyKey string `json:"idempotency_key,omitzero"`
 	Output         string `json:"output,omitzero"`
+	Error          string `json:"error,omitzero"`
 }
 
 // NewToolCompletedEvent records the durable result of a tool execution.

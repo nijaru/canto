@@ -67,6 +67,7 @@ func TestLifecycleEventsRoundTrip(t *testing.T) {
 		ID:             "call-1",
 		IdempotencyKey: "sess:step:read:0:hash",
 		Output:         "ok",
+		Error:          "failed",
 	})
 	completedData, ok, err := completed.ToolCompletedData()
 	if err != nil {
@@ -75,7 +76,9 @@ func TestLifecycleEventsRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("expected tool completed payload")
 	}
-	if completedData.IdempotencyKey != "sess:step:read:0:hash" || completedData.Output != "ok" {
+	if completedData.IdempotencyKey != "sess:step:read:0:hash" ||
+		completedData.Output != "ok" ||
+		completedData.Error != "failed" {
 		t.Fatalf("unexpected tool completed payload: %+v", completedData)
 	}
 

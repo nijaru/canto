@@ -1861,6 +1861,16 @@ func (t *panicTool) Execute(_ context.Context, _ string) (string, error) {
 	panic("tool boom")
 }
 
+type failingTool struct{}
+
+func (t *failingTool) Spec() llm.Spec {
+	return llm.Spec{Name: "fail", Parameters: map[string]any{}}
+}
+
+func (t *failingTool) Execute(_ context.Context, _ string) (string, error) {
+	return "partial output", fmt.Errorf("tool failed")
+}
+
 type gatedTool struct {
 	simpleTool
 }
@@ -1893,6 +1903,56 @@ func TestRunTools_PanicRecovery(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "panicked") {
 		t.Errorf("expected panic error message, got: %v", err)
+	}
+}
+
+func TestRunToolsRecordsToolCompletedError(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&failingTool{})
+
+	s := session.New("s-tool-error")
+	calls := []llm.Call{{
+		ID:   "c1",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "fail", Arguments: `{}`},
+	}}
+
+	result, err := runTools(context.Background(), s, calls, reg, nil, nil, nil, 10, "step-1")
+	if err != nil {
+		t.Fatalf("runTools: %v", err)
+	}
+	if len(result.ToolResults) != 1 {
+		t.Fatalf("tool results = %d, want 1", len(result.ToolResults))
+	}
+	if !strings.Contains(result.ToolResults[0].Content, "tool failed") {
+		t.Fatalf("tool result content = %q, want tool failed", result.ToolResults[0].Content)
+	}
+
+	var found bool
+	for _, ev := range s.Events() {
+		if ev.Type != session.ToolCompleted {
+			continue
+		}
+		data, ok, err := ev.ToolCompletedData()
+		if err != nil {
+			t.Fatalf("decode tool completed: %v", err)
+		}
+		if !ok {
+			continue
+		}
+		found = true
+		if data.Error != "tool failed" {
+			t.Fatalf("tool error = %q, want tool failed", data.Error)
+		}
+		if !strings.Contains(data.Output, "partial output") {
+			t.Fatalf("tool output = %q, want partial output", data.Output)
+		}
+	}
+	if !found {
+		t.Fatal("expected tool completed event")
 	}
 }
 

@@ -563,11 +563,16 @@ func executeTool(
 	}
 
 	res := toolResult{call: call, output: output}
+	var errorText string
+	if execErr != nil {
+		errorText = execErr.Error()
+	}
 	if err := s.Append(ctx, session.NewToolCompletedEvent(s.ID(), session.ToolCompletedData{
 		Tool:           call.Function.Name,
 		ID:             call.ID,
 		IdempotencyKey: pf.idempotencyKey,
 		Output:         output,
+		Error:          errorText,
 	})); err != nil {
 		res.err = err
 	}
