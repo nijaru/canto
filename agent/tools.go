@@ -167,6 +167,7 @@ func runTools(
 	results := executeTools(ctx, s, preflight, r, h, maxParallel)
 
 	var toolMsgs []llm.Message
+	messageCtx := context.WithoutCancel(ctx)
 	for _, r := range results {
 		if r.err != nil {
 			return StepResult{}, r.err
@@ -178,7 +179,7 @@ func runTools(
 			Name:    r.call.Function.Name,
 		}
 		toolMsgs = append(toolMsgs, toolMsg)
-		if err := s.Append(ctx, session.NewEvent(s.ID(), session.MessageAdded, toolMsg)); err != nil {
+		if err := s.Append(messageCtx, session.NewEvent(s.ID(), session.MessageAdded, toolMsg)); err != nil {
 			return StepResult{}, err
 		}
 	}
@@ -567,7 +568,8 @@ func executeTool(
 	if execErr != nil {
 		errorText = execErr.Error()
 	}
-	if err := s.Append(ctx, session.NewToolCompletedEvent(s.ID(), session.ToolCompletedData{
+	terminalCtx := context.WithoutCancel(ctx)
+	if err := s.Append(terminalCtx, session.NewToolCompletedEvent(s.ID(), session.ToolCompletedData{
 		Tool:           call.Function.Name,
 		ID:             call.ID,
 		IdempotencyKey: pf.idempotencyKey,

@@ -270,6 +270,39 @@ func TestStreamTurnRecordsTerminalEventOnCanceledContext(t *testing.T) {
 	assertTurnCompletedError(t, s, context.Canceled.Error())
 }
 
+func TestStreamTurnStopsBeforeNextStepWhenContextCanceled(t *testing.T) {
+	call := llm.Call{ID: "c1", Type: "function"}
+	call.Function.Name = "cancel"
+	call.Function.Arguments = `{}`
+
+	p := &streamMockProvider{
+		chunks: [][]llm.Chunk{
+			{{Calls: []llm.Call{call}}},
+			{{Content: "should not run"}},
+		},
+	}
+	reg := tool.NewRegistry()
+	ctx, cancel := context.WithCancel(t.Context())
+	reg.Register(tool.Func("cancel", "cancels", nil,
+		func(_ context.Context, _ string) (string, error) {
+			cancel()
+			return "canceled", nil
+		}))
+
+	a := New("a", "sys", "m", p, reg)
+	s := userSession("s-canceled-before-next-stream", "start")
+
+	_, err := a.StreamTurn(ctx, s, nil)
+	if err == nil || !strings.Contains(err.Error(), context.Canceled.Error()) {
+		t.Fatalf("stream turn error = %v, want context canceled", err)
+	}
+	if p.spos != 1 {
+		t.Fatalf("stream calls = %d, want 1", p.spos)
+	}
+
+	assertTurnCompletedError(t, s, context.Canceled.Error())
+}
+
 func TestStreamTurnMaxSteps(t *testing.T) {
 	// All streams return a tool call, causing infinite loop — MaxSteps cuts it.
 	call := llm.Call{ID: "c1", Type: "function"}

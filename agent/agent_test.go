@@ -79,6 +79,18 @@ func (p *contextBlockingProvider) Generate(
 	return nil, ctx.Err()
 }
 
+type rejectCanceledWriter struct {
+	events []session.Event
+}
+
+func (w *rejectCanceledWriter) Save(ctx context.Context, e session.Event) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	w.events = append(w.events, e)
+	return nil
+}
+
 type recordingProvider struct {
 	mockProvider
 	lastMessages []llm.Message
@@ -539,6 +551,63 @@ func TestTurnRecordsTerminalEventOnCanceledContext(t *testing.T) {
 	}
 
 	assertTurnCompletedError(t, s, context.Canceled.Error())
+}
+
+func TestTurnRecordsStepCompletedOnCanceledContext(t *testing.T) {
+	p := &contextBlockingProvider{started: make(chan struct{}, 1)}
+	a := New("test-agent", "You are helpful.", "gpt-4", p, nil)
+	writer := &rejectCanceledWriter{}
+	s := session.New("s-canceled-step").WithWriter(writer)
+	if err := s.Append(t.Context(), session.NewEvent(s.ID(), session.MessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "Hi!",
+	})); err != nil {
+		t.Fatalf("append user: %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := a.Turn(ctx, s)
+		errCh <- err
+	}()
+
+	select {
+	case <-p.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for provider call")
+	}
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err == nil || !strings.Contains(err.Error(), context.Canceled.Error()) {
+			t.Fatalf("turn error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for canceled turn")
+	}
+
+	var found bool
+	for _, ev := range writer.events {
+		if ev.Type != session.StepCompleted {
+			continue
+		}
+		data, ok, err := ev.StepCompletedData()
+		if err != nil {
+			t.Fatalf("decode step completed: %v", err)
+		}
+		if !ok {
+			continue
+		}
+		found = true
+		if !strings.Contains(data.Error, context.Canceled.Error()) {
+			t.Fatalf("step error = %q, want context canceled", data.Error)
+		}
+	}
+	if !found {
+		t.Fatal("expected step completed event")
+	}
 }
 
 func assertTurnCompletedError(t *testing.T, s *session.Session, want string) {
@@ -1953,6 +2022,67 @@ func TestRunToolsRecordsToolCompletedError(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected tool completed event")
+	}
+}
+
+func TestRunToolsRecordsCanceledToolResult(t *testing.T) {
+	reg := tool.NewRegistry()
+	ctx, cancel := context.WithCancel(t.Context())
+	reg.Register(tool.Func("cancel", "cancels", nil,
+		func(ctx context.Context, _ string) (string, error) {
+			cancel()
+			return "", ctx.Err()
+		}))
+	writer := &rejectCanceledWriter{}
+	s := session.New("s-tool-canceled").WithWriter(writer)
+	calls := []llm.Call{{
+		ID:   "c1",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "cancel", Arguments: `{}`},
+	}}
+
+	result, err := runTools(ctx, s, calls, reg, nil, nil, nil, 10, "step-1")
+	if err != nil {
+		t.Fatalf("runTools: %v", err)
+	}
+	if len(result.ToolResults) != 1 {
+		t.Fatalf("tool results = %d, want 1", len(result.ToolResults))
+	}
+	if !strings.Contains(result.ToolResults[0].Content, context.Canceled.Error()) {
+		t.Fatalf("tool result content = %q, want context canceled", result.ToolResults[0].Content)
+	}
+
+	var completed bool
+	var toolMessage bool
+	for _, ev := range writer.events {
+		switch ev.Type {
+		case session.ToolCompleted:
+			data, ok, err := ev.ToolCompletedData()
+			if err != nil {
+				t.Fatalf("decode tool completed: %v", err)
+			}
+			if ok && strings.Contains(data.Error, context.Canceled.Error()) {
+				completed = true
+			}
+		case session.MessageAdded:
+			var msg llm.Message
+			if err := ev.UnmarshalData(&msg); err != nil {
+				t.Fatalf("decode message: %v", err)
+			}
+			if msg.Role == llm.RoleTool &&
+				strings.Contains(msg.Content, context.Canceled.Error()) {
+				toolMessage = true
+			}
+		}
+	}
+	if !completed {
+		t.Fatal("expected tool completed event with cancellation error")
+	}
+	if !toolMessage {
+		t.Fatal("expected tool result message with cancellation error")
 	}
 }
 

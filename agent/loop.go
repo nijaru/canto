@@ -58,7 +58,7 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 		if err != nil {
 			data.Error = err.Error()
 		}
-		_ = s.Append(ctx, session.NewStepCompletedEvent(s.ID(), data))
+		_ = s.Append(context.WithoutCancel(ctx), session.NewStepCompletedEvent(s.ID(), data))
 	}()
 
 	req := &llm.Request{

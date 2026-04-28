@@ -39,7 +39,7 @@ func (a *BaseAgent) StreamStep(
 		if err != nil {
 			data.Error = err.Error()
 		}
-		_ = s.Append(ctx, session.NewStepCompletedEvent(s.ID(), data))
+		_ = s.Append(context.WithoutCancel(ctx), session.NewStepCompletedEvent(s.ID(), data))
 	}()
 
 	req := &llm.Request{
@@ -207,6 +207,10 @@ func (a *BaseAgent) StreamTurn(
 
 	if a.maxSteps > 0 {
 		for state.steps < a.maxSteps {
+			if err := ctx.Err(); err != nil {
+				return StepResult{}, err
+			}
+
 			res, err = a.StreamStep(ctx, s, chunkFn)
 			if err != nil {
 				outcome := state.handleStepError(
