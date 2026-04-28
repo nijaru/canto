@@ -65,6 +65,20 @@ func (p *errorProvider) Generate(context.Context, *llm.Request) (*llm.Response, 
 	return nil, p.err
 }
 
+type contextBlockingProvider struct {
+	mockProvider
+	started chan struct{}
+}
+
+func (p *contextBlockingProvider) Generate(
+	ctx context.Context,
+	req *llm.Request,
+) (*llm.Response, error) {
+	p.started <- struct{}{}
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
 type recordingProvider struct {
 	mockProvider
 	lastMessages []llm.Message
@@ -489,6 +503,62 @@ func TestTurnRecordsTerminalEventOnProviderError(t *testing.T) {
 		found = true
 		if !strings.Contains(data.Error, providerErr.Error()) {
 			t.Fatalf("turn error = %q, want %q", data.Error, providerErr.Error())
+		}
+	}
+	if !found {
+		t.Fatal("expected turn completed event")
+	}
+}
+
+func TestTurnRecordsTerminalEventOnCanceledContext(t *testing.T) {
+	p := &contextBlockingProvider{started: make(chan struct{}, 1)}
+	a := New("test-agent", "You are helpful.", "gpt-4", p, nil)
+	s := userSession("s-canceled-turn", "Hi!")
+	ctx, cancel := context.WithCancel(t.Context())
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := a.Turn(ctx, s)
+		errCh <- err
+	}()
+
+	select {
+	case <-p.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for provider call")
+	}
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err == nil || !strings.Contains(err.Error(), context.Canceled.Error()) {
+			t.Fatalf("turn error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for canceled turn")
+	}
+
+	assertTurnCompletedError(t, s, context.Canceled.Error())
+}
+
+func assertTurnCompletedError(t *testing.T, s *session.Session, want string) {
+	t.Helper()
+
+	var found bool
+	for _, ev := range s.Events() {
+		if ev.Type != session.TurnCompleted {
+			continue
+		}
+		data, ok, err := ev.TurnCompletedData()
+		if err != nil {
+			t.Fatalf("decode turn completed: %v", err)
+		}
+		if !ok {
+			continue
+		}
+		found = true
+		if !strings.Contains(data.Error, want) {
+			t.Fatalf("turn error = %q, want %q", data.Error, want)
 		}
 	}
 	if !found {

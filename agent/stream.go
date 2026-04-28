@@ -202,7 +202,7 @@ func (a *BaseAgent) StreamTurn(
 		if err != nil {
 			data.Error = err.Error()
 		}
-		_ = s.Append(ctx, session.NewTurnCompletedEvent(s.ID(), data))
+		_ = s.Append(context.WithoutCancel(ctx), session.NewTurnCompletedEvent(s.ID(), data))
 	}()
 
 	if a.maxSteps > 0 {

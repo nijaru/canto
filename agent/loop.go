@@ -174,7 +174,7 @@ func Run(
 			if runErr != nil {
 				data.Error = runErr.Error()
 			}
-			_ = s.Append(ctx, session.NewTurnCompletedEvent(s.ID(), data))
+			_ = s.Append(context.WithoutCancel(ctx), session.NewTurnCompletedEvent(s.ID(), data))
 		}()
 
 		if err := s.Append(ctx, session.NewTurnStartedEvent(s.ID(), session.TurnStartedData{

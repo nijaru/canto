@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nijaru/canto/llm"
 	prompt "github.com/nijaru/canto/prompt"
@@ -48,6 +49,34 @@ func (s *fixedStream) Next() (*llm.Chunk, bool) {
 }
 func (s *fixedStream) Err() error   { return nil }
 func (s *fixedStream) Close() error { return nil }
+
+type contextBlockingStreamProvider struct {
+	mockProvider
+	started chan struct{}
+}
+
+type contextBlockingStream struct {
+	ctx context.Context
+}
+
+func (p *contextBlockingStreamProvider) Stream(
+	ctx context.Context,
+	req *llm.Request,
+) (llm.Stream, error) {
+	p.started <- struct{}{}
+	return &contextBlockingStream{ctx: ctx}, nil
+}
+
+func (s *contextBlockingStream) Next() (*llm.Chunk, bool) {
+	<-s.ctx.Done()
+	return nil, false
+}
+
+func (s *contextBlockingStream) Err() error {
+	return s.ctx.Err()
+}
+
+func (s *contextBlockingStream) Close() error { return nil }
 
 func (m *streamMockProvider) IsTransient(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "transient")
@@ -208,6 +237,37 @@ func TestStreamTurnPopulatesContent(t *testing.T) {
 	if result.TurnStopReason != TurnStopCompleted {
 		t.Fatalf("expected turn stop reason %q, got %q", TurnStopCompleted, result.TurnStopReason)
 	}
+}
+
+func TestStreamTurnRecordsTerminalEventOnCanceledContext(t *testing.T) {
+	p := &contextBlockingStreamProvider{started: make(chan struct{}, 1)}
+	a := New("a", "sys", "m", p, nil)
+	s := userSession("s-canceled-stream", "q")
+	ctx, cancel := context.WithCancel(t.Context())
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := a.StreamTurn(ctx, s, nil)
+		errCh <- err
+	}()
+
+	select {
+	case <-p.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for stream call")
+	}
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err == nil || !strings.Contains(err.Error(), context.Canceled.Error()) {
+			t.Fatalf("stream turn error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for canceled stream turn")
+	}
+
+	assertTurnCompletedError(t, s, context.Canceled.Error())
 }
 
 func TestStreamTurnMaxSteps(t *testing.T) {
