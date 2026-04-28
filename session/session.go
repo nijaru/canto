@@ -516,7 +516,8 @@ func (s *Session) LastAssistantMessage() (llm.Message, bool) {
 		e := &s.events[i]
 		if e.Type == MessageAdded {
 			m, err := e.ensureMessage()
-			if err == nil && m.Role == llm.RoleAssistant && len(m.Calls) == 0 {
+			if err == nil && m.Role == llm.RoleAssistant && len(m.Calls) == 0 &&
+				validModelMessage(*m) {
 				return *m, true
 			}
 		}

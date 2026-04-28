@@ -88,6 +88,30 @@ func TestSessionAppendPreservesAssistantPayloadKinds(t *testing.T) {
 	}
 }
 
+func TestLastAssistantMessageSkipsLegacyEmptyAssistant(t *testing.T) {
+	replayer := NewReplayer()
+	sess := replayer.NewSession("legacy-last-assistant")
+	if err := replayer.Apply(sess, NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleAssistant,
+		Content: "valid answer",
+	})); err != nil {
+		t.Fatalf("replay valid assistant: %v", err)
+	}
+	if err := replayer.Apply(sess, NewMessage(sess.ID(), llm.Message{
+		Role: llm.RoleAssistant,
+	})); err != nil {
+		t.Fatalf("replay legacy empty assistant: %v", err)
+	}
+
+	msg, ok := sess.LastAssistantMessage()
+	if !ok {
+		t.Fatal("expected valid assistant")
+	}
+	if msg.Content != "valid answer" {
+		t.Fatalf("last assistant content = %q, want valid answer", msg.Content)
+	}
+}
+
 func TestSessionBranchRequiresSessionBranchWriter(t *testing.T) {
 	sess := New("parent").WithWriter(&failingWriter{})
 
