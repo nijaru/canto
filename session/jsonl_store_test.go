@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,6 +65,20 @@ func TestJSONLStoreForkPersistsTreeQueries(t *testing.T) {
 	}
 	if len(lineage) != 2 || lineage[0].SessionID != parentID || lineage[1].SessionID != childID {
 		t.Fatalf("lineage = %#v, want [%q, %q]", lineage, parentID, childID)
+	}
+}
+
+func TestJSONLStoreRejectsEmptyAssistantMessage(t *testing.T) {
+	store, err := NewJSONLStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new jsonl store: %v", err)
+	}
+
+	err = store.Save(t.Context(), NewMessage("jsonl-empty-assistant", llm.Message{
+		Role: llm.RoleAssistant,
+	}))
+	if !errors.Is(err, errEmptyAssistantMessage) {
+		t.Fatalf("Save error = %v, want %v", err, errEmptyAssistantMessage)
 	}
 }
 

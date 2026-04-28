@@ -17,14 +17,14 @@ Use this as the single active place for Ion findings that require Canto framewor
 
 ## Open Confirmed Framework Issues
 
-None as of 2026-04-28. Ion's active core-loop review is currently looking for more, but the known framework-owned failures below are resolved.
+None as of 2026-04-28. Ion's active core-loop review is still checking for framework-owned failures.
 
 ## Resolved Ion-Derived Fixes
 
 | Area | Resolution | Notes |
 | --- | --- | --- |
+| Session write boundary | `Session.Append`, `SQLiteStore.Save`, and `JSONLStore.Save` reject empty/no-payload assistant `MessageAdded` rows while preserving content, reasoning, thinking-only, and tool-only assistant payloads. | Prevents future invalid provider history at both live-session and direct-store write boundaries; projection sanitation remains a legacy/corrupt-history defense. |
 | Empty/no-payload assistant rows in effective history | Canto effective history filters invalid assistant rows from raw history, snapshots, and appended events. | Projection sanitation is a legacy/corrupt-history defense. |
-| Future whitespace-only assistant writes | Canto write-side assistant payload validation rejects content/reasoning that trims to empty while preserving tool-only and reasoning/thinking-only assistant payloads. | Prevents future invalid provider history at the source. |
 | Mid-conversation privileged messages | Prompt/session boundary now separates transcript, model-visible context, and hidden events; provider request validation rejects privileged messages after transcript messages. | Fixed the Fedora/local-api `System message must be at the beginning` failure class without promoting UI notices into system prompts. |
 | Canceled turns missing terminal durability | Streaming and non-streaming canceled turns persist terminal `TurnCompleted` events. | Lets Ion resume canceled sessions without relying on app-local state. |
 | Failed tool result text | Tool completion events carry structured error text. | Ion can render/replay failed tool results without parsing display strings. |

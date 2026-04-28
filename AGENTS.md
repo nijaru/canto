@@ -3,6 +3,19 @@
 Go primitives for durable agent backends.
 Focus on session durability, context construction, tools, and orchestration. Not a hosted platform or full-stack agent product.
 
+## Current Ion Stabilization Policy
+
+Ion is the active acceptance test for Canto's native agent-loop contracts. Until Ion's minimal native loop is stable, Canto work should stay focused on framework-owned defects exposed by Ion:
+
+- durable session log and projection validity
+- runner/session coordination
+- agent terminal states
+- tool call/result ordering and durability
+- prompt/provider-visible history construction
+- retry/compaction behavior that protects real agent reliability
+
+Do not expand Canto's public-framework surface, SOTA primitives, or docs/release posture while Ion is finding core-loop issues. Keep Canto as the source of truth for framework-owned fixes, but make those fixes prove themselves through Ion. Prefer targeted rewrites of flawed modules over isolated symptom patches or whole-repo rewrites.
+
 ## Project Structure
 
 | Directory    | Purpose                                                              |
@@ -120,6 +133,12 @@ Use the `go-expert` skill for full guidance. Key modern idioms:
 5. Implement with TDD — test gates in spec must pass before moving phases
 6. Run `go test ./... && go build ./...`
 7. Update `ai/STATUS.md` with findings
+
+During Ion stabilization:
+
+- Check Ion's active core-loop audit docs before broad new Canto planning.
+- Add Canto tasks only for concrete framework issues, not Ion product work.
+- After a Canto fix, run the focused package test and `go test ./...`; then import the commit into Ion and verify Ion.
 
 ## Current Focus
 

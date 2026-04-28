@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
@@ -47,6 +48,24 @@ func TestSQLiteStore(t *testing.T) {
 	}
 	if len(results) != 1 {
 		t.Errorf("expected 1 search result, got %d", len(results))
+	}
+}
+
+func TestSQLiteStoreRejectsEmptyAssistantMessage(t *testing.T) {
+	dbFile := "test_canto_empty_assistant.db"
+	defer os.Remove(dbFile)
+
+	store, err := NewSQLiteStore(dbFile)
+	if err != nil {
+		t.Fatalf("failed to create sqlite store: %v", err)
+	}
+	defer store.Close()
+
+	err = store.Save(t.Context(), NewMessage("sqlite-empty-assistant", llm.Message{
+		Role: llm.RoleAssistant,
+	}))
+	if !errors.Is(err, errEmptyAssistantMessage) {
+		t.Fatalf("Save error = %v, want %v", err, errEmptyAssistantMessage)
 	}
 }
 

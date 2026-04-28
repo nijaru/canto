@@ -1,7 +1,7 @@
 # Status
 
 **Phase:** Phase 5: M1 stabilization before Ion rebuild
-**Focus:** M1 stabilization after the transcript/context/cache-prefix split. Current pass has hardened provider/model handoff, cache-aware request mutation, eval/export context labels, retry-until-cancel support for Ion, write-side assistant payload validation, and Ion feedback tracking hygiene.
+**Focus:** M1 stabilization under Ion validation. Current pass is framework-owned core-loop correctness exposed by Ion: session append/projection validity, runner/agent terminal states, tool durability, prompt/provider history, retry, and compaction reliability.
 **Blockers:** None.
 **Updated:** 2026-04-27
 
@@ -15,6 +15,7 @@ Phase 5 still has SOTA and DX inputs, but the active operating mode is now Canto
 - **Ion owns product policy:** terminal UX, task/planner behavior, approval delivery and thresholds, shell classifier heuristics, memory aggressiveness, command catalog choices, and end-user workflow.
 - **Ion validates Canto externally:** Ion should expose missing or awkward primitives, but Ion work is not active in this repo. Do not keep standing Ion tasks in Canto; add a Canto task only when separate Ion work identifies a concrete framework issue.
 - **Ion feedback tracker:** confirmed Ion-derived framework issues live in `ai/review/ion-feedback-tracker-2026-04-28.md`. `ai/ion-framework-issues.md` is now only a legacy pointer.
+- **Ion as acceptance test:** defer public-framework expansion, SOTA primitives, and release/docs polish while Ion is exposing native core-loop failures. Fix concrete framework defects here, then import the Canto revision into Ion and verify there.
 
 SOTA/DX research is part of the Canto pre-Ion gate when it can change stable API or primitives. New research remains delta-based and must name the Canto primitive it would change.
 
@@ -26,6 +27,11 @@ Current authoring-surface inputs:
 - Existing `ai/research/frameworks/` notes already cover LangGraph, PydanticAI, AutoGen, Vercel AI SDK, MCP, and adjacent framework comparisons. Future SOTA work should be delta-based.
 
 ## Next (M1 stabilization order)
+
+**Ion validation gate:**
+
+- Active work comes from Ion's core-loop audit. Do not add broad Canto roadmap work unless Ion identifies a concrete framework-owned issue.
+- Current local finding under review: `session.Append` should reject future empty/no-payload assistant `MessageAdded` rows at the session boundary, while projection sanitation remains for legacy/corrupt history.
 
 **Release/doc gate:**
 

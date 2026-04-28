@@ -50,6 +50,10 @@ func (s *JSONLStore) getSessionMu(sessionID string) *sync.RWMutex {
 
 // Save appends an event to the session file.
 func (s *JSONLStore) Save(ctx context.Context, e Event) error {
+	if err := validateWritableEvent(&e); err != nil {
+		return err
+	}
+
 	mu := s.getSessionMu(e.SessionID)
 	mu.Lock()
 	defer mu.Unlock()

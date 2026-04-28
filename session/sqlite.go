@@ -106,6 +106,9 @@ func (s *SQLiteStore) init() error {
 
 // Save persists an event to the database.
 func (s *SQLiteStore) Save(ctx context.Context, e Event) error {
+	if err := validateWritableEvent(&e); err != nil {
+		return err
+	}
 	return s.saveTx(ctx, s.db, e)
 }
 

@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/nijaru/canto/llm"
@@ -47,6 +48,43 @@ func TestSessionAppend_DoesNotMutateStateWhenWriterFails(t *testing.T) {
 	case e := <-sub.Events():
 		t.Fatalf("unexpected subscriber event after failed append: %#v", e)
 	default:
+	}
+}
+
+func TestSessionAppendRejectsEmptyAssistantMessage(t *testing.T) {
+	sess := New("append-empty-assistant")
+
+	err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:      llm.RoleAssistant,
+		Content:   " \n\t ",
+		Reasoning: " ",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "assistant message has no content") {
+		t.Fatalf("append error = %v, want empty assistant rejection", err)
+	}
+	if len(sess.Events()) != 0 {
+		t.Fatalf("events = %#v, want none", sess.Events())
+	}
+}
+
+func TestSessionAppendPreservesAssistantPayloadKinds(t *testing.T) {
+	sess := New("append-assistant-payloads")
+	call := llm.Call{ID: "call-1", Type: "function"}
+	call.Function.Name = "read"
+
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleAssistant, Content: "content"},
+		{Role: llm.RoleAssistant, Reasoning: "reasoning"},
+		{Role: llm.RoleAssistant, ThinkingBlocks: []llm.ThinkingBlock{{Type: "thinking", Thinking: "step"}}},
+		{Role: llm.RoleAssistant, Calls: []llm.Call{call}},
+	} {
+		if err := sess.Append(t.Context(), NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append payload-bearing assistant: %v", err)
+		}
+	}
+
+	if got := len(sess.Messages()); got != 4 {
+		t.Fatalf("messages = %d, want 4", got)
 	}
 }
 

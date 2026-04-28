@@ -7,6 +7,10 @@ import (
 	"github.com/nijaru/canto/llm"
 )
 
+func appendLegacyEvent(sess *Session, e Event) {
+	sess.events = append(sess.events, e)
+}
+
 func TestRebuilderRebuildEntriesWithoutCompactionFallsBackToRawHistory(t *testing.T) {
 	sess := New("raw")
 	for _, msg := range []llm.Message{
@@ -37,7 +41,12 @@ func TestRebuilderDropsEmptyAssistantMessagesFromRawHistory(t *testing.T) {
 		{Role: llm.RoleAssistant},
 		{Role: llm.RoleAssistant, Content: "after"},
 	} {
-		if err := sess.Append(t.Context(), NewMessage(sess.ID(), msg)); err != nil {
+		e := NewMessage(sess.ID(), msg)
+		if msg.Role == llm.RoleAssistant && msg.Content == "" {
+			appendLegacyEvent(sess, e)
+			continue
+		}
+		if err := sess.Append(t.Context(), e); err != nil {
 			t.Fatalf("append message: %v", err)
 		}
 	}
@@ -113,9 +122,7 @@ func TestRebuilderDropsEmptyAssistantMessagesFromSnapshots(t *testing.T) {
 	if err := sess.Append(t.Context(), NewProjectionSnapshot(sess.ID(), snapshot)); err != nil {
 		t.Fatalf("append projection snapshot: %v", err)
 	}
-	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{Role: llm.RoleAssistant})); err != nil {
-		t.Fatalf("append post-snapshot empty assistant: %v", err)
-	}
+	appendLegacyEvent(sess, NewMessage(sess.ID(), llm.Message{Role: llm.RoleAssistant}))
 	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{Role: llm.RoleAssistant, Content: "after"})); err != nil {
 		t.Fatalf("append post-snapshot assistant: %v", err)
 	}

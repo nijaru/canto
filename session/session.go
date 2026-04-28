@@ -49,6 +49,10 @@ func MetadataFromContext(ctx context.Context) map[string]any {
 
 const subscriberBufSize = 64
 
+var errEmptyAssistantMessage = errors.New(
+	"session append: assistant message has no content, reasoning, thinking blocks, or tool calls",
+)
+
 // subscriber is a single fan-out recipient.
 // The mu guards ch against concurrent trySend and close calls.
 type subscriber struct {
@@ -301,6 +305,10 @@ func (s *Session) unsetWriterChannel() {
 // If a writer is attached, the event is persisted to the store immediately.
 // If the context contains metadata (via WithMetadata), it is merged into the event's metadata.
 func (s *Session) Append(ctx context.Context, e Event) error {
+	if err := validateWritableEvent(&e); err != nil {
+		return err
+	}
+
 	if md := MetadataFromContext(ctx); len(md) > 0 {
 		newMd := make(map[string]any, len(e.Metadata)+len(md))
 		if e.Metadata != nil {
@@ -343,6 +351,20 @@ func (s *Session) Append(ctx context.Context, e Event) error {
 
 	for _, sub := range subs {
 		sub.trySend(e)
+	}
+	return nil
+}
+
+func validateWritableEvent(e *Event) error {
+	if e.Type != MessageAdded {
+		return nil
+	}
+	msg, err := e.ensureMessage()
+	if err != nil {
+		return err
+	}
+	if !validModelMessage(*msg) {
+		return errEmptyAssistantMessage
 	}
 	return nil
 }
