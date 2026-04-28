@@ -276,6 +276,184 @@ func (a *slowAgent) Turn(ctx context.Context, sess *session.Session) (agent.Step
 	return agent.StepResult{Content: msg.Content}, nil
 }
 
+type blockingStreamProvider struct {
+	started chan struct{}
+	release chan struct{}
+	calls   atomic.Int32
+}
+
+func (p *blockingStreamProvider) ID() string { return "blocking-stream" }
+
+func (p *blockingStreamProvider) Generate(context.Context, *llm.Request) (*llm.Response, error) {
+	return &llm.Response{Content: "done"}, nil
+}
+
+func (p *blockingStreamProvider) Stream(
+	ctx context.Context,
+	_ *llm.Request,
+) (llm.Stream, error) {
+	p.calls.Add(1)
+	select {
+	case p.started <- struct{}{}:
+	default:
+	}
+	select {
+	case <-p.release:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return llm.NewFauxStream(llm.Chunk{Content: "done"}), nil
+}
+
+func (p *blockingStreamProvider) Models(context.Context) ([]llm.Model, error) { return nil, nil }
+
+func (p *blockingStreamProvider) CountTokens(
+	context.Context,
+	string,
+	[]llm.Message,
+) (int, error) {
+	return 0, nil
+}
+
+func (p *blockingStreamProvider) Cost(context.Context, string, llm.Usage) float64 {
+	return 0
+}
+
+func (p *blockingStreamProvider) Capabilities(string) llm.Capabilities {
+	return llm.DefaultCapabilities()
+}
+
+func (p *blockingStreamProvider) IsTransient(error) bool { return false }
+
+func (p *blockingStreamProvider) IsContextOverflow(error) bool { return false }
+
+func TestRunnerLocalQueueWaitTimeoutDoesNotCancelActiveTurn(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	provider := &blockingStreamProvider{
+		started: make(chan struct{}, 1),
+		release: make(chan struct{}),
+	}
+	runner := NewRunner(
+		store,
+		agent.New("test-agent", "", "test-model", provider, nil),
+		WithWaitTimeout(10*time.Millisecond),
+		WithExecutionTimeout(time.Second),
+	)
+	defer runner.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := runner.SendStream(
+			t.Context(),
+			"active-wait-timeout",
+			"first",
+			func(*llm.Chunk) {},
+		)
+		done <- err
+	}()
+
+	select {
+	case <-provider.started:
+	case err := <-done:
+		t.Fatalf("SendStream finished before provider stream started: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for provider stream to start")
+	}
+
+	time.Sleep(25 * time.Millisecond)
+	close(provider.release)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("SendStream returned error after active wait timeout: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for active turn to finish")
+	}
+}
+
+func TestRunnerQueuedTurnWaitTimeoutRecordsTerminalEvent(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	provider := &blockingStreamProvider{
+		started: make(chan struct{}, 2),
+		release: make(chan struct{}),
+	}
+	runner := NewRunner(
+		store,
+		agent.New("test-agent", "", "test-model", provider, nil),
+		WithWaitTimeout(10*time.Millisecond),
+		WithExecutionTimeout(time.Second),
+	)
+	defer runner.Close()
+
+	firstErr := make(chan error, 1)
+	go func() {
+		_, err := runner.SendStream(
+			t.Context(),
+			"queued-wait-timeout",
+			"first",
+			func(*llm.Chunk) {},
+		)
+		firstErr <- err
+	}()
+
+	select {
+	case <-provider.started:
+	case err := <-firstErr:
+		t.Fatalf("first SendStream finished before provider stream started: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first turn to start")
+	}
+
+	_, err = runner.SendStream(t.Context(), "queued-wait-timeout", "second", func(*llm.Chunk) {})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("queued SendStream error = %v, want context deadline exceeded", err)
+	}
+
+	close(provider.release)
+	select {
+	case err := <-firstErr:
+		if err != nil {
+			t.Fatalf("first SendStream: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first turn to finish")
+	}
+
+	if got := provider.calls.Load(); got != 1 {
+		t.Fatalf("provider stream calls = %d, want 1", got)
+	}
+
+	sess, err := store.Load(t.Context(), "queued-wait-timeout")
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+	var terminalErrors int
+	for _, ev := range sess.Events() {
+		data, ok, err := ev.TurnCompletedData()
+		if err != nil {
+			t.Fatalf("decode turn completed: %v", err)
+		}
+		if ok && data.Error == context.DeadlineExceeded.Error() {
+			terminalErrors++
+		}
+	}
+	if terminalErrors != 1 {
+		t.Fatalf("terminal timeout errors = %d, want 1", terminalErrors)
+	}
+}
+
 func TestRunnerCoordinator_SerializesPerSession(t *testing.T) {
 	store, err := session.NewSQLiteStore(t.TempDir() + "/coord-session.db")
 	if err != nil {

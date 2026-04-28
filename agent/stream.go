@@ -185,12 +185,6 @@ func (a *BaseAgent) StreamTurn(
 	ctx, turnSpan := tracing.StartTurn(ctx, a.ID(), s.ID(), a.model)
 	defer func() { tracing.EndTurn(turnSpan, err) }()
 
-	if err := s.Append(ctx, session.NewTurnStartedEvent(s.ID(), session.TurnStartedData{
-		AgentID: a.ID(),
-	})); err != nil {
-		return StepResult{}, err
-	}
-
 	state := turnState{}
 	defer func() {
 		data := session.TurnCompletedData{
@@ -204,6 +198,12 @@ func (a *BaseAgent) StreamTurn(
 		}
 		_ = s.Append(context.WithoutCancel(ctx), session.NewTurnCompletedEvent(s.ID(), data))
 	}()
+
+	if err := s.Append(ctx, session.NewTurnStartedEvent(s.ID(), session.TurnStartedData{
+		AgentID: a.ID(),
+	})); err != nil {
+		return StepResult{}, err
+	}
 
 	if a.maxSteps > 0 {
 		for state.steps < a.maxSteps {

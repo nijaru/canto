@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nijaru/canto/agent"
@@ -360,7 +361,9 @@ func (r *Runner) run(
 	}
 
 	var result agent.StepResult
-	errCh := r.queue.execute(waitCtx, sess.ID(), func(laneCtx context.Context) error {
+	var started atomic.Bool
+	errCh := r.queue.executeWithWait(waitCtx, ctx, sess.ID(), func(laneCtx context.Context) error {
+		started.Store(true)
 		execCtx := laneCtx
 		if r.executionTimeout > 0 {
 			var cancel context.CancelFunc
@@ -372,7 +375,11 @@ func (r *Runner) run(
 		result, err = r.execute(execCtx, sess, chunkFn)
 		return err
 	})
-	return result, <-errCh
+	err := <-errCh
+	if err != nil && !started.Load() {
+		r.appendTurnCompletedError(ctx, sess, err)
+	}
+	return result, err
 }
 
 func (r *Runner) executeWithCoordinator(
@@ -393,10 +400,12 @@ func (r *Runner) executeWithCoordinator(
 
 	ticket, err := r.coordinator.Enqueue(waitCtx, sess.ID())
 	if err != nil {
+		r.appendTurnCompletedError(ctx, sess, err)
 		return agent.StepResult{}, err
 	}
 	lease, err := r.coordinator.Await(waitCtx, ticket)
 	if err != nil {
+		r.appendTurnCompletedError(ctx, sess, err)
 		return agent.StepResult{}, err
 	}
 
@@ -409,6 +418,18 @@ func (r *Runner) executeWithCoordinator(
 
 	result, execErr := r.executeUnderLease(execCtx, sess, chunkFn, lease)
 	return result, execErr
+}
+
+func (r *Runner) appendTurnCompletedError(
+	ctx context.Context,
+	sess *session.Session,
+	err error,
+) {
+	data := session.TurnCompletedData{
+		AgentID: r.agent.ID(),
+		Error:   err.Error(),
+	}
+	_ = sess.Append(context.WithoutCancel(ctx), session.NewTurnCompletedEvent(sess.ID(), data))
 }
 
 func (r *Runner) execute(

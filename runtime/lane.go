@@ -9,9 +9,48 @@ import (
 
 // queueRequest represents a unit of work in the local serial queue.
 type queueRequest struct {
-	Ctx    context.Context
-	Fn     func(ctx context.Context) error
-	Result chan error
+	RunCtx    context.Context
+	Fn        func(ctx context.Context) error
+	Result    chan error
+	mu        sync.Mutex
+	started   bool
+	finished  bool
+	startedCh chan struct{}
+}
+
+func (r *queueRequest) begin() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.finished {
+		return false
+	}
+	r.started = true
+	close(r.startedCh)
+	return true
+}
+
+func (r *queueRequest) finish(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.finished {
+		return
+	}
+	if !r.started {
+		r.started = true
+		close(r.startedCh)
+	}
+	r.finished = true
+	r.Result <- err
+}
+
+func (r *queueRequest) cancelBeforeStart(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.started || r.finished {
+		return
+	}
+	r.finished = true
+	r.Result <- err
 }
 
 // serialQueue is Runner's built-in local coordination path.
@@ -41,7 +80,7 @@ func newSerialQueue() *serialQueue {
 // lane represents a single execution lane for a session.
 type lane struct {
 	sessionID string
-	requests  chan queueRequest
+	requests  chan *queueRequest
 	lastUsed  time.Time
 	active    int
 	mu        sync.Mutex
@@ -56,11 +95,21 @@ func (m *serialQueue) execute(
 	sessionID string,
 	fn func(ctx context.Context) error,
 ) <-chan error {
+	return m.executeWithWait(ctx, ctx, sessionID, fn)
+}
+
+func (m *serialQueue) executeWithWait(
+	waitCtx context.Context,
+	runCtx context.Context,
+	sessionID string,
+	fn func(ctx context.Context) error,
+) <-chan error {
 	result := make(chan error, 1)
-	req := queueRequest{
-		Ctx:    ctx,
-		Fn:     fn,
-		Result: result,
+	req := &queueRequest{
+		RunCtx:    runCtx,
+		Fn:        fn,
+		Result:    result,
+		startedCh: make(chan struct{}),
 	}
 
 	for {
@@ -80,10 +129,16 @@ func (m *serialQueue) execute(
 			// Lane is shutting down, get a new one
 			continue
 		case l.requests <- req:
-			// Queued successfully
+			go func() {
+				select {
+				case <-req.startedCh:
+				case <-waitCtx.Done():
+					req.cancelBeforeStart(waitCtx.Err())
+				}
+			}()
 			return result
-		case <-ctx.Done():
-			result <- ctx.Err()
+		case <-waitCtx.Done():
+			result <- waitCtx.Err()
 			return result
 		default:
 			// Buffer full
@@ -116,7 +171,7 @@ func (m *serialQueue) getOrCreateLane(sessionID string) *lane {
 	ctx, cancel := context.WithCancel(context.Background())
 	l = &lane{
 		sessionID: sessionID,
-		requests:  make(chan queueRequest, m.LaneBufferSize),
+		requests:  make(chan *queueRequest, m.LaneBufferSize),
 		lastUsed:  time.Now(),
 		done:      make(chan struct{}),
 		drain:     make(chan struct{}),
@@ -144,7 +199,7 @@ func (m *serialQueue) runLane(ctx context.Context, l *lane) {
 		for {
 			select {
 			case req := <-l.requests:
-				req.Result <- fmt.Errorf("lane shutting down")
+				req.finish(fmt.Errorf("lane shutting down"))
 			default:
 				return
 			}
@@ -161,15 +216,18 @@ func (m *serialQueue) runLane(ctx context.Context, l *lane) {
 				<-timer.C
 			}
 
-			// Process request
+			if !req.begin() {
+				timer.Reset(m.IdleTimeout)
+				continue
+			}
 			l.mu.Lock()
 			l.active++
 			l.mu.Unlock()
-			err := req.Fn(req.Ctx)
+			err := req.Fn(req.RunCtx)
 			l.mu.Lock()
 			l.active--
 			l.mu.Unlock()
-			req.Result <- err
+			req.finish(err)
 
 			l.mu.Lock()
 			l.lastUsed = time.Now()
@@ -192,8 +250,11 @@ func (m *serialQueue) runLane(ctx context.Context, l *lane) {
 			for {
 				select {
 				case req := <-l.requests:
-					err := req.Fn(req.Ctx)
-					req.Result <- err
+					if !req.begin() {
+						continue
+					}
+					err := req.Fn(req.RunCtx)
+					req.finish(err)
 				default:
 					return
 				}
