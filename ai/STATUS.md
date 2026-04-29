@@ -3,7 +3,7 @@
 **Phase:** Phase 5: M1 stabilization before Ion rebuild
 **Focus:** M1 stabilization under Ion validation. Current pass is framework-owned core-loop correctness exposed by Ion: session append/projection validity, runner/agent terminal states, tool durability, prompt/provider history, retry, and compaction reliability.
 **Blockers:** None.
-**Updated:** 2026-04-27
+**Updated:** 2026-04-28
 
 ## Context
 
@@ -50,6 +50,7 @@ Current authoring-surface inputs:
 ## Recently landed
 
 - Ion feedback tracking cleanup — stale Ion issue notes were consolidated into `ai/review/ion-feedback-tracker-2026-04-28.md`; there are no open confirmed Ion-derived Canto framework issues as of 2026-04-28.
+- `canto-h9vq` — Ion compaction reliability feedback fixed: working-set extraction now recognizes common coding-agent tool names (`read`, `list`, `grep`, `write`) and `file_path` arguments, so durable compaction snapshots preserve files from real Ion sessions. Focused governor tests and `go test ./... -count=1` pass.
 - current Ion feedback slice — agent write-side assistant payload validation now matches effective-history projection: whitespace-only assistant content/reasoning is not durably appended, reasoning-only payloads are preserved, and provider errors leave durable `TurnCompleted` error data. `go test ./...` passes.
 - `canto-on6q` — RetryProvider now supports retry-until-context-cancel and emits retry callbacks so hosts can show/persist transient provider retry status without owning backoff mechanics.
 - `canto-wtau` — prompt/session boundary fixed: effective session history demotes durable `system`/`developer` messages to transcript context, compaction summaries/working sets are non-privileged user context, and request validation rejects privileged messages after transcript messages before provider send.

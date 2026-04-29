@@ -11,10 +11,14 @@ import (
 
 // toolFileActions classifies tools into read vs modify operations.
 var toolFileActions = map[string]string{
+	"read":       "read",
 	"read_file":  "read",
+	"list":       "read",
 	"list_dir":   "read",
+	"grep":       "read",
 	"glob":       "read",
 	"search":     "read",
+	"write":      "write",
 	"write_file": "write",
 	"edit":       "edit",
 	"multi_edit": "edit",
@@ -67,21 +71,25 @@ func extractFilePaths(messages []llm.Message) (read, modified []string) {
 	return read, modified
 }
 
-// extractPath attempts to pull a "path" value from a JSON arguments string.
+// extractPath attempts to pull a path value from common coding-tool argument
+// shapes.
 func extractPath(args string) string {
 	var obj map[string]any
 	if err := json.Unmarshal([]byte(args), &obj); err != nil {
 		return ""
 	}
-	p, ok := obj["path"]
-	if !ok {
-		return ""
+	for _, key := range []string{"path", "file_path"} {
+		p, ok := obj[key]
+		if !ok {
+			continue
+		}
+		s, ok := p.(string)
+		if !ok {
+			continue
+		}
+		return s
 	}
-	s, ok := p.(string)
-	if !ok {
-		return ""
-	}
-	return s
+	return ""
 }
 
 // subtractPaths returns a - b.
