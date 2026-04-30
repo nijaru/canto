@@ -1,7 +1,7 @@
 # Status
 
 **Phase:** Phase 5: M1 stabilization before Ion rebuild
-**Focus:** `canto-x5po` Canto core API contract audit under Ion validation. Current pass is framework-owned core-loop correctness: session append/projection validity, runner/agent terminal states, tool durability, prompt/provider history, retry, and compaction reliability.
+**Focus:** `canto-x5po` Canto core API contract audit under Ion validation. Current pass is C5 retry/compaction/budget closure: runtime overflow recovery must compact durable session state, rebuild the next provider request from effective history, and stay validated through Ion.
 **Blockers:** None.
 **Updated:** 2026-04-30
 
@@ -32,7 +32,7 @@ Current authoring-surface inputs:
 **Ion validation gate:**
 
 - Active work is `canto-x5po`, a focused Canto core API contract audit under Ion validation. Do not add broad Canto roadmap work unless the audit or Ion identifies a concrete framework-owned issue.
-- Start with `session/`: provider-visible history validity, host-facing `EffectiveEntries`, snapshot metadata, and append-time rejection of invalid assistant rows.
+- Finish C5 by validating runtime overflow recovery, retry, compaction, and budget behavior, then import the exact Canto revision into Ion and rerun the native core gates plus live smoke.
 
 **Release/doc gate:**
 
@@ -50,6 +50,7 @@ Current authoring-surface inputs:
 
 ## Recently landed
 
+- C5 retry/compaction/budget audit is in progress: runtime-level overflow recovery is confirmed as the correct session-backed contract because it retries the whole agent turn and rebuilds the provider request from compacted effective history. Added focused runtime coverage for both a minimal runner agent and the normal `agent.New` provider request path; clarified that `governor.RecoveryProvider` retries an already-built request and is not the native session-backed recovery path. Canto focused/race gates are green; full Canto and Ion import gates are next.
 - C3 agent/tool lifecycle and scheduler race fixes landed in `d3f8084` and have been imported into Ion: tool-boundary failures such as hook blocks, approval denials, ambiguous replay, and panics now become model-visible tool observations where possible; panics also record durable `ToolCompleted` error data. `LocalScheduler.Schedule` publishes the timer under the task mutex before callbacks can enter `start`/`finish`, closing the race found by the focused runtime race gate. Canto focused/full/race gates and Ion focused/full/race/live-smoke gates are green after import.
 - C4 prompt/request validation fix landed in `9ba6120` and has been imported into Ion: provider preparation now validates neutral requests before capability rewriting, `ValidateRequest` rejects invalid roles, empty assistants, and orphan tool results, `Request.Clone` copies structured-output response formats, and retry test counters are race-clean. Canto focused/full/race gates and Ion focused/full/race/live-smoke gates are green after import.
 - Runtime coordinator queued-timeout fix landed in `24f2ed9` and has been imported into Ion: `LocalCoordinator.Await` removes a queued ticket when its wait context is canceled or deadlined before lease grant, preventing an abandoned turn from staying at the lane head and blocking later turns.

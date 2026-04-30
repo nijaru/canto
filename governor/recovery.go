@@ -13,12 +13,17 @@ import (
 type CompactFunc func(ctx context.Context) error
 
 // RecoveryProvider wraps an LLM provider and intercepts context overflow
-// errors. On overflow it calls Compact once, then retries the failed request.
+// errors. On overflow it calls Compact once, then retries the same failed request.
 // A second overflow is propagated immediately — recovery runs at most once per
 // Generate or Stream call to prevent infinite compaction loops.
 //
 // The compact callback receives the context from the original call, so
 // cancellation propagates correctly.
+//
+// RecoveryProvider is only appropriate when Compact can make the existing
+// request succeed without rebuilding it. Session-backed agents should prefer
+// runtime.WithOverflowRecovery, which retries the whole turn so the request is
+// rebuilt from compacted durable history.
 //
 // Construction:
 //

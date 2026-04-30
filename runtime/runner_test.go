@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -28,6 +29,46 @@ func (e *echoAgent) Step(ctx context.Context, sess *session.Session) (agent.Step
 
 func (e *echoAgent) Turn(ctx context.Context, sess *session.Session) (agent.StepResult, error) {
 	return e.Step(ctx, sess)
+}
+
+var errTestOverflow = errors.New("context_length_exceeded")
+
+type overflowRecoveryAgent struct {
+	calls      atomic.Int64
+	sawCompact atomic.Bool
+}
+
+func (a *overflowRecoveryAgent) ID() string { return "overflow-recovery" }
+
+func (a *overflowRecoveryAgent) Step(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a *overflowRecoveryAgent) Turn(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	if a.calls.Add(1) == 1 {
+		return agent.StepResult{}, errTestOverflow
+	}
+	msgs, err := sess.EffectiveMessages()
+	if err != nil {
+		return agent.StepResult{}, err
+	}
+	for _, msg := range msgs {
+		if strings.Contains(msg.Content, "compacted context") {
+			a.sawCompact.Store(true)
+			break
+		}
+	}
+	msg := llm.Message{Role: llm.RoleAssistant, Content: "recovered"}
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.MessageAdded, msg)); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{Content: "recovered"}, nil
 }
 
 // TestRunner_Watch_ReceivesEvents is a regression test for the bug where
@@ -136,6 +177,145 @@ func TestRunner_Watch_SharedObject(t *testing.T) {
 			"getOrLoad returned different *session.Session objects for the same sessionID; registry is not working",
 		)
 	}
+}
+
+func TestRunnerOverflowRecoveryCompactsAndRebuildsOnce(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	recoveryAgent := &overflowRecoveryAgent{}
+	var compactCalls atomic.Int64
+	runner := NewRunner(
+		store,
+		recoveryAgent,
+		WithOverflowRecovery(
+			func(err error) bool { return errors.Is(err, errTestOverflow) },
+			func(ctx context.Context, sess *session.Session) error {
+				compactCalls.Add(1)
+				return sess.Append(ctx, session.NewContext(
+					sess.ID(),
+					session.ContextEntry{
+						Kind:      session.ContextKindSummary,
+						Placement: session.ContextPlacementPrefix,
+						Content:   "<conversation_summary>\ncompacted context\n</conversation_summary>",
+					},
+				))
+			},
+			1,
+		),
+	)
+
+	result, err := runner.Send(t.Context(), "overflow-recovery", "please recover")
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if result.Content != "recovered" {
+		t.Fatalf("result content = %q, want recovered", result.Content)
+	}
+	if compactCalls.Load() != 1 {
+		t.Fatalf("compact calls = %d, want 1", compactCalls.Load())
+	}
+	if recoveryAgent.calls.Load() != 2 {
+		t.Fatalf("agent calls = %d, want 2", recoveryAgent.calls.Load())
+	}
+	if !recoveryAgent.sawCompact.Load() {
+		t.Fatal("retry did not rebuild from compacted session context")
+	}
+
+	sess, err := store.Load(t.Context(), "overflow-recovery")
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+	var userMessages int
+	for _, msg := range sess.Messages() {
+		if msg.Role == llm.RoleUser && msg.Content == "please recover" {
+			userMessages++
+		}
+	}
+	if userMessages != 1 {
+		t.Fatalf("user messages = %d, want 1", userMessages)
+	}
+}
+
+func TestRunnerOverflowRecoveryRebuildsBaseAgentRequest(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	provider := llm.NewFauxProvider(
+		"faux",
+		llm.FauxStep{Err: errTestOverflow},
+		llm.FauxStep{Content: "recovered"},
+	)
+	provider.IsContextOverflowFn = func(err error) bool {
+		return errors.Is(err, errTestOverflow)
+	}
+	a := agent.New("overflow-base", "System instructions.", "faux", provider, nil)
+	runner := NewRunner(
+		store,
+		a,
+		WithOverflowRecovery(
+			provider.IsContextOverflow,
+			func(ctx context.Context, sess *session.Session) error {
+				return sess.Append(ctx, session.NewContext(
+					sess.ID(),
+					session.ContextEntry{
+						Kind:      session.ContextKindSummary,
+						Placement: session.ContextPlacementPrefix,
+						Content:   "<conversation_summary>\ncompacted context\n</conversation_summary>",
+					},
+				))
+			},
+			1,
+		),
+	)
+
+	result, err := runner.Send(t.Context(), "overflow-base", "please recover")
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if result.Content != "recovered" {
+		t.Fatalf("result content = %q, want recovered", result.Content)
+	}
+
+	calls := provider.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("provider calls = %d, want 2", len(calls))
+	}
+	if requestContains(calls[0], "compacted context") {
+		t.Fatal("first provider request unexpectedly contained compacted context")
+	}
+	if !requestContains(calls[1], "compacted context") {
+		t.Fatal("retry provider request did not include compacted context")
+	}
+	if countRequestContent(calls[1], "please recover") != 1 {
+		t.Fatalf(
+			"retry request user message count = %d, want 1",
+			countRequestContent(calls[1], "please recover"),
+		)
+	}
+}
+
+func requestContains(req *llm.Request, content string) bool {
+	for _, msg := range req.Messages {
+		if strings.Contains(msg.Content, content) {
+			return true
+		}
+	}
+	return false
+}
+
+func countRequestContent(req *llm.Request, content string) int {
+	var count int
+	for _, msg := range req.Messages {
+		if msg.Content == content {
+			count++
+		}
+	}
+	return count
 }
 
 // TestRunner_Evict verifies that Evict removes the session from the registry

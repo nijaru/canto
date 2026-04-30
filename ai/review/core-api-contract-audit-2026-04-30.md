@@ -47,7 +47,7 @@ Deferred unless a core finding pulls it in:
 | C2 Runtime runner/session coordination | fixed, monitoring through Ion | `runtime/*.go` | Can queue wait, cancel, retry, and terminal events be proven from durable state? |
 | C3 Agent loop/tool lifecycle | fixed, monitoring through Ion | `agent/*.go`, `tool/*.go` | Are message/tool events ordered once, persisted once, and recoverable after errors/cancel? |
 | C4 Prompt/provider-visible request construction | fixed, monitoring through Ion | `prompt/*.go`, `llm/*.go` | Are system/developer/context/cache boundaries valid across providers? |
-| C5 Retry/compaction/budget | pending | `governor/*.go`, runtime integration | Does overflow/retry rebuild from session state and leave durable resumable traces? |
+| C5 Retry/compaction/budget | fixed, monitoring through Ion | `governor/*.go`, runtime integration | Does overflow/retry rebuild from session state and leave durable resumable traces? |
 | C6 Non-core quarantine | pending | `memory/`, `skill/`, `workspace/`, `safety/`, `coding/`, `x/*` | Which packages are deferred vs load-bearing for the native loop? |
 
 ## Recent Context
@@ -114,6 +114,19 @@ go test ./llm ./prompt -count=1
 go test ./runtime ./agent ./tool ./prompt ./llm ./governor -count=1
 go test -race ./llm ./prompt ./agent ./runtime -count=1
 go test ./... -count=1
+```
+
+### C5 Retry/Compaction/Budget
+
+- Confirmed the native overflow-recovery contract belongs at `runtime.Runner`, not only at provider-wrapper level. `runtime.WithOverflowRecovery` retries the whole agent turn after durable compaction, so the second provider request is rebuilt from `session.EffectiveMessages`.
+- Added runtime regression coverage for both the minimal runner contract and the real `agent.New`/provider request path. The tests prove compaction runs once for the overflow retry, the original user message is not duplicated, and the retry request contains the compacted session context.
+- Clarified `governor.RecoveryProvider` documentation: it retries the same already-built request and is only safe when the compact callback can make that request succeed without rebuild. Session-backed agents should use runtime-level overflow recovery.
+- Verification so far:
+
+```sh
+go test ./runtime -run 'TestRunnerOverflowRecovery' -count=1 -v
+go test ./runtime ./governor ./prompt ./llm ./agent -count=1
+go test -race ./runtime ./governor ./llm ./prompt -count=1
 ```
 
 ## Exit Criteria
