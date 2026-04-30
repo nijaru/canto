@@ -184,6 +184,12 @@ func (s *Session) historyEntryFromEvent(e *Event) (HistoryEntry, error) {
 }
 
 func (s *Session) latestDurableSnapshot() (CompactionSnapshot, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.latestDurableSnapshotLocked()
+}
+
+func (s *Session) latestDurableSnapshotLocked() (CompactionSnapshot, bool, error) {
 	for i := len(s.events) - 1; i >= 0; i-- {
 		snapshot, ok, err := s.events[i].ProjectionSnapshot()
 		if err != nil {

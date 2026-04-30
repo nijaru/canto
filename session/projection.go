@@ -78,19 +78,38 @@ func (s *ProjectionSnapshotter) snapshot(
 		return false, nil
 	}
 
-	rebuilder := s.rebuilderOrDefault()
-	entries, err := rebuilder.RebuildEntries(sess)
-	if err != nil {
-		return false, err
-	}
-	baseSnapshot, _, err := sess.latestDurableSnapshot()
+	snapshot, err := s.buildSnapshot(sess, trigger)
 	if err != nil {
 		return false, err
 	}
 
+	if err := sess.Append(ctx, NewProjectionSnapshot(sess.ID(), snapshot)); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *ProjectionSnapshotter) buildSnapshot(
+	sess *Session,
+	trigger ProjectionTrigger,
+) (ProjectionSnapshot, error) {
+	rebuilder := s.rebuilderOrDefault()
+
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	entries, err := rebuilder.rebuildEntriesLocked(sess)
+	if err != nil {
+		return ProjectionSnapshot{}, err
+	}
+	baseSnapshot, _, err := sess.latestDurableSnapshotLocked()
+	if err != nil {
+		return ProjectionSnapshot{}, err
+	}
+
 	cutoffEventID := ""
-	if events := sess.Events(); len(events) > 0 {
-		cutoffEventID = events[len(events)-1].ID.String()
+	if len(sess.events) > 0 {
+		cutoffEventID = sess.events[len(sess.events)-1].ID.String()
 	}
 
 	snapshot := ProjectionSnapshot{
@@ -105,11 +124,7 @@ func (s *ProjectionSnapshotter) snapshot(
 	if len(baseSnapshot.ModifiedFiles) > 0 {
 		snapshot.ModifiedFiles = append([]string(nil), baseSnapshot.ModifiedFiles...)
 	}
-
-	if err := sess.Append(ctx, NewProjectionSnapshot(sess.ID(), snapshot)); err != nil {
-		return false, err
-	}
-	return true, nil
+	return snapshot, nil
 }
 
 func (s *ProjectionSnapshotter) shouldSnapshot(

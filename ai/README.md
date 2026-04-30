@@ -38,6 +38,7 @@ All six sprints are complete. See [PLAN.md](PLAN.md) for full history.
 
 ## Supporting Design And Review (active)
 
+- [review/core-api-contract-audit-2026-04-30.md](review/core-api-contract-audit-2026-04-30.md) — active Canto core API contract audit under Ion validation
 - [review/ion-feedback-tracker-2026-04-28.md](review/ion-feedback-tracker-2026-04-28.md) — single active tracker for confirmed Ion-derived Canto framework issues
 - [design/authoring-surface.md](design/authoring-surface.md) — Phase 5 authoring design plus landed root builder and service-tool seams
 - [design/api-surface-review-canto-3p5m.md](design/api-surface-review-canto-3p5m.md) — API surface DX findings and friction points (Phase 5)

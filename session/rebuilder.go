@@ -44,7 +44,7 @@ func (r *Rebuilder) RebuildMessages(sess *Session) ([]llm.Message, error) {
 }
 
 func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) {
-	snapshot, ok, err := sess.latestDurableSnapshot()
+	snapshot, ok, err := sess.latestDurableSnapshotLocked()
 	if err != nil {
 		return nil, err
 	}
@@ -195,6 +195,7 @@ func normalizeEffectiveEntries(entries []HistoryEntry) []HistoryEntry {
 
 func normalizeEffectiveEntry(entry HistoryEntry) (HistoryEntry, bool) {
 	entry.Message = normalizeTranscriptMessage(entry.Message)
+	entry.Tool = normalizeToolHistory(entry.Message, entry.Tool)
 	if entry.EventType == "" {
 		inferLegacyContextMarkers(&entry)
 	}
@@ -210,6 +211,23 @@ func normalizeEffectiveEntry(entry HistoryEntry) (HistoryEntry, bool) {
 		return HistoryEntry{}, false
 	}
 	return entry, true
+}
+
+func normalizeToolHistory(msg llm.Message, tool *ToolHistory) *ToolHistory {
+	if msg.Role != llm.RoleTool || msg.ToolID == "" || tool == nil {
+		return nil
+	}
+	if tool.ID != "" && tool.ID != msg.ToolID {
+		return nil
+	}
+	normalized := *tool
+	if normalized.ID == "" {
+		normalized.ID = msg.ToolID
+	}
+	if normalized.Name == "" {
+		normalized.Name = msg.Name
+	}
+	return &normalized
 }
 
 type toolLifecycle struct {
@@ -308,9 +326,20 @@ func mergeToolHistory(existing *ToolHistory, msg llm.Message, record toolLifecyc
 }
 
 func validModelMessage(msg llm.Message) bool {
+	if msg.Role != llm.RoleSystem &&
+		msg.Role != llm.RoleDeveloper &&
+		msg.Role != llm.RoleUser &&
+		msg.Role != llm.RoleAssistant &&
+		msg.Role != llm.RoleTool {
+		return false
+	}
 	if msg.Role != llm.RoleAssistant {
 		return true
 	}
+	return assistantMessageHasPayload(msg)
+}
+
+func assistantMessageHasPayload(msg llm.Message) bool {
 	return strings.TrimSpace(msg.Content) != "" ||
 		strings.TrimSpace(msg.Reasoning) != "" ||
 		len(msg.ThinkingBlocks) > 0 ||

@@ -15,7 +15,7 @@ func TestWatch_ReceivesEvents(t *testing.T) {
 	sub := s.Watch(ctx)
 	defer sub.Close()
 
-	e := NewEvent("sess-1", MessageAdded, map[string]string{"role": "user"})
+	e := NewUserMessage("sess-1", "hello")
 	_ = s.Append(context.Background(), e)
 
 	select {
@@ -38,7 +38,7 @@ func TestWatch_MultipleSubscribers(t *testing.T) {
 	sub2 := s.Watch(ctx)
 	defer sub2.Close()
 
-	e := NewEvent("sess-2", MessageAdded, nil)
+	e := NewEvent("sess-2", Handoff, nil)
 	_ = s.Append(context.Background(), e)
 
 	for _, ch := range []<-chan Event{sub1.Events(), sub2.Events()} {
@@ -93,7 +93,7 @@ func TestWatch_SlowSubscriberDoesNotBlock(t *testing.T) {
 		// Fill beyond buffer — Append must not block.
 		for i := range subscriberBufSize + 10 {
 			_ = i
-			_ = s.Append(context.Background(), NewEvent("sess-4", MessageAdded, nil))
+			_ = s.Append(context.Background(), NewEvent("sess-4", Handoff, nil))
 		}
 		close(done)
 	}()
@@ -131,7 +131,7 @@ func TestWatch_ConcurrentAppendCancel(t *testing.T) {
 			for range eventsPerWriter {
 				_ = s.Append(
 					context.Background(),
-					NewEvent("sess-race", MessageAdded, nil),
+					NewEvent("sess-race", Handoff, nil),
 				)
 			}
 		}()
@@ -150,7 +150,7 @@ func TestWatch_EventsBeforeWatchNotReceived(t *testing.T) {
 	s := New("sess-6")
 
 	// Append before subscribe.
-	_ = s.Append(context.Background(), NewEvent("sess-6", MessageAdded, nil))
+	_ = s.Append(context.Background(), NewEvent("sess-6", Handoff, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -159,7 +159,7 @@ func TestWatch_EventsBeforeWatchNotReceived(t *testing.T) {
 	defer sub.Close()
 
 	// Append after subscribe.
-	e := NewEvent("sess-6", MessageAdded, nil)
+	e := NewEvent("sess-6", Handoff, nil)
 	_ = s.Append(context.Background(), e)
 
 	select {

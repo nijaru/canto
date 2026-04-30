@@ -27,7 +27,10 @@ func AttachWriteThrough(ctx context.Context, sess *Session, store Store) func() 
 		defer close(done)
 		for {
 			select {
-			case e := <-ch:
+			case e, ok := <-ch:
+				if !ok {
+					return
+				}
 				if err := store.Save(context.Background(), e); err != nil {
 					slog.Warn("write-through save failed",
 						"session_id", e.SessionID,

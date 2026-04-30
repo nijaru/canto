@@ -53,6 +53,8 @@ var errEmptyAssistantMessage = errors.New(
 	"session append: assistant message has no content, reasoning, thinking blocks, or tool calls",
 )
 
+var errInvalidMessageRole = errors.New("session append: message has invalid role")
+
 var errUnmatchedToolMessage = errors.New(
 	"session append: tool message has no matching pending assistant tool call",
 )
@@ -395,7 +397,16 @@ func validateWritableEvent(e *Event) error {
 	if err != nil {
 		return err
 	}
-	if !validModelMessage(*msg) {
+	return validateModelMessage(*msg)
+}
+
+func validateModelMessage(msg llm.Message) error {
+	switch msg.Role {
+	case llm.RoleSystem, llm.RoleDeveloper, llm.RoleUser, llm.RoleAssistant, llm.RoleTool:
+	default:
+		return errInvalidMessageRole
+	}
+	if msg.Role == llm.RoleAssistant && !assistantMessageHasPayload(msg) {
 		return errEmptyAssistantMessage
 	}
 	return nil

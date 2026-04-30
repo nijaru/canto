@@ -93,3 +93,40 @@ func TestProjectionSnapshotterSnapshotIfNeededUsesAgePolicy(t *testing.T) {
 		t.Fatal("expected age policy to trigger a snapshot")
 	}
 }
+
+func TestProjectionSnapshotterSnapshotAllowsInterleavedAppendBeforeSnapshotEvent(t *testing.T) {
+	sess := New("projection-interleaved")
+	snapshotter := NewProjectionSnapshotter()
+
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "one",
+	})); err != nil {
+		t.Fatalf("append first message: %v", err)
+	}
+
+	snapshot, err := snapshotter.buildSnapshot(sess, ProjectionTriggerManual)
+	if err != nil {
+		t.Fatalf("build snapshot: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleAssistant,
+		Content: "interleaved",
+	})); err != nil {
+		t.Fatalf("append interleaved message: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewProjectionSnapshot(sess.ID(), snapshot)); err != nil {
+		t.Fatalf("append snapshot: %v", err)
+	}
+
+	messages, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("messages len = %d, want 2: %#v", len(messages), messages)
+	}
+	if messages[0].Content != "one" || messages[1].Content != "interleaved" {
+		t.Fatalf("unexpected messages after interleaved snapshot append: %#v", messages)
+	}
+}

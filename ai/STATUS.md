@@ -1,9 +1,9 @@
 # Status
 
 **Phase:** Phase 5: M1 stabilization before Ion rebuild
-**Focus:** M1 stabilization under Ion validation. Current pass is framework-owned core-loop correctness exposed by Ion: session append/projection validity, runner/agent terminal states, tool durability, prompt/provider history, retry, and compaction reliability.
+**Focus:** `canto-x5po` Canto core API contract audit under Ion validation. Current pass is framework-owned core-loop correctness: session append/projection validity, runner/agent terminal states, tool durability, prompt/provider history, retry, and compaction reliability.
 **Blockers:** None.
-**Updated:** 2026-04-28
+**Updated:** 2026-04-30
 
 ## Context
 
@@ -14,6 +14,7 @@ Phase 5 still has SOTA and DX inputs, but the active operating mode is now Canto
 - **Canto owns mechanism:** durable sessions, prompt/runtime boundaries, tool execution, workspace capability, compaction, approval state-machine seams, provider normalization, and examples that prove the pieces compose.
 - **Ion owns product policy:** terminal UX, task/planner behavior, approval delivery and thresholds, shell classifier heuristics, memory aggressiveness, command catalog choices, and end-user workflow.
 - **Ion validates Canto externally:** Ion should expose missing or awkward primitives, but Ion work is not active in this repo. Do not keep standing Ion tasks in Canto; add a Canto task only when separate Ion work identifies a concrete framework issue.
+- **Canto API audit:** active core-contract review lives in `ai/review/core-api-contract-audit-2026-04-30.md`; use it to track which core packages have actually been reviewed.
 - **Ion feedback tracker:** confirmed Ion-derived framework issues live in `ai/review/ion-feedback-tracker-2026-04-28.md`. `ai/ion-framework-issues.md` is now only a legacy pointer.
 - **Ion as acceptance test:** defer public-framework expansion, SOTA primitives, and release/docs polish while Ion is exposing native core-loop failures. Fix concrete framework defects here, then import the Canto revision into Ion and verify there.
 
@@ -30,8 +31,8 @@ Current authoring-surface inputs:
 
 **Ion validation gate:**
 
-- Active work comes from Ion's core-loop audit. Do not add broad Canto roadmap work unless Ion identifies a concrete framework-owned issue.
-- Current local finding under review: `session.Append` should reject future empty/no-payload assistant `MessageAdded` rows at the session boundary, while projection sanitation remains for legacy/corrupt history.
+- Active work is `canto-x5po`, a focused Canto core API contract audit under Ion validation. Do not add broad Canto roadmap work unless the audit or Ion identifies a concrete framework-owned issue.
+- Start with `session/`: provider-visible history validity, host-facing `EffectiveEntries`, snapshot metadata, and append-time rejection of invalid assistant rows.
 
 **Release/doc gate:**
 
@@ -49,7 +50,8 @@ Current authoring-surface inputs:
 
 ## Recently landed
 
-- Ion feedback tracking cleanup — stale Ion issue notes were consolidated into `ai/review/ion-feedback-tracker-2026-04-28.md`; there are no open confirmed Ion-derived Canto framework issues as of 2026-04-28.
+- Canto/Ion tool replay boundary — `09140f7 feat(session): expose tool lifecycle metadata` added `HistoryEntry.Tool` projection metadata for host replay; Ion imported it in `ec5a548 refactor(storage): use canto tool projection`, removing Ion's raw Canto event scan for tool titles/errors.
+- Ion feedback tracking cleanup — stale Ion issue notes were consolidated into `ai/review/ion-feedback-tracker-2026-04-28.md`; that file remains the concrete Ion-feedback intake while `core-api-contract-audit-2026-04-30.md` tracks the broader Canto core review.
 - `canto-h9vq` — Ion compaction reliability feedback fixed: working-set extraction now recognizes common coding-agent tool names (`read`, `list`, `grep`, `write`) and `file_path` arguments, so durable compaction snapshots preserve files from real Ion sessions. Focused governor tests and `go test ./... -count=1` pass.
 - current Ion feedback slice — agent write-side assistant payload validation now matches effective-history projection: whitespace-only assistant content/reasoning is not durably appended, reasoning-only payloads are preserved, and provider errors leave durable `TurnCompleted` error data. `go test ./...` passes.
 - `canto-on6q` — RetryProvider now supports retry-until-context-cancel and emits retry callbacks so hosts can show/persist transient provider retry status without owning backoff mechanics.

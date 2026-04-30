@@ -100,7 +100,7 @@ func TestBudgetGuard(t *testing.T) {
 	pr := &mockGuardProvider{}
 	sess := session.New("test-session")
 
-	e := session.NewEvent(sess.ID(), session.MessageAdded, nil)
+	e := session.NewEvent(sess.ID(), session.Handoff, nil)
 	e.Cost = 5.0
 	_ = sess.Append(ctx, e)
 
@@ -115,7 +115,7 @@ func TestBudgetGuardExceeded(t *testing.T) {
 	pr := &mockGuardProvider{}
 	sess := session.New("test-session")
 
-	e := session.NewEvent(sess.ID(), session.MessageAdded, nil)
+	e := session.NewEvent(sess.ID(), session.Handoff, nil)
 	e.Cost = 5.0
 	_ = sess.Append(ctx, e)
 
@@ -134,7 +134,7 @@ func TestBudgetGuardNoLimit(t *testing.T) {
 	pr := &mockGuardProvider{}
 	sess := session.New("test-session")
 
-	e := session.NewEvent(sess.ID(), session.MessageAdded, nil)
+	e := session.NewEvent(sess.ID(), session.Handoff, nil)
 	e.Cost = 5.0
 	_ = sess.Append(ctx, e)
 
@@ -149,7 +149,7 @@ func TestBudgetGuardExactLimit(t *testing.T) {
 	pr := &mockGuardProvider{}
 	sess := session.New("test-session")
 
-	e := session.NewEvent(sess.ID(), session.MessageAdded, nil)
+	e := session.NewEvent(sess.ID(), session.Handoff, nil)
 	e.Cost = 1.0
 	_ = sess.Append(ctx, e)
 

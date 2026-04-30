@@ -67,6 +67,20 @@ func TestSessionAppendRejectsEmptyAssistantMessage(t *testing.T) {
 	}
 }
 
+func TestSessionAppendRejectsUnknownMessageRole(t *testing.T) {
+	sess := New("append-unknown-role")
+
+	err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Content: "missing role",
+	}))
+	if !errors.Is(err, errInvalidMessageRole) {
+		t.Fatalf("append error = %v, want %v", err, errInvalidMessageRole)
+	}
+	if len(sess.Events()) != 0 {
+		t.Fatalf("events = %#v, want none", sess.Events())
+	}
+}
+
 func TestSessionAppendPreservesAssistantPayloadKinds(t *testing.T) {
 	sess := New("append-assistant-payloads")
 	call := llm.Call{ID: "call-1", Type: "function"}

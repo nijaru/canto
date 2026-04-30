@@ -63,6 +63,27 @@ func TestRebuilderDropsEmptyAssistantMessagesFromRawHistory(t *testing.T) {
 	}
 }
 
+func TestRebuilderDropsUnknownRoleMessagesFromRawHistory(t *testing.T) {
+	sess := New("raw-unknown-role")
+	appendLegacyEvent(sess, NewMessage(sess.ID(), llm.Message{
+		Content: "missing role",
+	}))
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "kept",
+	})); err != nil {
+		t.Fatalf("append message: %v", err)
+	}
+
+	messages, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	if len(messages) != 1 || messages[0].Content != "kept" {
+		t.Fatalf("unexpected effective messages: %#v", messages)
+	}
+}
+
 func TestRebuilderPreservesAssistantPayloadKinds(t *testing.T) {
 	call := llm.Call{ID: "call-1", Type: "function"}
 	call.Function.Name = "read"
@@ -295,6 +316,118 @@ func TestRebuilderDropsEmptyAssistantMessagesFromSnapshots(t *testing.T) {
 		messages[1].Content != "kept" ||
 		messages[2].Content != "after" {
 		t.Fatalf("unexpected effective messages: %#v", messages)
+	}
+}
+
+func TestRebuilderSanitizesSnapshotToolMetadata(t *testing.T) {
+	sess := New("snapshot-tool-metadata")
+	call := llm.Call{ID: "call-1", Type: "function"}
+	call.Function.Name = "read"
+
+	assistant := llm.Message{Role: llm.RoleAssistant, Calls: []llm.Call{call}}
+	toolResult := llm.Message{
+		Role:    llm.RoleTool,
+		ToolID:  "call-1",
+		Name:    "read",
+		Content: "result",
+	}
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: "before"},
+		assistant,
+		toolResult,
+	} {
+		if err := sess.Append(t.Context(), NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+
+	events := sess.Events()
+	snapshot := ProjectionSnapshot{
+		Strategy:      string(ProjectionTriggerManual),
+		CutoffEventID: events[2].ID.String(),
+		Entries: []HistoryEntry{
+			{
+				EventID: events[0].ID.String(),
+				Message: llm.Message{Role: llm.RoleUser, Content: "before"},
+				Tool:    &ToolHistory{ID: "stale", Name: "bash"},
+			},
+			{
+				EventID: events[1].ID.String(),
+				Message: assistant,
+				Tool:    &ToolHistory{ID: "stale", Name: "bash"},
+			},
+			{
+				EventID: events[2].ID.String(),
+				Message: toolResult,
+				Tool:    &ToolHistory{ID: "wrong", Name: "bash"},
+			},
+		},
+	}
+	if err := sess.Append(t.Context(), NewProjectionSnapshot(sess.ID(), snapshot)); err != nil {
+		t.Fatalf("append projection snapshot: %v", err)
+	}
+
+	entries, err := sess.EffectiveEntries()
+	if err != nil {
+		t.Fatalf("EffectiveEntries: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("entries len = %d, want 3: %#v", len(entries), entries)
+	}
+	if entries[0].Tool != nil || entries[1].Tool != nil {
+		t.Fatalf("non-tool entries kept tool metadata: %#v", entries)
+	}
+	if entries[2].Tool != nil {
+		t.Fatalf("mismatched tool metadata survived: %#v", entries[2].Tool)
+	}
+}
+
+func TestRebuilderNormalizesSnapshotToolMetadata(t *testing.T) {
+	sess := New("snapshot-tool-metadata-normalized")
+	call := llm.Call{ID: "call-1", Type: "function"}
+	call.Function.Name = "read"
+
+	assistant := llm.Message{Role: llm.RoleAssistant, Calls: []llm.Call{call}}
+	toolResult := llm.Message{
+		Role:    llm.RoleTool,
+		ToolID:  "call-1",
+		Name:    "read",
+		Content: "result",
+	}
+	for _, msg := range []llm.Message{
+		assistant,
+		toolResult,
+	} {
+		if err := sess.Append(t.Context(), NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+
+	events := sess.Events()
+	snapshot := ProjectionSnapshot{
+		Strategy:      string(ProjectionTriggerManual),
+		CutoffEventID: events[1].ID.String(),
+		Entries: []HistoryEntry{
+			{EventID: events[0].ID.String(), Message: assistant},
+			{
+				EventID: events[1].ID.String(),
+				Message: toolResult,
+				Tool:    &ToolHistory{Arguments: `{"file_path":"AGENTS.md"}`},
+			},
+		},
+	}
+	if err := sess.Append(t.Context(), NewProjectionSnapshot(sess.ID(), snapshot)); err != nil {
+		t.Fatalf("append projection snapshot: %v", err)
+	}
+
+	entries, err := sess.EffectiveEntries()
+	if err != nil {
+		t.Fatalf("EffectiveEntries: %v", err)
+	}
+	tool := entries[1].Tool
+	if tool == nil || tool.ID != "call-1" || tool.Name != "read" ||
+		tool.Arguments != `{"file_path":"AGENTS.md"}` {
+		t.Fatalf("unexpected normalized tool metadata: %#v", tool)
 	}
 }
 

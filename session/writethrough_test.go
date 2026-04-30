@@ -47,8 +47,8 @@ func TestAttachWriteThrough_SavesEvents(t *testing.T) {
 	cancel := AttachWriteThrough(context.Background(), sess, store)
 	defer cancel()
 
-	_ = sess.Append(context.Background(), NewEvent("wt-1", MessageAdded, nil))
-	_ = sess.Append(context.Background(), NewEvent("wt-1", MessageAdded, nil))
+	_ = sess.Append(context.Background(), NewEvent("wt-1", Handoff, nil))
+	_ = sess.Append(context.Background(), NewEvent("wt-1", Handoff, nil))
 
 	// Give the goroutine time to save.
 	deadline := time.Now().Add(time.Second)
@@ -74,7 +74,7 @@ func TestAttachWriteThrough_CancelStops(t *testing.T) {
 
 	// Append after cancel — should NOT be saved.
 	time.Sleep(20 * time.Millisecond)
-	_ = sess.Append(context.Background(), NewEvent("wt-2", MessageAdded, nil))
+	_ = sess.Append(context.Background(), NewEvent("wt-2", Handoff, nil))
 	time.Sleep(20 * time.Millisecond)
 
 	if n := len(store.saved()); n != 0 {
@@ -93,7 +93,7 @@ func TestAttachWriteThrough_EventsBeforeAttachNotSaved(t *testing.T) {
 	defer cancel()
 
 	// Append after attaching.
-	_ = sess.Append(context.Background(), NewEvent("wt-3", MessageAdded, nil))
+	_ = sess.Append(context.Background(), NewEvent("wt-3", Handoff, nil))
 
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
@@ -107,8 +107,8 @@ func TestAttachWriteThrough_EventsBeforeAttachNotSaved(t *testing.T) {
 	if len(saved) != 1 {
 		t.Fatalf("saved %d events, want 1 (only post-attach)", len(saved))
 	}
-	if saved[0].Type != MessageAdded {
-		t.Fatalf("saved event type = %q, want message_added", saved[0].Type)
+	if saved[0].Type != Handoff {
+		t.Fatalf("saved event type = %q, want handoff", saved[0].Type)
 	}
 }
 
@@ -124,7 +124,7 @@ func TestAttachWriteThrough_CancelDuringConcurrentAppendDoesNotPanic(t *testing.
 		go func() {
 			defer wg.Done()
 			for range 50 {
-				_ = sess.Append(context.Background(), NewEvent("wt-race", MessageAdded, nil))
+				_ = sess.Append(context.Background(), NewEvent("wt-race", Handoff, nil))
 			}
 		}()
 	}
@@ -132,4 +132,21 @@ func TestAttachWriteThrough_CancelDuringConcurrentAppendDoesNotPanic(t *testing.
 	time.Sleep(5 * time.Millisecond)
 	cancel()
 	wg.Wait()
+}
+
+func TestAttachWriteThrough_CancelDoesNotSaveZeroEvent(t *testing.T) {
+	sess := New("wt-zero")
+	store := &memStore{}
+
+	cancel := AttachWriteThrough(context.Background(), sess, store)
+	if err := sess.Append(context.Background(), NewEvent("wt-zero", Handoff, nil)); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	cancel()
+
+	for _, event := range store.saved() {
+		if event.SessionID == "" || event.Type == "" {
+			t.Fatalf("saved zero event after cancel: %#v", event)
+		}
+	}
 }
