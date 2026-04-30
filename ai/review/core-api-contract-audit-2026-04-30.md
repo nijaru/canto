@@ -127,6 +127,7 @@ go test ./... -count=1
 go test ./runtime -run 'TestRunnerOverflowRecovery' -count=1 -v
 go test ./runtime ./governor ./prompt ./llm ./agent -count=1
 go test -race ./runtime ./governor ./llm ./prompt -count=1
+go test ./... -count=1
 ```
 
 ## Exit Criteria
