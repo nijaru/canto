@@ -132,6 +132,7 @@ func (c *LocalCoordinator) Enqueue(
 func (c *LocalCoordinator) Await(ctx context.Context, ticket Ticket) (Lease, error) {
 	for {
 		if err := ctx.Err(); err != nil {
+			c.cancelQueuedTicket(ticket)
 			return Lease{}, err
 		}
 
@@ -159,10 +160,36 @@ func (c *LocalCoordinator) Await(ctx context.Context, ticket Ticket) (Lease, err
 
 		select {
 		case <-ctx.Done():
+			c.cancelQueuedTicket(ticket)
 			return Lease{}, ctx.Err()
 		case <-waitCh:
 		case <-timer:
 		}
+	}
+}
+
+func (c *LocalCoordinator) cancelQueuedTicket(ticket Ticket) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	lane, ok := c.lanes[ticket.SessionID]
+	if !ok {
+		return
+	}
+	if lane.active != nil && lane.active.lease.Ticket.RequestID == ticket.RequestID {
+		return
+	}
+	for i, entry := range lane.queue {
+		if entry.ticket.RequestID != ticket.RequestID {
+			continue
+		}
+		lane.queue = append(lane.queue[:i], lane.queue[i+1:]...)
+		if len(lane.queue) == 0 && lane.active == nil {
+			delete(c.lanes, ticket.SessionID)
+			return
+		}
+		lane.notifyLocked()
+		return
 	}
 }
 

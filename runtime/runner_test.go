@@ -681,6 +681,65 @@ func TestRunnerCoordinator_RenewsLeaseForLongRunningWork(t *testing.T) {
 	}
 }
 
+func TestRunnerCoordinator_WaitTimeoutDoesNotPoisonLane(t *testing.T) {
+	store, err := session.NewSQLiteStore(t.TempDir() + "/coord-timeout.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	started := make(chan string, 3)
+	release := make(chan struct{})
+	var current int32
+	var maxSeen int32
+	runner := NewRunner(
+		store,
+		&coordinatorBlockingAgent{
+			started: started,
+			release: release,
+			current: &current,
+			maxSeen: &maxSeen,
+		},
+		WithCoordinator(NewLocalCoordinator()),
+		WithWaitTimeout(10*time.Millisecond),
+	)
+	defer runner.Close()
+
+	firstErr := make(chan error, 1)
+	go func() {
+		_, err := runner.Run(t.Context(), "coord-timeout")
+		firstErr <- err
+	}()
+	select {
+	case <-started:
+	case err := <-firstErr:
+		t.Fatalf("first Run finished before start: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first run to start")
+	}
+
+	if _, err := runner.Run(t.Context(), "coord-timeout"); !errors.Is(
+		err,
+		context.DeadlineExceeded,
+	) {
+		t.Fatalf("second Run error = %v, want context deadline exceeded", err)
+	}
+
+	close(release)
+	select {
+	case err := <-firstErr:
+		if err != nil {
+			t.Fatalf("first Run: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first run to finish")
+	}
+
+	if _, err := runner.Run(t.Context(), "coord-timeout"); err != nil {
+		t.Fatalf("third Run after timed-out queued turn: %v", err)
+	}
+}
+
 func TestRunnerDelegate_UsesSharedChildRunner(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {

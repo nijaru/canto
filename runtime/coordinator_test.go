@@ -212,3 +212,44 @@ func TestLocalCoordinator_NackKeepsRequestQueued(t *testing.T) {
 		t.Fatalf("retry attempt = %d, want 2", retried.Attempt)
 	}
 }
+
+func TestLocalCoordinator_CanceledQueuedTicketDoesNotBlockLane(t *testing.T) {
+	coord := NewLocalCoordinator()
+	coord.SetLeaseTTL(100 * time.Millisecond)
+
+	first, err := coord.Enqueue(t.Context(), "s1")
+	if err != nil {
+		t.Fatalf("enqueue first: %v", err)
+	}
+	second, err := coord.Enqueue(t.Context(), "s1")
+	if err != nil {
+		t.Fatalf("enqueue second: %v", err)
+	}
+
+	firstLease, err := coord.Await(t.Context(), first)
+	if err != nil {
+		t.Fatalf("await first: %v", err)
+	}
+
+	waitCtx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer cancel()
+	if _, err := coord.Await(waitCtx, second); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("await canceled queued ticket error = %v, want context deadline exceeded", err)
+	}
+
+	third, err := coord.Enqueue(t.Context(), "s1")
+	if err != nil {
+		t.Fatalf("enqueue third: %v", err)
+	}
+	if err := coord.Ack(t.Context(), firstLease, Result{Status: ResultStatusCompleted}); err != nil {
+		t.Fatalf("ack first: %v", err)
+	}
+
+	thirdLease, err := coord.Await(t.Context(), third)
+	if err != nil {
+		t.Fatalf("await third: %v", err)
+	}
+	if thirdLease.Ticket.RequestID != third.RequestID {
+		t.Fatalf("lease request = %q, want third %q", thirdLease.Ticket.RequestID, third.RequestID)
+	}
+}
