@@ -53,13 +53,17 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 		if err != nil {
 			return nil, err
 		}
+		entries, err = recoverCompletedToolResults(entries, sess.events)
+		if err != nil {
+			return nil, err
+		}
 		return withToolHistory(
 			arrangePromptEntries(normalizeEffectiveEntries(entries)),
 			sess.events,
 		)
 	}
 
-	entries := normalizeEffectiveEntries(slices.Clone(snapshot.entries()))
+	entries := slices.Clone(snapshot.entries())
 	if fileEntry, ok := r.fileContextEntry(snapshot); ok {
 		entries = insertAfterDurableContextEntries(entries, fileEntry)
 	}
@@ -81,11 +85,6 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 		if err != nil {
 			return nil, fmt.Errorf("effective history: decode message %s: %w", e.ID, err)
 		}
-		var ok bool
-		entry, ok = normalizeEffectiveEntry(entry)
-		if !ok {
-			continue
-		}
 		entries = append(entries, entry)
 	}
 
@@ -95,7 +94,11 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 			snapshot.CutoffEventID,
 		)
 	}
-	return withToolHistory(arrangePromptEntries(entries), sess.events)
+	entries, err = recoverCompletedToolResults(entries, sess.events)
+	if err != nil {
+		return nil, err
+	}
+	return withToolHistory(arrangePromptEntries(normalizeEffectiveEntries(entries)), sess.events)
 }
 
 func (r *Rebuilder) fileContextEntry(snapshot CompactionSnapshot) (HistoryEntry, bool) {
@@ -233,11 +236,103 @@ func normalizeToolHistory(msg llm.Message, tool *ToolHistory) *ToolHistory {
 type toolLifecycle struct {
 	started      ToolStartedData
 	completed    ToolCompletedData
+	completedID  string
 	hasStarted   bool
 	hasCompleted bool
 }
 
-func withToolHistory(entries []HistoryEntry, events []Event) ([]HistoryEntry, error) {
+func recoverCompletedToolResults(entries []HistoryEntry, events []Event) ([]HistoryEntry, error) {
+	lifecycle, err := toolLifecycleByID(events)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]HistoryEntry, 0, len(entries))
+	for i := 0; i < len(entries); {
+		entry := entries[i]
+		msg := normalizeTranscriptMessage(entry.Message)
+		if msg.Role != llm.RoleAssistant || len(msg.Calls) == 0 {
+			out = append(out, entry)
+			i++
+			continue
+		}
+
+		existing := make(map[string][]HistoryEntry)
+		j := i + 1
+		for j < len(entries) {
+			next := entries[j]
+			next.Message = normalizeTranscriptMessage(next.Message)
+			if next.Message.Role != llm.RoleTool {
+				break
+			}
+			if next.Message.ToolID != "" {
+				existing[next.Message.ToolID] = append(existing[next.Message.ToolID], next)
+			}
+			j++
+		}
+
+		assistant := entry
+		keptCalls := make([]llm.Call, 0, len(msg.Calls))
+		toolEntries := make([]HistoryEntry, 0, len(msg.Calls))
+		for _, call := range msg.Calls {
+			if call.ID == "" {
+				continue
+			}
+			queue := existing[call.ID]
+			if len(queue) > 0 {
+				toolEntries = append(toolEntries, queue[0])
+				existing[call.ID] = queue[1:]
+				keptCalls = append(keptCalls, call)
+				continue
+			}
+			record, ok := lifecycle[call.ID]
+			if !ok || !record.hasCompleted {
+				continue
+			}
+			toolEntries = append(toolEntries, toolEntryFromLifecycle(call, record))
+			keptCalls = append(keptCalls, call)
+		}
+		assistant.Message.Calls = keptCalls
+		out = append(out, assistant)
+		out = append(out, toolEntries...)
+		i = j
+	}
+	return out, nil
+}
+
+func toolEntryFromLifecycle(call llm.Call, record toolLifecycle) HistoryEntry {
+	name := record.completed.Tool
+	if name == "" {
+		name = record.started.Tool
+	}
+	if name == "" {
+		name = call.Function.Name
+	}
+	content := record.completed.Output
+	if record.completed.Error != "" && !strings.Contains(content, record.completed.Error) {
+		content = strings.TrimSpace(
+			strings.TrimSpace(content) + "\n" + fmt.Sprintf("Error: %s", record.completed.Error),
+		)
+	}
+	tool := mergeToolHistory(nil, llm.Message{
+		Role:   llm.RoleTool,
+		ToolID: call.ID,
+		Name:   name,
+	}, record)
+	return HistoryEntry{
+		EventID:   record.completedID,
+		EventType: ToolCompleted,
+		Message: llm.Message{
+			Role:    llm.RoleTool,
+			ToolID:  call.ID,
+			Name:    name,
+			Content: content,
+		},
+		Tool: &tool,
+	}
+}
+
+func toolLifecycleByID(events []Event) (map[string]toolLifecycle, error) {
 	lifecycle := make(map[string]toolLifecycle)
 	for i := range events {
 		e := &events[i]
@@ -264,9 +359,18 @@ func withToolHistory(entries []HistoryEntry, events []Event) ([]HistoryEntry, er
 			}
 			record := lifecycle[data.ID]
 			record.completed = data
+			record.completedID = e.ID.String()
 			record.hasCompleted = true
 			lifecycle[data.ID] = record
 		}
+	}
+	return lifecycle, nil
+}
+
+func withToolHistory(entries []HistoryEntry, events []Event) ([]HistoryEntry, error) {
+	lifecycle, err := toolLifecycleByID(events)
+	if err != nil {
+		return nil, err
 	}
 	if len(lifecycle) == 0 {
 		return entries, nil

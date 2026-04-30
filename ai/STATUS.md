@@ -50,6 +50,7 @@ Current authoring-surface inputs:
 
 ## Recently landed
 
+- Session rebuilder recovery slice is complete locally and awaiting a Canto commit/import into Ion: `EffectiveEntries` can synthesize a missing provider-visible tool result from durable `ToolCompleted` lifecycle data, and dangling assistant tool calls with no matching or recoverable result are dropped so replay cannot poison a follow-up provider turn. Focused rebuilder tests and `go test ./... -count=1` pass.
 - Canto/Ion tool replay boundary — `09140f7 feat(session): expose tool lifecycle metadata` added `HistoryEntry.Tool` projection metadata for host replay; Ion imported it in `ec5a548 refactor(storage): use canto tool projection`, removing Ion's raw Canto event scan for tool titles/errors.
 - Ion feedback tracking cleanup — stale Ion issue notes were consolidated into `ai/review/ion-feedback-tracker-2026-04-28.md`; that file remains the concrete Ion-feedback intake while `core-api-contract-audit-2026-04-30.md` tracks the broader Canto core review.
 - `canto-h9vq` — Ion compaction reliability feedback fixed: working-set extraction now recognizes common coding-agent tool names (`read`, `list`, `grep`, `write`) and `file_path` arguments, so durable compaction snapshots preserve files from real Ion sessions. Focused governor tests and `go test ./... -count=1` pass.

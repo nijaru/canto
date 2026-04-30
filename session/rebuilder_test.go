@@ -169,10 +169,13 @@ func TestRebuilderDropsLateToolMessageAfterTurnBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EffectiveMessages: %v", err)
 	}
-	if len(messages) != 2 {
-		t.Fatalf("expected late tool result to be omitted, got %#v", messages)
+	if len(messages) != 1 {
+		t.Fatalf(
+			"expected dangling assistant and late tool result to be omitted, got %#v",
+			messages,
+		)
 	}
-	if messages[0].Role != llm.RoleAssistant || messages[1].Role != llm.RoleUser {
+	if messages[0].Role != llm.RoleUser {
 		t.Fatalf("unexpected effective history: %#v", messages)
 	}
 }
@@ -267,6 +270,87 @@ func TestRebuilderAnnotatesToolErrorsFromLifecycleEvents(t *testing.T) {
 	tool := entries[1].Tool
 	if tool == nil || !tool.IsError || tool.Error != "exit status 1" {
 		t.Fatalf("unexpected tool error metadata: %#v", tool)
+	}
+}
+
+func TestRebuilderRecoversMissingToolMessageFromCompletedLifecycle(t *testing.T) {
+	call := llm.Call{ID: "call-recovered", Type: "function"}
+	call.Function.Name = "read"
+	call.Function.Arguments = `{"file_path":"AGENTS.md"}`
+
+	sess := New("tool-message-recovery")
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:  llm.RoleAssistant,
+		Calls: []llm.Call{call},
+	})); err != nil {
+		t.Fatalf("append assistant call: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewToolStartedEvent(sess.ID(), ToolStartedData{
+		Tool:           "read",
+		Arguments:      `{"file_path":"AGENTS.md"}`,
+		ID:             "call-recovered",
+		IdempotencyKey: "turn-1:call-recovered",
+	})); err != nil {
+		t.Fatalf("append tool started: %v", err)
+	}
+	completed := NewToolCompletedEvent(sess.ID(), ToolCompletedData{
+		Tool:           "read",
+		ID:             "call-recovered",
+		IdempotencyKey: "turn-1:call-recovered",
+		Output:         "file contents",
+	})
+	if err := sess.Append(t.Context(), completed); err != nil {
+		t.Fatalf("append tool completed: %v", err)
+	}
+
+	entries, err := sess.EffectiveEntries()
+	if err != nil {
+		t.Fatalf("EffectiveEntries: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entries len = %d, want 2: %#v", len(entries), entries)
+	}
+	if entries[1].EventID != completed.ID.String() || entries[1].EventType != ToolCompleted {
+		t.Fatalf(
+			"recovered entry source = (%q, %q), want tool completed event",
+			entries[1].EventID,
+			entries[1].EventType,
+		)
+	}
+	if entries[1].Message.Role != llm.RoleTool ||
+		entries[1].Message.ToolID != "call-recovered" ||
+		entries[1].Message.Content != "file contents" {
+		t.Fatalf("unexpected recovered tool message: %#v", entries[1].Message)
+	}
+	tool := entries[1].Tool
+	if tool == nil || tool.Name != "read" || tool.Arguments != `{"file_path":"AGENTS.md"}` {
+		t.Fatalf("unexpected recovered tool metadata: %#v", tool)
+	}
+}
+
+func TestRebuilderDropsDanglingAssistantToolCalls(t *testing.T) {
+	call := llm.Call{ID: "call-missing", Type: "function"}
+	call.Function.Name = "read"
+
+	sess := New("dangling-tool-call")
+	appendLegacyEvent(sess, NewMessage(sess.ID(), llm.Message{
+		Role:  llm.RoleAssistant,
+		Calls: []llm.Call{call},
+	}))
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "next turn",
+	})); err != nil {
+		t.Fatalf("append user: %v", err)
+	}
+
+	messages, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	if len(messages) != 1 || messages[0].Role != llm.RoleUser ||
+		messages[0].Content != "next turn" {
+		t.Fatalf("unexpected effective messages: %#v", messages)
 	}
 }
 
