@@ -156,6 +156,99 @@ func TestRebuilderDropsLateToolMessageAfterTurnBoundary(t *testing.T) {
 	}
 }
 
+func TestRebuilderAnnotatesToolHistoryFromLifecycleEvents(t *testing.T) {
+	call := llm.Call{ID: "call-1", Type: "function"}
+	call.Function.Name = "read"
+	call.Function.Arguments = `{"file_path":"AGENTS.md"}`
+
+	sess := New("tool-history")
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:  llm.RoleAssistant,
+		Calls: []llm.Call{call},
+	})); err != nil {
+		t.Fatalf("append assistant call: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewToolStartedEvent(sess.ID(), ToolStartedData{
+		Tool:           "read",
+		Arguments:      `{"file_path":"AGENTS.md"}`,
+		ID:             "call-1",
+		IdempotencyKey: "turn-1:call-1",
+	})); err != nil {
+		t.Fatalf("append tool started: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleTool,
+		ToolID:  "call-1",
+		Name:    "read",
+		Content: "file contents",
+	})); err != nil {
+		t.Fatalf("append tool result message: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewToolCompletedEvent(sess.ID(), ToolCompletedData{
+		Tool:           "read",
+		ID:             "call-1",
+		IdempotencyKey: "turn-1:call-1",
+		Output:         "file contents",
+	})); err != nil {
+		t.Fatalf("append tool completed: %v", err)
+	}
+
+	entries, err := sess.EffectiveEntries()
+	if err != nil {
+		t.Fatalf("EffectiveEntries: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entries len = %d, want 2: %#v", len(entries), entries)
+	}
+	tool := entries[1].Tool
+	if tool == nil {
+		t.Fatalf("tool metadata missing from entry: %#v", entries[1])
+	}
+	if tool.ID != "call-1" || tool.Name != "read" ||
+		tool.Arguments != `{"file_path":"AGENTS.md"}` ||
+		tool.IdempotencyKey != "turn-1:call-1" ||
+		tool.IsError {
+		t.Fatalf("unexpected tool metadata: %#v", tool)
+	}
+}
+
+func TestRebuilderAnnotatesToolErrorsFromLifecycleEvents(t *testing.T) {
+	call := llm.Call{ID: "call-err", Type: "function"}
+	call.Function.Name = "bash"
+
+	sess := New("tool-error-history")
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:  llm.RoleAssistant,
+		Calls: []llm.Call{call},
+	})); err != nil {
+		t.Fatalf("append assistant call: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleTool,
+		ToolID:  "call-err",
+		Name:    "bash",
+		Content: "exit status 1",
+	})); err != nil {
+		t.Fatalf("append tool result message: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewToolCompletedEvent(sess.ID(), ToolCompletedData{
+		Tool:  "bash",
+		ID:    "call-err",
+		Error: "exit status 1",
+	})); err != nil {
+		t.Fatalf("append tool completed: %v", err)
+	}
+
+	entries, err := sess.EffectiveEntries()
+	if err != nil {
+		t.Fatalf("EffectiveEntries: %v", err)
+	}
+	tool := entries[1].Tool
+	if tool == nil || !tool.IsError || tool.Error != "exit status 1" {
+		t.Fatalf("unexpected tool error metadata: %#v", tool)
+	}
+}
+
 func TestRebuilderDropsEmptyAssistantMessagesFromSnapshots(t *testing.T) {
 	sess := New("snapshot-empty-assistant")
 	for _, msg := range []llm.Message{

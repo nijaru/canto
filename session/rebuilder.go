@@ -53,7 +53,10 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 		if err != nil {
 			return nil, err
 		}
-		return arrangePromptEntries(normalizeEffectiveEntries(entries)), nil
+		return withToolHistory(
+			arrangePromptEntries(normalizeEffectiveEntries(entries)),
+			sess.events,
+		)
 	}
 
 	entries := normalizeEffectiveEntries(slices.Clone(snapshot.entries()))
@@ -92,7 +95,7 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 			snapshot.CutoffEventID,
 		)
 	}
-	return arrangePromptEntries(entries), nil
+	return withToolHistory(arrangePromptEntries(entries), sess.events)
 }
 
 func (r *Rebuilder) fileContextEntry(snapshot CompactionSnapshot) (HistoryEntry, bool) {
@@ -207,6 +210,101 @@ func normalizeEffectiveEntry(entry HistoryEntry) (HistoryEntry, bool) {
 		return HistoryEntry{}, false
 	}
 	return entry, true
+}
+
+type toolLifecycle struct {
+	started      ToolStartedData
+	completed    ToolCompletedData
+	hasStarted   bool
+	hasCompleted bool
+}
+
+func withToolHistory(entries []HistoryEntry, events []Event) ([]HistoryEntry, error) {
+	lifecycle := make(map[string]toolLifecycle)
+	for i := range events {
+		e := &events[i]
+		switch e.Type {
+		case ToolStarted:
+			data, ok, err := e.ToolStartedData()
+			if err != nil {
+				return nil, err
+			}
+			if !ok || data.ID == "" {
+				continue
+			}
+			record := lifecycle[data.ID]
+			record.started = data
+			record.hasStarted = true
+			lifecycle[data.ID] = record
+		case ToolCompleted:
+			data, ok, err := e.ToolCompletedData()
+			if err != nil {
+				return nil, err
+			}
+			if !ok || data.ID == "" {
+				continue
+			}
+			record := lifecycle[data.ID]
+			record.completed = data
+			record.hasCompleted = true
+			lifecycle[data.ID] = record
+		}
+	}
+	if len(lifecycle) == 0 {
+		return entries, nil
+	}
+
+	for i := range entries {
+		if entries[i].Message.Role != llm.RoleTool || entries[i].Message.ToolID == "" {
+			continue
+		}
+		record, ok := lifecycle[entries[i].Message.ToolID]
+		if !ok && entries[i].Tool == nil {
+			continue
+		}
+		tool := mergeToolHistory(entries[i].Tool, entries[i].Message, record)
+		entries[i].Tool = &tool
+	}
+	return entries, nil
+}
+
+func mergeToolHistory(existing *ToolHistory, msg llm.Message, record toolLifecycle) ToolHistory {
+	var tool ToolHistory
+	if existing != nil {
+		tool = *existing
+	}
+	if tool.ID == "" {
+		tool.ID = msg.ToolID
+	}
+	if tool.Name == "" {
+		tool.Name = msg.Name
+	}
+	if record.hasStarted {
+		if tool.Name == "" {
+			tool.Name = record.started.Tool
+		}
+		if tool.Arguments == "" {
+			tool.Arguments = record.started.Arguments
+		}
+		if tool.IdempotencyKey == "" {
+			tool.IdempotencyKey = record.started.IdempotencyKey
+		}
+	}
+	if record.hasCompleted {
+		if tool.Name == "" {
+			tool.Name = record.completed.Tool
+		}
+		if tool.IdempotencyKey == "" {
+			tool.IdempotencyKey = record.completed.IdempotencyKey
+		}
+		if record.completed.Error != "" {
+			tool.IsError = true
+			if tool.Error == "" {
+				tool.Error = record.completed.Error
+			}
+		}
+	}
+	return tool
 }
 
 func validModelMessage(msg llm.Message) bool {

@@ -16,6 +16,19 @@ type HistoryEntry struct {
 	ContextKind      ContextKind      `json:"context_kind,omitzero"`
 	ContextPlacement ContextPlacement `json:"placement,omitzero"`
 	Message          llm.Message      `json:"message"`
+	Tool             *ToolHistory     `json:"tool,omitzero"`
+}
+
+// ToolHistory carries durable tool lifecycle metadata associated with a
+// model-visible tool-result message. It is projection metadata for hosts and
+// UIs; provider-visible prompt construction still uses Message.
+type ToolHistory struct {
+	ID             string `json:"id,omitzero"`
+	Name           string `json:"name,omitzero"`
+	Arguments      string `json:"args,omitzero"`
+	IdempotencyKey string `json:"idempotency_key,omitzero"`
+	IsError        bool   `json:"is_error,omitzero"`
+	Error          string `json:"error,omitzero"`
 }
 
 // CompactionSnapshot captures the model-visible history after a compaction step.
