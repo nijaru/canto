@@ -46,7 +46,7 @@ Deferred unless a core finding pulls it in:
 | C1 Session event/projection contract | fixed, monitoring through Ion | `session/*.go` | Are append validation, snapshots, `EffectiveMessages`, and `EffectiveEntries` sufficient for provider history and host replay? |
 | C2 Runtime runner/session coordination | fixed, monitoring through Ion | `runtime/*.go` | Can queue wait, cancel, retry, and terminal events be proven from durable state? |
 | C3 Agent loop/tool lifecycle | fixed, monitoring through Ion | `agent/*.go`, `tool/*.go` | Are message/tool events ordered once, persisted once, and recoverable after errors/cancel? |
-| C4 Prompt/provider-visible request construction | pending | `prompt/*.go`, `llm/*.go` | Are system/developer/context/cache boundaries valid across providers? |
+| C4 Prompt/provider-visible request construction | fixed, monitoring through Ion | `prompt/*.go`, `llm/*.go` | Are system/developer/context/cache boundaries valid across providers? |
 | C5 Retry/compaction/budget | pending | `governor/*.go`, runtime integration | Does overflow/retry rebuild from session state and leave durable resumable traces? |
 | C6 Non-core quarantine | pending | `memory/`, `skill/`, `workspace/`, `safety/`, `coding/`, `x/*` | Which packages are deferred vs load-bearing for the native loop? |
 
@@ -98,6 +98,21 @@ go test ./... -count=1
 go test ./agent -run 'TestRunTools_ACRFenceRejectsStartedOnlyExecution|TestTurnRecordsPanicToolFailureAsToolResult|TestStepPanicToolFailureLeavesProviderHistoryComplete|TestRunTools_PanicRecovery|TestRunTools_ApprovalDeny|TestRunToolsRecordsToolCompletedError|TestRunToolsRecordsCanceledToolResult' -count=1 -v
 go test ./runtime ./agent ./tool ./prompt ./llm ./governor -count=1
 go test -race ./agent ./runtime ./tool -count=1
+go test ./... -count=1
+```
+
+### C4 Prompt/Provider-Visible Request Construction
+
+- Fixed provider preparation validation order: `llm.PrepareRequestForCapabilities` now validates the neutral request before capability rewriting. A late privileged `system`/`developer` row can no longer be hidden by rewriting it to `user` for providers without a system role.
+- Expanded `llm.ValidateRequest` to reject invalid/empty roles, empty assistant messages, and orphan/duplicate tool results while still allowing missing tool results that `TransformRequestForCapabilities` can synthesize before final validation.
+- Fixed `llm.Request.Clone` to copy `ResponseFormat` and its schema map so provider-prepared request copies do not share mutable structured-output state with the neutral request.
+- Fixed retry test probes to use atomic counters so the retry/race gate can be trusted.
+- Verification so far:
+
+```sh
+go test ./llm ./prompt -count=1
+go test ./runtime ./agent ./tool ./prompt ./llm ./governor -count=1
+go test -race ./llm ./prompt ./agent ./runtime -count=1
 go test ./... -count=1
 ```
 

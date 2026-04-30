@@ -33,6 +33,9 @@ func TransformRequestForCapabilities(req *Request, caps Capabilities) {
 // to caps. The original request remains neutral and can be prepared again for a
 // different provider or model.
 func PrepareRequestForCapabilities(req *Request, caps Capabilities) (*Request, error) {
+	if err := ValidateRequest(req); err != nil {
+		return nil, err
+	}
 	prepared := req.Clone()
 	TransformRequestForCapabilities(prepared, caps)
 	if err := ValidateRequest(prepared); err != nil {

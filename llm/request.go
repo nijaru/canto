@@ -21,6 +21,16 @@ func (r *Request) Clone() *Request {
 			clone.Tools[i] = &copied
 		}
 	}
+	if r.ResponseFormat != nil {
+		format := *r.ResponseFormat
+		if len(r.ResponseFormat.Schema) > 0 {
+			format.Schema = make(map[string]any, len(r.ResponseFormat.Schema))
+			for key, value := range r.ResponseFormat.Schema {
+				format.Schema[key] = value
+			}
+		}
+		clone.ResponseFormat = &format
+	}
 	return &clone
 }
 

@@ -256,6 +256,22 @@ func TestPrepareRequestForCapabilitiesLeavesOriginalReusable(t *testing.T) {
 	}
 }
 
+func TestPrepareRequestForCapabilitiesRejectsLatePrivilegedBeforeRewrite(t *testing.T) {
+	req := &Request{
+		Messages: []Message{
+			{Role: RoleUser, Content: "hello"},
+			{Role: RoleSystem, Content: "late system"},
+		},
+	}
+
+	if _, err := PrepareRequestForCapabilities(req, Capabilities{
+		SystemRole:  RoleUser,
+		Temperature: true,
+	}); err == nil {
+		t.Fatal("expected late privileged message to be rejected before rewrite")
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(substr) == 0 || (len(s) >= len(substr) && stringsContains(s, substr))
 }

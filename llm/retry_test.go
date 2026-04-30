@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -13,20 +14,24 @@ type retryProviderStub struct {
 	streamFn      func(context.Context, *Request) (Stream, error)
 	isTransientFn func(error) bool
 	isOverflowFn  func(error) bool
-	generateCalls int
-	streamCalls   int
+	generateCalls atomic.Int64
+	streamCalls   atomic.Int64
 }
 
 func (p *retryProviderStub) ID() string { return "retry-stub" }
 
 func (p *retryProviderStub) Generate(ctx context.Context, req *Request) (*Response, error) {
-	p.generateCalls++
+	p.generateCalls.Add(1)
 	return p.generateFn(ctx, req)
 }
 
 func (p *retryProviderStub) Stream(ctx context.Context, req *Request) (Stream, error) {
-	p.streamCalls++
+	p.streamCalls.Add(1)
 	return p.streamFn(ctx, req)
+}
+
+func (p *retryProviderStub) generateCallCount() int64 {
+	return p.generateCalls.Load()
 }
 
 func (p *retryProviderStub) Models(context.Context) ([]Model, error) { return nil, nil }
@@ -74,8 +79,8 @@ func TestRetryProvider_NormalizesZeroAttempts(t *testing.T) {
 	if resp != nil {
 		t.Fatalf("expected nil response, got %#v", resp)
 	}
-	if inner.generateCalls != 1 {
-		t.Fatalf("expected exactly one attempt, got %d", inner.generateCalls)
+	if inner.generateCallCount() != 1 {
+		t.Fatalf("expected exactly one attempt, got %d", inner.generateCallCount())
 	}
 }
 
@@ -107,8 +112,8 @@ func TestRetryProvider_CancelsDuringBackoff(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context cancellation, got resp=%#v err=%v", resp, err)
 	}
-	if inner.generateCalls != 1 {
-		t.Fatalf("expected a single attempt before cancellation, got %d", inner.generateCalls)
+	if inner.generateCallCount() != 1 {
+		t.Fatalf("expected a single attempt before cancellation, got %d", inner.generateCallCount())
 	}
 }
 
@@ -137,7 +142,7 @@ func TestRetryProvider_RetriesForeverUntilContextCancel(t *testing.T) {
 	t.Cleanup(cancel)
 	go func() {
 		for {
-			if inner.generateCalls >= 3 {
+			if inner.generateCallCount() >= 3 {
 				cancel()
 				return
 			}
@@ -149,10 +154,10 @@ func TestRetryProvider_RetriesForeverUntilContextCancel(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context cancellation, got resp=%#v err=%v", resp, err)
 	}
-	if inner.generateCalls < 3 {
+	if inner.generateCallCount() < 3 {
 		t.Fatalf(
 			"expected retry loop to continue until cancellation, got %d calls",
-			inner.generateCalls,
+			inner.generateCallCount(),
 		)
 	}
 	if len(events) < 2 {
@@ -187,8 +192,8 @@ func TestRetryProvider_RetryForeverTransportOnlyStopsProviderErrors(t *testing.T
 	if !errors.Is(err, providerErr) {
 		t.Fatalf("expected provider error, got resp=%#v err=%v", resp, err)
 	}
-	if inner.generateCalls != 2 {
-		t.Fatalf("generate calls = %d, want bounded 2 attempts", inner.generateCalls)
+	if inner.generateCallCount() != 2 {
+		t.Fatalf("generate calls = %d, want bounded 2 attempts", inner.generateCallCount())
 	}
 }
 
@@ -215,7 +220,7 @@ func TestRetryProvider_RetryForeverTransportOnlyKeepsTransportErrors(t *testing.
 	t.Cleanup(cancel)
 	go func() {
 		for {
-			if inner.generateCalls >= 3 {
+			if inner.generateCallCount() >= 3 {
 				cancel()
 				return
 			}
@@ -227,7 +232,7 @@ func TestRetryProvider_RetryForeverTransportOnlyKeepsTransportErrors(t *testing.
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context cancellation, got resp=%#v err=%v", resp, err)
 	}
-	if inner.generateCalls < 3 {
-		t.Fatalf("generate calls = %d, want retry until cancellation", inner.generateCalls)
+	if inner.generateCallCount() < 3 {
+		t.Fatalf("generate calls = %d, want retry until cancellation", inner.generateCallCount())
 	}
 }

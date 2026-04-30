@@ -24,6 +24,10 @@ func TestRequestCloneKeepsOriginalNeutral(t *testing.T) {
 			Name:         "read",
 			CacheControl: &CacheControl{Type: "ephemeral"},
 		}},
+		ResponseFormat: &ResponseFormat{
+			Type:   ResponseFormatJSONSchema,
+			Schema: map[string]any{"type": "object"},
+		},
 	}
 
 	clone := req.Clone()
@@ -32,12 +36,14 @@ func TestRequestCloneKeepsOriginalNeutral(t *testing.T) {
 	clone.Messages[0].Calls[0].ID = "changed"
 	clone.Messages[0].CacheControl.Type = "changed"
 	clone.Tools[0].CacheControl.Type = "changed"
+	clone.ResponseFormat.Schema["type"] = "array"
 
 	if req.Messages[0].Role != RoleSystem ||
 		req.Messages[0].ThinkingBlocks[0].Thinking != "secret" ||
 		req.Messages[0].Calls[0].ID != "call 1" ||
 		req.Messages[0].CacheControl.Type != "ephemeral" ||
-		req.Tools[0].CacheControl.Type != "ephemeral" {
+		req.Tools[0].CacheControl.Type != "ephemeral" ||
+		req.ResponseFormat.Schema["type"] != "object" {
 		t.Fatalf("clone mutation leaked into original: %#v", req)
 	}
 }
