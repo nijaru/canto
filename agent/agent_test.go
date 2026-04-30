@@ -198,6 +198,16 @@ func userSession(id, content string) *session.Session {
 	return s
 }
 
+func appendAssistantToolCalls(t *testing.T, s *session.Session, calls []llm.Call) {
+	t.Helper()
+	if err := s.Append(t.Context(), session.NewMessage(s.ID(), llm.Message{
+		Role:  llm.RoleAssistant,
+		Calls: calls,
+	})); err != nil {
+		t.Fatalf("append assistant tool calls: %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // HandoffTool — constructor, Spec, Execute
 // ---------------------------------------------------------------------------
@@ -1008,6 +1018,7 @@ func TestRunTools_ReusesCompletedOutputForMatchingIdempotencyKey(t *testing.T) {
 			Arguments string `json:"arguments"`
 		}{Name: "echo", Arguments: `{"value":1}`},
 	}
+	appendAssistantToolCalls(t, s, []llm.Call{call})
 	key := toolIdempotencyKey(s.ID(), "assistant-msg-1", call, 0)
 	if err := s.Append(context.Background(), session.NewToolCompletedEvent(s.ID(), session.ToolCompletedData{
 		Tool:           "echo",
@@ -1058,6 +1069,7 @@ func TestRunTools_ACRFenceRejectsStartedOnlyExecution(t *testing.T) {
 			Arguments string `json:"arguments"`
 		}{Name: "echo", Arguments: `{"value":1}`},
 	}
+	appendAssistantToolCalls(t, s, []llm.Call{call})
 	key := toolIdempotencyKey(s.ID(), "assistant-msg-1", call, 0)
 	if err := s.Append(context.Background(), session.NewToolStartedEvent(s.ID(), session.ToolStartedData{
 		Tool:           "echo",
@@ -1263,6 +1275,7 @@ func TestRunTools_PreflightCompletesBeforeParallelExecution(t *testing.T) {
 			}{Name: "b", Arguments: `{}`},
 		},
 	}
+	appendAssistantToolCalls(t, s, calls)
 
 	res, err := runTools(context.Background(), s, calls, reg, hooks, nil, nil, 2, "step-1")
 	if err != nil {
@@ -1312,6 +1325,7 @@ func TestRunTools_ParallelResultsEmitInSourceOrder(t *testing.T) {
 			}{Name: "b", Arguments: `{}`},
 		},
 	}
+	appendAssistantToolCalls(t, s, calls)
 
 	done := make(chan struct {
 		res StepResult
@@ -1357,7 +1371,7 @@ func TestRunTools_ParallelResultsEmitInSourceOrder(t *testing.T) {
 	}
 
 	msgs := s.Messages()
-	if len(msgs) != 2 || msgs[0].Name != "a" || msgs[1].Name != "b" {
+	if len(msgs) != 3 || msgs[1].Name != "a" || msgs[2].Name != "b" {
 		t.Fatalf("session tool messages out of source order: %#v", msgs)
 	}
 }
@@ -1965,6 +1979,7 @@ func TestRunTools_PanicRecovery(t *testing.T) {
 			Arguments string `json:"arguments"`
 		}{Name: "panic", Arguments: `{}`},
 	}}
+	appendAssistantToolCalls(t, s, calls)
 
 	_, err := runTools(context.Background(), s, calls, reg, nil, nil, nil, 10, "step-1")
 	if err == nil {
@@ -1988,6 +2003,7 @@ func TestRunToolsRecordsToolCompletedError(t *testing.T) {
 			Arguments string `json:"arguments"`
 		}{Name: "fail", Arguments: `{}`},
 	}}
+	appendAssistantToolCalls(t, s, calls)
 
 	result, err := runTools(context.Background(), s, calls, reg, nil, nil, nil, 10, "step-1")
 	if err != nil {
@@ -2043,6 +2059,7 @@ func TestRunToolsRecordsCanceledToolResult(t *testing.T) {
 			Arguments string `json:"arguments"`
 		}{Name: "cancel", Arguments: `{}`},
 	}}
+	appendAssistantToolCalls(t, s, calls)
 
 	result, err := runTools(ctx, s, calls, reg, nil, nil, nil, 10, "step-1")
 	if err != nil {
@@ -2099,6 +2116,7 @@ func TestRunTools_ApprovalAllow(t *testing.T) {
 			Arguments string `json:"arguments"`
 		}{Name: "gated", Arguments: `{}`},
 	}}
+	appendAssistantToolCalls(t, s, calls)
 
 	done := make(chan StepResult, 1)
 	errs := make(chan error, 1)
@@ -2145,6 +2163,7 @@ func TestRunTools_ApprovalDeny(t *testing.T) {
 			Arguments string `json:"arguments"`
 		}{Name: "gated", Arguments: `{}`},
 	}}
+	appendAssistantToolCalls(t, s, calls)
 
 	errCh := make(chan error, 1)
 	go func() {

@@ -53,6 +53,10 @@ var errEmptyAssistantMessage = errors.New(
 	"session append: assistant message has no content, reasoning, thinking blocks, or tool calls",
 )
 
+var errUnmatchedToolMessage = errors.New(
+	"session append: tool message has no matching pending assistant tool call",
+)
+
 // subscriber is a single fan-out recipient.
 // The mu guards ch against concurrent trySend and close calls.
 type subscriber struct {
@@ -324,24 +328,28 @@ func (s *Session) Append(ctx context.Context, e Event) error {
 		e.Metadata = newMd
 	}
 
-	s.mu.RLock()
+	s.mu.Lock()
+	if err := s.validateWritableSequenceLocked(&e); err != nil {
+		s.mu.Unlock()
+		return err
+	}
 	writer := s.writer
 	writerCh := s.writerCh
-	s.mu.RUnlock()
 
 	if writer != nil {
 		if err := writer.Save(ctx, e); err != nil {
+			s.mu.Unlock()
 			return err
 		}
 	}
 
 	if writerCh != nil {
 		if err := writerCh.send(ctx, e); err != nil {
+			s.mu.Unlock()
 			return err
 		}
 	}
 
-	s.mu.Lock()
 	s.events = append(s.events, e)
 	if s.reducer != nil {
 		s.state = s.reducer(s.state, e)
@@ -351,6 +359,30 @@ func (s *Session) Append(ctx context.Context, e Event) error {
 
 	for _, sub := range subs {
 		sub.trySend(e)
+	}
+	return nil
+}
+
+func (s *Session) validateWritableSequenceLocked(e *Event) error {
+	if e.Type != MessageAdded {
+		return nil
+	}
+	msg, err := e.ensureMessage()
+	if err != nil {
+		return err
+	}
+	if msg.Role != llm.RoleTool {
+		return nil
+	}
+	if msg.ToolID == "" {
+		return errUnmatchedToolMessage
+	}
+	pending, err := pendingToolCalls(s.events)
+	if err != nil {
+		return err
+	}
+	if pending[msg.ToolID] == 0 {
+		return errUnmatchedToolMessage
 	}
 	return nil
 }

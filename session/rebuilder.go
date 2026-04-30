@@ -163,12 +163,29 @@ func uniqueSorted(items []string) []string {
 
 func normalizeEffectiveEntries(entries []HistoryEntry) []HistoryEntry {
 	out := entries[:0]
+	pending := make(map[string]int)
 	for _, entry := range entries {
 		entry, ok := normalizeEffectiveEntry(entry)
 		if !ok {
 			continue
 		}
+		msg := entry.Message
+		if msg.Role == llm.RoleTool {
+			if msg.ToolID == "" || pending[msg.ToolID] == 0 {
+				continue
+			}
+			pending[msg.ToolID]--
+			if pending[msg.ToolID] == 0 {
+				delete(pending, msg.ToolID)
+			}
+			out = append(out, entry)
+			continue
+		}
+		clear(pending)
 		out = append(out, entry)
+		if msg.Role == llm.RoleAssistant {
+			addPendingToolCalls(pending, msg.Calls)
+		}
 	}
 	return out
 }
@@ -200,6 +217,45 @@ func validModelMessage(msg llm.Message) bool {
 		strings.TrimSpace(msg.Reasoning) != "" ||
 		len(msg.ThinkingBlocks) > 0 ||
 		len(msg.Calls) > 0
+}
+
+func pendingToolCalls(events []Event) (map[string]int, error) {
+	pending := make(map[string]int)
+	for i := range events {
+		e := &events[i]
+		if e.Type != MessageAdded {
+			continue
+		}
+		msg, err := e.ensureMessage()
+		if err != nil {
+			return nil, err
+		}
+		switch msg.Role {
+		case llm.RoleAssistant:
+			clear(pending)
+			addPendingToolCalls(pending, msg.Calls)
+		case llm.RoleTool:
+			if msg.ToolID == "" || pending[msg.ToolID] == 0 {
+				continue
+			}
+			pending[msg.ToolID]--
+			if pending[msg.ToolID] == 0 {
+				delete(pending, msg.ToolID)
+			}
+		default:
+			clear(pending)
+		}
+	}
+	return pending, nil
+}
+
+func addPendingToolCalls(pending map[string]int, calls []llm.Call) {
+	for _, call := range calls {
+		if call.ID == "" {
+			continue
+		}
+		pending[call.ID]++
+	}
 }
 
 func inferLegacyContextMarkers(entry *HistoryEntry) {

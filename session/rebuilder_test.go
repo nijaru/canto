@@ -93,6 +93,69 @@ func TestRebuilderPreservesAssistantPayloadKinds(t *testing.T) {
 	}
 }
 
+func TestRebuilderDropsUnmatchedToolMessages(t *testing.T) {
+	call := llm.Call{ID: "call-1", Type: "function"}
+	call.Function.Name = "read"
+	call.Function.Arguments = `{"path":"README.md"}`
+
+	replayer := NewReplayer()
+	sess := replayer.NewSession("legacy-unmatched-tool")
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleTool, ToolID: "orphan", Name: "read", Content: "orphan result"},
+		{Role: llm.RoleAssistant, Calls: []llm.Call{call}},
+		{Role: llm.RoleTool, ToolID: "wrong", Name: "read", Content: "wrong result"},
+		{Role: llm.RoleTool, ToolID: "call-1", Name: "read", Content: "kept result"},
+		{Role: llm.RoleTool, ToolID: "call-1", Name: "read", Content: "duplicate result"},
+	} {
+		if err := replayer.Apply(sess, NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("replay legacy message: %v", err)
+		}
+	}
+
+	messages, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected assistant and one matched tool result, got %#v", messages)
+	}
+	if messages[0].Role != llm.RoleAssistant || len(messages[0].Calls) != 1 {
+		t.Fatalf("expected assistant tool call first, got %#v", messages[0])
+	}
+	if messages[1].Role != llm.RoleTool || messages[1].ToolID != "call-1" ||
+		messages[1].Content != "kept result" {
+		t.Fatalf("unexpected matched tool result: %#v", messages[1])
+	}
+}
+
+func TestRebuilderDropsLateToolMessageAfterTurnBoundary(t *testing.T) {
+	call := llm.Call{ID: "call-1", Type: "function"}
+	call.Function.Name = "read"
+
+	replayer := NewReplayer()
+	sess := replayer.NewSession("legacy-late-tool")
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleAssistant, Calls: []llm.Call{call}},
+		{Role: llm.RoleUser, Content: "next turn"},
+		{Role: llm.RoleTool, ToolID: "call-1", Name: "read", Content: "late result"},
+	} {
+		if err := replayer.Apply(sess, NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("replay legacy message: %v", err)
+		}
+	}
+
+	messages, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("expected late tool result to be omitted, got %#v", messages)
+	}
+	if messages[0].Role != llm.RoleAssistant || messages[1].Role != llm.RoleUser {
+		t.Fatalf("unexpected effective history: %#v", messages)
+	}
+}
+
 func TestRebuilderDropsEmptyAssistantMessagesFromSnapshots(t *testing.T) {
 	sess := New("snapshot-empty-assistant")
 	for _, msg := range []llm.Message{

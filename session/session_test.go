@@ -88,6 +88,72 @@ func TestSessionAppendPreservesAssistantPayloadKinds(t *testing.T) {
 	}
 }
 
+func TestSessionAppendRejectsUnmatchedToolMessage(t *testing.T) {
+	sess := New("append-unmatched-tool")
+
+	err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleTool,
+		ToolID:  "call-1",
+		Name:    "read",
+		Content: "result",
+	}))
+	if !errors.Is(err, errUnmatchedToolMessage) {
+		t.Fatalf("append error = %v, want %v", err, errUnmatchedToolMessage)
+	}
+	if len(sess.Events()) != 0 {
+		t.Fatalf("events = %#v, want none", sess.Events())
+	}
+}
+
+func TestSessionAppendPreservesMatchedToolMessage(t *testing.T) {
+	sess := New("append-matched-tool")
+	call := llm.Call{ID: "call-1", Type: "function"}
+	call.Function.Name = "read"
+
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:  llm.RoleAssistant,
+		Calls: []llm.Call{call},
+	})); err != nil {
+		t.Fatalf("append assistant tool call: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleTool,
+		ToolID:  "call-1",
+		Name:    "read",
+		Content: "result",
+	})); err != nil {
+		t.Fatalf("append matched tool message: %v", err)
+	}
+	if got := len(sess.Messages()); got != 2 {
+		t.Fatalf("messages = %d, want 2", got)
+	}
+}
+
+func TestSessionAppendRejectsLateToolMessageAfterTurnBoundary(t *testing.T) {
+	sess := New("append-late-tool")
+	call := llm.Call{ID: "call-1", Type: "function"}
+	call.Function.Name = "read"
+
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:  llm.RoleAssistant,
+		Calls: []llm.Call{call},
+	})); err != nil {
+		t.Fatalf("append assistant tool call: %v", err)
+	}
+	if err := sess.AppendUser(t.Context(), "next turn"); err != nil {
+		t.Fatalf("append user: %v", err)
+	}
+	err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleTool,
+		ToolID:  "call-1",
+		Name:    "read",
+		Content: "late result",
+	}))
+	if !errors.Is(err, errUnmatchedToolMessage) {
+		t.Fatalf("append error = %v, want %v", err, errUnmatchedToolMessage)
+	}
+}
+
 func TestLastAssistantMessageSkipsLegacyEmptyAssistant(t *testing.T) {
 	replayer := NewReplayer()
 	sess := replayer.NewSession("legacy-last-assistant")

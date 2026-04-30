@@ -27,9 +27,11 @@ func TestOffloadProcessor(t *testing.T) {
 	for i := 0; i < 2000; i++ {
 		largeContent += "large content "
 	}
+	call := llm.Call{ID: "t1", Type: "function"}
+	call.Function.Name = "read"
 	history := []llm.Message{
 		{Role: llm.RoleUser, Content: "request"},
-		{Role: llm.RoleAssistant, Content: "calling tool..."},
+		{Role: llm.RoleAssistant, Content: "calling tool...", Calls: []llm.Call{call}},
 		{Role: llm.RoleTool, Content: largeContent, ToolID: "t1"},
 		{Role: llm.RoleAssistant, Content: "done"},
 		{Role: llm.RoleUser, Content: "next"},
@@ -108,8 +110,13 @@ func TestOffloadProcessor_DuplicateToolOutputsGetDistinctArtifacts(t *testing.T)
 
 	sess := session.New("dupe-session")
 	largeContent := strings.Repeat("same large content ", 200)
+	call1 := llm.Call{ID: "t1", Type: "function"}
+	call1.Function.Name = "read"
+	call2 := llm.Call{ID: "t2", Type: "function"}
+	call2.Function.Name = "grep"
 	history := []llm.Message{
 		{Role: llm.RoleUser, Content: "request"},
+		{Role: llm.RoleAssistant, Calls: []llm.Call{call1, call2}},
 		{Role: llm.RoleTool, Content: largeContent, ToolID: "t1"},
 		{Role: llm.RoleTool, Content: largeContent, ToolID: "t2"},
 		{Role: llm.RoleAssistant, Content: "done"},

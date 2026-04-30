@@ -82,8 +82,11 @@ func TestObservationMaskerHistoryProcessorAppendsMaskedHistory(t *testing.T) {
 		t.Fatalf("append context: %v", err)
 	}
 	large := strings.Repeat("large output ", 20)
+	call := llm.Call{ID: "tool-1", Type: "function"}
+	call.Function.Name = "read"
 	history := []llm.Message{
 		{Role: llm.RoleUser, Content: "request"},
+		{Role: llm.RoleAssistant, Calls: []llm.Call{call}},
 		{Role: llm.RoleTool, Content: large, ToolID: "tool-1"},
 		{Role: llm.RoleAssistant, Content: "done"},
 		{Role: llm.RoleUser, Content: "recent"},
@@ -105,8 +108,8 @@ func TestObservationMaskerHistoryProcessorAppendsMaskedHistory(t *testing.T) {
 		t.Fatalf("masked history apply: %v", err)
 	}
 
-	if len(req.Messages) != 6 {
-		t.Fatalf("expected 6 messages, got %d", len(req.Messages))
+	if len(req.Messages) != 7 {
+		t.Fatalf("expected 7 messages, got %d", len(req.Messages))
 	}
 	if req.CachePrefixMessages != 2 {
 		t.Fatalf("expected system plus context cache prefix, got %d", req.CachePrefixMessages)
@@ -114,10 +117,10 @@ func TestObservationMaskerHistoryProcessorAppendsMaskedHistory(t *testing.T) {
 	if req.Messages[1].Content != "workspace context" {
 		t.Fatalf("expected stable context after system prefix, got %q", req.Messages[1].Content)
 	}
-	if !strings.Contains(req.Messages[3].Content, "Observation masked") {
-		t.Fatalf("expected masked tool output, got %q", req.Messages[3].Content)
+	if !strings.Contains(req.Messages[4].Content, "Observation masked") {
+		t.Fatalf("expected masked tool output, got %q", req.Messages[4].Content)
 	}
-	if req.Messages[5].Content != "recent" {
-		t.Fatalf("expected recent message to remain unchanged, got %q", req.Messages[5].Content)
+	if req.Messages[6].Content != "recent" {
+		t.Fatalf("expected recent message to remain unchanged, got %q", req.Messages[6].Content)
 	}
 }

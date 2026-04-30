@@ -231,10 +231,12 @@ func TestOffloaderSkipsPreCompactWhenTooFewTurns(t *testing.T) {
 func TestCompactSessionOffloadsBeforeSummarize(t *testing.T) {
 	sess := session.New("compact-heavy")
 	largeToolContent := strings.Repeat("tool output ", 400)
+	call := llm.Call{ID: "tool-1", Type: "function"}
+	call.Function.Name = "read"
 	for _, msg := range []llm.Message{
 		{Role: llm.RoleSystem, Content: "You are helpful."},
 		{Role: llm.RoleUser, Content: strings.Repeat("alpha ", 80)},
-		{Role: llm.RoleAssistant, Content: strings.Repeat("beta ", 80)},
+		{Role: llm.RoleAssistant, Content: strings.Repeat("beta ", 80), Calls: []llm.Call{call}},
 		{Role: llm.RoleTool, Content: largeToolContent, ToolID: "tool-1"},
 		{Role: llm.RoleAssistant, Content: strings.Repeat("gamma ", 80)},
 		{Role: llm.RoleUser, Content: "recent question"},
