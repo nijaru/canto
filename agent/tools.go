@@ -226,19 +226,7 @@ func preflightTools(
 			applyPreToolHookData(&call, hookResults)
 			results[i].call = call
 			if err != nil {
-				results[i].err = &escalationError{
-					scope:       "tool",
-					target:      call.Function.Name,
-					message:     fmt.Sprintf("hook blocked tool %q: %v", call.Function.Name, err),
-					recoverable: true,
-					cause:       err,
-					toolMessage: &llm.Message{
-						Role:    llm.RoleTool,
-						Content: fmt.Sprintf("Error: %v", err),
-						ToolID:  call.ID,
-						Name:    call.Function.Name,
-					},
-				}
+				results[i].output = hookOutput + fmt.Sprintf("Error: %v", err)
 				results[i].skipExecute = true
 				continue
 			}
@@ -277,8 +265,8 @@ func preflightTools(
 			if gated, ok := t.(tool.ApprovalTool); ok {
 				req, needsApproval, err := gated.ApprovalRequirement(call.Function.Arguments)
 				if err != nil {
-					results[i].err = fmt.Errorf(
-						"approval requirement for %q: %w",
+					results[i].output = hookOutput + fmt.Sprintf(
+						"Error: approval requirement for %q: %v",
 						call.Function.Name,
 						err,
 					)
@@ -294,44 +282,12 @@ func preflightTools(
 						req,
 					)
 					if err != nil {
-						results[i].err = &escalationError{
-							scope:  "tool",
-							target: call.Function.Name,
-							message: fmt.Sprintf(
-								"approval request for %q failed: %v",
-								call.Function.Name,
-								err,
-							),
-							recoverable: true,
-							cause:       err,
-							toolMessage: &llm.Message{
-								Role:    llm.RoleTool,
-								Content: fmt.Sprintf("Error: %v", err),
-								ToolID:  call.ID,
-								Name:    call.Function.Name,
-							},
-						}
+						results[i].output = hookOutput + fmt.Sprintf("Error: %v", err)
 						results[i].skipExecute = true
 						continue
 					}
 					if denyErr := res.Error(); denyErr != nil {
-						results[i].err = &escalationError{
-							scope:  "tool",
-							target: call.Function.Name,
-							message: fmt.Sprintf(
-								"tool %q denied: %v",
-								call.Function.Name,
-								denyErr,
-							),
-							recoverable: true,
-							cause:       denyErr,
-							toolMessage: &llm.Message{
-								Role:    llm.RoleTool,
-								Content: fmt.Sprintf("Error: %v", denyErr),
-								ToolID:  call.ID,
-								Name:    call.Function.Name,
-							},
-						}
+						results[i].output = hookOutput + fmt.Sprintf("Error: %v", denyErr)
 						results[i].skipExecute = true
 						continue
 					}
@@ -343,7 +299,7 @@ func preflightTools(
 		results[i].idempotencyKey = idempotencyKey
 		decision, err := fence.Validate(s, idempotencyKey)
 		if err != nil {
-			results[i].err = err
+			results[i].output = hookOutput + fmt.Sprintf("Error: %v", err)
 			results[i].skipExecute = true
 			continue
 		}
@@ -440,34 +396,23 @@ func executeToolSafely(
 ) (res toolResult) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			res = toolResult{call: pf.call, err: toolPanicError(pf.call, recovered)}
+			output := fmt.Sprintf("Error: tool panicked: %v", recovered)
+			res = toolResult{call: pf.call, output: output}
+			if err := s.Append(context.WithoutCancel(ctx), session.NewToolCompletedEvent(
+				s.ID(),
+				session.ToolCompletedData{
+					Tool:           pf.call.Function.Name,
+					ID:             pf.call.ID,
+					IdempotencyKey: pf.idempotencyKey,
+					Output:         output,
+					Error:          fmt.Sprintf("tool panicked: %v", recovered),
+				},
+			)); err != nil {
+				res.err = err
+			}
 		}
 	}()
 	return executeTool(ctx, s, pf, r, h)
-}
-
-func toolPanicError(call llm.Call, recovered any) error {
-	return &escalationError{
-		scope:  "tool",
-		target: call.Function.Name,
-		message: fmt.Sprintf(
-			"tool %q panicked: %v",
-			call.Function.Name,
-			recovered,
-		),
-		recoverable: true,
-		cause: fmt.Errorf(
-			"tool %q panicked: %v",
-			call.Function.Name,
-			recovered,
-		),
-		toolMessage: &llm.Message{
-			Role:    llm.RoleTool,
-			Content: fmt.Sprintf("Error: tool panicked: %v", recovered),
-			ToolID:  call.ID,
-			Name:    call.Function.Name,
-		},
-	}
 }
 
 // executeTool runs a single tool and its PostToolUse hooks. Preflight

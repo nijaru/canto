@@ -111,8 +111,10 @@ func (s *LocalScheduler) Schedule(
 	if delay < 0 {
 		delay = 0
 	}
+	task.mu.Lock()
 	task.timer = time.AfterFunc(delay, task.start)
 	s.tasks[ref.ID] = task
+	task.mu.Unlock()
 	return task, nil
 }
 

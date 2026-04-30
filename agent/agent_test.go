@@ -1080,7 +1080,7 @@ func TestRunTools_ACRFenceRejectsStartedOnlyExecution(t *testing.T) {
 		t.Fatalf("append prior tool start: %v", err)
 	}
 
-	if _, err := runTools(
+	res, err := runTools(
 		context.Background(),
 		s,
 		[]llm.Call{call},
@@ -1090,8 +1090,15 @@ func TestRunTools_ACRFenceRejectsStartedOnlyExecution(t *testing.T) {
 		nil,
 		10,
 		"assistant-msg-1",
-	); err == nil {
-		t.Fatal("expected ambiguous replay error, got nil")
+	)
+	if err != nil {
+		t.Fatalf("runTools: %v", err)
+	}
+	if len(res.ToolResults) != 1 {
+		t.Fatalf("tool results = %d, want 1", len(res.ToolResults))
+	}
+	if !strings.Contains(res.ToolResults[0].Content, "prior tool execution") {
+		t.Fatalf("tool result = %q, want prior execution error", res.ToolResults[0].Content)
 	}
 }
 
@@ -1890,7 +1897,7 @@ func TestTurnStopsCleanlyWhenBudgetGuardTrips(t *testing.T) {
 	}
 }
 
-func TestTurnWithholdsRecoverableToolFailure(t *testing.T) {
+func TestTurnRecordsPanicToolFailureAsToolResult(t *testing.T) {
 	reg := tool.NewRegistry()
 	reg.Register(&panicTool{})
 
@@ -1930,8 +1937,59 @@ func TestTurnWithholdsRecoverableToolFailure(t *testing.T) {
 		}
 	}
 	if !sawToolError {
-		t.Fatal("expected withheld tool failure to be appended as a tool message")
+		t.Fatal("expected tool failure to be appended as a tool message")
 	}
+}
+
+func TestStepPanicToolFailureLeavesProviderHistoryComplete(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&panicTool{})
+
+	p := &mockProvider{
+		responses: []*llm.Response{{
+			Calls: []llm.Call{{
+				ID:   "c1",
+				Type: "function",
+				Function: struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				}{Name: "panic", Arguments: `{}`},
+			}},
+		}},
+	}
+
+	a := New("a", "sys", "m", p, reg)
+	s := userSession("s-step-panic-history", "trigger tool")
+
+	res, err := a.Step(t.Context(), s)
+	if err != nil {
+		t.Fatalf("Step: %v", err)
+	}
+	if len(res.ToolResults) != 1 {
+		t.Fatalf("tool results = %d, want 1", len(res.ToolResults))
+	}
+
+	msgs, err := s.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	assistantIdx := messageIndex(msgs, llm.RoleAssistant, "")
+	toolIdx := messageIndex(msgs, llm.RoleTool, "tool panicked")
+	if assistantIdx < 0 || toolIdx < 0 || toolIdx <= assistantIdx {
+		t.Fatalf("effective messages missing ordered assistant/tool result: %#v", msgs)
+	}
+}
+
+func messageIndex(msgs []llm.Message, role llm.Role, contains string) int {
+	for i, msg := range msgs {
+		if msg.Role != role {
+			continue
+		}
+		if contains == "" || strings.Contains(msg.Content, contains) {
+			return i
+		}
+	}
+	return -1
 }
 
 type panicTool struct{}
@@ -1981,12 +2039,32 @@ func TestRunTools_PanicRecovery(t *testing.T) {
 	}}
 	appendAssistantToolCalls(t, s, calls)
 
-	_, err := runTools(context.Background(), s, calls, reg, nil, nil, nil, 10, "step-1")
-	if err == nil {
-		t.Fatal("expected error from panicking tool, got nil")
+	res, err := runTools(context.Background(), s, calls, reg, nil, nil, nil, 10, "step-1")
+	if err != nil {
+		t.Fatalf("runTools: %v", err)
 	}
-	if !strings.Contains(err.Error(), "panicked") {
-		t.Errorf("expected panic error message, got: %v", err)
+	if len(res.ToolResults) != 1 {
+		t.Fatalf("tool results = %d, want 1", len(res.ToolResults))
+	}
+	if !strings.Contains(res.ToolResults[0].Content, "tool panicked") {
+		t.Fatalf("tool result = %q, want panic error", res.ToolResults[0].Content)
+	}
+
+	var completed bool
+	for _, ev := range s.Events() {
+		if ev.Type != session.ToolCompleted {
+			continue
+		}
+		data, ok, err := ev.ToolCompletedData()
+		if err != nil {
+			t.Fatalf("decode tool completed: %v", err)
+		}
+		if ok && data.Error == "tool panicked: tool boom" {
+			completed = true
+		}
+	}
+	if !completed {
+		t.Fatal("expected panic to record a tool completed event")
 	}
 }
 
@@ -2165,10 +2243,15 @@ func TestRunTools_ApprovalDeny(t *testing.T) {
 	}}
 	appendAssistantToolCalls(t, s, calls)
 
+	done := make(chan StepResult, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := runTools(context.Background(), s, calls, reg, nil, manager, nil, 10, "step-1")
-		errCh <- err
+		res, err := runTools(context.Background(), s, calls, reg, nil, manager, nil, 10, "step-1")
+		if err != nil {
+			errCh <- err
+			return
+		}
+		done <- res
 	}()
 
 	time.Sleep(10 * time.Millisecond)
@@ -2182,8 +2265,13 @@ func TestRunTools_ApprovalDeny(t *testing.T) {
 
 	select {
 	case err := <-errCh:
-		if err == nil || !strings.Contains(err.Error(), "approval denied: unsafe") {
-			t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("runTools: %v", err)
+	case res := <-done:
+		if len(res.ToolResults) != 1 {
+			t.Fatalf("tool results = %d, want 1", len(res.ToolResults))
+		}
+		if !strings.Contains(res.ToolResults[0].Content, "approval denied: unsafe") {
+			t.Fatalf("tool result = %q, want approval denial", res.ToolResults[0].Content)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for denied tool")
