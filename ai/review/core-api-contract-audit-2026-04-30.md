@@ -161,3 +161,7 @@ go test ./... -count=1
 ```
 
 - Ion imports any Canto core fixes and validates the native loop there before this audit is closed.
+
+## Current Outcome
+
+No known Canto-owned native-loop blocker remains after C1-C6. Ion imported the last C6 code boundary fix (`c7f2fa9`) and passed focused core packages, full suite, native race gate, and `tencent/hy3-preview:free` live tool/resume/follow-up smoke with provider request history verified.
