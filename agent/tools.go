@@ -14,7 +14,7 @@ import (
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
-	"github.com/nijaru/canto/x/tracing"
+	"github.com/nijaru/canto/tracing"
 )
 
 type toolResult struct {

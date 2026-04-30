@@ -48,7 +48,7 @@ Deferred unless a core finding pulls it in:
 | C3 Agent loop/tool lifecycle | fixed, monitoring through Ion | `agent/*.go`, `tool/*.go` | Are message/tool events ordered once, persisted once, and recoverable after errors/cancel? |
 | C4 Prompt/provider-visible request construction | fixed, monitoring through Ion | `prompt/*.go`, `llm/*.go` | Are system/developer/context/cache boundaries valid across providers? |
 | C5 Retry/compaction/budget | fixed, monitoring through Ion | `governor/*.go`, runtime integration | Does overflow/retry rebuild from session state and leave durable resumable traces? |
-| C6 Non-core quarantine | pending | `memory/`, `skill/`, `workspace/`, `safety/`, `coding/`, `x/*` | Which packages are deferred vs load-bearing for the native loop? |
+| C6 Non-core quarantine | fixed, monitoring through Ion | `memory/`, `skill/`, `workspace/`, `safety/`, `coding/`, `x/*` | Which packages are deferred vs load-bearing for the native loop? |
 
 ## Recent Context
 
@@ -127,6 +127,25 @@ go test ./... -count=1
 go test ./runtime -run 'TestRunnerOverflowRecovery' -count=1 -v
 go test ./runtime ./governor ./prompt ./llm ./agent -count=1
 go test -race ./runtime ./governor ./llm ./prompt -count=1
+go test ./... -count=1
+```
+
+### C6 Non-Core Quarantine
+
+- Dependency audit finding: the core `agent` package imported `x/tracing`, so an extension package was load-bearing in every native turn. This violated the `x/` boundary: anything required by the hello-agent/native loop belongs in core, not `x/`.
+- Promoted `x/tracing` to `tracing/` and updated core/importing packages. This is a clean pre-alpha rename with no compatibility shim.
+- Remaining reviewed boundaries so far:
+  - `runtime.Bootstrap` depends on `workspace/` for explicit workspace snapshots; that is a core mechanism.
+  - `runtime.ChildRunner` depends on `skill/` only when child specs carry skills; child execution is table-stakes framework machinery but not active in Ion's CoreLoopOnly path.
+  - `prompt.MemoryPrompt` depends on `memory/` only when hosts add that request processor; Ion keeps memory processors/tools gated during CoreLoopOnly.
+  - `tool/mcp` depends on `safety/`/`workspace/`, but MCP registration remains disabled in Ion CoreLoopOnly and is not part of the native minimal loop.
+- Verification:
+
+```sh
+go list -deps ./session ./runtime ./agent ./tool ./prompt ./llm ./governor | rg '^github.com/nijaru/canto/x/' || true
+go test ./agent ./tracing ./x/swarm -count=1
+go test ./runtime ./agent ./tool ./prompt ./llm ./governor ./tracing -count=1
+go test -race ./agent ./runtime ./tracing ./x/swarm -count=1
 go test ./... -count=1
 ```
 

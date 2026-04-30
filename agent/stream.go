@@ -9,7 +9,7 @@ import (
 	"github.com/nijaru/canto/llm"
 	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/x/tracing"
+	"github.com/nijaru/canto/tracing"
 )
 
 // Streamer is implemented by agents that support token-by-token streaming.

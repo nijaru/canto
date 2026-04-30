@@ -10,8 +10,8 @@ import (
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/canto/tracing"
 	xtest "github.com/nijaru/canto/x/testing"
-	"github.com/nijaru/canto/x/tracing"
 )
 
 func setupTracer(t *testing.T) *tracetest.SpanRecorder {

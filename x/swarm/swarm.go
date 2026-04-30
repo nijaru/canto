@@ -8,7 +8,7 @@ import (
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/x/tracing"
+	"github.com/nijaru/canto/tracing"
 )
 
 // SwarmResult summarises a completed swarm run.
