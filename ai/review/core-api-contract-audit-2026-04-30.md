@@ -43,8 +43,8 @@ Deferred unless a core finding pulls it in:
 | Area | Status | Files | Contract Questions |
 | ---- | ------ | ----- | ------------------ |
 | C0 Baseline and task/doc alignment | complete | `ai/STATUS.md`, `ai/PLAN.md`, `tk` | Is the active Canto work tied to Ion validation and a Canto task? Are stale "no issue" notes corrected? |
-| C1 Session event/projection contract | in progress | `session/*.go` | Are append validation, snapshots, `EffectiveMessages`, and `EffectiveEntries` sufficient for provider history and host replay? |
-| C2 Runtime runner/session coordination | pending | `runtime/*.go` | Can queue wait, cancel, retry, and terminal events be proven from durable state? |
+| C1 Session event/projection contract | fixed, monitoring through Ion | `session/*.go` | Are append validation, snapshots, `EffectiveMessages`, and `EffectiveEntries` sufficient for provider history and host replay? |
+| C2 Runtime runner/session coordination | in progress | `runtime/*.go` | Can queue wait, cancel, retry, and terminal events be proven from durable state? |
 | C3 Agent loop/tool lifecycle | pending | `agent/*.go`, `tool/*.go` | Are message/tool events ordered once, persisted once, and recoverable after errors/cancel? |
 | C4 Prompt/provider-visible request construction | pending | `prompt/*.go`, `llm/*.go` | Are system/developer/context/cache boundaries valid across providers? |
 | C5 Retry/compaction/budget | pending | `governor/*.go`, runtime integration | Does overflow/retry rebuild from session state and leave durable resumable traces? |
@@ -70,6 +70,19 @@ Deferred unless a core finding pulls it in:
 go test ./session -count=1
 go test -race ./session -run 'TestProjectionSnapshotter|TestAttachWriteThrough' -count=1
 go test ./runtime ./agent ./tool ./prompt ./llm ./governor -count=1
+go test ./... -count=1
+```
+
+### C2 Runtime Runner/Session Coordination
+
+- Fixed `Runner.Send`/`SendStream` serialization: user-message append now happens inside the per-session queue/coordinator lane, not before enqueue. Concurrent sends can no longer leak a later user message into the active turn's provider-visible history.
+- Added regression coverage for both the local serial queue and `LocalCoordinator` lease path.
+- Verification so far:
+
+```sh
+go test ./runtime -run TestRunnerSendAppendsUserInsideSerializedLane -count=1 -v
+go test ./runtime ./agent ./tool ./prompt ./llm ./governor -count=1
+go test -race ./runtime -run 'TestRunnerSendAppendsUserInsideSerializedLane|TestRunnerLocalQueueWaitTimeoutDoesNotCancelActiveTurn|TestRunnerQueuedTurnWaitTimeoutRecordsTerminalEvent' -count=1
 go test ./... -count=1
 ```
 

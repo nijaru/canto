@@ -275,14 +275,7 @@ func (r *Runner) Send(ctx context.Context, sessionID, message string) (agent.Ste
 		return agent.StepResult{}, err
 	}
 
-	e := session.NewEvent(sessionID, session.MessageAdded, llm.Message{
-		Role:    llm.RoleUser,
-		Content: message,
-	})
-	if err := sess.Append(ctx, e); err != nil {
-		return agent.StepResult{}, err
-	}
-	return r.run(ctx, sess, nil)
+	return r.run(ctx, sess, nil, appendUserMessage(message))
 }
 
 // SendStream appends a user message and runs the agent with streaming.
@@ -298,14 +291,7 @@ func (r *Runner) SendStream(
 		return agent.StepResult{}, err
 	}
 
-	e := session.NewEvent(sessionID, session.MessageAdded, llm.Message{
-		Role:    llm.RoleUser,
-		Content: message,
-	})
-	if err := sess.Append(ctx, e); err != nil {
-		return agent.StepResult{}, err
-	}
-	return r.run(ctx, sess, chunkFn)
+	return r.run(ctx, sess, chunkFn, appendUserMessage(message))
 }
 
 // Run executes the agent on an existing session without appending a new user
@@ -319,7 +305,7 @@ func (r *Runner) Run(ctx context.Context, sessionID string) (agent.StepResult, e
 	if err != nil {
 		return agent.StepResult{}, err
 	}
-	return r.run(ctx, sess, nil)
+	return r.run(ctx, sess, nil, nil)
 }
 
 // RunStream executes the agent with streaming on an existing session without
@@ -336,21 +322,33 @@ func (r *Runner) RunStream(
 	if err != nil {
 		return agent.StepResult{}, err
 	}
-	return r.run(ctx, sess, chunkFn)
+	return r.run(ctx, sess, chunkFn, nil)
 }
 
 // run is the shared entry point for Run/RunStream/Send/SendStream.
 // It applies per-session coordination and delegates to execute.
+type sessionMutation func(context.Context, *session.Session) error
+
+func appendUserMessage(message string) sessionMutation {
+	return func(ctx context.Context, sess *session.Session) error {
+		return sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
+			Role:    llm.RoleUser,
+			Content: message,
+		}))
+	}
+}
+
 func (r *Runner) run(
 	ctx context.Context,
 	sess *session.Session,
 	chunkFn func(*llm.Chunk),
+	mutate sessionMutation,
 ) (agent.StepResult, error) {
 	if r.coordinator != nil {
-		return r.executeWithCoordinator(ctx, sess, chunkFn)
+		return r.executeWithCoordinator(ctx, sess, chunkFn, mutate)
 	}
 	if r.queue == nil {
-		return r.execute(ctx, sess, chunkFn)
+		return r.execute(ctx, sess, chunkFn, mutate)
 	}
 
 	waitCtx := ctx
@@ -372,7 +370,7 @@ func (r *Runner) run(
 		}
 
 		var err error
-		result, err = r.execute(execCtx, sess, chunkFn)
+		result, err = r.execute(execCtx, sess, chunkFn, mutate)
 		return err
 	})
 	err := <-errCh
@@ -386,9 +384,10 @@ func (r *Runner) executeWithCoordinator(
 	ctx context.Context,
 	sess *session.Session,
 	chunkFn func(*llm.Chunk),
+	mutate sessionMutation,
 ) (agent.StepResult, error) {
 	if r.coordinator == nil {
-		return r.execute(ctx, sess, chunkFn)
+		return r.execute(ctx, sess, chunkFn, mutate)
 	}
 
 	waitCtx := ctx
@@ -416,7 +415,7 @@ func (r *Runner) executeWithCoordinator(
 		defer cancel()
 	}
 
-	result, execErr := r.executeUnderLease(execCtx, sess, chunkFn, lease)
+	result, execErr := r.executeUnderLease(execCtx, sess, chunkFn, lease, mutate)
 	return result, execErr
 }
 
@@ -436,7 +435,14 @@ func (r *Runner) execute(
 	ctx context.Context,
 	sess *session.Session,
 	chunkFn func(*llm.Chunk),
+	mutate sessionMutation,
 ) (agent.StepResult, error) {
+	if mutate != nil {
+		if err := mutate(ctx, sess); err != nil {
+			return agent.StepResult{}, err
+		}
+	}
+
 	meta := hook.SessionMeta{ID: sess.ID()}
 	if _, err := r.hooks.Run(ctx, hook.EventSessionStart, meta, nil); err != nil {
 		return agent.StepResult{}, err

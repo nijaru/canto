@@ -276,6 +276,156 @@ func (a *slowAgent) Turn(ctx context.Context, sess *session.Session) (agent.Step
 	return agent.StepResult{Content: msg.Content}, nil
 }
 
+type inspectQueuedSendAgent struct {
+	entered chan struct{}
+	readNow chan struct{}
+	release chan struct{}
+	seen    chan []llm.Message
+	calls   atomic.Int32
+}
+
+func (a *inspectQueuedSendAgent) ID() string { return "inspect-queued-send" }
+
+func (a *inspectQueuedSendAgent) Step(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a *inspectQueuedSendAgent) Turn(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	call := a.calls.Add(1)
+	if call == 1 {
+		close(a.entered)
+		select {
+		case <-a.readNow:
+		case <-ctx.Done():
+			return agent.StepResult{}, ctx.Err()
+		}
+	}
+
+	messages, err := sess.EffectiveMessages()
+	if err != nil {
+		return agent.StepResult{}, err
+	}
+	select {
+	case a.seen <- messages:
+	case <-ctx.Done():
+		return agent.StepResult{}, ctx.Err()
+	}
+
+	if call == 1 {
+		select {
+		case <-a.release:
+		case <-ctx.Done():
+			return agent.StepResult{}, ctx.Err()
+		}
+	}
+
+	content := "done"
+	if err := sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleAssistant,
+		Content: content,
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{Content: content}, nil
+}
+
+func TestRunnerSendAppendsUserInsideSerializedLane(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		opts []Option
+	}{
+		{name: "local queue"},
+		{name: "coordinator", opts: []Option{WithCoordinator(NewLocalCoordinator())}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			store, err := session.NewSQLiteStore(":memory:")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer store.Close()
+
+			agent := &inspectQueuedSendAgent{
+				entered: make(chan struct{}),
+				readNow: make(chan struct{}),
+				release: make(chan struct{}),
+				seen:    make(chan []llm.Message, 2),
+			}
+			opts := []Option{
+				WithWaitTimeout(time.Second),
+				WithExecutionTimeout(5 * time.Second),
+			}
+			opts = append(opts, tt.opts...)
+			runner := NewRunner(store, agent, opts...)
+			defer runner.Close()
+
+			firstErr := make(chan error, 1)
+			go func() {
+				_, err := runner.Send(t.Context(), "serialized-send-"+tt.name, "first")
+				firstErr <- err
+			}()
+
+			select {
+			case <-agent.entered:
+			case err := <-firstErr:
+				t.Fatalf("first send finished before inspection: %v", err)
+			case <-time.After(time.Second):
+				t.Fatal("timed out waiting for first turn")
+			}
+
+			secondErr := make(chan error, 1)
+			go func() {
+				_, err := runner.Send(t.Context(), "serialized-send-"+tt.name, "second")
+				secondErr <- err
+			}()
+
+			time.Sleep(25 * time.Millisecond)
+			close(agent.readNow)
+
+			var firstMessages []llm.Message
+			select {
+			case firstMessages = <-agent.seen:
+			case <-time.After(time.Second):
+				t.Fatal("timed out waiting for first observed history")
+			}
+
+			var userMessages []string
+			for _, msg := range firstMessages {
+				if msg.Role == llm.RoleUser {
+					userMessages = append(userMessages, msg.Content)
+				}
+			}
+			if len(userMessages) != 1 || userMessages[0] != "first" {
+				t.Fatalf("first turn saw user messages %#v, want only first", userMessages)
+			}
+
+			close(agent.release)
+
+			select {
+			case err := <-firstErr:
+				if err != nil {
+					t.Fatalf("first send: %v", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("timed out waiting for first send")
+			}
+			select {
+			case err := <-secondErr:
+				if err != nil {
+					t.Fatalf("second send: %v", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("timed out waiting for second send")
+			}
+		})
+	}
+}
+
 type blockingStreamProvider struct {
 	started chan struct{}
 	release chan struct{}
