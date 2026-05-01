@@ -87,9 +87,15 @@ func (a *BaseAgent) StreamStep(
 	callOrder := make([]string, 0)              // preserve insertion order
 
 	for {
+		if err = ctx.Err(); err != nil {
+			return
+		}
 		chunk, ok := stream.Next()
 		if !ok {
 			break
+		}
+		if err = ctx.Err(); err != nil {
+			return
 		}
 		if chunk.Content != "" {
 			contentBuilder.WriteString(chunk.Content)
@@ -127,6 +133,9 @@ func (a *BaseAgent) StreamStep(
 		err = fmt.Errorf("stream: %w", err)
 		return
 	}
+	if err = ctx.Err(); err != nil {
+		return
+	}
 
 	// Reconstruct ordered calls slice.
 	calls := make([]llm.Call, 0, len(callOrder))
@@ -148,6 +157,9 @@ func (a *BaseAgent) StreamStep(
 		return
 	}
 
+	if err = ctx.Err(); err != nil {
+		return
+	}
 	e := session.NewEvent(s.ID(), session.MessageAdded, msg)
 	e.Cost = usage.Cost
 	if err = s.Append(ctx, e); err != nil {

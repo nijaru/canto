@@ -95,6 +95,9 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 	if err != nil {
 		return
 	}
+	if err = ctx.Err(); err != nil {
+		return
+	}
 	res.Usage = resp.Usage
 
 	// Record assistant response with cost from the provider.
@@ -109,6 +112,9 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 		return
 	}
 
+	if err = ctx.Err(); err != nil {
+		return
+	}
 	e := session.NewEvent(s.ID(), session.MessageAdded, msg)
 	e.Cost = resp.Usage.Cost
 	if err = s.Append(ctx, e); err != nil {

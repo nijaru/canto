@@ -78,6 +78,36 @@ func (s *contextBlockingStream) Err() error {
 
 func (s *contextBlockingStream) Close() error { return nil }
 
+type lateSuccessStreamProvider struct {
+	mockProvider
+	started chan struct{}
+}
+
+type lateSuccessStream struct {
+	ctx  context.Context
+	sent bool
+}
+
+func (p *lateSuccessStreamProvider) Stream(
+	ctx context.Context,
+	req *llm.Request,
+) (llm.Stream, error) {
+	p.started <- struct{}{}
+	return &lateSuccessStream{ctx: ctx}, nil
+}
+
+func (s *lateSuccessStream) Next() (*llm.Chunk, bool) {
+	if s.sent {
+		return nil, false
+	}
+	<-s.ctx.Done()
+	s.sent = true
+	return &llm.Chunk{Content: "late answer"}, true
+}
+
+func (s *lateSuccessStream) Err() error   { return nil }
+func (s *lateSuccessStream) Close() error { return nil }
+
 func (m *streamMockProvider) IsTransient(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "transient")
 }
@@ -267,6 +297,46 @@ func TestStreamTurnRecordsTerminalEventOnCanceledContext(t *testing.T) {
 		t.Fatal("timed out waiting for canceled stream turn")
 	}
 
+	assertTurnCompletedError(t, s, context.Canceled.Error())
+}
+
+func TestStreamTurnDoesNotRecordLateAssistantAfterCancel(t *testing.T) {
+	p := &lateSuccessStreamProvider{started: make(chan struct{}, 1)}
+	a := New("a", "sys", "m", p, nil)
+	s := userSession("s-late-canceled-stream", "q")
+	ctx, cancel := context.WithCancel(t.Context())
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := a.StreamTurn(ctx, s, nil)
+		errCh <- err
+	}()
+
+	select {
+	case <-p.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for stream call")
+	}
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err == nil || !strings.Contains(err.Error(), context.Canceled.Error()) {
+			t.Fatalf("stream turn error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for canceled stream turn")
+	}
+
+	messages, err := s.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("effective messages: %v", err)
+	}
+	for _, msg := range messages {
+		if msg.Role == llm.RoleAssistant {
+			t.Fatalf("recorded late assistant message after cancellation: %#v", msg)
+		}
+	}
 	assertTurnCompletedError(t, s, context.Canceled.Error())
 }
 

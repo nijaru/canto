@@ -79,6 +79,20 @@ func (p *contextBlockingProvider) Generate(
 	return nil, ctx.Err()
 }
 
+type lateSuccessProvider struct {
+	mockProvider
+	started chan struct{}
+}
+
+func (p *lateSuccessProvider) Generate(
+	ctx context.Context,
+	req *llm.Request,
+) (*llm.Response, error) {
+	p.started <- struct{}{}
+	<-ctx.Done()
+	return &llm.Response{Content: "late answer"}, nil
+}
+
 type rejectCanceledWriter struct {
 	events []session.Event
 }
@@ -560,6 +574,46 @@ func TestTurnRecordsTerminalEventOnCanceledContext(t *testing.T) {
 		t.Fatal("timed out waiting for canceled turn")
 	}
 
+	assertTurnCompletedError(t, s, context.Canceled.Error())
+}
+
+func TestTurnDoesNotRecordLateAssistantAfterCancel(t *testing.T) {
+	p := &lateSuccessProvider{started: make(chan struct{}, 1)}
+	a := New("test-agent", "You are helpful.", "gpt-4", p, nil)
+	s := userSession("s-late-canceled-turn", "Hi!")
+	ctx, cancel := context.WithCancel(t.Context())
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := a.Turn(ctx, s)
+		errCh <- err
+	}()
+
+	select {
+	case <-p.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for provider call")
+	}
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err == nil || !strings.Contains(err.Error(), context.Canceled.Error()) {
+			t.Fatalf("turn error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for canceled turn")
+	}
+
+	messages, err := s.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("effective messages: %v", err)
+	}
+	for _, msg := range messages {
+		if msg.Role == llm.RoleAssistant {
+			t.Fatalf("recorded late assistant message after cancellation: %#v", msg)
+		}
+	}
 	assertTurnCompletedError(t, s, context.Canceled.Error())
 }
 
