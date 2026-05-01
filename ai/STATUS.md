@@ -3,7 +3,7 @@
 **Phase:** Phase 5: M1 stabilization before Ion rebuild
 **Focus:** `canto-x5po` Canto core API contract audit is complete for the current native-loop stabilization pass. No concrete Canto-owned blocker is known after Ion imported the C6 tracing-boundary fix and passed focused/full/race/live gates.
 **Blockers:** None.
-**Updated:** 2026-04-30
+**Updated:** 2026-05-01
 
 ## Context
 
@@ -17,6 +17,7 @@ Phase 5 still has SOTA and DX inputs, but the active operating mode is now Canto
 - **Canto API audit:** active core-contract review lives in `ai/review/core-api-contract-audit-2026-04-30.md`; use it to track which core packages have actually been reviewed.
 - **Ion feedback tracker:** confirmed Ion-derived framework issues live in `ai/review/ion-feedback-tracker-2026-04-28.md`. `ai/ion-framework-issues.md` is now only a legacy pointer.
 - **Ion as acceptance test:** defer public-framework expansion, SOTA primitives, and release/docs polish while Ion is exposing native core-loop failures. Fix concrete framework defects here, then import the Canto revision into Ion and verify there.
+- **Next-phase roadmap:** [ai/design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) is the current sequencing source: keep Canto stable during Ion I0-I2, then do M1 framework readiness before optional workspace/sandbox, optimizer, or multi-agent expansion.
 
 SOTA/DX research is part of the Canto pre-Ion gate when it can change stable API or primitives. New research remains delta-based and must name the Canto primitive it would change.
 
@@ -33,6 +34,7 @@ Current authoring-surface inputs:
 
 - Active work is `canto-x5po`, a focused Canto core API contract audit under Ion validation. Do not add broad Canto roadmap work unless the audit or Ion identifies a concrete framework-owned issue.
 - Close `canto-x5po` unless new Ion validation exposes a concrete framework-owned failure. Future Canto work should be tied to a specific failing contract, not another broad audit.
+- Do not create Canto implementation work from Mesa/Archil/OpenHands/DSPy/GEPA research alone. Those are roadmap inputs; implementation starts only when Ion stability or M1 readiness exposes a concrete framework seam.
 
 **Release/doc gate:**
 
