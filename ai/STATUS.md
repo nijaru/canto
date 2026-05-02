@@ -15,7 +15,7 @@ Phase 5 still has SOTA and DX inputs, but the active operating mode is now Canto
 - **Ion owns product policy:** terminal UX, task/planner behavior, approval delivery and thresholds, shell classifier heuristics, memory aggressiveness, command catalog choices, and end-user workflow.
 - **Ion validates Canto externally:** Ion should expose missing or awkward primitives, but Ion work is not active in this repo. Do not keep standing Ion tasks in Canto; add a Canto task only when separate Ion work identifies a concrete framework issue.
 - **Canto API audit:** active core-contract review lives in `ai/review/core-api-contract-audit-2026-04-30.md`; use it to track which core packages have actually been reviewed.
-- **Ion feedback tracker:** confirmed Ion-derived framework issues live in `ai/review/ion-feedback-tracker-2026-04-28.md`. `ai/ion-framework-issues.md` is now only a legacy pointer.
+- **Ion feedback tracker:** confirmed Ion-derived framework issues live in `ai/review/ion-feedback-tracker-2026-04-28.md`.
 - **Ion as acceptance test:** defer public-framework expansion, SOTA primitives, and release/docs polish while Ion is exposing native core-loop failures. Fix concrete framework defects here, then import the Canto revision into Ion and verify there.
 - **Next-phase roadmap:** [ai/design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) is the current sequencing source: keep Canto stable during Ion I0-I2, then do M1 framework readiness before optional workspace/sandbox, optimizer, or multi-agent expansion.
 

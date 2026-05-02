@@ -8,6 +8,9 @@ status: active
 
 Use this as the single active place for Ion findings that require Canto framework work. Ion product tasks, TUI polish, provider config, ACP polish, and feature planning stay in the Ion repo.
 
+Older Ion handoff and framework-issue notes were consolidated here and removed
+from the Canto `ai/` root. Do not recreate root-level Ion intake files.
+
 ## Handoff Rule
 
 - Log an item here only after Ion identifies a concrete Canto primitive, contract, or API issue.

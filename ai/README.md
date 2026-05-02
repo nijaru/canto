@@ -55,10 +55,6 @@ All six sprints are complete. See [PLAN.md](PLAN.md) for full history.
 - [design/codex-shell-env-2026-04.md](design/codex-shell-env-2026-04.md) — Codex zsh stale GOROOT fix
 - [review/first-alpha-release-gate-2026-04-01.md](review/first-alpha-release-gate-2026-04-01.md) — alpha release expectations and missing gates
 
-## Legacy Pointers
-
-- [ion-framework-issues.md](ion-framework-issues.md) — retained only to redirect older references to the active Ion feedback tracker
-
 ## Supporting Research (secondary)
 
 - [research/dspy-authoring-insights-2026-04.md](research/dspy-authoring-insights-2026-04.md) — DSPy signature/module/adapter/optimizer lessons for Canto and Ion
