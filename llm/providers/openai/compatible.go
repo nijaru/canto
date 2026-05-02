@@ -58,16 +58,11 @@ func NewCompatibleProvider(cfg llm.ProviderConfig, spec CompatibleSpec) *Provide
 		}
 	}
 
-	modelCaps := spec.ModelCaps
-	if modelCaps == nil {
-		modelCaps = DefaultModelCaps()
-	}
-
 	return &Provider{
 		Base: Base{
 			Client:    sashaoai.NewClientWithConfig(config),
 			Config:    cfg,
-			ModelCaps: modelCaps,
+			ModelCaps: spec.ModelCaps,
 		},
 	}
 }

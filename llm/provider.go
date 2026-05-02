@@ -2,6 +2,8 @@ package llm
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -167,6 +169,28 @@ type Capabilities struct {
 	// with an explicit token budget. When true, Request.ThinkingBudget is
 	// forwarded to the provider.
 	Thinking bool
+	// Reasoning describes typed reasoning controls accepted by the model.
+	// ReasoningEffort and Thinking are legacy booleans kept for compatibility;
+	// provider adapters should prefer this structured metadata when present.
+	Reasoning ReasoningCapabilities
+}
+
+type ReasoningKind string
+
+const (
+	ReasoningKindNone    ReasoningKind = ""
+	ReasoningKindEffort  ReasoningKind = "effort"
+	ReasoningKindBudget  ReasoningKind = "budget"
+	ReasoningKindBoolean ReasoningKind = "boolean"
+)
+
+type ReasoningCapabilities struct {
+	Kind                ReasoningKind
+	Efforts             []string
+	CanDisable          bool
+	BudgetMinTokens     int
+	BudgetMaxTokens     int
+	BudgetDefaultTokens int
 }
 
 // DefaultCapabilities returns full capabilities — suitable for most chat models.
@@ -177,6 +201,57 @@ func DefaultCapabilities() Capabilities {
 		Temperature: true,
 		SystemRole:  RoleSystem,
 	}
+}
+
+func (c Capabilities) ReasoningCaps() ReasoningCapabilities {
+	caps := c.Reasoning
+	if caps.Kind != ReasoningKindNone {
+		return caps
+	}
+	if c.ReasoningEffort {
+		caps.Kind = ReasoningKindEffort
+		return caps
+	}
+	if c.Thinking {
+		caps.Kind = ReasoningKindBudget
+		return caps
+	}
+	return caps
+}
+
+func (c Capabilities) SupportsReasoningEffort(effort string) bool {
+	effort = strings.ToLower(strings.TrimSpace(effort))
+	if effort == "" {
+		return false
+	}
+	caps := c.ReasoningCaps()
+	if caps.Kind != ReasoningKindEffort {
+		return false
+	}
+	if effort == "off" || effort == "none" || effort == "disabled" {
+		return caps.CanDisable
+	}
+	if len(caps.Efforts) == 0 {
+		return c.ReasoningEffort
+	}
+	return slices.Contains(caps.Efforts, effort)
+}
+
+func (c Capabilities) SupportsThinkingBudget(tokens int) bool {
+	if tokens <= 0 {
+		return false
+	}
+	caps := c.ReasoningCaps()
+	if caps.Kind != ReasoningKindBudget {
+		return false
+	}
+	if caps.BudgetMinTokens > 0 && tokens < caps.BudgetMinTokens {
+		return false
+	}
+	if caps.BudgetMaxTokens > 0 && tokens > caps.BudgetMaxTokens {
+		return false
+	}
+	return c.Thinking || caps.Kind == ReasoningKindBudget
 }
 
 // GenerateFromStream collects chunks from a stream and assembles an Response.

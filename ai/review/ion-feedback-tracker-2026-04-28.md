@@ -20,7 +20,8 @@ from the Canto `ai/` root. Do not recreate root-level Ion intake files.
 
 ## Open Confirmed Framework Issues
 
-None as of 2026-04-28. Ion's active core-loop review is still checking for framework-owned failures.
+None as of 2026-05-02. Ion's active I4 pass is still checking for
+framework-owned issues as advanced integrations are reintroduced.
 
 ## Resolved Ion-Derived Fixes
 
@@ -33,6 +34,7 @@ None as of 2026-04-28. Ion's active core-loop review is still checking for frame
 | Failed tool result text | Tool completion events carry structured error text. | Ion can render/replay failed tool results without parsing display strings. |
 | Queue wait timeout leaking into execution | Canto local serial queue separates wait timeout from execution context. | Prevents queued-turn wait deadlines from canceling active or later model turns. |
 | Retry-until-cancel primitive | Retry provider supports transport-only retry until context cancellation with retry callbacks. | Ion owns user-facing retry status; Canto owns retry mechanics. |
+| Typed reasoning capabilities | `llm.Capabilities` exposes structured reasoning controls, request preparation drops unsupported effort/budget fields, OpenAI reasoning models expose named efforts and disable support, Anthropic thinking models expose budget metadata, and generic OpenAI-compatible endpoints default to no reasoning params. | Lets Ion filter `/thinking` and provider request fields without guessing from provider names. |
 
 ## Watch List
 

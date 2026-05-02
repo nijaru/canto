@@ -105,6 +105,101 @@ func TestTransformRequestForCapabilitiesKeepsMatchedToolResultsWithoutDuplicates
 	}
 }
 
+func TestTransformRequestForCapabilitiesDropsUnsupportedReasoningControls(t *testing.T) {
+	req := &Request{
+		ReasoningEffort: "high",
+		ThinkingBudget:  4096,
+		Messages:        []Message{{Role: RoleUser, Content: "hello"}},
+	}
+
+	TransformRequestForCapabilities(req, DefaultCapabilities())
+
+	if req.ReasoningEffort != "" {
+		t.Fatalf("reasoning effort = %q, want empty", req.ReasoningEffort)
+	}
+	if req.ThinkingBudget != 0 {
+		t.Fatalf("thinking budget = %d, want 0", req.ThinkingBudget)
+	}
+}
+
+func TestTransformRequestForCapabilitiesKeepsSupportedReasoningEffort(t *testing.T) {
+	req := &Request{
+		ReasoningEffort: "high",
+		Messages:        []Message{{Role: RoleUser, Content: "hello"}},
+	}
+
+	TransformRequestForCapabilities(req, Capabilities{
+		ReasoningEffort: true,
+		Reasoning: ReasoningCapabilities{
+			Kind:       ReasoningKindEffort,
+			Efforts:    []string{"low", "medium", "high"},
+			CanDisable: true,
+		},
+	})
+
+	if req.ReasoningEffort != "high" {
+		t.Fatalf("reasoning effort = %q, want high", req.ReasoningEffort)
+	}
+}
+
+func TestTransformRequestForCapabilitiesDropsUnsupportedReasoningEffortValue(t *testing.T) {
+	req := &Request{
+		ReasoningEffort: "xhigh",
+		Messages:        []Message{{Role: RoleUser, Content: "hello"}},
+	}
+
+	TransformRequestForCapabilities(req, Capabilities{
+		ReasoningEffort: true,
+		Reasoning: ReasoningCapabilities{
+			Kind:    ReasoningKindEffort,
+			Efforts: []string{"low", "medium", "high"},
+		},
+	})
+
+	if req.ReasoningEffort != "" {
+		t.Fatalf("reasoning effort = %q, want empty", req.ReasoningEffort)
+	}
+}
+
+func TestTransformRequestForCapabilitiesKeepsSupportedThinkingBudget(t *testing.T) {
+	req := &Request{
+		ThinkingBudget: 4096,
+		Messages:       []Message{{Role: RoleUser, Content: "hello"}},
+	}
+
+	TransformRequestForCapabilities(req, Capabilities{
+		Thinking: true,
+		Reasoning: ReasoningCapabilities{
+			Kind:            ReasoningKindBudget,
+			BudgetMinTokens: 1024,
+			BudgetMaxTokens: 8192,
+		},
+	})
+
+	if req.ThinkingBudget != 4096 {
+		t.Fatalf("thinking budget = %d, want 4096", req.ThinkingBudget)
+	}
+}
+
+func TestTransformRequestForCapabilitiesDropsOutOfRangeThinkingBudget(t *testing.T) {
+	req := &Request{
+		ThinkingBudget: 512,
+		Messages:       []Message{{Role: RoleUser, Content: "hello"}},
+	}
+
+	TransformRequestForCapabilities(req, Capabilities{
+		Thinking: true,
+		Reasoning: ReasoningCapabilities{
+			Kind:            ReasoningKindBudget,
+			BudgetMinTokens: 1024,
+		},
+	})
+
+	if req.ThinkingBudget != 0 {
+		t.Fatalf("thinking budget = %d, want 0", req.ThinkingBudget)
+	}
+}
+
 func TestTransformRequestForCapabilitiesSynthesizesBeforeNextAssistantMessage(t *testing.T) {
 	req := &Request{
 		Messages: []Message{

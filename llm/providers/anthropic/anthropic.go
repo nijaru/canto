@@ -34,6 +34,10 @@ func DefaultModelCaps() map[string]llm.Capabilities {
 	thinking := func() llm.Capabilities {
 		c := llm.DefaultCapabilities()
 		c.Thinking = true
+		c.Reasoning = llm.ReasoningCapabilities{
+			Kind:            llm.ReasoningKindBudget,
+			BudgetMinTokens: 1024,
+		}
 		return c
 	}
 	return map[string]llm.Capabilities{

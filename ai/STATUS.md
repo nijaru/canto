@@ -3,7 +3,7 @@
 **Phase:** Phase 5: M1 stabilization before Ion rebuild
 **Focus:** `canto-x5po` Canto core API contract audit is complete for the current native-loop stabilization pass. No concrete Canto-owned blocker is known after Ion imported the C6 tracing-boundary fix and passed focused/full/race/live gates.
 **Blockers:** None.
-**Updated:** 2026-05-01
+**Updated:** 2026-05-02
 
 ## Context
 
@@ -52,6 +52,12 @@ Current authoring-surface inputs:
 
 ## Recently landed
 
+- Typed provider reasoning capability metadata landed from Ion `tk-369n`
+  feedback: `llm.Capabilities` now carries structured reasoning controls
+  (named effort values, disable support, budget ranges), request preparation
+  drops unsupported reasoning parameters, OpenAI reasoning models expose named
+  efforts, Anthropic thinking models expose budget metadata, and generic
+  OpenAI-compatible endpoints default to no reasoning params unless configured.
 - C6 non-core quarantine fix landed in `c7f2fa9` and has been imported into Ion: dependency audit found core `agent` imported `x/tracing`, making an extension package load-bearing in every native turn. `x/tracing` was promoted to core `tracing/` with import/docs updates and no compatibility shim. Core package deps no longer include `github.com/nijaru/canto/x/*`; Canto focused/full/race gates and Ion focused/full/race/live-smoke gates are green after import.
 - C5 retry/compaction/budget audit landed in `773f2ab` and has been imported into Ion: runtime-level overflow recovery is confirmed as the correct session-backed contract because it retries the whole agent turn and rebuilds the provider request from compacted effective history. Added focused runtime coverage for both a minimal runner agent and the normal `agent.New` provider request path; clarified that `governor.RecoveryProvider` retries an already-built request and is not the native session-backed recovery path. Canto focused/full/race gates and Ion focused/full/race/live-smoke gates are green after import.
 - C3 agent/tool lifecycle and scheduler race fixes landed in `d3f8084` and have been imported into Ion: tool-boundary failures such as hook blocks, approval denials, ambiguous replay, and panics now become model-visible tool observations where possible; panics also record durable `ToolCompleted` error data. `LocalScheduler.Schedule` publishes the timer under the task mutex before callbacks can enter `start`/`finish`, closing the race found by the focused runtime race gate. Canto focused/full/race gates and Ion focused/full/race/live-smoke gates are green after import.

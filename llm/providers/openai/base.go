@@ -165,7 +165,7 @@ func (b *Base) ConvertRequest(req *llm.Request) openai.ChatCompletionRequest {
 		// which counts both visible output and internal reasoning tokens.
 		cr.MaxCompletionTokens = req.MaxTokens
 	}
-	if caps.ReasoningEffort && req.ReasoningEffort != "" {
+	if caps.SupportsReasoningEffort(req.ReasoningEffort) {
 		cr.ReasoningEffort = req.ReasoningEffort
 	}
 	if rf := req.ResponseFormat; rf != nil {
@@ -261,6 +261,11 @@ func DefaultModelCaps() map[string]llm.Capabilities {
 			Tools:           true,
 			SystemRole:      systemRole,
 			ReasoningEffort: true,
+			Reasoning: llm.ReasoningCapabilities{
+				Kind:       llm.ReasoningKindEffort,
+				Efforts:    []string{"minimal", "low", "medium", "high"},
+				CanDisable: true,
+			},
 			// Temperature is false (zero value) — reasoning models ignore it.
 		}
 	}

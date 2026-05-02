@@ -21,6 +21,12 @@ func TransformRequestForCapabilities(req *Request, caps Capabilities) {
 	if !caps.Temperature {
 		req.Temperature = 0
 	}
+	if req.ReasoningEffort != "" && !caps.SupportsReasoningEffort(req.ReasoningEffort) {
+		req.ReasoningEffort = ""
+	}
+	if req.ThinkingBudget > 0 && !caps.SupportsThinkingBudget(req.ThinkingBudget) {
+		req.ThinkingBudget = 0
+	}
 
 	normalizeToolIDs(req.Messages)
 	if !caps.Thinking {

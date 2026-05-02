@@ -17,6 +17,20 @@ func TestNewProviderDefaults(t *testing.T) {
 	}
 	if caps := p.Capabilities("o4-mini"); !caps.ReasoningEffort {
 		t.Fatal("expected OpenAI reasoning model capability defaults")
+	} else if !caps.SupportsReasoningEffort("high") || !caps.SupportsReasoningEffort("none") {
+		t.Fatalf("unexpected OpenAI reasoning capabilities: %#v", caps.Reasoning)
+	}
+}
+
+func TestCompatibleProviderDefaultsToNoReasoningCaps(t *testing.T) {
+	p := NewCompatibleProvider(llm.ProviderConfig{ID: "local-api"}, CompatibleSpec{
+		ID:                 "local-api",
+		DefaultAPIEndpoint: "http://localhost:8080/v1",
+	})
+
+	if caps := p.Capabilities("o4-mini"); caps.ReasoningEffort ||
+		caps.SupportsReasoningEffort("high") {
+		t.Fatalf("compatible provider caps = %#v, want no reasoning by default", caps)
 	}
 }
 
