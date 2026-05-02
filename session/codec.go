@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"time"
@@ -56,12 +57,26 @@ func writeEventJSON(w io.Writer, e Event) error {
 	return json.MarshalWrite(w, env)
 }
 
+// MarshalEventJSON encodes an event using the durable session-log envelope.
+func MarshalEventJSON(e Event) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := writeEventJSON(&buf, e); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 func decodeEventJSON(data []byte) (Event, error) {
 	var env eventEnvelope
 	if err := json.Unmarshal(data, &env); err != nil {
 		return Event{}, err
 	}
 	return eventFromEnvelope(env), nil
+}
+
+// UnmarshalEventJSON decodes an event from the durable session-log envelope.
+func UnmarshalEventJSON(data []byte) (Event, error) {
+	return decodeEventJSON(data)
 }
 
 func decodeEventRow(

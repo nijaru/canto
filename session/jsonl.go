@@ -311,6 +311,17 @@ func (s *JSONLStore) Lineage(ctx context.Context, sessionID string) ([]SessionAn
 	return lineageFromMap(sessionID, index)
 }
 
+// SaveAncestry persists existing ancestry metadata for portable session
+// imports.
+func (s *JSONLStore) SaveAncestry(_ context.Context, record SessionAncestry) error {
+	if err := validateSessionAncestry(record); err != nil {
+		return err
+	}
+	s.ancestryMu.Lock()
+	defer s.ancestryMu.Unlock()
+	return s.appendAncestryLocked(record)
+}
+
 func (s *JSONLStore) ensureRootAncestryLocked(sessionID string, createdAt time.Time) (int, error) {
 	index, err := s.loadAncestryIndexLocked()
 	if err != nil {

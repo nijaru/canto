@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/nijaru/canto/llm"
 )
@@ -208,6 +209,62 @@ func TestSessionBranchUsesSQLiteLiveParentState(t *testing.T) {
 	}
 	if parentAncestry == nil || parentAncestry.SessionID != parent.ID() {
 		t.Fatalf("child parent ancestry = %#v, want %q", parentAncestry, parent.ID())
+	}
+}
+
+func TestSQLiteStoreSaveAncestryPreservesImportedLineage(t *testing.T) {
+	dbFile := "test_canto_import_ancestry.db"
+	defer os.Remove(dbFile)
+
+	store, err := NewSQLiteStore(dbFile)
+	if err != nil {
+		t.Fatalf("failed to create sqlite store: %v", err)
+	}
+	defer store.Close()
+
+	ctx := t.Context()
+	rootCreatedAt := time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC)
+	childCreatedAt := rootCreatedAt.Add(time.Minute)
+	if err := store.SaveAncestry(ctx, SessionAncestry{
+		SessionID: "import-root",
+		Depth:     0,
+		CreatedAt: rootCreatedAt,
+	}); err != nil {
+		t.Fatalf("save root ancestry: %v", err)
+	}
+	if err := store.SaveAncestry(ctx, SessionAncestry{
+		SessionID:       "import-child",
+		ParentSessionID: "import-root",
+		BranchLabel:     "mac branch",
+		ForkReason:      "cross-host import",
+		Depth:           1,
+		CreatedAt:       childCreatedAt,
+	}); err != nil {
+		t.Fatalf("save child ancestry: %v", err)
+	}
+	if err := store.Save(ctx, NewEvent("import-child", MessageAdded, llm.Message{
+		Role:    llm.RoleUser,
+		Content: "hello from mac",
+	})); err != nil {
+		t.Fatalf("save imported event: %v", err)
+	}
+
+	parent, err := store.Parent(ctx, "import-child")
+	if err != nil {
+		t.Fatalf("parent query: %v", err)
+	}
+	if parent == nil || parent.SessionID != "import-root" {
+		t.Fatalf("parent = %#v, want import-root", parent)
+	}
+	lineage, err := store.Lineage(ctx, "import-child")
+	if err != nil {
+		t.Fatalf("lineage query: %v", err)
+	}
+	if len(lineage) != 2 ||
+		lineage[0].SessionID != "import-root" ||
+		lineage[1].SessionID != "import-child" ||
+		lineage[1].BranchLabel != "mac branch" {
+		t.Fatalf("lineage = %#v, want imported parent and child", lineage)
 	}
 }
 

@@ -396,6 +396,23 @@ func (s *SQLiteStore) Lineage(ctx context.Context, sessionID string) ([]SessionA
 	return lineage, nil
 }
 
+// SaveAncestry persists existing ancestry metadata for portable session
+// imports.
+func (s *SQLiteStore) SaveAncestry(ctx context.Context, record SessionAncestry) error {
+	if err := validateSessionAncestry(record); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := saveSQLiteAncestryTx(ctx, tx, record); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // Close closes the database connection.
 func (s *SQLiteStore) Close() error {
 	return s.db.Close()

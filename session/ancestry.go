@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -30,6 +31,12 @@ type SessionTreeStore interface {
 	Parent(ctx context.Context, sessionID string) (*SessionAncestry, error)
 	Children(ctx context.Context, sessionID string) ([]SessionAncestry, error)
 	Lineage(ctx context.Context, sessionID string) ([]SessionAncestry, error)
+}
+
+// SessionAncestryWriter persists existing ancestry metadata for portable
+// session imports.
+type SessionAncestryWriter interface {
+	SaveAncestry(ctx context.Context, record SessionAncestry) error
 }
 
 // ForkStore materializes forked sessions from persisted parent session IDs,
@@ -61,6 +68,16 @@ func reverseAncestry(items []SessionAncestry) {
 	for i, j := 0, len(items)-1; i < j; i, j = i+1, j-1 {
 		items[i], items[j] = items[j], items[i]
 	}
+}
+
+func validateSessionAncestry(record SessionAncestry) error {
+	if strings.TrimSpace(record.SessionID) == "" {
+		return fmt.Errorf("session ancestry missing session id")
+	}
+	if record.CreatedAt.IsZero() {
+		return fmt.Errorf("session ancestry %q missing created_at", record.SessionID)
+	}
+	return nil
 }
 
 func lineageFromMap(
