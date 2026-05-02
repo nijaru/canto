@@ -14,6 +14,7 @@ func (r *Request) Clone() *Request {
 				continue
 			}
 			copied := *spec
+			copied.Parameters = cloneJSONValue(spec.Parameters)
 			if spec.CacheControl != nil {
 				cacheControl := *spec.CacheControl
 				copied.CacheControl = &cacheControl
@@ -24,10 +25,7 @@ func (r *Request) Clone() *Request {
 	if r.ResponseFormat != nil {
 		format := *r.ResponseFormat
 		if len(r.ResponseFormat.Schema) > 0 {
-			format.Schema = make(map[string]any, len(r.ResponseFormat.Schema))
-			for key, value := range r.ResponseFormat.Schema {
-				format.Schema[key] = value
-			}
+			format.Schema = cloneJSONMap(r.ResponseFormat.Schema)
 		}
 		clone.ResponseFormat = &format
 	}
@@ -107,4 +105,45 @@ func cloneMessage(msg Message) Message {
 		msg.CacheControl = &cacheControl
 	}
 	return msg
+}
+
+func cloneJSONMap(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]any, len(src))
+	for key, value := range src {
+		dst[key] = cloneJSONValue(value)
+	}
+	return dst
+}
+
+func cloneJSONSlice(src []any) []any {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make([]any, len(src))
+	for i, value := range src {
+		dst[i] = cloneJSONValue(value)
+	}
+	return dst
+}
+
+func cloneJSONValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		return cloneJSONMap(v)
+	case []any:
+		return cloneJSONSlice(v)
+	case []string:
+		return append([]string(nil), v...)
+	case []int:
+		return append([]int(nil), v...)
+	case []float64:
+		return append([]float64(nil), v...)
+	case []bool:
+		return append([]bool(nil), v...)
+	default:
+		return value
+	}
 }
