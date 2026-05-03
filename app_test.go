@@ -173,6 +173,33 @@ func TestHarnessBuilderRequiresSessionStore(t *testing.T) {
 	}
 }
 
+func TestHarnessCloseLeavesExternalStoreOpen(t *testing.T) {
+	store, err := session.NewSQLiteStore(t.TempDir() + "/sessions.db")
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer store.Close()
+
+	h, err := NewHarness("external-store").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
+		SessionStore(store).
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	if _, err := h.Session("external-session").Prompt(t.Context(), "hi"); err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	if err := h.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := store.Load(t.Context(), "external-session"); err != nil {
+		t.Fatalf("external store was closed: %v", err)
+	}
+}
+
 func TestHarnessBuilderCompactionRecoversOverflow(t *testing.T) {
 	overflow := errors.New("context_length_exceeded")
 	provider := llm.NewFauxProvider(

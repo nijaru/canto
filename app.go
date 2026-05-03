@@ -41,6 +41,7 @@ type Harness struct {
 	Tools       *tool.Registry
 	Store       session.Store
 	Environment Environment
+	ownsStore   bool
 }
 
 // Session returns a handle for one durable conversation.
@@ -48,7 +49,7 @@ func (h *Harness) Session(id string) *Session {
 	return &Session{harness: h, id: id}
 }
 
-// Close releases resources owned by the runner and store when supported.
+// Close releases resources owned by the harness.
 func (h *Harness) Close() error {
 	if h == nil {
 		return nil
@@ -56,7 +57,11 @@ func (h *Harness) Close() error {
 	if h.Runner != nil {
 		h.Runner.Close()
 	}
-	if closer, ok := h.Store.(interface{ Close() error }); ok {
+	if h.ownsStore {
+		closer, ok := h.Store.(interface{ Close() error })
+		if !ok {
+			return nil
+		}
 		return closer.Close()
 	}
 	return nil
@@ -342,6 +347,7 @@ func (b *HarnessBuilder) Build() (*Harness, error) {
 	}
 
 	store := b.store
+	ownsStore := false
 	if store == nil {
 		if !b.ephemeral {
 			return nil, fmt.Errorf(
@@ -353,6 +359,7 @@ func (b *HarnessBuilder) Build() (*Harness, error) {
 		if err != nil {
 			return nil, fmt.Errorf("canto harness: ephemeral session store: %w", err)
 		}
+		ownsStore = true
 	}
 
 	provider := b.provider
@@ -383,6 +390,7 @@ func (b *HarnessBuilder) Build() (*Harness, error) {
 		Tools:       registry,
 		Store:       store,
 		Environment: cloneEnvironment(b.environment),
+		ownsStore:   ownsStore,
 	}, nil
 }
 
