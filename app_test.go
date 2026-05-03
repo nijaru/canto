@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -29,6 +30,50 @@ func TestHarnessSessionPrompt(t *testing.T) {
 	}
 	if result.Content != "hello" {
 		t.Fatalf("content = %q, want hello", result.Content)
+	}
+}
+
+func TestHarnessSessionPromptStream(t *testing.T) {
+	h, err := NewHarness("stream").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{
+			Chunks: []llm.Chunk{{Content: "he"}, {Content: "llo"}},
+		})).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	events, err := h.Session("stream-session").PromptStream(t.Context(), "hi")
+	if err != nil {
+		t.Fatalf("PromptStream: %v", err)
+	}
+
+	var chunks, sessionEvents int
+	var result agent.StepResult
+	for event := range events {
+		switch event.Type {
+		case RunEventChunk:
+			chunks++
+		case RunEventSession:
+			sessionEvents++
+		case RunEventResult:
+			result = event.Result
+		case RunEventError:
+			t.Fatalf("stream error: %v", event.Err)
+		}
+	}
+
+	if chunks != 2 {
+		t.Fatalf("chunks = %d, want 2", chunks)
+	}
+	if sessionEvents == 0 {
+		t.Fatal("expected durable session events")
+	}
+	if result.Content != "hello" {
+		t.Fatalf("result content = %q, want hello", result.Content)
 	}
 }
 

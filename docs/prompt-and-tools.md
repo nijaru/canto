@@ -20,6 +20,11 @@ h, err := canto.NewHarness("assistant").
 result, err := h.Session("session-1").Prompt(ctx, "Say hello.")
 ```
 
+For live hosts, `PromptStream` returns one stream of `RunEvent` values that
+contains model chunks, durable session events, and the final result/error.
+Hosts should prefer that over wiring `runtime.Runner.SendStream` and
+`runtime.Runner.Watch` separately.
+
 Use `agent.New` when you need the lower-level `agent.Agent` without the root
 harness assembling a `runtime.Runner`, `tool.Registry`, and `session.Store`.
 

@@ -62,6 +62,10 @@ Current authoring-surface inputs:
   has been replaced with `canto.NewHarness` plus
   `h.Session(id).Prompt/Events`; no compatibility alias was retained. Focused
   package/example tests and `go test ./... -count=1 -timeout 300s` pass.
+- Harness stream slice landed locally: `Session.PromptStream` now returns one
+  `RunEvent` channel containing model chunks, durable session events, and the
+  terminal result/error, so hosts no longer need to merge `SendStream`
+  callbacks with `Watch` for the common path. Focused root tests pass.
 - Typed provider reasoning capability metadata landed from Ion `tk-369n`
   feedback: `llm.Capabilities` now carries structured reasoning controls
   (named effort values, disable support, budget ranges), request preparation
