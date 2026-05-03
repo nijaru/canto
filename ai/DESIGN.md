@@ -22,7 +22,7 @@ need one obvious programmable harness path before they need every primitive.
 The facade should make this path natural:
 
 ```text
-init/runtime -> agent -> session -> prompt/skill/task/shell -> events/store
+harness -> session -> prompt/skill/task/shell -> ordered run events -> store
 ```
 
 This is not a TUI, CLI, or coding-agent preset. It is a framework-owned
@@ -30,6 +30,26 @@ composition surface that exposes sessions, event durability, tool lifecycle,
 session environments, scoped commands/tools, compaction, and interrupts without
 making hosts wire every package manually. Product policy stays in Ion or other
 hosts.
+
+Target shape:
+
+- `Harness` owns provider/model, agent, prompt builder, registry, runtime
+  runner, store, hooks, approval gate, compaction, and child/session lifecycle
+  mechanisms.
+- `Harness.Session(id)` returns the common host-facing durable conversation
+  handle. Normal hosts prompt through that handle; direct `runtime.Runner` and
+  `agent.Turn` use remains the advanced escape hatch.
+- `Session.PromptStream` exposes one ordered run-event stream for model chunks,
+  durable lifecycle events, tool starts/results, approval/input waits, terminal
+  state, and final result. Hosts should not merge a chunk callback and watcher
+  channel to reconstruct one turn.
+- `Environment` groups workspace, executor, sandbox, secret injection, and
+  bootstrap/context capabilities. It describes where effects happen; it does
+  not encode product policy.
+
+Canto should rename/refactor the current root `App`/`Runner`-first authoring
+surface into this harness/session path before Ion aligns `CantoBackend` again.
+This is a pre-alpha clean break, not a compatibility layer.
 
 ### 2.1. Session Durability & Event Sourcing (Topic 5)
 
@@ -131,7 +151,7 @@ The current load-bearing corrections have been implemented:
 
 The architecture-correction tranche is shipped. Canto stays a general-purpose primitives layer; the Codex/Claude Code/Pi/Cursor-class coding/service agent is Phase 5's validating target because it exercises the full surface, not because it defines scope. Primitives are designed generally, validated against that target, and rejected if they only make sense for coding agents. Ion is one instance of that class; its consumption pass validates and amends the shape but does not gate or narrow it. See `ai/PLAN.md` for the live frontier and exit criteria.
 
-The current delta is `canto-2vxb`: review the authoring/runtime surface against
-Flue/Pi/OpenAI/Mendral and decide whether the existing `canto.NewAgent` builder,
-`runtime.Runner`, `SessionEnv`-like workspace/sandbox capabilities, and
-interrupt primitives need a cleaner harness facade before M1 docs/release work.
+The current delta from `canto-2vxb` is that a cleaner harness/session facade is
+needed before M1 docs/release work and before Ion's next runtime-boundary
+refactor. See `ai/design/authoring-surface.md` for the concrete refactor
+slices.

@@ -1,7 +1,7 @@
 # Status
 
-**Phase:** Phase 5: harness-facade review before M1 docs/release
-**Focus:** `canto-2vxb` is active: review Canto's authoring/runtime surface against Flue, Pi, OpenAI Agents SDK, and Mendral's harness/sandbox split before Ion refactors its runtime boundary again.
+**Phase:** Phase 5: harness-facade cleanup before M1 docs/release
+**Focus:** `canto-2vxb` is active: implement the clean harness/session facade identified by the Flue/Pi/OpenAI/Mendral review before Ion refactors its runtime boundary again.
 **Blockers:** None.
 **Updated:** 2026-05-02
 
@@ -32,11 +32,14 @@ Current authoring-surface inputs:
 
 **Harness facade gate:**
 
-- Active work is `canto-2vxb`: inspect the current `canto.NewAgent` builder,
-  `runtime.Runner`, session/store APIs, coding/tool primitives, workspace
-  capabilities, and interrupt seams against Flue/Pi/OpenAI/Mendral.
-- Output should name the minimal facade/refactor target needed before Ion
-  aligns `CantoBackend`; avoid broad SOTA or product-policy work.
+- Active work is `canto-2vxb`: reshape the common authoring/runtime path around
+  a framework `Harness`, durable session handle, and one ordered run-event
+  stream. The review output is captured in
+  `ai/design/authoring-surface.md`.
+- Refactor target: replace the current `App`/`Runner`-first common path with
+  `Harness.Session(id).Prompt/PromptStream`, then expose environment
+  capabilities for workspace/executor/sandbox/secrets/bootstrap context.
+- Do this as a clean pre-alpha break, not a compatibility wrapper.
 - Do not create Canto implementation work from Mesa/Archil/OpenHands/DSPy/GEPA research alone. Those are roadmap inputs; implementation starts only when Ion stability or M1 readiness exposes a concrete framework seam.
 
 **Release/doc gate:**

@@ -38,7 +38,7 @@ Ion findings back only when they identify a concrete Canto issue.
 
 | Gate | Task | Intent |
 | :--- | :--- | :--- |
-| 0 active | `canto-2vxb` Flue/Pi harness facade review | Decide the concrete Canto headless harness facade and refactor targets before Ion aligns `CantoBackend` to it |
+| 0 active | `canto-2vxb` Flue/Pi harness facade review | Implement the now-named harness/session target before Ion aligns `CantoBackend` to it |
 | 0 done | `canto-5qb6` Roadmap stabilization pass | Aligned the roadmap around Canto mechanism vs Ion policy and removed stale frontier entries |
 | 1 done | `canto-7mp1` Two-phase tool execution | Finalized sequential preflight, concurrent I/O, deterministic ordered observation emission, and execution-boundary `ToolStarted` events |
 | 1 done | `canto-btl6` Alpha contract preflight | Named the concrete M1 blockers and updated `canto-2if9` so the alpha release note has a real gate |
@@ -62,7 +62,20 @@ These remain valid but should not block returning to Ion:
 | `canto-pc4b` | Add forked subagents only if Ion/runtime validation proves the current child-session model is insufficient |
 | `canto-ic25` / `canto-mr13` | SOTA cadence and interrupt generalization; post-M1 unless a concrete blocker appears |
 
-The initial authoring seam, typed service helper, coding-agent reference, core-vs-`x/` boundary cleanup, hello example, compaction hardening, `context/` -> `prompt` rename, cross-provider request transform, and pure turn-state extraction are already landed. Remaining work in this repo is Canto docs/release posture plus any concrete framework issues returned from consumer validation.
+The initial authoring seam, typed service helper, coding-agent reference, core-vs-`x/` boundary cleanup, hello example, compaction hardening, `context/` -> `prompt` rename, cross-provider request transform, and pure turn-state extraction are already landed.
+
+`canto-2vxb` produced one concrete pre-M1 cleanup target: replace the current root `App`/`Runner`-first common path with a `Harness` + durable session handle + ordered run-event stream. This is not a new feature track; it is the missing authoring/runtime boundary that lets Ion become a thin product adapter instead of rebuilding Canto lifecycle behavior.
+
+Next implementation sequence:
+
+1. Rename/reshape the root facade around `Harness` without compatibility aliases.
+2. Add `Harness.Session(id)` and move common prompt/send methods to the session handle.
+3. Add one ordered run-event stream that includes model chunks, durable session events, tool lifecycle, approval/input waits, terminal state, and final result.
+4. Group environment capabilities explicitly: workspace, executor, sandbox, secrets, and bootstrap context.
+5. Update the hello and reference coding/service examples to use the same path Ion will use.
+6. Return to Ion `tk-ezms` and align `CantoBackend` to the facade.
+
+Remaining work after that is Canto docs/release posture plus any concrete framework issues returned from consumer validation.
 
 ## Definition of Complete
 
@@ -105,8 +118,8 @@ The mature milestone is not a planned exit; it's a retrospective marker. Canto c
 ### Current position
 
 - M1 primitives: largely done. Remaining M1 work is docs, release posture, and any confirmed consumer-framework issues that come back from external validation.
-- New M1 blocker candidate: `canto-2vxb` may identify a small harness-facade
-  cleanup before docs are worth polishing.
+- M1 blocker: `canto-2vxb` identified a small but real harness-facade cleanup
+  before docs are worth polishing.
 - M2: not yet planned. Enters scope once M1 ships.
 - Phase 5 exit is the bridge from "primitives landed" to "M1 shippable."
 
