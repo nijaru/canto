@@ -23,7 +23,7 @@ SOTA/DX research is part of the Canto pre-Ion gate when it can change stable API
 
 Current authoring-surface inputs:
 
-- `ai/design/authoring-surface.md` completed `canto-0j58`; `canto-gymf`, `canto-43vh`, and `canto-umuc` landed the root authoring seam, maintained coding-agent reference, and typed service/API helper.
+- `ai/design/authoring-surface.md` completed `canto-0j58`; `canto-gymf`, `canto-43vh`, and `canto-umuc` landed the root harness seam, maintained coding-agent reference, and typed service/API helper.
 - `ai/design/api-surface-review-canto-3p5m.md` now distinguishes real DX gaps from stale scratch findings.
 - `ai/research/dspy-authoring-insights-2026-04.md` captures DSPy lessons for signatures, modules, adapters, eval metrics, and offline optimization.
 - Existing `ai/research/frameworks/` notes already cover LangGraph, PydanticAI, AutoGen, Vercel AI SDK, MCP, and adjacent framework comparisons. Future SOTA work should be delta-based.
@@ -58,6 +58,10 @@ Current authoring-surface inputs:
 
 ## Recently landed
 
+- Harness facade first slice landed locally: root `canto.NewAgent`/`App.Send`
+  has been replaced with `canto.NewHarness` plus
+  `h.Session(id).Prompt/Events`; no compatibility alias was retained. Focused
+  package/example tests and `go test ./... -count=1 -timeout 300s` pass.
 - Typed provider reasoning capability metadata landed from Ion `tk-369n`
   feedback: `llm.Capabilities` now carries structured reasoning controls
   (named effort values, disable support, budget ranges), request preparation
@@ -84,7 +88,7 @@ Current authoring-surface inputs:
 - `canto-eb75` — audit pass found and fixed export/eval contract drift: trajectory inputs now preserve typed context-vs-transcript entries, and static eval environments seed context explicitly instead of provider-style setup messages.
 - `canto-tsbj` — `llm.Request` gained cache-aware message insertion helpers; built-in request processors now use them; builder append now lands before cache/capability finalizers by default.
 - `canto-xi6e` — built-in OpenAI-compatible and Anthropic providers prepare provider-specific request copies at send time, preserving neutral context for provider/model switches.
-- `canto-gymf` — root `canto.NewAgent` authoring seam, message helpers, and public `llm.FauxProvider`
+- `canto-gymf` — root `canto.NewHarness` authoring seam, message helpers, and public `llm.FauxProvider`
 - `canto-43vh` — buildable Claude Code/Codex/Cursor-class reference coding/service agent
 - `canto-umuc` — typed service/API tool helper plus reference-agent validation
 - `canto-l2iy` — canonical coding-agent tools promoted from `x/tools` to stable `coding/`

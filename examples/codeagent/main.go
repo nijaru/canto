@@ -112,7 +112,7 @@ func run(ctx context.Context, w io.Writer) error {
 		},
 	))
 
-	app, err := canto.NewAgent("codeagent").
+	h, err := canto.NewHarness("codeagent").
 		Instructions("Use workspace, shell, and service tools to complete coding tasks. Verify changes before answering.").
 		Model("faux").
 		Provider(scriptedProvider()).
@@ -126,9 +126,10 @@ func run(ctx context.Context, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer app.Close()
+	defer h.Close()
 
-	events, err := app.Runner.Watch(ctx, sessionID)
+	sessionHandle := h.Session(sessionID)
+	events, err := sessionHandle.Events(ctx)
 	if err != nil {
 		return err
 	}
@@ -137,16 +138,15 @@ func run(ctx context.Context, w io.Writer) error {
 	seen := make(chan []session.EventType, 1)
 	go collectEvents(events, seen)
 
-	result, err := app.Send(
+	result, err := sessionHandle.Prompt(
 		ctx,
-		sessionID,
 		"Inspect the project, update README.md, consult web search, run tests, and summarize.",
 	)
 	if err != nil {
 		return err
 	}
 
-	resume, err := app.Send(ctx, sessionID, "Resume the session and report the current state.")
+	resume, err := sessionHandle.Prompt(ctx, "Resume the session and report the current state.")
 	if err != nil {
 		return err
 	}

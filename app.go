@@ -1,5 +1,5 @@
-// Package canto provides a small builder over Canto's core primitives. The
-// lower-level packages remain the source of truth.
+// Package canto provides a small harness facade over Canto's core primitives.
+// The lower-level packages remain the source of truth.
 package canto
 
 import (
@@ -17,65 +17,88 @@ import (
 	"github.com/nijaru/canto/tool"
 )
 
-// App is an assembled agent, runner, registry, and session store. Callers can
-// use the fields directly for full composition.
-type App struct {
+// Harness is an assembled agent runtime, registry, and session store. It is
+// the root facade for host applications; lower-level packages remain available
+// for advanced composition.
+type Harness struct {
 	Agent  agent.Agent
 	Runner *runtime.Runner
 	Tools  *tool.Registry
 	Store  session.Store
 }
 
-// Send appends a user message and executes one agent turn through the Runner.
-func (a *App) Send(
-	ctx context.Context,
-	sessionID string,
-	message string,
-) (agent.StepResult, error) {
-	if a == nil || a.Runner == nil {
-		return agent.StepResult{}, fmt.Errorf("canto app: nil runner")
-	}
-	return a.Runner.Send(ctx, sessionID, message)
-}
-
-// SendStream appends a user message and executes one streaming agent turn.
-func (a *App) SendStream(
-	ctx context.Context,
-	sessionID string,
-	message string,
-	chunkFn func(*llm.Chunk),
-) (agent.StepResult, error) {
-	if a == nil || a.Runner == nil {
-		return agent.StepResult{}, fmt.Errorf("canto app: nil runner")
-	}
-	return a.Runner.SendStream(ctx, sessionID, message, chunkFn)
-}
-
-// Run executes the agent on an existing session through the Runner.
-func (a *App) Run(ctx context.Context, sessionID string) (agent.StepResult, error) {
-	if a == nil || a.Runner == nil {
-		return agent.StepResult{}, fmt.Errorf("canto app: nil runner")
-	}
-	return a.Runner.Run(ctx, sessionID)
+// Session returns a handle for one durable conversation.
+func (h *Harness) Session(id string) *Session {
+	return &Session{harness: h, id: id}
 }
 
 // Close releases resources owned by the runner and store when supported.
-func (a *App) Close() error {
-	if a == nil {
+func (h *Harness) Close() error {
+	if h == nil {
 		return nil
 	}
-	if a.Runner != nil {
-		a.Runner.Close()
+	if h.Runner != nil {
+		h.Runner.Close()
 	}
-	if closer, ok := a.Store.(interface{ Close() error }); ok {
+	if closer, ok := h.Store.(interface{ Close() error }); ok {
 		return closer.Close()
 	}
 	return nil
 }
 
-// AgentBuilder assembles the common agent + runner wiring while preserving
+// Session is a host-facing handle for one durable conversation in a Harness.
+type Session struct {
+	harness *Harness
+	id      string
+}
+
+// ID returns the durable session ID.
+func (s *Session) ID() string {
+	if s == nil {
+		return ""
+	}
+	return s.id
+}
+
+// Prompt appends a user message and executes one agent turn.
+func (s *Session) Prompt(ctx context.Context, message string) (agent.StepResult, error) {
+	if s == nil || s.harness == nil || s.harness.Runner == nil {
+		return agent.StepResult{}, fmt.Errorf("canto harness: nil runner")
+	}
+	return s.harness.Runner.Send(ctx, s.id, message)
+}
+
+// PromptStream appends a user message and executes one streaming agent turn.
+func (s *Session) PromptStream(
+	ctx context.Context,
+	message string,
+	chunkFn func(*llm.Chunk),
+) (agent.StepResult, error) {
+	if s == nil || s.harness == nil || s.harness.Runner == nil {
+		return agent.StepResult{}, fmt.Errorf("canto harness: nil runner")
+	}
+	return s.harness.Runner.SendStream(ctx, s.id, message, chunkFn)
+}
+
+// Run executes the agent on the existing session without appending a message.
+func (s *Session) Run(ctx context.Context) (agent.StepResult, error) {
+	if s == nil || s.harness == nil || s.harness.Runner == nil {
+		return agent.StepResult{}, fmt.Errorf("canto harness: nil runner")
+	}
+	return s.harness.Runner.Run(ctx, s.id)
+}
+
+// Events subscribes to live durable session events.
+func (s *Session) Events(ctx context.Context) (*session.Subscription, error) {
+	if s == nil || s.harness == nil || s.harness.Runner == nil {
+		return nil, fmt.Errorf("canto harness: nil runner")
+	}
+	return s.harness.Runner.Watch(ctx, s.id)
+}
+
+// HarnessBuilder assembles the common agent + runner wiring while preserving
 // access to the underlying primitives.
-type AgentBuilder struct {
+type HarnessBuilder struct {
 	id           string
 	instructions string
 	model        string
@@ -90,52 +113,52 @@ type AgentBuilder struct {
 	runtimeOptions []runtime.Option
 }
 
-// NewAgent starts an authoring builder for a Canto app.
-func NewAgent(id string) *AgentBuilder {
-	return &AgentBuilder{
+// NewHarness starts an authoring builder for a Canto harness.
+func NewHarness(id string) *HarnessBuilder {
+	return &HarnessBuilder{
 		id: id,
 	}
 }
 
-func (b *AgentBuilder) Instructions(instructions string) *AgentBuilder {
+func (b *HarnessBuilder) Instructions(instructions string) *HarnessBuilder {
 	b.instructions = instructions
 	return b
 }
 
-func (b *AgentBuilder) Model(model string) *AgentBuilder {
+func (b *HarnessBuilder) Model(model string) *HarnessBuilder {
 	b.model = model
 	return b
 }
 
-func (b *AgentBuilder) Provider(provider llm.Provider) *AgentBuilder {
+func (b *HarnessBuilder) Provider(provider llm.Provider) *HarnessBuilder {
 	b.provider = provider
 	return b
 }
 
-func (b *AgentBuilder) Registry(registry *tool.Registry) *AgentBuilder {
+func (b *HarnessBuilder) Registry(registry *tool.Registry) *HarnessBuilder {
 	b.registry = registry
 	return b
 }
 
-func (b *AgentBuilder) Tool(t tool.Tool) *AgentBuilder {
+func (b *HarnessBuilder) Tool(t tool.Tool) *HarnessBuilder {
 	if t != nil {
 		b.tools = append(b.tools, t)
 	}
 	return b
 }
 
-func (b *AgentBuilder) Tools(tools ...tool.Tool) *AgentBuilder {
+func (b *HarnessBuilder) Tools(tools ...tool.Tool) *HarnessBuilder {
 	for _, t := range tools {
 		b.Tool(t)
 	}
 	return b
 }
 
-func (b *AgentBuilder) ToolSet(tools []tool.Tool) *AgentBuilder {
+func (b *HarnessBuilder) ToolSet(tools []tool.Tool) *HarnessBuilder {
 	return b.Tools(tools...)
 }
 
-func (b *AgentBuilder) SessionStore(store session.Store) *AgentBuilder {
+func (b *HarnessBuilder) SessionStore(store session.Store) *HarnessBuilder {
 	b.store = store
 	b.ephemeral = false
 	return b
@@ -143,30 +166,30 @@ func (b *AgentBuilder) SessionStore(store session.Store) *AgentBuilder {
 
 // Ephemeral uses an in-memory SQLite session store. This is useful for tests,
 // examples, and short-lived tools where session durability is not needed.
-func (b *AgentBuilder) Ephemeral() *AgentBuilder {
+func (b *HarnessBuilder) Ephemeral() *HarnessBuilder {
 	b.store = nil
 	b.ephemeral = true
 	return b
 }
 
-func (b *AgentBuilder) AgentOptions(opts ...agent.Option) *AgentBuilder {
+func (b *HarnessBuilder) AgentOptions(opts ...agent.Option) *HarnessBuilder {
 	b.agentOptions = append(b.agentOptions, opts...)
 	return b
 }
 
-func (b *AgentBuilder) RuntimeOptions(opts ...runtime.Option) *AgentBuilder {
+func (b *HarnessBuilder) RuntimeOptions(opts ...runtime.Option) *HarnessBuilder {
 	b.runtimeOptions = append(b.runtimeOptions, opts...)
 	return b
 }
 
-func (b *AgentBuilder) Approvals(manager *approval.Gate) *AgentBuilder {
+func (b *HarnessBuilder) Approvals(manager *approval.Gate) *HarnessBuilder {
 	if manager != nil {
 		b.agentOptions = append(b.agentOptions, agent.WithApprovalGate(manager))
 	}
 	return b
 }
 
-func (b *AgentBuilder) Hooks(hooks *hook.Runner) *AgentBuilder {
+func (b *HarnessBuilder) Hooks(hooks *hook.Runner) *HarnessBuilder {
 	if hooks != nil {
 		b.agentOptions = append(b.agentOptions, agent.WithHookRunner(hooks))
 		b.runtimeOptions = append(b.runtimeOptions, runtime.WithHooks(hooks))
@@ -174,16 +197,16 @@ func (b *AgentBuilder) Hooks(hooks *hook.Runner) *AgentBuilder {
 	return b
 }
 
-func (b *AgentBuilder) RequestProcessors(
+func (b *HarnessBuilder) RequestProcessors(
 	processors ...prompt.RequestProcessor,
-) *AgentBuilder {
+) *HarnessBuilder {
 	if len(processors) > 0 {
 		b.agentOptions = append(b.agentOptions, agent.WithRequestProcessors(processors...))
 	}
 	return b
 }
 
-func (b *AgentBuilder) Mutators(mutators ...prompt.ContextMutator) *AgentBuilder {
+func (b *HarnessBuilder) Mutators(mutators ...prompt.ContextMutator) *HarnessBuilder {
 	if len(mutators) > 0 {
 		b.agentOptions = append(b.agentOptions, agent.WithMutators(mutators...))
 	}
@@ -192,23 +215,23 @@ func (b *AgentBuilder) Mutators(mutators ...prompt.ContextMutator) *AgentBuilder
 
 // Compaction enables proactive compaction before each runner execution and
 // overflow recovery retry on context overflow errors.
-func (b *AgentBuilder) Compaction(opts governor.CompactOptions) *AgentBuilder {
+func (b *HarnessBuilder) Compaction(opts governor.CompactOptions) *HarnessBuilder {
 	b.compaction = &opts
 	return b
 }
 
-func (b *AgentBuilder) Build() (*App, error) {
+func (b *HarnessBuilder) Build() (*Harness, error) {
 	if b == nil {
-		return nil, fmt.Errorf("canto app: nil builder")
+		return nil, fmt.Errorf("canto harness: nil builder")
 	}
 	if b.id == "" {
-		return nil, fmt.Errorf("canto app: agent id is required")
+		return nil, fmt.Errorf("canto harness: agent id is required")
 	}
 	if b.provider == nil {
-		return nil, fmt.Errorf("canto app: provider is required")
+		return nil, fmt.Errorf("canto harness: provider is required")
 	}
 	if b.model == "" {
-		return nil, fmt.Errorf("canto app: model is required")
+		return nil, fmt.Errorf("canto harness: model is required")
 	}
 	if b.compaction != nil {
 		if err := validateCompactionOptions(*b.compaction); err != nil {
@@ -228,13 +251,13 @@ func (b *AgentBuilder) Build() (*App, error) {
 	if store == nil {
 		if !b.ephemeral {
 			return nil, fmt.Errorf(
-				"canto app: session store is required; call SessionStore or Ephemeral",
+				"canto harness: session store is required; call SessionStore or Ephemeral",
 			)
 		}
 		var err error
 		store, err = session.NewSQLiteStore(":memory:")
 		if err != nil {
-			return nil, fmt.Errorf("canto app: ephemeral session store: %w", err)
+			return nil, fmt.Errorf("canto harness: ephemeral session store: %w", err)
 		}
 	}
 
@@ -260,7 +283,7 @@ func (b *AgentBuilder) Build() (*App, error) {
 		registry,
 		b.agentOptions...,
 	)
-	return &App{
+	return &Harness{
 		Agent:  a,
 		Runner: runtime.NewRunner(store, a, runtimeOptions...),
 		Tools:  registry,
@@ -270,10 +293,10 @@ func (b *AgentBuilder) Build() (*App, error) {
 
 func validateCompactionOptions(opts governor.CompactOptions) error {
 	if opts.MaxTokens <= 0 {
-		return fmt.Errorf("canto app: compaction max tokens must be > 0")
+		return fmt.Errorf("canto harness: compaction max tokens must be > 0")
 	}
 	if (opts.Artifacts == nil) == (opts.OffloadDir == "") {
-		return fmt.Errorf("canto app: compaction requires exactly one offload target")
+		return fmt.Errorf("canto harness: compaction requires exactly one offload target")
 	}
 	return nil
 }

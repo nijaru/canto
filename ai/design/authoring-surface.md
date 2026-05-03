@@ -218,12 +218,13 @@ Rules:
 - `session.NewMessage(sessionID, llm.Message{...})` remains the escape hatch.
 - Helpers must not erase role, tool-call, cache, reasoning, or provider-specific fields.
 
-### 2. Agent/Runner Builder
+### 2. Harness/Session Facade
 
-Add a builder that produces the existing primitives, rather than replacing them.
+Add a harness builder that produces the existing primitives, then make the
+durable session handle the common execution path.
 
 ```go
-app, err := canto.NewAgent("code").
+h, err := canto.NewHarness("code").
     Instructions("You are a coding agent.").
     Model("gpt-4o").
     Provider(providers.OpenAI()).
@@ -234,28 +235,33 @@ app, err := canto.NewAgent("code").
     Memory(memoryManager).
     Build()
 
-res, err := app.Send(ctx, "proj", "fix the failing tests")
+res, err := h.Session("proj").Prompt(ctx, "fix the failing tests")
 ```
 
 Sketch types:
 
 ```go
-type App struct {
+type Harness struct {
     Agent  agent.Agent
     Runner *runtime.Runner
     Tools  *tool.Registry
     Store  session.Store
 }
+
+type Session struct {
+    // durable session handle
+}
 ```
 
-The builder should expose:
+The harness should expose:
 
-- `Agent()` and `Runner()` accessors
-- `Registry()` for manual tool registration
+- `Session(id)` for common prompt/run/event access
+- `Agent`, `Runner`, `Tools`, and `Store` for advanced composition
 - options for custom `prompt.RequestProcessor`, hooks, approval gate, memory, skills, and workspace
 - no hidden global provider or process-wide mutable state
 
-Use `runtime.Runner.Send` for simple turns. Advanced users still call `agent.New`, `session.New`, and `Turn` directly.
+Use `h.Session(id).Prompt` for simple turns. Advanced users still call
+`agent.New`, `session.New`, `runtime.Runner`, and `Turn` directly.
 
 ### 3. Stable Tool Bundles
 
@@ -369,7 +375,7 @@ Status 2026-04-22:
 - First code cut landed in `service/`.
 - `service.New[A, R]` adapts typed args/results to `tool.Tool`, infers JSON Schema with `jsonschema-go`, emits JSON results, and supports metadata, approval hooks, and retry policy.
 - `service.Requirement`, `ReadOnly`, `Mutation`, and `Execution` provide typed approval helpers over existing `approval.Requirement` and `safety.Category` boundaries.
-- `examples/service-agent` proves the helper through the root `canto.NewAgent` builder, durable SQLite store, faux model tool call, and real runner turn.
+- `examples/service-agent` proves the helper through the root `canto.NewHarness` builder, durable SQLite store, faux model tool call, and real runner turn.
 - Remaining validation belongs in `canto-43vh`: use the helper in a runnable coding/service reference agent with web/API fixture tools, MCP wrapping, secrets policy, and approval flow.
 
 ### `canto-43vh`: Reference Agent
@@ -390,7 +396,7 @@ This is the real M1 proof, not the hello example.
 Status 2026-04-22:
 
 - `examples/codeagent` is now buildable and no-credential.
-- The reference uses `canto.NewAgent`, explicit `SessionStore`, `llm.FauxProvider`, `runtime.Runner.Watch`, durable SQLite sessions, workspace read/edit tools, workspace-scoped shell, Python code execution, typed `service.New` web-search fixture, approval manager with safety policy, hooks, and same-session resume.
+- The reference uses `canto.NewHarness`, explicit `SessionStore`, `llm.FauxProvider`, `runtime.Runner.Watch`, durable SQLite sessions, workspace read/edit tools, workspace-scoped shell, Python code execution, typed `service.New` web-search fixture, approval manager with safety policy, hooks, and same-session resume.
 - `coding.ShellTool` now accepts `Dir` and shell configuration so execution can be pinned to the workspace without assuming bash.
 - Canonical coding tools moved from `x/tools` to stable `coding/`; `examples/codeagent` now imports the stable package.
 - Remaining M1 reference gaps: MCP wrapping in the reference path, docs/README anchor, and Ion consumption pass.

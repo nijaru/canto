@@ -40,7 +40,7 @@ import (
 )
 
 func main() {
-	app, err := canto.NewAgent("assistant").
+	h, err := canto.NewHarness("assistant").
 		Instructions("You are a concise assistant.").
 		Model("faux").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "Hello from Canto."})).
@@ -49,9 +49,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer app.Close()
+	defer h.Close()
 
-	res, err := app.Send(context.Background(), "session-1", "Say hello.")
+	res, err := h.Session("session-1").Prompt(context.Background(), "Say hello.")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -93,7 +93,7 @@ agent instructions and choose which tools are registered.
 
 ## Examples
 
-- [Hello](examples/hello/main.go): Minimal no-credential root-builder agent.
+- [Hello](examples/hello/main.go): Minimal no-credential harness agent.
 - [Code Agent](examples/codeagent/main.go): No-credential Claude Code/Codex/Cursor-class reference using durable sessions, workspace tools, approvals, hooks, service tools, and resume.
 - [Service Agent](examples/service-agent/main.go): Typed service/API tool example.
 - [Quickstart](examples/quickstart/main.go): Lower-level durable agent loop.

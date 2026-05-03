@@ -4,28 +4,30 @@ Canto keeps agent behavior in the host. It provides the prompt pipeline, durable
 state, and tool plumbing; the host provides the agent's role, workflow, policy,
 and default tool set.
 
-## Agent Construction
+## Harness Construction
 
-Use `canto.NewAgent` for normal applications:
+Use `canto.NewHarness` for normal applications:
 
 ```go
-app, err := canto.NewAgent("assistant").
+h, err := canto.NewHarness("assistant").
 	Instructions("You are a concise assistant.").
 	Model("gpt-5.4").
 	Provider(provider).
 	SessionStore(store).
 	Tools(tools...).
 	Build()
+
+result, err := h.Session("session-1").Prompt(ctx, "Say hello.")
 ```
 
 Use `agent.New` when you need the lower-level `agent.Agent` without the root
-builder assembling a `runtime.Runner`, `tool.Registry`, and `session.Store`.
+harness assembling a `runtime.Runner`, `tool.Registry`, and `session.Store`.
 
 This split is intentional:
 
 | API | Use when |
 | :--- | :--- |
-| `canto.NewAgent` | You want the conventional path: agent + runner + registry + store. |
+| `canto.NewHarness` | You want the conventional path: harness + durable session handle. |
 | `agent.New` | You are composing your own runner, graph, test harness, or custom framework layer. |
 | `prompt.NewBuilder` | You need full control over request processors and commit-time mutators. |
 
@@ -45,7 +47,7 @@ agent-role prompt.
 
 ## Prompt Pipeline
 
-`agent.New` and `canto.NewAgent(...).Build()` use this request pipeline:
+`agent.New` and `canto.NewHarness(...).Build()` use this request pipeline:
 
 1. `prompt.Instructions(instructions)` — insert host instructions.
 2. `prompt.NewLazyTools(registry)` — expose tool specs or `search_tools`.

@@ -19,7 +19,7 @@ Canto should stay a general-purpose Go agent framework, but its next work should
 | Phase | Name | Goal | Work |
 | --- | --- | --- | --- |
 | C0 | Ion acceptance gate | Keep Canto stable while Ion finishes native loop and TUI table stakes. | Fix only confirmed framework defects returned from Ion; import Canto revisions into Ion and verify there. |
-| C1 | M1 framework readiness | Make Canto usable by a new author without knowing Ion internals. | README, godoc, examples, provider docs, alpha scope note, root builder and typed tool examples. |
+| C1 | M1 framework readiness | Make Canto usable by a new author without knowing Ion internals. | README, godoc, examples, provider docs, alpha scope note, harness facade and typed tool examples. |
 | C2 | API/DX simplification | Remove awkward or duplicated authoring paths revealed by examples. | Public API audit, core vs `x/` pass, fewer constructors, clearer package names, no compatibility shims before v0.0.1. |
 | C3 | Workspace/sandbox track | Evaluate workspace/versioning/sandbox primitives after local Ion is stable. | WorkspaceFS refinement, OverlayFS/branch semantics, sandbox adapter seams, optional external storage adapters. |
 | C4 | Eval/optimizer track | Make optimization possible without making runtime dynamic. | Stable trajectory artifacts, textual feedback fields, candidate prompt/tool/config artifacts, DSPy/GEPA adapters under `x/eval` or `x/optimize`. |

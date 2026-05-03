@@ -11,8 +11,8 @@ import (
 	"github.com/nijaru/canto/tool"
 )
 
-func TestAgentBuilderSend(t *testing.T) {
-	app, err := NewAgent("hello").
+func TestHarnessSessionPrompt(t *testing.T) {
+	h, err := NewHarness("hello").
 		Instructions("You are concise.").
 		Model("faux").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "hello"})).
@@ -21,18 +21,18 @@ func TestAgentBuilderSend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	defer app.Close()
+	defer h.Close()
 
-	result, err := app.Send(t.Context(), "sess", "hi")
+	result, err := h.Session("sess").Prompt(t.Context(), "hi")
 	if err != nil {
-		t.Fatalf("Send: %v", err)
+		t.Fatalf("Prompt: %v", err)
 	}
 	if result.Content != "hello" {
 		t.Fatalf("content = %q, want hello", result.Content)
 	}
 }
 
-func TestAgentBuilderRegistersTools(t *testing.T) {
+func TestHarnessBuilderRegistersTools(t *testing.T) {
 	testTool := tool.Func(
 		"echo",
 		"Echo input.",
@@ -41,7 +41,7 @@ func TestAgentBuilderRegistersTools(t *testing.T) {
 			return args, nil
 		},
 	)
-	app, err := NewAgent("tools").
+	h, err := NewHarness("tools").
 		Model("faux").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
 		Tools(testTool).
@@ -50,39 +50,39 @@ func TestAgentBuilderRegistersTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	defer app.Close()
+	defer h.Close()
 
-	if _, ok := app.Tools.Get("echo"); !ok {
+	if _, ok := h.Tools.Get("echo"); !ok {
 		t.Fatal("expected echo tool to be registered")
 	}
 }
 
-func TestAgentBuilderRequiresModel(t *testing.T) {
-	_, err := NewAgent("missing-model").
+func TestHarnessBuilderRequiresModel(t *testing.T) {
+	_, err := NewHarness("missing-model").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
 		Build()
 	if err == nil {
 		t.Fatal("expected missing model error")
 	}
-	if err.Error() != "canto app: model is required" {
+	if err.Error() != "canto harness: model is required" {
 		t.Fatalf("error = %q, want model required", err)
 	}
 }
 
-func TestAgentBuilderRequiresSessionStore(t *testing.T) {
-	_, err := NewAgent("missing-store").
+func TestHarnessBuilderRequiresSessionStore(t *testing.T) {
+	_, err := NewHarness("missing-store").
 		Model("faux").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
 		Build()
 	if err == nil {
 		t.Fatal("expected missing session store error")
 	}
-	if err.Error() != "canto app: session store is required; call SessionStore or Ephemeral" {
+	if err.Error() != "canto harness: session store is required; call SessionStore or Ephemeral" {
 		t.Fatalf("error = %q, want session store required", err)
 	}
 }
 
-func TestAgentBuilderCompactionRecoversOverflow(t *testing.T) {
+func TestHarnessBuilderCompactionRecoversOverflow(t *testing.T) {
 	overflow := errors.New("context_length_exceeded")
 	provider := llm.NewFauxProvider(
 		"faux",
@@ -93,7 +93,7 @@ func TestAgentBuilderCompactionRecoversOverflow(t *testing.T) {
 		return errors.Is(err, overflow)
 	}
 
-	app, err := NewAgent("recover").
+	h, err := NewHarness("recover").
 		Model("faux").
 		Provider(provider).
 		Ephemeral().
@@ -105,11 +105,11 @@ func TestAgentBuilderCompactionRecoversOverflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	defer app.Close()
+	defer h.Close()
 
-	result, err := app.Send(t.Context(), "overflow", "hi")
+	result, err := h.Session("overflow").Prompt(t.Context(), "hi")
 	if err != nil {
-		t.Fatalf("Send: %v", err)
+		t.Fatalf("Prompt: %v", err)
 	}
 	if result.Content != "recovered" {
 		t.Fatalf("content = %q, want recovered", result.Content)
@@ -119,13 +119,13 @@ func TestAgentBuilderCompactionRecoversOverflow(t *testing.T) {
 	}
 }
 
-func TestAgentBuilderCompactionRunsBeforeSend(t *testing.T) {
+func TestHarnessBuilderCompactionRunsBeforePrompt(t *testing.T) {
 	provider := llm.NewFauxProvider(
 		"faux",
 		llm.FauxStep{Content: "summary"},
 		llm.FauxStep{Content: "answer"},
 	)
-	app, err := NewAgent("compact").
+	h, err := NewHarness("compact").
 		Model("faux").
 		Provider(provider).
 		Ephemeral().
@@ -139,9 +139,9 @@ func TestAgentBuilderCompactionRunsBeforeSend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	defer app.Close()
+	defer h.Close()
 
-	sess := session.New("compact-session").WithWriter(app.Store)
+	sess := session.New("compact-session").WithWriter(h.Store)
 	if err := sess.AppendUser(t.Context(), "old user message with enough text to compact"); err != nil {
 		t.Fatalf("append user: %v", err)
 	}
@@ -155,15 +155,15 @@ func TestAgentBuilderCompactionRunsBeforeSend(t *testing.T) {
 		t.Fatalf("append assistant: %v", err)
 	}
 
-	result, err := app.Send(t.Context(), sess.ID(), "new request")
+	result, err := h.Session(sess.ID()).Prompt(t.Context(), "new request")
 	if err != nil {
-		t.Fatalf("Send: %v", err)
+		t.Fatalf("Prompt: %v", err)
 	}
 	if result.Content != "answer" {
 		t.Fatalf("content = %q, want answer", result.Content)
 	}
 
-	loaded, err := app.Store.Load(t.Context(), sess.ID())
+	loaded, err := h.Store.Load(t.Context(), sess.ID())
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -172,8 +172,8 @@ func TestAgentBuilderCompactionRunsBeforeSend(t *testing.T) {
 	}
 }
 
-func TestAgentBuilderCompactionValidatesOptions(t *testing.T) {
-	_, err := NewAgent("bad-compact").
+func TestHarnessBuilderCompactionValidatesOptions(t *testing.T) {
+	_, err := NewHarness("bad-compact").
 		Model("faux").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
 		Ephemeral().

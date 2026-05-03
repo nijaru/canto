@@ -18,7 +18,7 @@ func main() {
 }
 
 func run(ctx context.Context, w io.Writer) error {
-	app, err := canto.NewAgent("hello").
+	h, err := canto.NewHarness("hello").
 		Instructions("You are a concise assistant.").
 		Model("faux").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "Hello from Canto."})).
@@ -27,9 +27,9 @@ func run(ctx context.Context, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer app.Close()
+	defer h.Close()
 
-	res, err := app.Send(ctx, "hello-session", "Say hello.")
+	res, err := h.Session("hello-session").Prompt(ctx, "Say hello.")
 	if err != nil {
 		return err
 	}

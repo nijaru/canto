@@ -78,7 +78,7 @@ func run(ctx context.Context, w io.Writer) error {
 		},
 	)
 
-	app, err := canto.NewAgent("service-reference").
+	h, err := canto.NewHarness("service-reference").
 		Instructions("Use service tools when useful, then answer concisely.").
 		Model("faux").
 		Provider(provider).
@@ -88,9 +88,10 @@ func run(ctx context.Context, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer app.Close()
+	defer h.Close()
 
-	res, err := app.Send(ctx, "service-session", "Find how Canto should expose service tools.")
+	res, err := h.Session("service-session").
+		Prompt(ctx, "Find how Canto should expose service tools.")
 	if err != nil {
 		return err
 	}
