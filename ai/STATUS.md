@@ -65,11 +65,12 @@ Current authoring-surface inputs:
 - Harness stream slice landed locally: `Session.PromptStream` now returns one
   `RunEvent` channel containing model chunks, durable session events, and the
   terminal result/error, so hosts no longer need to merge `SendStream`
-  callbacks with `Watch` for the common path. Focused root tests pass.
+  callbacks with `Watch` for the common path. Focused root tests and full
+  suite pass.
 - Harness environment slice landed locally: `canto.Environment` groups
   workspace, executor, sandbox, secret, and bootstrap capabilities on the
   harness without registering tools or encoding product policy. Focused root
-  tests pass.
+  tests and full suite pass.
 - Typed provider reasoning capability metadata landed from Ion `tk-369n`
   feedback: `llm.Capabilities` now carries structured reasoning controls
   (named effort values, disable support, budget ranges), request preparation
