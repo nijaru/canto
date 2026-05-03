@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/nijaru/canto/agent"
+	"github.com/nijaru/canto/coding"
 	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/safety"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/canto/workspace"
 )
 
 func TestHarnessSessionPrompt(t *testing.T) {
@@ -99,6 +103,48 @@ func TestHarnessBuilderRegistersTools(t *testing.T) {
 
 	if _, ok := h.Tools.Get("echo"); !ok {
 		t.Fatal("expected echo tool to be registered")
+	}
+}
+
+func TestHarnessBuilderStoresEnvironment(t *testing.T) {
+	root, err := workspace.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open workspace: %v", err)
+	}
+	defer root.Close()
+
+	executor := coding.NewExecutor(time.Second, 1024)
+	secrets := safety.StaticSecretInjector{"TOKEN": "secret"}
+	h, err := NewHarness("env").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
+		Environment(Environment{
+			Workspace: root,
+			Executor:  executor,
+			Secrets:   secrets,
+			Bootstrap: []session.ContextEntry{{
+				Kind:    session.ContextKindHarness,
+				Content: "workspace ready",
+			}},
+		}).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	if h.Environment.Workspace != root {
+		t.Fatal("workspace capability was not retained")
+	}
+	if h.Environment.Executor != executor {
+		t.Fatal("executor capability was not retained")
+	}
+	if h.Environment.Secrets == nil {
+		t.Fatal("secret injector was not retained")
+	}
+	if got := h.Environment.Bootstrap[0].Content; got != "workspace ready" {
+		t.Fatalf("bootstrap content = %q", got)
 	}
 }
 

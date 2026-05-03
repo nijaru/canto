@@ -14,6 +14,7 @@ h, err := canto.NewHarness("assistant").
 	Model("gpt-5.4").
 	Provider(provider).
 	SessionStore(store).
+	Environment(canto.Environment{Workspace: root}).
 	Tools(tools...).
 	Build()
 
@@ -24,6 +25,10 @@ For live hosts, `PromptStream` returns one stream of `RunEvent` values that
 contains model chunks, durable session events, and the final result/error.
 Hosts should prefer that over wiring `runtime.Runner.SendStream` and
 `runtime.Runner.Watch` separately.
+
+`Environment(...)` groups optional capabilities such as workspace, executor,
+sandbox, secrets, and bootstrap context. It does not register tools or make
+approval decisions by itself.
 
 Use `agent.New` when you need the lower-level `agent.Agent` without the root
 harness assembling a `runtime.Runner`, `tool.Registry`, and `session.Store`.

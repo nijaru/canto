@@ -9,23 +9,38 @@ import (
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/approval"
+	"github.com/nijaru/canto/coding"
 	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/runtime"
+	"github.com/nijaru/canto/safety"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/canto/workspace"
 )
+
+// Environment groups host-provided capabilities that tools and bootstrap
+// logic can use while a harness runs. It describes where effects happen; it
+// does not encode product policy.
+type Environment struct {
+	Workspace workspace.WorkspaceFS
+	Executor  *coding.Executor
+	Sandbox   safety.Sandbox
+	Secrets   safety.SecretInjector
+	Bootstrap []session.ContextEntry
+}
 
 // Harness is an assembled agent runtime, registry, and session store. It is
 // the root facade for host applications; lower-level packages remain available
 // for advanced composition.
 type Harness struct {
-	Agent  agent.Agent
-	Runner *runtime.Runner
-	Tools  *tool.Registry
-	Store  session.Store
+	Agent       agent.Agent
+	Runner      *runtime.Runner
+	Tools       *tool.Registry
+	Store       session.Store
+	Environment Environment
 }
 
 // Session returns a handle for one durable conversation.
@@ -181,6 +196,7 @@ type HarnessBuilder struct {
 	store        session.Store
 	ephemeral    bool
 	compaction   *governor.CompactOptions
+	environment  Environment
 
 	agentOptions   []agent.Option
 	runtimeOptions []runtime.Option
@@ -234,6 +250,11 @@ func (b *HarnessBuilder) ToolSet(tools []tool.Tool) *HarnessBuilder {
 func (b *HarnessBuilder) SessionStore(store session.Store) *HarnessBuilder {
 	b.store = store
 	b.ephemeral = false
+	return b
+}
+
+func (b *HarnessBuilder) Environment(env Environment) *HarnessBuilder {
+	b.environment = cloneEnvironment(env)
 	return b
 }
 
@@ -357,11 +378,17 @@ func (b *HarnessBuilder) Build() (*Harness, error) {
 		b.agentOptions...,
 	)
 	return &Harness{
-		Agent:  a,
-		Runner: runtime.NewRunner(store, a, runtimeOptions...),
-		Tools:  registry,
-		Store:  store,
+		Agent:       a,
+		Runner:      runtime.NewRunner(store, a, runtimeOptions...),
+		Tools:       registry,
+		Store:       store,
+		Environment: cloneEnvironment(b.environment),
 	}, nil
+}
+
+func cloneEnvironment(env Environment) Environment {
+	env.Bootstrap = append([]session.ContextEntry(nil), env.Bootstrap...)
+	return env
 }
 
 func validateCompactionOptions(opts governor.CompactOptions) error {

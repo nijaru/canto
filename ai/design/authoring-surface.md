@@ -229,7 +229,10 @@ h, err := canto.NewHarness("code").
     Model("gpt-4o").
     Provider(providers.OpenAI()).
     SessionStore(store).
-    Workspace(root).
+    Environment(canto.Environment{
+        Workspace: root,
+        Executor: executor,
+    }).
     Tools(coding.Tools(root), service.Tools(...)).
     Approvals(approvalManager).
     Memory(memoryManager).
