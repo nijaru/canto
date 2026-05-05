@@ -461,13 +461,11 @@ func waitForRetry(ctx context.Context, delay time.Duration) error {
 }
 
 func (r *RetryProvider) Generate(ctx context.Context, req *Request) (*Response, error) {
-	var resp *Response
-	var err error
 	cfg := normalizedRetryConfig(r.Config)
 	interval := cfg.MinInterval
 
 	for i := 0; ; i++ {
-		resp, err = r.Provider.Generate(ctx, req)
+		resp, err := r.Provider.Generate(ctx, req)
 		if err == nil {
 			return resp, nil
 		}
@@ -485,17 +483,14 @@ func (r *RetryProvider) Generate(ctx context.Context, req *Request) (*Response, 
 			interval = cfg.MaxInterval
 		}
 	}
-	return nil, err
 }
 
 func (r *RetryProvider) Stream(ctx context.Context, req *Request) (Stream, error) {
-	var s Stream
-	var err error
 	cfg := normalizedRetryConfig(r.Config)
 	interval := cfg.MinInterval
 
 	for i := 0; ; i++ {
-		s, err = r.Provider.Stream(ctx, req)
+		s, err := r.Provider.Stream(ctx, req)
 		if err == nil {
 			return s, nil
 		}
@@ -513,5 +508,4 @@ func (r *RetryProvider) Stream(ctx context.Context, req *Request) (Stream, error
 			interval = cfg.MaxInterval
 		}
 	}
-	return nil, err
 }
