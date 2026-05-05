@@ -1,57 +1,23 @@
 package llm
 
-// GenerateFromStream collects chunks from a stream and assembles an Response.
+// GenerateFromStream collects chunks from a stream and assembles a Response.
 // It is intended for use by Provider implementations to avoid duplicating
 // the complex logic of assembling streaming chunks.
 func GenerateFromStream(s Stream) (*Response, error) {
 	defer s.Close()
-	var resp Response
-	// toolCallIndices tracks tool calls by their ID to handle deltas correctly.
-	toolCallIndices := make(map[string]int)
-	// thinkingBlockIndices tracks thinking blocks by their index to handle deltas if needed.
-	// For now, most streaming thinking blocks don't have a unique ID, but Anthropic
-	// may emit multiple blocks.
-	thinkingBlockIndices := make(map[int]int)
+	var acc StreamAccumulator
 
 	for {
 		chunk, ok := s.Next()
 		if !ok {
 			break
 		}
-		resp.Content += chunk.Content
-		resp.Reasoning += chunk.Reasoning
-		for i, block := range chunk.ThinkingBlocks {
-			if idx, ok := thinkingBlockIndices[i]; ok {
-				resp.ThinkingBlocks[idx].Thinking += block.Thinking
-				if block.Signature != "" {
-					resp.ThinkingBlocks[idx].Signature = block.Signature
-				}
-			} else {
-				thinkingBlockIndices[i] = len(resp.ThinkingBlocks)
-				resp.ThinkingBlocks = append(resp.ThinkingBlocks, block)
-			}
-		}
-		for _, call := range chunk.Calls {
-			if idx, ok := toolCallIndices[call.ID]; ok {
-				// Update existing call. If the chunk contains the full state,
-				// we overwrite; if it's a delta, we should append.
-				// For now, we assume the provider normalization layer (like
-				// OpenAIStream) handles the delta-to-full-state conversion
-				// and we just take the latest state.
-				resp.Calls[idx] = call
-			} else {
-				// New call
-				toolCallIndices[call.ID] = len(resp.Calls)
-				resp.Calls = append(resp.Calls, call)
-			}
-		}
-		if chunk.Usage != nil {
-			resp.Usage = *chunk.Usage
-		}
+		acc.Add(chunk)
 	}
 	if err := s.Err(); err != nil {
 		return nil, err
 	}
+	resp := acc.Response()
 	return &resp, nil
 }
 
@@ -72,6 +38,67 @@ type Chunk struct {
 	Reasoning      string          `json:"reasoning,omitempty"`
 	ThinkingBlocks []ThinkingBlock `json:"thinking_blocks,omitempty"`
 	Calls          []Call          `json:"tool_calls,omitempty"`
-	// Usage is populated in the final chunk(s) if supported by the provider.
+	// Usage is cumulative when present. Providers may emit multiple usage chunks;
+	// consumers should keep the latest value rather than summing chunks.
 	Usage *Usage `json:"usage,omitempty"`
+}
+
+// StreamAccumulator assembles normalized stream chunks into a provider response.
+//
+// Provider adapters are responsible for turning provider-specific deltas into
+// cumulative chunks. Tool calls with the same ID replace the previous call state,
+// and Usage keeps the latest cumulative value.
+type StreamAccumulator struct {
+	resp            Response
+	toolCallIndices map[string]int
+}
+
+func (a *StreamAccumulator) Add(chunk *Chunk) {
+	if chunk == nil {
+		return
+	}
+	a.resp.Content += chunk.Content
+	a.resp.Reasoning += chunk.Reasoning
+	for _, block := range chunk.ThinkingBlocks {
+		a.addThinkingBlock(block)
+	}
+	for _, call := range chunk.Calls {
+		a.addCall(call)
+	}
+	if chunk.Usage != nil {
+		a.resp.Usage = *chunk.Usage
+	}
+}
+
+func (a *StreamAccumulator) Response() Response {
+	return a.resp
+}
+
+func (a *StreamAccumulator) addThinkingBlock(block ThinkingBlock) {
+	if len(a.resp.ThinkingBlocks) == 0 || block.Signature != "" ||
+		block.Type != a.resp.ThinkingBlocks[len(a.resp.ThinkingBlocks)-1].Type {
+		a.resp.ThinkingBlocks = append(a.resp.ThinkingBlocks, block)
+		return
+	}
+
+	last := &a.resp.ThinkingBlocks[len(a.resp.ThinkingBlocks)-1]
+	last.Thinking += block.Thinking
+	if block.Signature != "" {
+		last.Signature = block.Signature
+	}
+}
+
+func (a *StreamAccumulator) addCall(call Call) {
+	if call.ID == "" {
+		return
+	}
+	if a.toolCallIndices == nil {
+		a.toolCallIndices = make(map[string]int)
+	}
+	if idx, ok := a.toolCallIndices[call.ID]; ok {
+		a.resp.Calls[idx] = call
+		return
+	}
+	a.toolCallIndices[call.ID] = len(a.resp.Calls)
+	a.resp.Calls = append(a.resp.Calls, call)
 }

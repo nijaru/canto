@@ -23,6 +23,7 @@ type Stream struct {
 	model      string
 	p          *Provider
 	ctx        context.Context
+	usage      llm.Usage
 }
 
 func (s *Stream) Next() (*llm.Chunk, bool) {
@@ -32,10 +33,7 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 		switch event.Type {
 		case "message_start":
 			msg := event.AsMessageStart()
-			usage := llm.Usage{
-				InputTokens: int(msg.Message.Usage.InputTokens),
-			}
-			return &llm.Chunk{Usage: &usage}, true
+			return s.updateUsage(usageFromMessage(msg.Message.Usage)), true
 		case "content_block_start":
 			chunk := s.contentBlockStart(event.AsContentBlockStart())
 			if chunk != nil {
@@ -48,11 +46,7 @@ func (s *Stream) Next() (*llm.Chunk, bool) {
 			}
 		case "message_delta":
 			delta := event.AsMessageDelta()
-			usage := llm.Usage{
-				OutputTokens: int(delta.Usage.OutputTokens),
-			}
-			usage.Cost = s.p.Cost(s.ctx, s.model, usage)
-			return &llm.Chunk{Usage: &usage}, true
+			return s.updateUsage(usageFromMessageDelta(delta.Usage)), true
 		case "content_block_stop":
 			s.activeCall = nil
 		case "message_stop":
@@ -121,6 +115,32 @@ func (s *Stream) contentBlockDelta(delta sdk.ContentBlockDeltaEvent) *llm.Chunk 
 		return chunk
 	default:
 		return nil
+	}
+}
+
+func (s *Stream) updateUsage(next llm.Usage) *llm.Chunk {
+	s.usage = next
+	s.usage.TotalTokens = s.usage.InputTokens + s.usage.OutputTokens
+	s.usage.Cost = s.p.Cost(s.ctx, s.model, s.usage)
+	usage := s.usage
+	return &llm.Chunk{Usage: &usage}
+}
+
+func usageFromMessage(usage sdk.Usage) llm.Usage {
+	return llm.Usage{
+		InputTokens:         int(usage.InputTokens),
+		OutputTokens:        int(usage.OutputTokens),
+		CacheReadTokens:     int(usage.CacheReadInputTokens),
+		CacheCreationTokens: int(usage.CacheCreationInputTokens),
+	}
+}
+
+func usageFromMessageDelta(usage sdk.MessageDeltaUsage) llm.Usage {
+	return llm.Usage{
+		InputTokens:         int(usage.InputTokens),
+		OutputTokens:        int(usage.OutputTokens),
+		CacheReadTokens:     int(usage.CacheReadInputTokens),
+		CacheCreationTokens: int(usage.CacheCreationInputTokens),
 	}
 }
 

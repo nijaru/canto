@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
@@ -77,14 +76,7 @@ func (a *BaseAgent) StreamStep(
 	}
 	defer stream.Close()
 
-	// Assemble the complete response from chunks.
-	// Tool calls are accumulated by ID — each delta updates the same entry.
-	var contentBuilder strings.Builder
-	var reasoningBuilder strings.Builder
-	var usage llm.Usage
-	var thinkingBlocks []llm.ThinkingBlock
-	assembledCalls := make(map[string]llm.Call) // keyed by call ID
-	callOrder := make([]string, 0)              // preserve insertion order
+	var acc llm.StreamAccumulator
 
 	for {
 		if err = ctx.Err(); err != nil {
@@ -97,34 +89,7 @@ func (a *BaseAgent) StreamStep(
 		if err = ctx.Err(); err != nil {
 			return
 		}
-		if chunk.Content != "" {
-			contentBuilder.WriteString(chunk.Content)
-		}
-		if chunk.Reasoning != "" {
-			reasoningBuilder.WriteString(chunk.Reasoning)
-		}
-		for _, block := range chunk.ThinkingBlocks {
-			if len(thinkingBlocks) == 0 || block.Signature != "" {
-				thinkingBlocks = append(thinkingBlocks, block)
-			} else {
-				last := &thinkingBlocks[len(thinkingBlocks)-1]
-				last.Thinking += block.Thinking
-			}
-		}
-		if chunk.Usage != nil {
-			usage.InputTokens += chunk.Usage.InputTokens
-			usage.OutputTokens += chunk.Usage.OutputTokens
-			usage.TotalTokens += chunk.Usage.TotalTokens
-			usage.Cost += chunk.Usage.Cost
-		}
-		for _, call := range chunk.Calls {
-			if call.ID != "" {
-				if _, exists := assembledCalls[call.ID]; !exists {
-					callOrder = append(callOrder, call.ID)
-				}
-				assembledCalls[call.ID] = call
-			}
-		}
+		acc.Add(chunk)
 		if chunkFn != nil {
 			chunkFn(chunk)
 		}
@@ -137,23 +102,19 @@ func (a *BaseAgent) StreamStep(
 		return
 	}
 
-	// Reconstruct ordered calls slice.
-	calls := make([]llm.Call, 0, len(callOrder))
-	for _, id := range callOrder {
-		calls = append(calls, assembledCalls[id])
-	}
+	resp := acc.Response()
 
 	// Record assistant message.
 	msg := llm.Message{
 		Role:           llm.RoleAssistant,
-		Content:        contentBuilder.String(),
-		Reasoning:      reasoningBuilder.String(),
-		ThinkingBlocks: thinkingBlocks,
-		Calls:          calls,
+		Content:        resp.Content,
+		Reasoning:      resp.Reasoning,
+		ThinkingBlocks: resp.ThinkingBlocks,
+		Calls:          resp.Calls,
 	}
-	llm.RecordUsage(ctx, provider.ID(), req.Model, usage)
+	llm.RecordUsage(ctx, provider.ID(), req.Model, resp.Usage)
 	if !hasAssistantPayload(msg) {
-		res.Usage = usage
+		res.Usage = resp.Usage
 		return
 	}
 
@@ -161,7 +122,7 @@ func (a *BaseAgent) StreamStep(
 		return
 	}
 	e := session.NewEvent(s.ID(), session.MessageAdded, msg)
-	e.Cost = usage.Cost
+	e.Cost = resp.Usage.Cost
 	if err = s.Append(ctx, e); err != nil {
 		return
 	}
@@ -171,7 +132,7 @@ func (a *BaseAgent) StreamStep(
 	res, err = runTools(
 		ctx,
 		s,
-		calls,
+		resp.Calls,
 		a.tools,
 		a.hooks,
 		a.approvals,
@@ -179,7 +140,7 @@ func (a *BaseAgent) StreamStep(
 		a.maxParallelTools,
 		e.ID.String(),
 	)
-	res.Usage = usage // Restore usage as RunTools only returns results/handoff
+	res.Usage = resp.Usage // Restore usage as RunTools only returns results/handoff
 
 	return
 }

@@ -198,6 +198,28 @@ func TestStreamStepSkipsEmptyAssistantMessage(t *testing.T) {
 	}
 }
 
+func TestStreamStepKeepsLatestCumulativeUsage(t *testing.T) {
+	p := &streamMockProvider{
+		chunks: [][]llm.Chunk{
+			{
+				{Usage: &llm.Usage{InputTokens: 10, TotalTokens: 10}},
+				{Content: "done"},
+				{Usage: &llm.Usage{InputTokens: 10, OutputTokens: 5, TotalTokens: 15}},
+			},
+		},
+	}
+	a := New("a", "sys", "m", p, nil)
+	s := userSession("s-cumulative-usage", "hi")
+
+	result, err := a.StreamStep(t.Context(), s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Usage.TotalTokens != 15 {
+		t.Fatalf("TotalTokens = %d, want latest cumulative value 15", result.Usage.TotalTokens)
+	}
+}
+
 func TestStreamStepWithToolCall(t *testing.T) {
 	call := llm.Call{ID: "c1", Type: "function"}
 	call.Function.Name = "greet"

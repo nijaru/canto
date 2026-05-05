@@ -3,7 +3,9 @@ package anthropic
 import (
 	"testing"
 
+	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/go-json-experiment/json/jsontext"
+	"github.com/nijaru/canto/llm"
 )
 
 // provider returns a zero-value Provider sufficient for testing convertSchema,
@@ -110,5 +112,58 @@ func TestIsContextOverflowMessage(t *testing.T) {
 	}
 	if isContextOverflowMessage("rate limit exceeded") {
 		t.Fatal("expected unrelated message not to match")
+	}
+}
+
+func TestUsageFromMessageIncludesCacheTokens(t *testing.T) {
+	got := usageFromMessage(sdk.Usage{
+		InputTokens:              10,
+		OutputTokens:             5,
+		CacheReadInputTokens:     3,
+		CacheCreationInputTokens: 2,
+	})
+
+	if got.InputTokens != 10 || got.OutputTokens != 5 ||
+		got.CacheReadTokens != 3 || got.CacheCreationTokens != 2 {
+		t.Fatalf("usage = %+v, want input/output/cache fields copied", got)
+	}
+}
+
+func TestStreamUsageChunksAreCumulative(t *testing.T) {
+	p := &Provider{
+		config: llmProviderConfigForTest(),
+	}
+	stream := &Stream{p: p, model: "test-model"}
+
+	first := stream.updateUsage(usageFromMessage(sdk.Usage{
+		InputTokens:              10,
+		CacheReadInputTokens:     2,
+		CacheCreationInputTokens: 3,
+	}))
+	second := stream.updateUsage(usageFromMessageDelta(sdk.MessageDeltaUsage{
+		InputTokens:              10,
+		OutputTokens:             5,
+		CacheReadInputTokens:     2,
+		CacheCreationInputTokens: 3,
+	}))
+
+	if first.Usage.TotalTokens != 10 {
+		t.Fatalf("first total = %d, want 10", first.Usage.TotalTokens)
+	}
+	if second.Usage.TotalTokens != 15 {
+		t.Fatalf("second total = %d, want cumulative 15", second.Usage.TotalTokens)
+	}
+	if second.Usage.Cost == 0 {
+		t.Fatal("expected stream usage cost to include cumulative input/output usage")
+	}
+}
+
+func llmProviderConfigForTest() llm.ProviderConfig {
+	return llm.ProviderConfig{
+		Models: []llm.Model{{
+			ID:           "test-model",
+			CostPer1MIn:  1,
+			CostPer1MOut: 2,
+		}},
 	}
 }

@@ -70,11 +70,8 @@ func (p *Provider) Generate(ctx context.Context, req *llm.Request) (*llm.Respons
 		return nil, err
 	}
 
-	usage := llm.Usage{
-		InputTokens:  int(resp.Usage.InputTokens),
-		OutputTokens: int(resp.Usage.OutputTokens),
-		TotalTokens:  int(resp.Usage.InputTokens + resp.Usage.OutputTokens),
-	}
+	usage := usageFromMessage(resp.Usage)
+	usage.TotalTokens = usage.InputTokens + usage.OutputTokens
 	usage.Cost = p.Cost(ctx, prepared.Model, usage)
 
 	res := &llm.Response{
