@@ -75,6 +75,34 @@ func TestFileReferencePromptDeduplicatesRepeatedRefs(t *testing.T) {
 	}
 }
 
+func TestFileReferencePromptTrimsTrailingSentencePunctuation(t *testing.T) {
+	root, err := workspace.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("workspace.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+	if err := root.WriteFile("notes.txt", []byte("hello from file"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	sess := session.New("refs-punctuation")
+	if err := sess.Append(t.Context(), session.NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "please inspect @notes.txt, then summarize it.",
+	})); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	req := &llm.Request{}
+	proc := FileReferencePrompt(root, FileReferenceOptions{})
+	if err := proc.ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatalf("ApplyRequest: %v", err)
+	}
+	if !contains(req.Messages[0].Content, `path="notes.txt"`, "hello from file") {
+		t.Fatalf("expected trimmed file reference, got %q", req.Messages[0].Content)
+	}
+}
+
 func TestFileReferencePromptDeduplicatesAcrossSession(t *testing.T) {
 	root, err := workspace.Open(t.TempDir())
 	if err != nil {

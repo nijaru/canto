@@ -227,7 +227,10 @@ func referencedFiles(
 	seen := make(map[string]struct{}, len(matches))
 	resolved := make([]resolvedFileReference, 0, len(matches))
 	for _, match := range matches {
-		path := match[1]
+		path := cleanFileReferencePath(match[1])
+		if path == "" {
+			continue
+		}
 		ref, data, err := workspace.RefFile(ctx, root, path)
 		if err != nil {
 			return "", nil, fmt.Errorf("file reference %s: %w", path, err)
@@ -242,6 +245,11 @@ func referencedFiles(
 		})
 	}
 	return currentEventID, resolved, nil
+}
+
+func cleanFileReferencePath(raw string) string {
+	path := strings.Trim(raw, "`")
+	return strings.TrimRight(path, ".,;:!?)]}\"'")
 }
 
 func recordedFileReferenceIDs(
