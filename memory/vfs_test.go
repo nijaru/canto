@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"strings"
 	"testing"
@@ -79,6 +80,29 @@ func TestVFSReadDirUnknownPathNotExist(t *testing.T) {
 	fsys := NewFS(NewManager(store))
 	if _, err := fsys.ReadDir("missing"); !os.IsNotExist(err) {
 		t.Fatalf("ReadDir missing error = %v, want not exist", err)
+	}
+}
+
+func TestVFSStandardFSReadDir(t *testing.T) {
+	store, err := NewCoreStore(":memory:")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	defer store.Close()
+
+	fsys := NewFS(NewManager(store))
+	entries, err := fs.ReadDir(fsys.FS(), ".")
+	if err != nil {
+		t.Fatalf("fs.ReadDir root: %v", err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	got := strings.Join(names, ",")
+	want := "blocks,docs,memories,search"
+	if got != want {
+		t.Fatalf("root entries = %q, want %q", got, want)
 	}
 }
 
