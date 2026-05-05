@@ -526,6 +526,106 @@ func TestChildRunnerSpawn_MaxConcurrent(t *testing.T) {
 	}
 }
 
+func TestChildRunnerSpawn_CancelWhileWaitingForConcurrentSlot(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent := session.New("parent-cancel-slot").WithWriter(store)
+	childRunner := NewChildRunner(store, WithMaxConcurrent(1))
+	defer childRunner.Close()
+
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	var current int32
+	var maxSeen int32
+
+	firstRef, err := childRunner.Spawn(t.Context(), parent, ChildSpec{
+		ID: "child-running",
+		Agent: &blockingAgent{
+			id:      "child-running",
+			started: started,
+			release: release,
+			current: &current,
+			maxSeen: &maxSeen,
+		},
+	})
+	if err != nil {
+		t.Fatalf("spawn running child: %v", err)
+	}
+	select {
+	case id := <-started:
+		if id != "child-running" {
+			t.Fatalf("started child = %q, want child-running", id)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for running child start")
+	}
+
+	queuedCtx, cancelQueued := context.WithCancel(t.Context())
+	queuedRef, err := childRunner.Spawn(queuedCtx, parent, ChildSpec{
+		ID: "child-queued",
+		Agent: &blockingAgent{
+			id:      "child-queued",
+			started: started,
+			release: release,
+			current: &current,
+			maxSeen: &maxSeen,
+		},
+	})
+	if err != nil {
+		t.Fatalf("spawn queued child: %v", err)
+	}
+	cancelQueued()
+
+	waitCtx, waitCancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer waitCancel()
+	result, err := childRunner.Wait(waitCtx, queuedRef.ID)
+	if err != nil {
+		t.Fatalf("wait canceled queued child: %v", err)
+	}
+	if result.Status != session.ChildStatusCanceled {
+		t.Fatalf("queued child status = %q, want %q", result.Status, session.ChildStatusCanceled)
+	}
+	if !errors.Is(result.Err, context.Canceled) {
+		t.Fatalf("queued child err = %v, want context.Canceled", result.Err)
+	}
+
+	select {
+	case id := <-started:
+		t.Fatalf("child %s started despite canceled semaphore wait", id)
+	default:
+	}
+
+	close(release)
+	if _, err := childRunner.Wait(t.Context(), firstRef.ID); err != nil {
+		t.Fatalf("wait running child: %v", err)
+	}
+
+	parentReloaded, err := store.Load(t.Context(), parent.ID())
+	if err != nil {
+		t.Fatalf("load parent: %v", err)
+	}
+	var sawCanceled bool
+	for _, event := range parentReloaded.Events() {
+		if event.Type == session.ChildCanceled {
+			data, ok, err := event.ChildCanceledData()
+			if err != nil {
+				t.Fatalf("decode child canceled: %v", err)
+			}
+			if ok && data.ChildID == queuedRef.ID {
+				sawCanceled = true
+				break
+			}
+		}
+	}
+	if !sawCanceled {
+		t.Fatal("expected parent to record queued child cancellation")
+	}
+}
+
 func TestChildRunnerSpawn_InheritsSpawnContextByDefault(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {

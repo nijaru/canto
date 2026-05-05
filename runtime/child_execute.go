@@ -24,7 +24,15 @@ func (r *ChildRunner) runChild(
 		}
 	}()
 	if r.sem != nil {
-		r.sem <- struct{}{}
+		select {
+		case r.sem <- struct{}{}:
+		case <-ctx.Done():
+			eventCtx := context.WithoutCancel(ctx)
+			result := ChildResult{Ref: ref, Err: ctx.Err()}
+			result.Status = r.recordChildError(eventCtx, parent, ref, metadata, result.Err)
+			handle.result = result
+			return
+		}
 		defer func() { <-r.sem }()
 	}
 
