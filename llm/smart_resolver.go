@@ -2,63 +2,27 @@ package llm
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	sdk "github.com/anthropics/anthropic-sdk-go"
-	"github.com/sashabaranov/go-openai"
 )
-
-// IsRateLimit returns true if the error is a rate limit error (429).
-func IsRateLimit(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	// OpenAI
-	var apiErr *openai.APIError
-	if errors.As(err, &apiErr) && apiErr.HTTPStatusCode == http.StatusTooManyRequests {
-		return true
-	}
-
-	// Anthropic
-	var anthropicErr *sdk.Error
-	if errors.As(err, &anthropicErr) && anthropicErr.StatusCode == http.StatusTooManyRequests {
-		return true
-	}
-
-	// Generic HTTP status check if provider wraps it
-	type statusCoder interface {
-		StatusCode() int
-	}
-	if sc, ok := err.(statusCoder); ok && sc.StatusCode() == http.StatusTooManyRequests {
-		return true
-	}
-
-	return false
-}
 
 // Strategy defines how a SmartResolver picks providers.
 type Strategy string
 
 const (
-	StrategyPriority   Strategy = "priority"    // Try in order, stick to first healthy
-	StrategyRoundRobin Strategy = "round-robin" // Rotate keys for load balancing
+	StrategyPriority   Strategy = "priority"
+	StrategyRoundRobin Strategy = "round-robin"
 )
 
-// managedProvider wraps a Provider with health tracking.
 type managedProvider struct {
 	provider Provider
 	cooling  time.Time
 	failures int
 }
 
-// SmartResolver implements sophisticated key rotation and fallback.
-// It tracks provider health and implements exponential backoff for cooling providers.
+// SmartResolver tracks provider health and rotates/fails over among providers.
 type SmartResolver struct {
 	mu        sync.RWMutex
 	providers []*managedProvider
@@ -164,7 +128,6 @@ func (r *SmartResolver) CountTokens(
 ) (int, error) {
 	healthy := r.getHealthy()
 	if len(healthy) == 0 {
-		// Fallback to first provider if none are healthy for counting
 		r.mu.RLock()
 		defer r.mu.RUnlock()
 		if len(r.providers) > 0 {
@@ -179,7 +142,6 @@ func (r *SmartResolver) Cost(ctx context.Context, model string, usage Usage) flo
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, p := range r.providers {
-		// Try to find the provider that actually has this model configuration
 		models, err := p.provider.Models(ctx)
 		if err != nil {
 			continue
@@ -190,16 +152,14 @@ func (r *SmartResolver) Cost(ctx context.Context, model string, usage Usage) flo
 			}
 		}
 	}
-	// Fallback to first provider if model not found in any list
 	if len(r.providers) > 0 {
 		return r.providers[0].provider.Cost(ctx, model, usage)
 	}
 	return 0
 }
 
-// Capabilities returns the capabilities of the first healthy provider's
-// view of the given model. Falls back to DefaultCapabilities if no providers
-// are available.
+// Capabilities returns the capabilities of the first healthy provider's view
+// of the given model.
 func (r *SmartResolver) Capabilities(model string) Capabilities {
 	providers := r.getHealthy()
 	if len(providers) == 0 {
@@ -237,9 +197,8 @@ func (r *SmartResolver) markCooling(p *managedProvider) {
 	defer r.mu.Unlock()
 	p.failures++
 	if p.failures > 10 {
-		p.failures = 10 // Cap to prevent overflow (2^10 = 1024)
+		p.failures = 10
 	}
-	// Exponential backoff: 2^n seconds
 	backoff := time.Duration(1<<uint(p.failures)) * time.Second
 	if backoff > 5*time.Minute {
 		backoff = 5 * time.Minute
@@ -252,107 +211,6 @@ func (r *SmartResolver) markSuccess(p *managedProvider) {
 	defer r.mu.Unlock()
 	p.failures = 0
 	p.cooling = time.Time{}
-}
-
-// FailoverProvider tries a list of providers in sequence until one succeeds.
-type FailoverProvider struct {
-	providers []Provider
-}
-
-// NewFailoverProvider creates a new failover provider.
-func NewFailoverProvider(providers ...Provider) *FailoverProvider {
-	return &FailoverProvider{providers: providers}
-}
-
-func (p *FailoverProvider) ID() string {
-	if len(p.providers) == 0 {
-		return "failover"
-	}
-	return fmt.Sprintf("failover(%s)", p.providers[0].ID())
-}
-
-func (p *FailoverProvider) Generate(ctx context.Context, req *Request) (*Response, error) {
-	if len(p.providers) == 0 {
-		return nil, fmt.Errorf("no providers configured")
-	}
-	var lastErr error
-	for _, sub := range p.providers {
-		resp, err := sub.Generate(ctx, req)
-		if err == nil {
-			return resp, nil
-		}
-		lastErr = err
-	}
-	return nil, fmt.Errorf("failover failed: %w", lastErr)
-}
-
-func (p *FailoverProvider) Stream(ctx context.Context, req *Request) (Stream, error) {
-	if len(p.providers) == 0 {
-		return nil, fmt.Errorf("no providers configured")
-	}
-	var lastErr error
-	for _, sub := range p.providers {
-		s, err := sub.Stream(ctx, req)
-		if err == nil {
-			return s, nil
-		}
-		lastErr = err
-	}
-	return nil, fmt.Errorf("failover failed to start stream: %w", lastErr)
-}
-
-func (p *FailoverProvider) Models(ctx context.Context) ([]Model, error) {
-	seen := make(map[string]bool)
-	var all []Model
-	for _, sub := range p.providers {
-		models, err := sub.Models(ctx)
-		if err != nil {
-			continue
-		}
-		for _, m := range models {
-			if !seen[m.ID] {
-				seen[m.ID] = true
-				all = append(all, m)
-			}
-		}
-	}
-	return all, nil
-}
-
-func (p *FailoverProvider) CountTokens(
-	ctx context.Context,
-	model string,
-	messages []Message,
-) (int, error) {
-	if len(p.providers) == 0 {
-		return 0, fmt.Errorf("no providers configured")
-	}
-	return p.providers[0].CountTokens(ctx, model, messages)
-}
-
-func (p *FailoverProvider) Cost(ctx context.Context, model string, usage Usage) float64 {
-	for _, sub := range p.providers {
-		models, err := sub.Models(ctx)
-		if err != nil {
-			continue
-		}
-		for _, m := range models {
-			if string(m.ID) == model {
-				return sub.Cost(ctx, model, usage)
-			}
-		}
-	}
-	if len(p.providers) > 0 {
-		return p.providers[0].Cost(ctx, model, usage)
-	}
-	return 0
-}
-
-func (p *FailoverProvider) Capabilities(model string) Capabilities {
-	if len(p.providers) == 0 {
-		return DefaultCapabilities()
-	}
-	return p.providers[0].Capabilities(model)
 }
 
 // IsTransient returns true if any underlying provider reports a transient error.
@@ -380,33 +238,6 @@ func (r *SmartResolver) IsContextOverflow(err error) bool {
 	defer r.mu.RUnlock()
 	for _, p := range r.providers {
 		if p.provider.IsContextOverflow(err) {
-			return true
-		}
-	}
-	return false
-}
-
-// IsTransient returns true if any underlying provider reports a transient error.
-func (p *FailoverProvider) IsTransient(err error) bool {
-	if err == nil {
-		return false
-	}
-	for _, sub := range p.providers {
-		if sub.IsTransient(err) {
-			return true
-		}
-	}
-	return false
-}
-
-// IsContextOverflow returns true if any underlying provider reports a context
-// overflow error.
-func (p *FailoverProvider) IsContextOverflow(err error) bool {
-	if err == nil {
-		return false
-	}
-	for _, sub := range p.providers {
-		if sub.IsContextOverflow(err) {
 			return true
 		}
 	}
