@@ -68,3 +68,37 @@ func TestVFS(t *testing.T) {
 		}
 	}
 }
+
+func TestVFSReadDirUnknownPathNotExist(t *testing.T) {
+	store, err := NewCoreStore(":memory:")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	defer store.Close()
+
+	fsys := NewFS(NewManager(store))
+	if _, err := fsys.ReadDir("missing"); !os.IsNotExist(err) {
+		t.Fatalf("ReadDir missing error = %v, want not exist", err)
+	}
+}
+
+func TestVFSStatUsesStableVirtualModTime(t *testing.T) {
+	store, err := NewCoreStore(":memory:")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	defer store.Close()
+
+	fsys := NewFS(NewManager(store))
+	first, err := fsys.Stat("docs")
+	if err != nil {
+		t.Fatalf("Stat docs first: %v", err)
+	}
+	second, err := fsys.Stat("docs")
+	if err != nil {
+		t.Fatalf("Stat docs second: %v", err)
+	}
+	if !first.ModTime().Equal(second.ModTime()) {
+		t.Fatalf("virtual ModTime changed: %v -> %v", first.ModTime(), second.ModTime())
+	}
+}

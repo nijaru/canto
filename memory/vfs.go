@@ -192,7 +192,7 @@ func (f *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 		return nil, nil
 	}
 
-	return nil, nil
+	return nil, fs.ErrNotExist
 }
 
 func (f *FS) Stat(name string) (fs.FileInfo, error) {
@@ -266,7 +266,7 @@ type virtualFileInfo struct {
 func (i virtualFileInfo) Name() string       { return i.name }
 func (i virtualFileInfo) Size() int64        { return i.size }
 func (i virtualFileInfo) Mode() os.FileMode  { return 0o444 }
-func (i virtualFileInfo) ModTime() time.Time { return time.Now() }
+func (i virtualFileInfo) ModTime() time.Time { return time.Time{} }
 func (i virtualFileInfo) IsDir() bool        { return false }
 func (i virtualFileInfo) Sys() any           { return nil }
 
@@ -277,7 +277,7 @@ type virtualDirInfo struct {
 func (i virtualDirInfo) Name() string       { return path.Base(i.name) }
 func (i virtualDirInfo) Size() int64        { return 0 }
 func (i virtualDirInfo) Mode() os.FileMode  { return os.ModeDir | 0o555 }
-func (i virtualDirInfo) ModTime() time.Time { return time.Now() }
+func (i virtualDirInfo) ModTime() time.Time { return time.Time{} }
 func (i virtualDirInfo) IsDir() bool        { return true }
 func (i virtualDirInfo) Sys() any           { return nil }
 
