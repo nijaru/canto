@@ -6,6 +6,8 @@ import (
 	"sync"
 )
 
+const subscriberBufSize = 64
+
 // subscriber is a single fan-out recipient.
 // The mu guards ch against concurrent trySend and close calls.
 type subscriber struct {
@@ -103,6 +105,13 @@ func (s *Session) Watch(ctx context.Context) *Subscription {
 		}()
 	}
 	return watch
+}
+
+// HasWatchers returns true if the session has any active Watch subscriptions.
+func (s *Session) HasWatchers() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.subscribers) > 0
 }
 
 // Events returns the live event channel for this subscription.
