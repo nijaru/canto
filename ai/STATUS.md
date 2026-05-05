@@ -3,7 +3,7 @@
 **Phase:** Phase 5: post-Ion codebase audit and simplification
 **Focus:** `canto-hr9r` is active: review and refactor Canto's framework packages the same way Ion's C5 audit closed, keeping Canto general-purpose and fixing concrete boundary issues in green slices.
 **Blockers:** None.
-**Updated:** 2026-05-02
+**Updated:** 2026-05-05
 
 ## Context
 
@@ -58,6 +58,12 @@ Current authoring-surface inputs:
 
 ## Recently landed
 
+- `canto-hr9r` active audit slices continue landing as green commits: trajectory
+  export now preserves durable developer-message input; `llm` capability
+  transforms disambiguate duplicate normalized tool-call IDs; hook handlers fail
+  closed on nil/panic results; memory index/VFS internals were split and
+  standard `fs.ReadDir` now works on `memory.FS().FS()`. Each slice passed
+  focused tests, `go test ./...`, `go build ./...`, and relevant race checks.
 - Harness facade first slice landed locally: root `canto.NewAgent`/`App.Send`
   has been replaced with `canto.NewHarness` plus
   `h.Session(id).Prompt/Events`; no compatibility alias was retained. Focused
