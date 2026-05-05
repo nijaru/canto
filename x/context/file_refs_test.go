@@ -103,6 +103,59 @@ func TestFileReferencePromptTrimsTrailingSentencePunctuation(t *testing.T) {
 	}
 }
 
+func TestFileReferencePromptTrimsAngleBracketReference(t *testing.T) {
+	root, err := workspace.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("workspace.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+	if err := root.WriteFile("notes.txt", []byte("hello from file"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	sess := session.New("refs-angle")
+	if err := sess.Append(t.Context(), session.NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "please inspect <@notes.txt>.",
+	})); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	req := &llm.Request{}
+	proc := FileReferencePrompt(root, FileReferenceOptions{})
+	if err := proc.ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatalf("ApplyRequest: %v", err)
+	}
+	if !contains(req.Messages[0].Content, `path="notes.txt"`, "hello from file") {
+		t.Fatalf("expected trimmed angle-bracket file reference, got %q", req.Messages[0].Content)
+	}
+}
+
+func TestFileReferencePromptIgnoresEmailAddresses(t *testing.T) {
+	root, err := workspace.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("workspace.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+
+	sess := session.New("refs-email")
+	if err := sess.Append(t.Context(), session.NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "send this to nick@example.com",
+	})); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	req := &llm.Request{}
+	proc := FileReferencePrompt(root, FileReferenceOptions{})
+	if err := proc.ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatalf("ApplyRequest: %v", err)
+	}
+	if len(req.Messages) != 0 {
+		t.Fatalf("expected no file reference injection, got %#v", req.Messages)
+	}
+}
+
 func TestFileReferencePromptDeduplicatesAcrossSession(t *testing.T) {
 	root, err := workspace.Open(t.TempDir())
 	if err != nil {

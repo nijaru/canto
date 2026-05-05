@@ -209,7 +209,7 @@ func referencedFiles(
 	if last.Role != llm.RoleUser || last.Content == "" {
 		return "", nil, nil
 	}
-	pattern := regexp.MustCompile(regexp.QuoteMeta(prefix) + `([^\s]+)`)
+	pattern := fileReferencePattern(prefix)
 	matches := pattern.FindAllStringSubmatch(last.Content, maxFiles)
 	if len(matches) == 0 {
 		return "", nil, nil
@@ -247,9 +247,13 @@ func referencedFiles(
 	return currentEventID, resolved, nil
 }
 
+func fileReferencePattern(prefix string) *regexp.Regexp {
+	return regexp.MustCompile(`(?:^|[\s([{<])` + regexp.QuoteMeta(prefix) + `([^\s]+)`)
+}
+
 func cleanFileReferencePath(raw string) string {
 	path := strings.Trim(raw, "`")
-	return strings.TrimRight(path, ".,;:!?)]}\"'")
+	return strings.TrimRight(path, ".,;:!?)]}>\"'")
 }
 
 func recordedFileReferenceIDs(
