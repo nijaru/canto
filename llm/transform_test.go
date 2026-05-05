@@ -105,6 +105,51 @@ func TestTransformRequestForCapabilitiesKeepsMatchedToolResultsWithoutDuplicates
 	}
 }
 
+func TestTransformRequestForCapabilitiesDisambiguatesDuplicateToolIDs(t *testing.T) {
+	req := &Request{
+		Messages: []Message{
+			{
+				Role: RoleAssistant,
+				Calls: []Call{
+					{
+						ID:   "call 1",
+						Type: "function",
+						Function: struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						}{Name: "read", Arguments: "{}"},
+					},
+					{
+						ID:   "call 1",
+						Type: "function",
+						Function: struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						}{Name: "list", Arguments: "{}"},
+					},
+				},
+			},
+			{Role: RoleTool, ToolID: "call 1", Content: "read result"},
+			{Role: RoleTool, ToolID: "call 1", Content: "list result"},
+		},
+	}
+
+	TransformRequestForCapabilities(req, DefaultCapabilities())
+
+	if req.Messages[0].Calls[0].ID != "call_1" {
+		t.Fatalf("first call id = %q", req.Messages[0].Calls[0].ID)
+	}
+	if req.Messages[0].Calls[1].ID != "call_1-2" {
+		t.Fatalf("second call id = %q", req.Messages[0].Calls[1].ID)
+	}
+	if req.Messages[1].ToolID != "call_1" {
+		t.Fatalf("first tool id = %q", req.Messages[1].ToolID)
+	}
+	if req.Messages[2].ToolID != "call_1-2" {
+		t.Fatalf("second tool id = %q", req.Messages[2].ToolID)
+	}
+}
+
 func TestTransformRequestForCapabilitiesDropsUnsupportedReasoningControls(t *testing.T) {
 	req := &Request{
 		ReasoningEffort: "high",
