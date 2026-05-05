@@ -25,7 +25,7 @@ func TestParallelRunnerRun(t *testing.T) {
 	}
 
 	runner := eval.NewParallelRunner(2, func(task eval.Task, runIndex int) agent.Agent {
-		provider := xtest.NewMockProvider(
+		provider := xtest.NewFauxProvider(
 			fmt.Sprintf("provider-%d", runIndex),
 			xtest.Step{Content: fmt.Sprintf("run-%d", runIndex)},
 		)

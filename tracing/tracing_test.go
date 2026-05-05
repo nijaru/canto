@@ -72,7 +72,7 @@ func TestStartContext(t *testing.T) {
 func TestWrapProvider_RecordsGenAIChatSpan(t *testing.T) {
 	rec := setupTracer(t)
 
-	mock := xtest.NewMockProvider("test", xtest.Step{Content: "hello"})
+	mock := xtest.NewFauxProvider("test", xtest.Step{Content: "hello"})
 	p := tracing.WrapProvider(mock)
 
 	ctx, sessionSpan := tracing.StartSession(t.Context(), "a", "s", "m")
@@ -141,7 +141,7 @@ func TestWrapTool_RecordsToolSpan(t *testing.T) {
 func TestWrapProviderIdempotent(t *testing.T) {
 	rec := setupTracer(t)
 
-	mock := xtest.NewMockProvider("test", xtest.Step{Content: "hello"})
+	mock := xtest.NewFauxProvider("test", xtest.Step{Content: "hello"})
 	p := tracing.WrapProvider(tracing.WrapProvider(mock))
 
 	ctx, sessionSpan := tracing.StartSession(t.Context(), "a", "s", "m")

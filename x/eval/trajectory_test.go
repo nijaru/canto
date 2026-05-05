@@ -25,7 +25,7 @@ func TestPlanAdherence(t *testing.T) {
 		t.Fatalf("ExportRun: %v", err)
 	}
 
-	mock := xtest.NewMockProvider("judge", xtest.Step{
+	mock := xtest.NewFauxProvider("judge", xtest.Step{
 		Content: "Looks good.\nScore: 0.8/1.0",
 	})
 	scorer := &eval.PlanAdherence{

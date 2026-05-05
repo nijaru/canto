@@ -50,9 +50,6 @@ func (s *ToolCorrectness) ScoreTurn(
 	return 2 * precision * recall / (precision + recall), nil
 }
 
-// ToolCallAccuracy is kept as a compatibility alias for ToolCorrectness.
-type ToolCallAccuracy = ToolCorrectness
-
 // StepEfficiency rewards turns that reach completion with fewer tool calls.
 type StepEfficiency struct{}
 
@@ -63,9 +60,6 @@ func (s *StepEfficiency) Name() string { return "step_efficiency" }
 func (s *StepEfficiency) ScoreTurn(_ context.Context, turn session.RunTurn) (float64, error) {
 	return 1.0 / (1.0 + float64(len(turn.ToolCalls))), nil
 }
-
-// TurnEfficiency is kept as a compatibility alias for StepEfficiency.
-type TurnEfficiency = StepEfficiency
 
 // CostEfficiency rewards low-cost turns.
 type CostEfficiency struct{}

@@ -10,8 +10,8 @@ import (
 	xtesting "github.com/nijaru/canto/x/testing"
 )
 
-func overflowProvider(steps ...xtesting.Step) *xtesting.MockProvider {
-	p := xtesting.NewMockProvider("recovery-test", steps...)
+func overflowProvider(steps ...xtesting.Step) *xtesting.FauxProvider {
+	p := xtesting.NewFauxProvider("recovery-test", steps...)
 	p.IsContextOverflowFn = func(err error) bool {
 		return err != nil && err.Error() == "context_length_exceeded"
 	}
@@ -19,7 +19,7 @@ func overflowProvider(steps ...xtesting.Step) *xtesting.MockProvider {
 }
 
 func TestRecoveryProvider_PassThrough(t *testing.T) {
-	mock := xtesting.NewMockProvider("test",
+	mock := xtesting.NewFauxProvider("test",
 		xtesting.Step{Content: "ok"},
 	)
 
@@ -108,7 +108,7 @@ func TestRecoveryProvider_CompactFailure(t *testing.T) {
 }
 
 func TestRecoveryProvider_NonOverflowError(t *testing.T) {
-	mock := xtesting.NewMockProvider("test",
+	mock := xtesting.NewFauxProvider("test",
 		xtesting.Step{Err: errors.New("rate limited")},
 	)
 
@@ -180,6 +180,6 @@ func TestRecoveryProvider_NilCompactPanics(t *testing.T) {
 		}
 	}()
 
-	mock := xtesting.NewMockProvider("test")
+	mock := xtesting.NewFauxProvider("test")
 	_ = governor.NewRecoveryProvider(mock, nil)
 }

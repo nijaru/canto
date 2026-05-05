@@ -22,7 +22,7 @@ func TestRun_ResultsInOrder(t *testing.T) {
 	}
 
 	results := Run(context.Background(), tasks, 2, func(task Task) agent.Agent {
-		p := xtest.NewMockProvider("mock", xtest.Step{Content: "result: " + task.ID})
+		p := xtest.NewFauxProvider("mock", xtest.Step{Content: "result: " + task.ID})
 		return agent.New(task.ID, "", "m", p, nil)
 	})
 
@@ -50,7 +50,7 @@ func TestRun_WorkerCap(t *testing.T) {
 	}
 
 	results := Run(context.Background(), tasks, 1, func(task Task) agent.Agent {
-		p := xtest.NewMockProvider("mock", xtest.Step{Content: "ok"})
+		p := xtest.NewFauxProvider("mock", xtest.Step{Content: "ok"})
 		return agent.New(task.ID, "", "m", p, nil)
 	})
 
@@ -69,7 +69,7 @@ func TestRun_AgentError(t *testing.T) {
 	want := errors.New("provider down")
 
 	results := Run(context.Background(), tasks, 1, func(task Task) agent.Agent {
-		p := xtest.NewMockProvider("mock", xtest.Step{Err: want})
+		p := xtest.NewFauxProvider("mock", xtest.Step{Err: want})
 		return agent.New(task.ID, "", "m", p, nil)
 	})
 
@@ -89,7 +89,7 @@ func TestRun_WorkersDefaultsToTaskCount(t *testing.T) {
 
 	// workers=0 → should default to len(tasks)=2
 	results := Run(context.Background(), tasks, 0, func(task Task) agent.Agent {
-		p := xtest.NewMockProvider("mock", xtest.Step{Content: "ok"})
+		p := xtest.NewFauxProvider("mock", xtest.Step{Content: "ok"})
 		return agent.New(task.ID, "", "m", p, nil)
 	})
 
@@ -109,7 +109,7 @@ func TestRun_ContextCancel(t *testing.T) {
 	cancel()
 
 	results := Run(ctx, tasks, 10, func(task Task) agent.Agent {
-		p := xtest.NewMockProvider("mock", xtest.Step{Content: "ok"})
+		p := xtest.NewFauxProvider("mock", xtest.Step{Content: "ok"})
 		return agent.New(task.ID, "", "m", p, nil)
 	})
 

@@ -9,33 +9,6 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-func TestMockProvider_ConsumeSteps(t *testing.T) {
-	mock := NewMockProvider("test",
-		Step{Content: "step 1"},
-		Step{Content: "step 2"},
-	)
-
-	resp, err := mock.Generate(context.Background(), &llm.Request{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Content != "step 1" {
-		t.Fatalf("content = %q, want step 1", resp.Content)
-	}
-
-	resp, err = mock.Generate(context.Background(), &llm.Request{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Content != "step 2" {
-		t.Fatalf("content = %q, want step 2", resp.Content)
-	}
-
-	if mock.Remaining() != 0 {
-		t.Fatalf("remaining = %d, want 0", mock.Remaining())
-	}
-}
-
 func TestFauxProvider_ConsumeSteps(t *testing.T) {
 	faux := NewFauxProvider("test",
 		Step{Content: "step 1"},
@@ -63,8 +36,8 @@ func TestFauxProvider_ConsumeSteps(t *testing.T) {
 	}
 }
 
-func TestMockProvider_Exhausted(t *testing.T) {
-	mock := NewMockProvider("test", Step{Content: "only"})
+func TestFauxProvider_Exhausted(t *testing.T) {
+	mock := NewFauxProvider("test", Step{Content: "only"})
 	mock.Generate(context.Background(), &llm.Request{}) //nolint
 
 	_, err := mock.Generate(context.Background(), &llm.Request{})
@@ -73,9 +46,9 @@ func TestMockProvider_Exhausted(t *testing.T) {
 	}
 }
 
-func TestMockProvider_StepError(t *testing.T) {
+func TestFauxProvider_StepError(t *testing.T) {
 	want := errors.New("provider down")
-	mock := NewMockProvider("test", Step{Err: want})
+	mock := NewFauxProvider("test", Step{Err: want})
 
 	_, err := mock.Generate(context.Background(), &llm.Request{})
 	if !errors.Is(err, want) {
@@ -83,8 +56,8 @@ func TestMockProvider_StepError(t *testing.T) {
 	}
 }
 
-func TestMockProvider_RecordsCalls(t *testing.T) {
-	mock := NewMockProvider("test", Step{Content: "ok"})
+func TestFauxProvider_RecordsCalls(t *testing.T) {
+	mock := NewFauxProvider("test", Step{Content: "ok"})
 
 	req := &llm.Request{Model: "gpt-4o"}
 	mock.Generate(context.Background(), req) //nolint
@@ -98,8 +71,8 @@ func TestMockProvider_RecordsCalls(t *testing.T) {
 	}
 }
 
-func TestMockProvider_AssertExhausted(t *testing.T) {
-	mock := NewMockProvider("test", Step{Content: "unused"})
+func TestFauxProvider_AssertExhausted(t *testing.T) {
+	mock := NewFauxProvider("test", Step{Content: "unused"})
 
 	inner := &testing.T{}
 	mock.AssertExhausted(inner)

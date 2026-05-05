@@ -26,7 +26,7 @@ func TestMain(t *testing.T) {
 	registry := tool.NewRegistry()
 	registry.Register(&coding.ShellTool{})
 
-	provider := cantotest.NewMockProvider("main",
+	provider := cantotest.NewFauxProvider("main",
 		cantotest.Step{
 			Content: "I will check the current directory.",
 			Calls: []llm.Call{

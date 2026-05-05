@@ -36,7 +36,7 @@ func TestCapabilitiesPreservesThinkingAndNormalizesToolIDs(t *testing.T) {
 	req.Messages[0].Calls = []llm.Call{call}
 
 	provider := &capabilityProvider{
-		MockProvider: xtesting.NewMockProvider("test"),
+		FauxProvider: xtesting.NewFauxProvider("test"),
 		caps: llm.Capabilities{
 			SystemRole: llm.RoleSystem,
 		},
@@ -72,7 +72,7 @@ func TestCapabilitiesPreservesThinkingAndNormalizesToolIDs(t *testing.T) {
 }
 
 type capabilityProvider struct {
-	*xtesting.MockProvider
+	*xtesting.FauxProvider
 	caps llm.Capabilities
 }
 

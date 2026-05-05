@@ -37,17 +37,9 @@ type FauxProvider struct {
 	IsContextOverflowFn func(error) bool
 }
 
-// MockProvider is kept as a compatibility alias for FauxProvider.
-type MockProvider = FauxProvider
-
 // NewFauxProvider creates a FauxProvider with the given step sequence.
 func NewFauxProvider(id string, steps ...Step) *FauxProvider {
 	return &FauxProvider{id: id, steps: steps}
-}
-
-// NewMockProvider creates a FauxProvider with the given step sequence.
-func NewMockProvider(id string, steps ...Step) *MockProvider {
-	return NewFauxProvider(id, steps...)
 }
 
 func (m *FauxProvider) ID() string { return m.id }
