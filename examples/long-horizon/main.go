@@ -25,7 +25,9 @@ func main() {
 
 	// 1. Setup governance (Offload to disk when > 1000 tokens, then summarize)
 	offloadDir := "./data/long-horizon-offload"
-	os.MkdirAll(offloadDir, 0o755)
+	if err := os.MkdirAll(offloadDir, 0o755); err != nil {
+		log.Fatalf("failed to create offload directory: %v", err)
+	}
 
 	gov := []prompt.ContextMutator{
 		governor.NewOffloader(1000, offloadDir),
@@ -52,7 +54,9 @@ func main() {
 			Content: fmt.Sprintf("This is a very long message for turn %d. "+
 				"We want to trigger the governor's offloading logic.", i),
 		}
-		sess.Append(ctx, session.NewMessage(sess.ID(), msg))
+		if err := sess.Append(ctx, session.NewMessage(sess.ID(), msg)); err != nil {
+			log.Fatalf("failed to append turn %d: %v", i, err)
+		}
 
 		res, err := a.Turn(ctx, sess)
 		if err != nil {

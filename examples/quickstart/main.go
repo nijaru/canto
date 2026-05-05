@@ -1,7 +1,6 @@
 //go:build ignore
 
-// quickstart demonstrates the absolute minimum code required to
-// initialize an agent and get a single response.
+// quickstart demonstrates the lower-level agent/session API.
 //
 // Run: OPENAI_API_KEY=... go run examples/quickstart/main.go
 package main
@@ -23,7 +22,7 @@ func main() {
 	// 1. Initialize the LLM provider
 	provider := providers.OpenAI()
 
-	// 2. Create the agent with an empty tool registry (nil)
+	// 2. Create the agent with no registered tools.
 	a := agent.New("assistant", "You are a concise and helpful assistant.", "gpt-4o", provider, nil)
 
 	// 3. Create a session to hold the context

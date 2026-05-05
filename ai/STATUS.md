@@ -102,11 +102,11 @@ Current authoring-surface inputs:
   interpolating them into Seatbelt rules; FileStore now rejects path-like
   caller-supplied artifact IDs before using them in the object layout; MCP
   client discovery/call handling now rejects nil external SDK tool/result
-  values cleanly; reference examples now close persistent session stores and
-  the autoresearch example fails closed on restore/log write errors; JSONL audit
-  logger close is serialized with logging and leaves the logger explicitly
-  closed. Each slice passed focused tests, `go test ./...`, `go build
-  ./...`, and relevant race checks.
+  values cleanly; reference examples now close persistent session stores, check
+  setup/append/input failures, and the autoresearch example fails closed on
+  restore/log write errors; JSONL audit logger close is serialized with logging
+  and leaves the logger explicitly closed. Each slice passed focused tests,
+  `go test ./...`, `go build ./...`, and relevant race checks.
 - Phase 5 checkpoint after the latest slices: `go vet ./...` and broad race
   gate over core plus framework-adjacent packages passed:
   `./agent ./session ./runtime ./prompt ./tool ./workspace ./llm ./governor

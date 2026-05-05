@@ -36,7 +36,9 @@ const (
 func main() {
 	ctx := context.Background()
 
-	os.MkdirAll("./data", 0o755)
+	if err := os.MkdirAll("./data", 0o755); err != nil {
+		log.Fatalf("failed to create data directory: %v", err)
+	}
 
 	// 1. Initialize persistent storage
 	// Both the session event log and the CoreStore use the same SQLite file.
@@ -58,7 +60,11 @@ func main() {
 	manager := memory.NewManager(coreStore, memory.WithWritePolicy(memory.WritePolicy{
 		ConflictMode: memory.ConflictMerge,
 	}))
-	defer manager.Close()
+	defer func() {
+		if err := manager.Close(); err != nil {
+			log.Printf("failed to close memory manager: %v", err)
+		}
+	}()
 
 	// 2. Configure durable core memory blocks
 	err = manager.UpsertBlock(ctx, namespace, "persona", `Agent Name: Archivist
@@ -115,7 +121,11 @@ When the user shares an important fact, use remember_memory to store it.`
 	if input == "" {
 		fmt.Print(">>> ")
 		sc := bufio.NewScanner(os.Stdin)
-		sc.Scan()
+		if !sc.Scan() {
+			if err := sc.Err(); err != nil {
+				log.Fatalf("failed to read input: %v", err)
+			}
+		}
 		input = sc.Text()
 	}
 	if input == "" {

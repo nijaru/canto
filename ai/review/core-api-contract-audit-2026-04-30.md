@@ -190,6 +190,9 @@ Recent concrete fixes from the follow-up pass:
 - Reference examples now close persistent session stores, and the autoresearch
   example checks restore/log write errors instead of silently continuing after a
   failed revert or JSONL append.
+- Ignored examples now check setup, append, and input errors, and the quickstart
+  example labels itself as the lower-level agent/session path instead of the
+  absolute minimum host path.
 - JSONL audit logger close is serialized with log writes and leaves the logger
   explicitly closed, so concurrent close/log callers cannot close the file while
   a line is being written.

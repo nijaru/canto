@@ -18,12 +18,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 )
 
 func main() {
 	result, err := runExample(context.Background())
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	fmt.Println(result.Summary)
