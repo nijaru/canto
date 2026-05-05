@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-json-experiment/json"
 	"github.com/oklog/ulid/v2"
@@ -56,6 +57,9 @@ func (s *FileStore) Put(ctx context.Context, desc Descriptor, r io.Reader) (Desc
 
 	if desc.ID == "" {
 		desc.ID = ulid.Make().String()
+	}
+	if err := validateArtifactID(desc.ID); err != nil {
+		return Descriptor{}, err
 	}
 	if desc.Metadata == nil {
 		desc.Metadata = make(map[string]any)
@@ -114,6 +118,18 @@ func (s *FileStore) Put(ctx context.Context, desc Descriptor, r io.Reader) (Desc
 	return desc, nil
 }
 
+func validateArtifactID(id string) error {
+	if id == "" ||
+		id == "." ||
+		id == ".." ||
+		strings.ContainsAny(id, `/\`) ||
+		filepath.Clean(id) != id ||
+		filepath.Base(id) != id {
+		return fmt.Errorf("artifact file store: invalid artifact id %q", id)
+	}
+	return nil
+}
+
 // Stat returns the stored descriptor for an artifact.
 func (s *FileStore) Stat(ctx context.Context, id string) (Descriptor, error) {
 	if err := ctx.Err(); err != nil {
@@ -121,6 +137,9 @@ func (s *FileStore) Stat(ctx context.Context, id string) (Descriptor, error) {
 	}
 	if s == nil || s.root == nil {
 		return Descriptor{}, fmt.Errorf("artifact file store: nil root")
+	}
+	if err := validateArtifactID(id); err != nil {
+		return Descriptor{}, err
 	}
 
 	raw, err := s.root.ReadFile(descriptorMetadataPath(id))

@@ -54,3 +54,26 @@ func TestFileStorePutStatOpen(t *testing.T) {
 		t.Fatalf("opened descriptor = %#v want %#v", opened, desc)
 	}
 }
+
+func TestFileStoreRejectsPathLikeArtifactIDs(t *testing.T) {
+	store, err := NewFileStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	for _, id := range []string{"../escape", "nested/id", `nested\id`, ".", ".."} {
+		t.Run(id, func(t *testing.T) {
+			if _, err := store.Put(t.Context(), Descriptor{ID: id}, strings.NewReader("body")); err == nil {
+				t.Fatal("expected invalid artifact id error")
+			}
+			if _, err := store.Stat(t.Context(), id); err == nil {
+				t.Fatal("expected invalid artifact id error from Stat")
+			}
+			if rc, _, err := store.Open(t.Context(), id); err == nil {
+				_ = rc.Close()
+				t.Fatal("expected invalid artifact id error from Open")
+			}
+		})
+	}
+}

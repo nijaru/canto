@@ -183,10 +183,12 @@ Recent concrete fixes from the follow-up pass:
   success at stream start.
 - macOS Seatbelt sandbox profiles escape path strings before interpolating them
   into profile rules.
+- FileStore rejects path-like caller-supplied artifact IDs before using them in
+  the `objects/<id>/...` storage layout.
 
 Remaining reasonable audit targets:
 
-- `tool/mcp`, `artifact`, `audit`, `examples/*`, and docs/godoc polish.
+- `tool/mcp`, `audit`, `examples/*`, and docs/godoc polish.
 - Broader public API shape review after the code audit, especially whether the
   root `Harness` facade should absorb more common `Runner` use cases.
 
