@@ -204,11 +204,11 @@ go vet ./...
 go test -race ./agent ./session ./runtime ./prompt ./tool ./workspace ./llm ./governor ./memory ./coding ./service ./tracing ./hook ./approval ./artifact ./audit ./safety ./tool/mcp -count=1 -timeout 300s
 ```
 
-Remaining reasonable audit targets:
+Remaining non-code follow-up:
 
-- Docs/godoc polish.
-- Broader public API shape review after the code audit, especially whether the
-  root `Harness` facade should absorb more common `Runner` use cases.
+- Docs/godoc polish remains deferred under `canto-khhl`.
+- Broader public API shape review should be driven by M1 readiness or fresh Ion
+  feedback, not by continuing the Phase 5 code audit.
 
 ## Exit Criteria
 
@@ -225,7 +225,9 @@ go test ./... -count=1
 
 ## Current Outcome
 
-No known Canto-owned native-loop blocker remains after C1-C6. Phase 5 is now a
-broader framework cleanup pass, not a reopened Ion blocker. The latest slices
-continue to pass focused package tests, `go test ./...`, `go build ./...`, and
-relevant race checks before commit.
+No known Canto-owned native-loop blocker remains after C1-C6 and the Phase 5
+whole-codebase follow-up. The latest checkpoint passed `go vet ./...`,
+`go test ./...`, `go build ./...`, and the broad race subset over core plus
+framework-adjacent packages. Further work should come from concrete Ion
+feedback, M1 docs readiness, or scoped public API decisions rather than keeping
+this audit open.

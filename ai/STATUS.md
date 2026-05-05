@@ -1,7 +1,7 @@
 # Status
 
-**Phase:** Phase 5: post-Ion codebase audit and simplification
-**Focus:** `canto-hr9r` is active: review and refactor Canto's framework packages the same way Ion's C5 audit closed, keeping Canto general-purpose and fixing concrete boundary issues in green slices.
+**Phase:** Phase 5: post-Ion codebase audit complete
+**Focus:** Canto's whole-codebase audit is closed. The repo is back to a maintenance-ready state: keep Canto general-purpose, fix future issues as concrete framework defects, and import the audited revision into Ion before using Ion as downstream acceptance evidence.
 **Blockers:** None.
 **Updated:** 2026-05-05
 
@@ -30,25 +30,22 @@ Current authoring-surface inputs:
 
 ## Next
 
-**Active audit path:**
+**Audit outcome:**
 
-- Continue `canto-hr9r` in green slices. Prioritize remaining local-testable
-  framework surfaces over optional integration packages: memory store/write
-  pipeline, coding executor/file tools, approval gate, runtime child/run
-  helpers, provider/request helpers, and extension examples.
-- Current hotspot: memory retrieval just landed a namespace-collision fix for
-  core blocks; continue auditing memory/HNSW only if the next read finds a
-  concrete contract gap.
-- Examples and `audit` are now covered by the Phase 5 pass; remaining local
-  target is docs/godoc polish unless source review turns up another concrete
-  boundary issue.
+- `canto-hr9r` reviewed and refactored framework packages in green slices:
+  root harness/session APIs, prompt, providers, session stores/rebuilder/export,
+  runtime scheduler/child/coordinator/lane, agent tool lifecycle, hooks,
+  tracing, workspace VFS/search, memory manager/stores/index/VFS/vector search,
+  coding tools/executor, approval, service, skills, artifact/audit/safety/MCP,
+  examples, and `x/*` extension packages.
 - Runtime coordinator/lane were inspected earlier in this audit and have strong
   FIFO/retry/cancel/parallel-session coverage; revisit only if new evidence
   points there.
 - `x/redis` is structurally split and compile/race-checked under `-tags redis`,
   but live Redis behavior still requires `CANTO_TEST_REDIS_URL`.
-- Commit each coherent slice after focused tests, `go test ./...`, `go build
-  ./...`, and the relevant race package pass.
+- No known Canto-owned native-loop blocker remains. Future Canto work should
+  start from a concrete Ion/framework defect, M1 docs readiness, or a scoped
+  API-shape decision.
 
 **M1 stabilization after audit:**
 
@@ -78,8 +75,8 @@ Current authoring-surface inputs:
 
 ## Recently landed
 
-- `canto-hr9r` active audit slices continue landing as green commits. Current
-  checkpoint: semantic retrieval enforces namespace/role filters after fusion;
+- `canto-hr9r` closed the Phase 5 audit in green commits. Current checkpoint:
+  semantic retrieval enforces namespace/role filters after fusion;
   graph/Redis/tool storage were split by responsibility; task JSON mutations
   preserve unknown fields; file references trim natural trailing punctuation;
   HNSW/SQLite vector search normalize bad limits and share metadata filter
