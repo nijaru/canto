@@ -34,3 +34,15 @@ func TestSeatbeltSandboxWrapPrefixesSandboxExec(t *testing.T) {
 		t.Fatalf("expected write allowance in profile, got %q", cmd.Args[2])
 	}
 }
+
+func TestSeatbeltProfileEscapesPathStrings(t *testing.T) {
+	profile := seatbeltProfile(SandboxOptions{
+		ReadablePaths: []string{`/tmp/work"quote`, `/tmp/work\slash`},
+	})
+	if !strings.Contains(profile, `(subpath "/tmp/work\"quote")`) {
+		t.Fatalf("expected quote to be escaped in profile, got %q", profile)
+	}
+	if !strings.Contains(profile, `(subpath "/tmp/work\\slash")`) {
+		t.Fatalf("expected backslash to be escaped in profile, got %q", profile)
+	}
+}

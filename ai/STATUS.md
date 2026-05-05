@@ -95,8 +95,9 @@ Current authoring-surface inputs:
   cancellation event instead of leaving sessions durably waiting with no
   pending HITL request; SmartResolver now accounts for transient provider
   failures that happen during stream consumption instead of marking the provider
-  healthy at stream start. Each slice passed focused tests, `go test ./...`,
-  `go build ./...`, and relevant race checks.
+  healthy at stream start; macOS sandbox profiles now escape path strings before
+  interpolating them into Seatbelt rules. Each slice passed focused tests,
+  `go test ./...`, `go build ./...`, and relevant race checks.
 - Harness facade first slice landed locally: root `canto.NewAgent`/`App.Send`
   has been replaced with `canto.NewHarness` plus
   `h.Session(id).Prompt/Events`; no compatibility alias was retained. Focused

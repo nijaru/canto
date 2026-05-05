@@ -71,7 +71,11 @@ func defaultReadablePathsDarwin() []string {
 func seatbeltSubpaths(paths []string) string {
 	parts := make([]string, 0, len(paths))
 	for _, path := range paths {
-		parts = append(parts, `(subpath "`+filepath.Clean(path)+`")`)
+		parts = append(parts, `(subpath "`+seatbeltEscapePath(filepath.Clean(path))+`")`)
 	}
 	return strings.Join(parts, " ")
+}
+
+func seatbeltEscapePath(path string) string {
+	return strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(path)
 }
