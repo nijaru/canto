@@ -93,6 +93,9 @@ func WithMaxEscalations(n int) Option { return func(a *BaseAgent) { a.maxEscalat
 // WithHooks appends one or more hooks to the agent's hook runner.
 func WithHooks(hs ...hook.Handler) Option {
 	return func(a *BaseAgent) {
+		if a.hooks == nil {
+			a.hooks = hook.NewRunner()
+		}
 		for _, h := range hs {
 			a.hooks.Register(h)
 		}
@@ -100,7 +103,14 @@ func WithHooks(hs ...hook.Handler) Option {
 }
 
 // WithHookRunner replaces the agent's hook runner.
-func WithHookRunner(h *hook.Runner) Option { return func(a *BaseAgent) { a.hooks = h } }
+func WithHookRunner(h *hook.Runner) Option {
+	return func(a *BaseAgent) {
+		if h == nil {
+			h = hook.NewRunner()
+		}
+		a.hooks = h
+	}
+}
 
 // WithApprovalGate configures a reusable approval gate for gated tool execution.
 func WithApprovalGate(
