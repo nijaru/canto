@@ -462,8 +462,43 @@ func (m *MultiFS) Stat(name string) (fs.FileInfo, error) {
 }
 
 func (m *MultiFS) Glob(ctx context.Context, pattern string) ([]string, error) {
-	// For now, only search base.
-	return m.base.Glob(ctx, pattern)
+	pattern = strings.TrimPrefix(path.Clean(pattern), "/")
+	baseMatches, err := m.base.Glob(ctx, pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	matchSet := make(map[string]struct{}, len(baseMatches)+len(m.mounts))
+	for _, match := range baseMatches {
+		matchSet[match] = struct{}{}
+	}
+	for mount, mounted := range m.mounts {
+		matched, err := path.Match(pattern, mount)
+		if err != nil {
+			return nil, err
+		}
+		if matched {
+			matchSet[mount] = struct{}{}
+		}
+		if !strings.HasPrefix(pattern, mount+"/") {
+			continue
+		}
+		subPattern := strings.TrimPrefix(pattern, mount+"/")
+		mountedMatches, err := mounted.Glob(ctx, subPattern)
+		if err != nil {
+			return nil, err
+		}
+		for _, match := range mountedMatches {
+			matchSet[path.Join(mount, match)] = struct{}{}
+		}
+	}
+
+	matches := make([]string, 0, len(matchSet))
+	for match := range matchSet {
+		matches = append(matches, match)
+	}
+	slices.Sort(matches)
+	return matches, nil
 }
 
 func (m *MultiFS) resolve(name string) (WorkspaceFS, string, bool) {

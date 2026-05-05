@@ -455,6 +455,36 @@ func TestMultiFSRoutesMountedOperations(t *testing.T) {
 	}
 }
 
+func TestMultiFSGlobIncludesMountedFilesystem(t *testing.T) {
+	base := &mockFS{
+		data: map[string]string{"base.txt": "base content"},
+		dirs: map[string]struct{}{},
+	}
+	mount := &mockFS{
+		data: map[string]string{"mount.txt": "mount content"},
+		dirs: map[string]struct{}{},
+	}
+
+	multi := NewMultiFS(base)
+	multi.Mount("memory", mount)
+
+	matches, err := multi.Glob(t.Context(), "*.txt")
+	if err != nil {
+		t.Fatalf("Glob base: %v", err)
+	}
+	if !slices.Equal(matches, []string{"base.txt"}) {
+		t.Fatalf("base glob = %#v, want base.txt", matches)
+	}
+
+	matches, err = multi.Glob(t.Context(), "memory/*.txt")
+	if err != nil {
+		t.Fatalf("Glob mounted: %v", err)
+	}
+	if !slices.Equal(matches, []string{"memory/mount.txt"}) {
+		t.Fatalf("mounted glob = %#v, want memory/mount.txt", matches)
+	}
+}
+
 func entryNames(entries []fs.DirEntry) []string {
 	names := make([]string, len(entries))
 	for i, entry := range entries {
