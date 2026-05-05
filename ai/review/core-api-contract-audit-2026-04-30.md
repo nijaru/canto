@@ -188,6 +188,13 @@ Recent concrete fixes from the follow-up pass:
 - MCP client discovery/call handling now rejects nil external SDK tool/result
   values cleanly instead of panicking at the protocol boundary.
 
+Latest checkpoint:
+
+```sh
+go vet ./...
+go test -race ./agent ./session ./runtime ./prompt ./tool ./workspace ./llm ./governor ./memory ./coding ./service ./tracing ./hook ./approval ./artifact ./audit ./safety ./tool/mcp -count=1 -timeout 300s
+```
+
 Remaining reasonable audit targets:
 
 - `audit`, `examples/*`, and docs/godoc polish.

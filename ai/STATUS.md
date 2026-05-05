@@ -101,6 +101,11 @@ Current authoring-surface inputs:
   client discovery/call handling now rejects nil external SDK tool/result
   values cleanly. Each slice passed focused tests, `go test ./...`, `go build
   ./...`, and relevant race checks.
+- Phase 5 checkpoint after the latest slices: `go vet ./...` and broad race
+  gate over core plus framework-adjacent packages passed:
+  `./agent ./session ./runtime ./prompt ./tool ./workspace ./llm ./governor
+  ./memory ./coding ./service ./tracing ./hook ./approval ./artifact ./audit
+  ./safety ./tool/mcp`.
 - Harness facade first slice landed locally: root `canto.NewAgent`/`App.Send`
   has been replaced with `canto.NewHarness` plus
   `h.Session(id).Prompt/Events`; no compatibility alias was retained. Focused
