@@ -86,6 +86,44 @@ func TestExecutor_Timeout(t *testing.T) {
 	}
 }
 
+func TestExecutor_ReturnsContextCanceled(t *testing.T) {
+	e := NewExecutor(5*time.Second, 1000)
+	ctx, cancel := context.WithCancel(t.Context())
+	started := make(chan struct{})
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := e.Run(ctx, Command{
+			Name: "bash",
+			Args: []string{"-lc", "printf started; exec sleep 5"},
+			OnOutput: func(OutputChunk) {
+				select {
+				case <-started:
+				default:
+					close(started)
+				}
+			},
+		})
+		done <- err
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("command did not start")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Run error = %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("executor did not return after cancel")
+	}
+}
+
 func TestExecutor_Truncation(t *testing.T) {
 	e := NewExecutor(time.Second, 10)
 

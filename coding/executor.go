@@ -247,7 +247,10 @@ func (e *Executor) Run(ctx context.Context, cmd Command) (Result, error) {
 		result.TimedOut = true
 		return result, fmt.Errorf("command timed out after %v", e.Timeout)
 	}
-	if errors.Is(runCtx.Err(), context.Canceled) && !errors.Is(ctx.Err(), context.Canceled) {
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	if errors.Is(runCtx.Err(), context.Canceled) {
 		return result, context.Canceled
 	}
 	if waitErr != nil {
