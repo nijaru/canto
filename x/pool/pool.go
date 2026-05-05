@@ -51,10 +51,8 @@ func Run(
 	close(queue)
 
 	var wg sync.WaitGroup
-	wg.Add(workers)
 	for range workers {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for idx := range queue {
 				if ctx.Err() != nil {
 					results[idx] = Result{Task: tasks[idx], Err: ctx.Err()}
@@ -63,7 +61,7 @@ func Run(
 				task := tasks[idx]
 				results[idx] = run(ctx, task, agentFn(task))
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

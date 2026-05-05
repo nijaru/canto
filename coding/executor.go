@@ -219,15 +219,12 @@ func (e *Executor) Run(ctx context.Context, cmd Command) (Result, error) {
 		readErrMu.Unlock()
 	}
 
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		recordReadErr(collector.readStream(StdoutStream, stdout))
-	}()
-	go func() {
-		defer wg.Done()
+	})
+	wg.Go(func() {
 		recordReadErr(collector.readStream(StderrStream, stderr))
-	}()
+	})
 
 	// Drain both pipes before Wait. The exec package closes the parent's pipe
 	// descriptors during Wait, so waiting first can race with the readers and

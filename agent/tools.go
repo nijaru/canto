@@ -369,10 +369,7 @@ func executeParallelBatch(
 
 	for i := start; i < end; i++ {
 		pf := preflight[i]
-		wg.Add(1)
-		go func(i int, pf preflightResult) {
-			defer wg.Done()
-
+		wg.Go(func() {
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
@@ -382,7 +379,7 @@ func executeParallelBatch(
 			}
 
 			results[i] = executeToolSafely(ctx, s, pf, r, h)
-		}(i, pf)
+		})
 	}
 	wg.Wait()
 }

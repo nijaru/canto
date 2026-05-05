@@ -89,52 +89,51 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 		// actually claim via the atomic ClaimTask. An agent whose hint was
 		// stolen simply produces worked=false for this round.
 		for i, a := range s.agents {
-			wg.Add(1)
-			go func(idx int, ag agent.Agent, tasks []Task) {
-				defer wg.Done()
+			i, a := i, a
+			wg.Go(func() {
 				defer func() {
 					if r := recover(); r != nil {
-						outcomes[idx] = outcome{
-							agentID: ag.ID(),
-							err:     fmt.Errorf("agent %q panicked: %v", ag.ID(), r),
+						outcomes[i] = outcome{
+							agentID: a.ID(),
+							err:     fmt.Errorf("agent %q panicked: %v", a.ID(), r),
 						}
 					}
 				}()
-				out := outcome{agentID: ag.ID()}
+				out := outcome{agentID: a.ID()}
 
 				// Try each task in order until one is successfully claimed.
 				var claimed *Task
-				for j := range tasks {
-					ok, claimErr := s.blackboard.ClaimTask(roundCtx, ag.ID(), tasks[j].ID)
+				for j := range unclaimed {
+					ok, claimErr := s.blackboard.ClaimTask(roundCtx, a.ID(), unclaimed[j].ID)
 					if claimErr != nil {
-						out.err = fmt.Errorf("claim %q: %w", tasks[j].ID, claimErr)
-						outcomes[idx] = out
+						out.err = fmt.Errorf("claim %q: %w", unclaimed[j].ID, claimErr)
+						outcomes[i] = out
 						return
 					}
 					if ok {
-						t := tasks[j]
+						t := unclaimed[j]
 						claimed = &t
 						break
 					}
 				}
 				if claimed == nil {
 					// All tasks stolen by other agents this round — that's fine.
-					outcomes[idx] = out
+					outcomes[i] = out
 					return
 				}
 
 				// Post the claimed task description to the blackboard so other
 				// agents can observe what this agent is working on.
-				_ = s.blackboard.Post(roundCtx, ag.ID(), "current_task", claimed.Description)
+				_ = s.blackboard.Post(roundCtx, a.ID(), "current_task", claimed.Description)
 
 				// Execute one agent turn on the shared session within its own span.
-				ctx, agentSpan := tracing.StartAgent(roundCtx, ag.ID())
-				turnRes, turnErr := ag.Turn(ctx, sess)
+				ctx, agentSpan := tracing.StartAgent(roundCtx, a.ID())
+				turnRes, turnErr := a.Turn(ctx, sess)
 				if turnErr != nil {
 					agentSpan.RecordError(turnErr)
 					agentSpan.End()
 					out.err = fmt.Errorf("turn for task %q: %w", claimed.ID, turnErr)
-					outcomes[idx] = out
+					outcomes[i] = out
 					return
 				}
 				if turnRes.TurnStopReason.StopsProgress() {
@@ -146,7 +145,7 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 					agentSpan.RecordError(stopErr)
 					agentSpan.End()
 					out.err = stopErr
-					outcomes[idx] = out
+					outcomes[i] = out
 					return
 				}
 				agentSpan.End()
@@ -158,8 +157,8 @@ func (s *Swarm) Run(ctx context.Context, sess *session.Session) (SwarmResult, er
 				usageMu.Unlock()
 
 				out.worked = true
-				outcomes[idx] = out
-			}(i, a, unclaimed)
+				outcomes[i] = out
+			})
 		}
 		wg.Wait()
 		roundSpan.End()
