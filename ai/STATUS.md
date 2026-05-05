@@ -28,9 +28,23 @@ Current authoring-surface inputs:
 - `ai/research/dspy-authoring-insights-2026-04.md` captures DSPy lessons for signatures, modules, adapters, eval metrics, and offline optimization.
 - Existing `ai/research/frameworks/` notes already cover LangGraph, PydanticAI, AutoGen, Vercel AI SDK, MCP, and adjacent framework comparisons. Future SOTA work should be delta-based.
 
-## Next (M1 stabilization order)
+## Next
 
-**Harness facade gate:**
+**Active audit path:**
+
+- Continue `canto-hr9r` in green slices. Prioritize remaining local-testable
+  framework surfaces over optional integration packages: memory store/write
+  pipeline, coding executor/file tools, approval gate, runtime child/run
+  helpers, provider/request helpers, and extension examples.
+- Runtime coordinator/lane were inspected earlier in this audit and have strong
+  FIFO/retry/cancel/parallel-session coverage; revisit only if new evidence
+  points there.
+- `x/redis` is structurally split and compile/race-checked under `-tags redis`,
+  but live Redis behavior still requires `CANTO_TEST_REDIS_URL`.
+- Commit each coherent slice after focused tests, `go test ./...`, `go build
+  ./...`, and the relevant race package pass.
+
+**M1 stabilization after audit:**
 
 - Active work is `canto-2vxb`: reshape the common authoring/runtime path around
   a framework `Harness`, durable session handle, and one ordered run-event
@@ -58,12 +72,14 @@ Current authoring-surface inputs:
 
 ## Recently landed
 
-- `canto-hr9r` active audit slices continue landing as green commits: trajectory
-  export now preserves durable developer-message input; `llm` capability
-  transforms disambiguate duplicate normalized tool-call IDs; hook handlers fail
-  closed on nil/panic results; memory index/VFS internals were split and
-  standard `fs.ReadDir` now works on `memory.FS().FS()`. Each slice passed
-  focused tests, `go test ./...`, `go build ./...`, and relevant race checks.
+- `canto-hr9r` active audit slices continue landing as green commits. Current
+  checkpoint: semantic retrieval enforces namespace/role filters after fusion;
+  graph/Redis/tool storage were split by responsibility; task JSON mutations
+  preserve unknown fields; file references trim natural trailing punctuation;
+  HNSW/SQLite vector search normalize bad limits and share metadata filter
+  semantics; OverlayFS now exposes speculative state through its standard
+  `fs.FS` view. Each slice passed focused tests, `go test ./...`, `go build
+  ./...`, and relevant race checks.
 - Harness facade first slice landed locally: root `canto.NewAgent`/`App.Send`
   has been replaced with `canto.NewHarness` plus
   `h.Session(id).Prompt/Events`; no compatibility alias was retained. Focused
