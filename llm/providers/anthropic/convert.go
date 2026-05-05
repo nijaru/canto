@@ -1,0 +1,174 @@
+package anthropic
+
+import (
+	sdk "github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/shared/constant"
+	"github.com/go-json-experiment/json"
+	"github.com/nijaru/canto/llm"
+)
+
+func (p *Provider) convertRequest(req *llm.Request) sdk.MessageNewParams {
+	var system []sdk.TextBlockParam
+	var messages []sdk.MessageParam
+
+	for i := 0; i < len(req.Messages); i++ {
+		m := req.Messages[i]
+		if m.Role == llm.RoleSystem {
+			block := sdk.TextBlockParam{
+				Text: m.Content,
+				Type: constant.Text("text"),
+			}
+			if m.CacheControl != nil {
+				block.CacheControl = sdk.NewCacheControlEphemeralParam()
+			}
+			system = append(system, block)
+			continue
+		}
+
+		if m.Role == llm.RoleTool {
+			var blocks []sdk.ContentBlockParamUnion
+			for j := i; j < len(req.Messages); j++ {
+				curr := req.Messages[j]
+				if curr.Role != llm.RoleTool {
+					i = j - 1
+					break
+				}
+				block := sdk.NewToolResultBlock(curr.ToolID, curr.Content, false)
+				if curr.CacheControl != nil {
+					block.OfToolResult.CacheControl = sdk.NewCacheControlEphemeralParam()
+				}
+				blocks = append(blocks, block)
+				if j == len(req.Messages)-1 {
+					i = j
+				}
+			}
+			messages = append(messages, sdk.NewUserMessage(blocks...))
+			continue
+		}
+
+		blocks := p.convertContentBlocks(m)
+		if m.Role == llm.RoleAssistant {
+			messages = append(messages, sdk.NewAssistantMessage(blocks...))
+		} else {
+			messages = append(messages, sdk.NewUserMessage(blocks...))
+		}
+	}
+
+	params := sdk.MessageNewParams{
+		Model:     sdk.Model(req.Model),
+		Messages:  messages,
+		Tools:     p.convertTools(req.Tools),
+		MaxTokens: 4096,
+	}
+
+	if rf := req.ResponseFormat; rf != nil &&
+		rf.Type == llm.ResponseFormatJSONSchema &&
+		rf.Schema != nil {
+		name := rf.Name
+		if name == "" {
+			name = "json_response"
+		}
+		schema := p.convertSchema(rf.Schema)
+		params.Tools = append(params.Tools, sdk.ToolUnionParamOfTool(schema, name))
+		params.ToolChoice = sdk.ToolChoiceParamOfTool(name)
+	}
+
+	if req.MaxTokens > 0 {
+		params.MaxTokens = int64(req.MaxTokens)
+	}
+	if len(system) > 0 {
+		params.System = system
+	}
+	if req.ThinkingBudget > 0 {
+		params.Thinking = sdk.ThinkingConfigParamOfEnabled(int64(req.ThinkingBudget))
+		params.Temperature = sdk.Float(1.0)
+	} else if req.Temperature > 0 {
+		params.Temperature = sdk.Float(req.Temperature)
+	}
+
+	return params
+}
+
+func (p *Provider) convertContentBlocks(m llm.Message) []sdk.ContentBlockParamUnion {
+	var blocks []sdk.ContentBlockParamUnion
+	for _, tb := range m.ThinkingBlocks {
+		switch tb.Type {
+		case "thinking":
+			blocks = append(blocks, sdk.NewThinkingBlock(tb.Thinking, tb.Signature))
+		case "redacted_thinking":
+			blocks = append(blocks, sdk.NewRedactedThinkingBlock(tb.Signature))
+		}
+	}
+	if m.Content != "" {
+		block := sdk.NewTextBlock(m.Content)
+		if m.CacheControl != nil {
+			block.OfText.CacheControl = sdk.NewCacheControlEphemeralParam()
+		}
+		blocks = append(blocks, block)
+	}
+	for _, call := range m.Calls {
+		block := sdk.NewToolUseBlock(call.ID, call.Function.Arguments, call.Function.Name)
+		if m.CacheControl != nil {
+			block.OfToolUse.CacheControl = sdk.NewCacheControlEphemeralParam()
+		}
+		blocks = append(blocks, block)
+	}
+	return blocks
+}
+
+func (p *Provider) convertTools(tools []*llm.Spec) []sdk.ToolUnionParam {
+	var converted []sdk.ToolUnionParam
+	for _, t := range tools {
+		schema := p.convertSchema(t.Parameters)
+		tool := sdk.ToolUnionParamOfTool(schema, t.Name)
+		if t.Description != "" {
+			tool.OfTool.Description = sdk.String(t.Description)
+		}
+		if t.CacheControl != nil {
+			tool.OfTool.CacheControl = sdk.NewCacheControlEphemeralParam()
+		}
+		converted = append(converted, tool)
+	}
+	return converted
+}
+
+// convertSchema converts a Spec.Parameters value (any JSON-serializable type)
+// into the Anthropic SDK's ToolInputSchemaParam. It normalizes the input via a
+// JSON round-trip so that map[string]any, json.RawMessage, typed schema structs,
+// and any other serializable type are all handled uniformly.
+func (p *Provider) convertSchema(params any) sdk.ToolInputSchemaParam {
+	schema := sdk.ToolInputSchemaParam{
+		Type: constant.Object("object"),
+	}
+
+	if params == nil {
+		return schema
+	}
+
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return schema
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return schema
+	}
+
+	if props, ok := m["properties"]; ok {
+		schema.Properties = props
+	} else {
+		schema.Properties = m
+	}
+
+	if req, ok := m["required"]; ok {
+		if items, ok := req.([]any); ok {
+			for _, item := range items {
+				if s, ok := item.(string); ok {
+					schema.Required = append(schema.Required, s)
+				}
+			}
+		}
+	}
+
+	return schema
+}

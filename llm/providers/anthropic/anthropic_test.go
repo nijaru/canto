@@ -103,3 +103,12 @@ func TestConvertSchema_NonObjectParams(t *testing.T) {
 		t.Errorf("non-object: Properties must be nil, got %v", schema.Properties)
 	}
 }
+
+func TestIsContextOverflowMessage(t *testing.T) {
+	if !isContextOverflowMessage("Prompt is too long: max TOKENS exceeded") {
+		t.Fatal("expected mixed-case prompt/token message to match")
+	}
+	if isContextOverflowMessage("rate limit exceeded") {
+		t.Fatal("expected unrelated message not to match")
+	}
+}
