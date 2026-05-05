@@ -289,6 +289,43 @@ func TestOverlayFS_ReadDirStatAndDiscard(t *testing.T) {
 	}
 }
 
+func TestOverlayFSGlobMergesSpeculativeAndDeletedFiles(t *testing.T) {
+	base := &mockFS{
+		data: map[string]string{
+			"base.txt":        "base",
+			"deleted.txt":     "deleted",
+			"nested/base.txt": "nested base",
+		},
+		dirs: map[string]struct{}{"nested": {}},
+	}
+	overlay := NewOverlayFS(base)
+	if err := overlay.WriteFile("spec.txt", []byte("spec"), 0o644); err != nil {
+		t.Fatalf("WriteFile spec.txt: %v", err)
+	}
+	if err := overlay.WriteFile("nested/spec.txt", []byte("spec"), 0o644); err != nil {
+		t.Fatalf("WriteFile nested/spec.txt: %v", err)
+	}
+	if err := overlay.Remove("deleted.txt"); err != nil {
+		t.Fatalf("Remove deleted.txt: %v", err)
+	}
+
+	matches, err := overlay.Glob(t.Context(), "*.txt")
+	if err != nil {
+		t.Fatalf("Glob root txt: %v", err)
+	}
+	if !slices.Equal(matches, []string{"base.txt", "spec.txt"}) {
+		t.Fatalf("root glob = %#v, want base/spec", matches)
+	}
+
+	matches, err = overlay.Glob(t.Context(), "nested/*.txt")
+	if err != nil {
+		t.Fatalf("Glob nested txt: %v", err)
+	}
+	if !slices.Equal(matches, []string{"nested/base.txt", "nested/spec.txt"}) {
+		t.Fatalf("nested glob = %#v, want base/spec", matches)
+	}
+}
+
 func TestOverlayFSConcurrentReadDirAndMutations(t *testing.T) {
 	base := &mockFS{
 		data: map[string]string{"base.txt": "base"},
@@ -394,6 +431,13 @@ func TestMultiFSRoutesMountedOperations(t *testing.T) {
 	names := entryNames(entries)
 	if !slices.Equal(names, []string{"base.txt", "memory"}) {
 		t.Fatalf("root entries = %#v, want base.txt,memory", names)
+	}
+	info, err = entries[1].Info()
+	if err != nil {
+		t.Fatalf("virtual mount Info: %v", err)
+	}
+	if info == nil || !info.IsDir() || info.Name() != "memory" {
+		t.Fatalf("virtual mount info = %#v, want directory named memory", info)
 	}
 
 	if err := multi.Remove("memory/new.txt"); err != nil {

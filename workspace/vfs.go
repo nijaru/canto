@@ -194,9 +194,47 @@ func (o *OverlayFS) Stat(name string) (fs.FileInfo, error) {
 }
 
 func (o *OverlayFS) Glob(ctx context.Context, pattern string) ([]string, error) {
-	// Simple implementation: search base and merge with speculative, filtering deleted.
-	// For a first pass, we mostly care about explicit reads/writes.
-	return o.base.Glob(ctx, pattern)
+	baseMatches, err := o.base.Glob(ctx, pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	o.mu.RLock()
+	spec := make(map[string]*overlayFile, len(o.speculative))
+	for key, value := range o.speculative {
+		spec[key] = value
+	}
+	deleted := make(map[string]struct{}, len(o.deleted))
+	for key := range o.deleted {
+		deleted[key] = struct{}{}
+	}
+	o.mu.RUnlock()
+
+	matchSet := make(map[string]struct{}, len(baseMatches)+len(spec))
+	for _, match := range baseMatches {
+		if _, ok := deleted[path.Clean(match)]; !ok {
+			matchSet[match] = struct{}{}
+		}
+	}
+	for name := range spec {
+		if _, ok := deleted[name]; ok {
+			continue
+		}
+		matched, err := path.Match(pattern, name)
+		if err != nil {
+			return nil, err
+		}
+		if matched {
+			matchSet[name] = struct{}{}
+		}
+	}
+
+	matches := make([]string, 0, len(matchSet))
+	for match := range matchSet {
+		matches = append(matches, match)
+	}
+	slices.Sort(matches)
+	return matches, nil
 }
 
 // Commit applies all speculative changes to the base filesystem.
@@ -395,16 +433,22 @@ func (m *MultiFS) Remove(name string) error {
 }
 
 func (m *MultiFS) ReadDir(name string) ([]fs.DirEntry, error) {
-	fs, sub, ok := m.resolve(name)
+	mounted, sub, ok := m.resolve(name)
 	if ok {
-		return fs.ReadDir(sub)
+		return mounted.ReadDir(sub)
 	}
-	// If name is root, we should also include mount points.
 	entries, err := m.base.ReadDir(name)
 	if name == "." || name == "" {
+		if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
 		for mount := range m.mounts {
 			entries = append(entries, virtualDirEntry{name: mount})
 		}
+		slices.SortFunc(entries, func(a, b fs.DirEntry) int {
+			return strings.Compare(a.Name(), b.Name())
+		})
+		return entries, nil
 	}
 	return entries, err
 }
@@ -442,7 +486,18 @@ type virtualDirEntry struct {
 func (e virtualDirEntry) Name() string               { return e.name }
 func (e virtualDirEntry) IsDir() bool                { return true }
 func (e virtualDirEntry) Type() fs.FileMode          { return os.ModeDir }
-func (e virtualDirEntry) Info() (fs.FileInfo, error) { return nil, nil }
+func (e virtualDirEntry) Info() (fs.FileInfo, error) { return virtualFileInfo{name: e.name}, nil }
+
+type virtualFileInfo struct {
+	name string
+}
+
+func (i virtualFileInfo) Name() string       { return i.name }
+func (i virtualFileInfo) Size() int64        { return 0 }
+func (i virtualFileInfo) Mode() os.FileMode  { return os.ModeDir }
+func (i virtualFileInfo) ModTime() time.Time { return time.Time{} }
+func (i virtualFileInfo) IsDir() bool        { return true }
+func (i virtualFileInfo) Sys() any           { return nil }
 
 var _ WorkspaceFS = (*Root)(nil)
 
