@@ -326,6 +326,44 @@ func TestOverlayFSGlobMergesSpeculativeAndDeletedFiles(t *testing.T) {
 	}
 }
 
+func TestOverlayFSStandardFSReflectsSpeculativeState(t *testing.T) {
+	base := &mockFS{
+		data: map[string]string{
+			"base.txt":    "base",
+			"deleted.txt": "deleted",
+		},
+		dirs: map[string]struct{}{},
+	}
+	overlay := NewOverlayFS(base)
+	if err := overlay.WriteFile("spec.txt", []byte("spec"), 0o644); err != nil {
+		t.Fatalf("WriteFile spec.txt: %v", err)
+	}
+	if err := overlay.Remove("deleted.txt"); err != nil {
+		t.Fatalf("Remove deleted.txt: %v", err)
+	}
+
+	fsys := overlay.FS()
+	data, err := fs.ReadFile(fsys, "spec.txt")
+	if err != nil {
+		t.Fatalf("fs.ReadFile spec.txt: %v", err)
+	}
+	if string(data) != "spec" {
+		t.Fatalf("spec file data = %q, want spec", data)
+	}
+	if _, err := fs.ReadFile(fsys, "deleted.txt"); !os.IsNotExist(err) {
+		t.Fatalf("fs.ReadFile deleted.txt error = %v, want not exist", err)
+	}
+
+	entries, err := fs.ReadDir(fsys, ".")
+	if err != nil {
+		t.Fatalf("fs.ReadDir .: %v", err)
+	}
+	names := entryNames(entries)
+	if !slices.Equal(names, []string{"base.txt", "spec.txt"}) {
+		t.Fatalf("standard fs root entries = %#v, want base/spec", names)
+	}
+}
+
 func TestOverlayFSConcurrentReadDirAndMutations(t *testing.T) {
 	base := &mockFS{
 		data: map[string]string{"base.txt": "base"},

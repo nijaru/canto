@@ -40,7 +40,7 @@ func NewOverlayFS(base WorkspaceFS) *OverlayFS {
 
 func (o *OverlayFS) Path() string { return o.base.Path() }
 func (o *OverlayFS) Close() error { return o.base.Close() }
-func (o *OverlayFS) FS() fs.FS    { return o.base.FS() }
+func (o *OverlayFS) FS() fs.FS    { return overlayFSView{overlay: o} }
 
 func (o *OverlayFS) ensureParents(name string) {
 	dir := path.Dir(name)
@@ -123,7 +123,8 @@ func (o *OverlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
 
 	o.mu.RLock()
 	baseEntries, err := o.base.ReadDir(name)
-	if err != nil && !os.IsNotExist(err) {
+	baseMissing := os.IsNotExist(err)
+	if err != nil && !baseMissing {
 		o.mu.RUnlock()
 		return nil, err
 	}
@@ -136,6 +137,9 @@ func (o *OverlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
 		deleted[key] = struct{}{}
 	}
 	o.mu.RUnlock()
+	if _, ok := deleted[name]; ok {
+		return nil, os.ErrNotExist
+	}
 
 	entryMap := make(map[string]fs.DirEntry)
 	for _, e := range baseEntries {
@@ -148,6 +152,11 @@ func (o *OverlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	for p, f := range spec {
 		if path.Dir(p) == name {
 			entryMap[f.name] = &overlayDirEntry{f: f}
+		}
+	}
+	if baseMissing && len(entryMap) == 0 {
+		if f, ok := spec[name]; !ok || !f.isDir {
+			return nil, os.ErrNotExist
 		}
 	}
 
