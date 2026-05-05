@@ -97,6 +97,8 @@ func (m *Gate) WithAuditLogger(logger audit.Logger) *Gate {
 	if m == nil {
 		return nil
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.audit = logger
 	return m
 }
@@ -233,13 +235,13 @@ func (m *Gate) Resolve(requestID string, decision Decision, reason string) error
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	pending, ok := m.pending[requestID]
 	if !ok {
+		m.mu.Unlock()
 		return ErrRequestNotFound
 	}
 	if pending.resolved {
+		m.mu.Unlock()
 		return ErrRequestResolved
 	}
 	pending.resolved = true
@@ -260,7 +262,7 @@ func (m *Gate) Resolve(requestID string, decision Decision, reason string) error
 	if decision == DecisionDeny {
 		kind = audit.KindToolDenied
 	}
-	m.logAudit(context.Background(), audit.Event{
+	event := audit.Event{
 		Kind:      kind,
 		SessionID: pending.req.SessionID,
 		Tool:      pending.req.Tool,
@@ -270,7 +272,10 @@ func (m *Gate) Resolve(requestID string, decision Decision, reason string) error
 		Decision:  string(decision),
 		Reason:    reason,
 		Metadata:  cloneMetadata(pending.req.Metadata),
-	})
+	}
+	m.mu.Unlock()
+
+	m.logAudit(context.Background(), event)
 	return nil
 }
 
@@ -293,10 +298,16 @@ func (m *Gate) appendResolved(ctx context.Context, sess *session.Session, result
 }
 
 func (m *Gate) logAudit(ctx context.Context, event audit.Event) {
-	if m == nil || m.audit == nil {
+	if m == nil {
 		return
 	}
-	_ = m.audit.Log(ctx, event)
+	m.mu.Lock()
+	logger := m.audit
+	m.mu.Unlock()
+	if logger == nil {
+		return
+	}
+	_ = logger.Log(ctx, event)
 }
 
 func auditEventForApprovalResolution(
