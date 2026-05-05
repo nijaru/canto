@@ -79,8 +79,10 @@ Current authoring-surface inputs:
   HNSW/SQLite vector search normalize bad limits and share metadata filter
   semantics; OverlayFS now exposes speculative state through its standard
   `fs.FS` view; child runs canceled while waiting for a max-concurrency slot now
-  finish promptly and record a durable cancellation. Each slice passed focused
-  tests, `go test ./...`, `go build ./...`, and relevant race checks.
+  finish promptly and record a durable cancellation; streaming shell execution
+  now cancels the subprocess when the host stops consuming deltas. Each slice
+  passed focused tests, `go test ./...`, `go build ./...`, and relevant race
+  checks.
 - Harness facade first slice landed locally: root `canto.NewAgent`/`App.Send`
   has been replaced with `canto.NewHarness` plus
   `h.Session(id).Prompt/Events`; no compatibility alias was retained. Focused

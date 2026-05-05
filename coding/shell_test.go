@@ -2,10 +2,12 @@ package coding
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestShellTool_Spec(t *testing.T) {
@@ -132,5 +134,28 @@ func TestShellTool_ExecuteStreaming(t *testing.T) {
 	combined := strings.Join(deltas, "")
 	if !strings.Contains(combined, "hello") {
 		t.Errorf("expected 'hello' in combined deltas, got: %q", combined)
+	}
+}
+
+func TestShellTool_ExecuteStreamingStopsCommandWhenConsumerStops(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "survived")
+	b := &ShellTool{Dir: dir}
+
+	for delta, err := range b.ExecuteStreaming(t.Context(),
+		`{"command": "printf 'start\n'; sleep 1; touch survived"}`,
+	) {
+		if err != nil {
+			t.Fatalf("ExecuteStreaming: %v", err)
+		}
+		if !strings.Contains(delta, "start") {
+			t.Fatalf("first delta = %q, want start", delta)
+		}
+		break
+	}
+
+	time.Sleep(1500 * time.Millisecond)
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("marker stat err = %v, want not exist", err)
 	}
 }

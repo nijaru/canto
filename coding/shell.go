@@ -68,6 +68,9 @@ func (b *ShellTool) Execute(ctx context.Context, args string) (string, error) {
 
 func (b *ShellTool) ExecuteStreaming(ctx context.Context, args string) iter.Seq2[string, error] {
 	return func(yield func(string, error) bool) {
+		streamCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
 		var input struct {
 			Command string `json:"command"`
 		}
@@ -91,20 +94,27 @@ func (b *ShellTool) ExecuteStreaming(ctx context.Context, args string) iter.Seq2
 			Args: []string{b.commandFlag(), input.Command},
 			Dir:  b.Dir,
 			OnOutput: func(c OutputChunk) {
-				ch <- item{text: c.Text}
+				select {
+				case ch <- item{text: c.Text}:
+				case <-streamCtx.Done():
+				}
 			},
 		}
 
 		go func() {
-			_, err := executor.Run(ctx, cmd)
+			_, err := executor.Run(streamCtx, cmd)
 			if err != nil {
-				ch <- item{err: err}
+				select {
+				case ch <- item{err: err}:
+				case <-streamCtx.Done():
+				}
 			}
 			close(ch)
 		}()
 
 		for it := range ch {
 			if !yield(it.text, it.err) {
+				cancel()
 				return
 			}
 		}
