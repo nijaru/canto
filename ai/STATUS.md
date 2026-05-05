@@ -81,8 +81,9 @@ Current authoring-surface inputs:
   `fs.FS` view; child runs canceled while waiting for a max-concurrency slot now
   finish promptly and record a durable cancellation; streaming shell execution
   now cancels the subprocess when the host stops consuming deltas; write-through
-  session detach now drains accepted events before returning. Each slice passed
-  focused tests, `go test ./...`, `go build ./...`, and relevant race checks.
+  session detach now drains accepted events before returning; async memory write
+  failures now surface through `Manager.Close`. Each slice passed focused tests,
+  `go test ./...`, `go build ./...`, and relevant race checks.
 - Harness facade first slice landed locally: root `canto.NewAgent`/`App.Send`
   has been replaced with `canto.NewHarness` plus
   `h.Session(id).Prompt/Events`; no compatibility alias was retained. Focused

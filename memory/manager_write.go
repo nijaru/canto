@@ -36,7 +36,8 @@ func (m *Manager) WriteBatch(
 		if item.Mode == WriteAsync {
 			result.Pending++
 			m.asyncWG.Go(func() {
-				_, _ = m.storeCandidate(context.Background(), id, candidate)
+				_, err := m.storeCandidate(context.Background(), id, candidate)
+				m.recordAsyncError(err)
 			})
 			continue
 		}

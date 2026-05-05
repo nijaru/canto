@@ -30,6 +30,38 @@ func (p vectorOnlyPlanner) Plan(query Query, _ RetrievalCapabilities) []Retrieva
 	}}
 }
 
+type failingMemoryStore struct {
+	err error
+}
+
+func (s failingMemoryStore) GetBlock(context.Context, Namespace, string) (*Block, error) {
+	return nil, s.err
+}
+
+func (s failingMemoryStore) ListBlocks(context.Context, BlockListInput) ([]Block, error) {
+	return nil, s.err
+}
+
+func (s failingMemoryStore) UpsertBlock(context.Context, Block) error {
+	return s.err
+}
+
+func (s failingMemoryStore) GetMemory(context.Context, string) (*Memory, error) {
+	return nil, s.err
+}
+
+func (s failingMemoryStore) ListMemories(context.Context, MemoryListInput) ([]Memory, error) {
+	return nil, s.err
+}
+
+func (s failingMemoryStore) UpsertMemory(context.Context, Memory) error {
+	return s.err
+}
+
+func (s failingMemoryStore) SearchMemories(context.Context, SearchInput) ([]Memory, error) {
+	return nil, s.err
+}
+
 func TestManager_ScopeIsolationAndBlocks(t *testing.T) {
 	store, err := NewCoreStore("file::memory:?cache=shared")
 	if err != nil {
@@ -294,6 +326,28 @@ func TestManager_AsyncWrite(t *testing.T) {
 	}
 	if len(results) != 1 {
 		t.Fatalf("expected async memory to persist, got %#v", results)
+	}
+}
+
+func TestManager_CloseReportsAsyncWriteError(t *testing.T) {
+	writeErr := errors.New("store unavailable")
+	manager := NewManager(failingMemoryStore{err: writeErr}, WithWritePolicy(WritePolicy{
+		DefaultMode: WriteAsync,
+	}))
+
+	result, err := manager.Write(t.Context(), WriteInput{
+		Namespace: Namespace{Scope: ScopeAgent, ID: "agent-async-error"},
+		Role:      RoleEpisodic,
+		Content:   "will fail asynchronously",
+	})
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if result.Pending != 1 {
+		t.Fatalf("expected async pending write, got %#v", result)
+	}
+	if err := manager.Close(); !errors.Is(err, writeErr) {
+		t.Fatalf("Close error = %v, want %v", err, writeErr)
 	}
 }
 

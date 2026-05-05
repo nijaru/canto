@@ -181,7 +181,9 @@ type Manager struct {
 	policy         WritePolicy
 	retrievePolicy RetrievePolicy
 
-	asyncWG sync.WaitGroup
+	asyncWG  sync.WaitGroup
+	asyncMu  sync.Mutex
+	asyncErr error
 }
 
 // NewManager builds a memory manager around the provided durable store.
@@ -205,5 +207,18 @@ func NewManager(store Store, opts ...ManagerOption) *Manager {
 
 func (m *Manager) Close() error {
 	m.asyncWG.Wait()
-	return nil
+	m.asyncMu.Lock()
+	defer m.asyncMu.Unlock()
+	return m.asyncErr
+}
+
+func (m *Manager) recordAsyncError(err error) {
+	if err == nil {
+		return
+	}
+	m.asyncMu.Lock()
+	defer m.asyncMu.Unlock()
+	if m.asyncErr == nil {
+		m.asyncErr = err
+	}
 }
