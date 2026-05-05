@@ -89,6 +89,9 @@ func (c *Client) DiscoverTools(ctx context.Context) ([]tool.Tool, error) {
 		if err != nil {
 			return nil, fmt.Errorf("mcp tools/list: %w", err)
 		}
+		if remoteTool == nil {
+			return nil, fmt.Errorf("mcp tools/list: nil tool")
+		}
 		spec := llm.Spec{
 			Name:        remoteTool.Name,
 			Description: remoteTool.Description,
@@ -118,6 +121,9 @@ func (c *Client) CallTool(
 	})
 	if err != nil {
 		return "", fmt.Errorf("mcp tools/call %q: %w", name, err)
+	}
+	if resp == nil {
+		return "", fmt.Errorf("mcp tools/call %q: nil result", name)
 	}
 
 	var text string

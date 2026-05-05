@@ -97,9 +97,10 @@ Current authoring-surface inputs:
   failures that happen during stream consumption instead of marking the provider
   healthy at stream start; macOS sandbox profiles now escape path strings before
   interpolating them into Seatbelt rules; FileStore now rejects path-like
-  caller-supplied artifact IDs before using them in the object layout. Each
-  slice passed focused tests, `go test ./...`, `go build ./...`, and relevant
-  race checks.
+  caller-supplied artifact IDs before using them in the object layout; MCP
+  client discovery/call handling now rejects nil external SDK tool/result
+  values cleanly. Each slice passed focused tests, `go test ./...`, `go build
+  ./...`, and relevant race checks.
 - Harness facade first slice landed locally: root `canto.NewAgent`/`App.Send`
   has been replaced with `canto.NewHarness` plus
   `h.Session(id).Prompt/Events`; no compatibility alias was retained. Focused

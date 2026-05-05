@@ -185,10 +185,12 @@ Recent concrete fixes from the follow-up pass:
   into profile rules.
 - FileStore rejects path-like caller-supplied artifact IDs before using them in
   the `objects/<id>/...` storage layout.
+- MCP client discovery/call handling now rejects nil external SDK tool/result
+  values cleanly instead of panicking at the protocol boundary.
 
 Remaining reasonable audit targets:
 
-- `tool/mcp`, `audit`, `examples/*`, and docs/godoc polish.
+- `audit`, `examples/*`, and docs/godoc polish.
 - Broader public API shape review after the code audit, especially whether the
   root `Harness` facade should absorb more common `Runner` use cases.
 

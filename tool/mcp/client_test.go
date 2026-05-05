@@ -18,6 +18,7 @@ type fakeClientSession struct {
 	closeErr   error
 	callErr    error
 	callResult *sdkmcp.CallToolResult
+	nilResult  bool
 	tools      []*sdkmcp.Tool
 	toolsErr   error
 	lastCall   *sdkmcp.CallToolParams
@@ -34,6 +35,9 @@ func (s *fakeClientSession) CallTool(
 	s.lastCall = params
 	if s.callErr != nil {
 		return nil, s.callErr
+	}
+	if s.nilResult {
+		return nil, nil
 	}
 	if s.callResult == nil {
 		return &sdkmcp.CallToolResult{}, nil
@@ -98,6 +102,18 @@ func TestClientDiscoverToolsRejectsReservedNames(t *testing.T) {
 	}
 }
 
+func TestClientDiscoverToolsRejectsNilTool(t *testing.T) {
+	client := &Client{
+		session: &fakeClientSession{
+			tools: []*sdkmcp.Tool{nil},
+		},
+	}
+
+	if _, err := client.DiscoverTools(t.Context()); err == nil {
+		t.Fatal("DiscoverTools should reject nil tools")
+	}
+}
+
 func TestClientCallToolCollectsTextContent(t *testing.T) {
 	session := &fakeClientSession{
 		callResult: &sdkmcp.CallToolResult{
@@ -118,6 +134,15 @@ func TestClientCallToolCollectsTextContent(t *testing.T) {
 	}
 	if session.lastCall == nil || session.lastCall.Name != "echo" {
 		t.Fatalf("last call = %#v, want name echo", session.lastCall)
+	}
+}
+
+func TestClientCallToolRejectsNilResult(t *testing.T) {
+	session := &fakeClientSession{nilResult: true}
+	client := &Client{session: session}
+
+	if _, err := client.CallTool(t.Context(), "echo", map[string]any{}); err == nil {
+		t.Fatal("CallTool should reject nil results")
 	}
 }
 
