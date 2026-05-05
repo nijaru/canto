@@ -122,7 +122,18 @@ func (m *Gate) Request(
 	if m.policy != nil && !tripped {
 		res, handled, err := m.policy.Decide(ctx, sess, req)
 		if err != nil {
-			return Result{}, err
+			cancelErr := m.appendCanceled(context.Background(), sess, req, err.Error())
+			m.logAudit(context.Background(), audit.Event{
+				Kind:      audit.KindApprovalCanceled,
+				SessionID: sess.ID(),
+				Tool:      toolName,
+				Category:  requirement.Category,
+				Operation: requirement.Operation,
+				Resource:  requirement.Resource,
+				Metadata:  cloneMetadata(requirement.Metadata),
+				Reason:    err.Error(),
+			})
+			return Result{}, errors.Join(err, cancelErr)
 		}
 		if handled {
 			res.RequestID = req.ID
@@ -165,13 +176,7 @@ func (m *Gate) Request(
 		m.mu.Lock()
 		delete(m.pending, req.ID)
 		m.mu.Unlock()
-		_ = sess.Append(
-			context.Background(),
-			session.NewEvent(sess.ID(), session.ApprovalCanceled, map[string]any{
-				"id":   req.ID,
-				"tool": toolName,
-			}),
-		)
+		_ = m.appendCanceled(context.Background(), sess, req, ctx.Err().Error())
 		m.logAudit(context.Background(), audit.Event{
 			Kind:      audit.KindApprovalCanceled,
 			SessionID: sess.ID(),
@@ -251,5 +256,18 @@ func (m *Gate) appendResolved(ctx context.Context, sess *session.Session, result
 		"id":       result.RequestID,
 		"decision": result.Decision,
 		"reason":   result.Reason,
+	}))
+}
+
+func (m *Gate) appendCanceled(
+	ctx context.Context,
+	sess *session.Session,
+	req Request,
+	reason string,
+) error {
+	return sess.Append(ctx, session.NewEvent(sess.ID(), session.ApprovalCanceled, map[string]any{
+		"id":     req.ID,
+		"tool":   req.Tool,
+		"reason": reason,
 	}))
 }

@@ -3,6 +3,7 @@ package approval
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -135,6 +136,30 @@ func TestManager_RequestCancellation(t *testing.T) {
 	}
 }
 
+func TestManager_PolicyErrorClearsWaitingState(t *testing.T) {
+	mgr := NewGate(errorPolicy{err: errors.New("classifier failed")})
+	sess := session.New("policy-error")
+
+	_, err := mgr.Request(t.Context(), sess, "bash", "{}", Requirement{
+		Category:  "command",
+		Operation: "exec",
+		Resource:  "bash",
+	})
+	if err == nil || !strings.Contains(err.Error(), "classifier failed") {
+		t.Fatalf("expected policy error, got %v", err)
+	}
+	if sess.IsWaiting() {
+		t.Fatal("policy error left session waiting")
+	}
+	if pending := mgr.Pending(); len(pending) != 0 {
+		t.Fatalf("policy error left pending approvals: %#v", pending)
+	}
+	last, ok := sess.LastEvent()
+	if !ok || last.Type != session.ApprovalCanceled {
+		t.Fatalf("last event = %#v, want approval canceled", last)
+	}
+}
+
 func TestManager_CircuitBreaker(t *testing.T) {
 	policy := &mockDenyPolicy{}
 	mgr := NewGate(policy).WithThreshold(2)
@@ -203,4 +228,16 @@ func (p *mockDenyPolicy) Decide(
 	req Request,
 ) (Result, bool, error) {
 	return Result{Decision: DecisionDeny, Reason: "automated block"}, true, nil
+}
+
+type errorPolicy struct {
+	err error
+}
+
+func (p errorPolicy) Decide(
+	ctx context.Context,
+	sess *session.Session,
+	req Request,
+) (Result, bool, error) {
+	return Result{}, false, p.err
 }

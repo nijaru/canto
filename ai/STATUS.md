@@ -91,8 +91,10 @@ Current authoring-surface inputs:
   they can enter overlay state; core memory block retrieval now keeps same-name
   blocks from different namespaces distinct through fusion; file-reference
   expansion no longer treats email addresses as `@file` references and handles
-  angle-bracketed refs cleanly. Each slice passed focused tests,
-  `go test ./...`, `go build ./...`, and relevant race checks.
+  angle-bracketed refs cleanly; approval policy errors now record a terminal
+  cancellation event instead of leaving sessions durably waiting with no
+  pending HITL request. Each slice passed focused tests, `go test ./...`,
+  `go build ./...`, and relevant race checks.
 - Harness facade first slice landed locally: root `canto.NewAgent`/`App.Send`
   has been replaced with `canto.NewHarness` plus
   `h.Session(id).Prompt/Events`; no compatibility alias was retained. Focused
