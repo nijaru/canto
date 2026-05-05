@@ -77,15 +77,15 @@ func (w *wrappedStreamingTool) ExecuteStreaming(
 	args string,
 ) iter.Seq2[string, error] {
 	name := w.inner.Spec().Name
-	ctx, span := Tracer().Start(ctx, "canto.tool."+name,
-		trace.WithAttributes(
-			attribute.String("canto.tool.name", name),
-			attribute.Bool("canto.tool.streaming", true),
-		),
-	)
-	streamCtx, cancel := context.WithCancel(ctx)
 
 	return func(yield func(string, error) bool) {
+		ctx, span := Tracer().Start(ctx, "canto.tool."+name,
+			trace.WithAttributes(
+				attribute.String("canto.tool.name", name),
+				attribute.Bool("canto.tool.streaming", true),
+			),
+		)
+		streamCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		defer span.End()
 		var buf strings.Builder

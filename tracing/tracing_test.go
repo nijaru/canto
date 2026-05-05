@@ -246,3 +246,15 @@ func TestWrapStreamingToolCancelsInnerWhenConsumerStops(t *testing.T) {
 		t.Fatal("inner streaming tool was not canceled")
 	}
 }
+
+func TestWrapStreamingToolDoesNotStartSpanBeforeConsumption(t *testing.T) {
+	rec := setupTracer(t)
+
+	inner := &cancelAwareStreamingTool{canceled: make(chan struct{})}
+	wrapped := tracing.WrapTool(inner).(tool.StreamingTool)
+	_ = wrapped.ExecuteStreaming(t.Context(), "{}")
+
+	if got := len(rec.Started()); got != 0 {
+		t.Fatalf("started spans = %d, want 0 before stream consumption", got)
+	}
+}

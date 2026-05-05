@@ -83,8 +83,9 @@ Current authoring-surface inputs:
   now cancels the subprocess when the host stops consuming deltas; write-through
   session detach now drains accepted events before returning; async memory write
   failures now surface through `Manager.Close`; tracing's streaming tool wrapper
-  now cancels wrapped streams when consumers stop early. Each slice passed
-  focused tests, `go test ./...`, `go build ./...`, and relevant race checks.
+  now starts spans on consumption and cancels wrapped streams when consumers
+  stop early. Each slice passed focused tests, `go test ./...`, `go build
+  ./...`, and relevant race checks.
 - Harness facade first slice landed locally: root `canto.NewAgent`/`App.Send`
   has been replaced with `canto.NewHarness` plus
   `h.Session(id).Prompt/Events`; no compatibility alias was retained. Focused
