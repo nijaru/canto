@@ -2,32 +2,18 @@ package service
 
 import (
 	"context"
-	stdjson "encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/go-json-experiment/json"
-	"github.com/google/jsonschema-go/jsonschema"
 
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/safety"
 	"github.com/nijaru/canto/tool"
 )
 
 // Handler executes a typed service/API operation.
 type Handler[A, R any] func(context.Context, A) (R, error)
-
-// ApprovalFunc returns the approval requirement for a typed invocation.
-type ApprovalFunc[A any] func(A) (approval.Requirement, bool, error)
-
-// RetryPolicy controls retry behavior for transient service/API failures.
-type RetryPolicy struct {
-	MaxAttempts int
-	Delay       time.Duration
-	Retryable   func(error) bool
-}
 
 // Config describes one typed service/API tool.
 type Config[A, R any] struct {
@@ -145,104 +131,4 @@ func (t *Tool[A, R]) ApprovalRequirement(args string) (approval.Requirement, boo
 		)
 	}
 	return t.approval(input)
-}
-
-func (t *Tool[A, R]) executeWithRetry(ctx context.Context, input A) (R, error) {
-	var zero R
-	attempts := t.retry.MaxAttempts
-	if attempts <= 0 {
-		attempts = 1
-	}
-	var lastErr error
-	for attempt := range attempts {
-		result, err := t.execute(ctx, input)
-		if err == nil {
-			return result, nil
-		}
-		lastErr = err
-		if attempt == attempts-1 || !t.retry.shouldRetry(err) {
-			return zero, err
-		}
-		if t.retry.Delay <= 0 {
-			continue
-		}
-		timer := time.NewTimer(t.retry.Delay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return zero, ctx.Err()
-		case <-timer.C:
-		}
-	}
-	return zero, lastErr
-}
-
-func (p RetryPolicy) shouldRetry(err error) bool {
-	if p.Retryable == nil {
-		return false
-	}
-	return p.Retryable(err)
-}
-
-// SchemaFor infers a JSON Schema for A and returns it as a JSON-compatible map.
-func SchemaFor[A any]() (map[string]any, error) {
-	schema, err := jsonschema.For[A](nil)
-	if err != nil {
-		return nil, fmt.Errorf("service schema: %w", err)
-	}
-	data, err := stdjson.Marshal(schema)
-	if err != nil {
-		return nil, fmt.Errorf("service schema: marshal: %w", err)
-	}
-	var out map[string]any
-	if err := stdjson.Unmarshal(data, &out); err != nil {
-		return nil, fmt.Errorf("service schema: unmarshal: %w", err)
-	}
-	return out, nil
-}
-
-// Requirement builds an approval function with typed access to the arguments.
-func Requirement[A any](
-	category safety.Category,
-	operation string,
-	resource func(A) string,
-	metadata map[string]any,
-) ApprovalFunc[A] {
-	return func(args A) (approval.Requirement, bool, error) {
-		req := approval.Requirement{
-			Category:  string(category),
-			Operation: operation,
-			Metadata:  cloneMetadata(metadata),
-		}
-		if resource != nil {
-			req.Resource = resource(args)
-		}
-		return req, true, nil
-	}
-}
-
-// ReadOnly marks an external service/API operation as a read.
-func ReadOnly[A any](operation string, resource func(A) string) ApprovalFunc[A] {
-	return Requirement(safety.CategoryRead, operation, resource, nil)
-}
-
-// Mutation marks an external service/API operation as a write.
-func Mutation[A any](operation string, resource func(A) string) ApprovalFunc[A] {
-	return Requirement(safety.CategoryWrite, operation, resource, nil)
-}
-
-// Execution marks an external service/API operation as command execution.
-func Execution[A any](operation string, resource func(A) string) ApprovalFunc[A] {
-	return Requirement(safety.CategoryExecute, operation, resource, nil)
-}
-
-func cloneMetadata(in map[string]any) map[string]any {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
 }
