@@ -98,18 +98,17 @@ func (r *SmartResolver) Generate(ctx context.Context, req *Request) (*Response, 
 			r.markSuccess(p)
 			return resp, nil
 		}
+		lastErr = err
 
 		if p.provider.IsTransient(err) {
 			r.markCooling(p)
 			continue
 		}
 
-		lastErr = err
-		// Terminal error (not a rate limit), stop here
 		return nil, lastErr
 	}
 
-	return nil, fmt.Errorf("all healthy providers exhausted or rate limited")
+	return nil, fmt.Errorf("all healthy providers exhausted or rate limited: %w", lastErr)
 }
 
 func (r *SmartResolver) Stream(ctx context.Context, req *Request) (Stream, error) {
@@ -125,17 +124,17 @@ func (r *SmartResolver) Stream(ctx context.Context, req *Request) (Stream, error
 			r.markSuccess(p)
 			return s, nil
 		}
+		lastErr = err
 
 		if p.provider.IsTransient(err) {
 			r.markCooling(p)
 			continue
 		}
 
-		lastErr = err
 		return nil, lastErr
 	}
 
-	return nil, fmt.Errorf("all healthy providers exhausted or rate limited")
+	return nil, fmt.Errorf("all healthy providers exhausted or rate limited: %w", lastErr)
 }
 
 func (r *SmartResolver) Models(ctx context.Context) ([]Model, error) {
@@ -273,6 +272,9 @@ func (p *FailoverProvider) ID() string {
 }
 
 func (p *FailoverProvider) Generate(ctx context.Context, req *Request) (*Response, error) {
+	if len(p.providers) == 0 {
+		return nil, fmt.Errorf("no providers configured")
+	}
 	var lastErr error
 	for _, sub := range p.providers {
 		resp, err := sub.Generate(ctx, req)
@@ -285,6 +287,9 @@ func (p *FailoverProvider) Generate(ctx context.Context, req *Request) (*Respons
 }
 
 func (p *FailoverProvider) Stream(ctx context.Context, req *Request) (Stream, error) {
+	if len(p.providers) == 0 {
+		return nil, fmt.Errorf("no providers configured")
+	}
 	var lastErr error
 	for _, sub := range p.providers {
 		s, err := sub.Stream(ctx, req)

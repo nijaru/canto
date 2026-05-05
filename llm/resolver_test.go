@@ -110,6 +110,19 @@ func TestFailoverProvider_ErrorClassificationUsesAnyProvider(t *testing.T) {
 	}
 }
 
+func TestFailoverProviderNoProviders(t *testing.T) {
+	failover := NewFailoverProvider()
+
+	if _, err := failover.Generate(t.Context(), &Request{}); err == nil ||
+		err.Error() != "no providers configured" {
+		t.Fatalf("Generate error = %v, want no providers configured", err)
+	}
+	if _, err := failover.Stream(t.Context(), &Request{}); err == nil ||
+		err.Error() != "no providers configured" {
+		t.Fatalf("Stream error = %v, want no providers configured", err)
+	}
+}
+
 func TestSmartResolver_RateLimit(t *testing.T) {
 	p1Calls := 0
 	p1 := &mockProvider{
@@ -219,6 +232,24 @@ func TestSmartResolver_ErrorClassificationUsesAnyProvider(t *testing.T) {
 	}
 	if !smart.IsContextOverflow(errors.New("context_length_exceeded")) {
 		t.Fatal("expected overflow classification to match any provider")
+	}
+}
+
+func TestSmartResolverExhaustedTransientProvidersWrapsCause(t *testing.T) {
+	transient := errors.New("temporary outage")
+	smart := NewSmartResolver(StrategyPriority, &mockProvider{
+		id: "p1",
+		genFn: func(context.Context, *Request) (*Response, error) {
+			return nil, transient
+		},
+		isTransientFn: func(err error) bool {
+			return errors.Is(err, transient)
+		},
+	})
+
+	_, err := smart.Generate(t.Context(), &Request{})
+	if !errors.Is(err, transient) {
+		t.Fatalf("Generate error = %v, want wrapping %v", err, transient)
 	}
 }
 
