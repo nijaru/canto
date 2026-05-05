@@ -17,6 +17,19 @@ func (e testEmbedder) EmbedContent(_ context.Context, text string) ([]float32, e
 	return v, nil
 }
 
+type vectorOnlyPlanner struct{}
+
+func (p vectorOnlyPlanner) Plan(query Query, _ RetrievalCapabilities) []RetrievalRequest {
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 5
+	}
+	return []RetrievalRequest{{
+		Source: RetrievalVector,
+		Limit:  limit,
+	}}
+}
+
 func TestManager_ScopeIsolationAndBlocks(t *testing.T) {
 	store, err := NewCoreStore("file::memory:?cache=shared")
 	if err != nil {
@@ -142,6 +155,108 @@ func TestManager_SemanticRetrieval(t *testing.T) {
 	}
 	if len(results) == 0 {
 		t.Fatal("expected semantic retrieval results")
+	}
+}
+
+func TestManager_SemanticRetrievalRespectsMultipleNamespaces(t *testing.T) {
+	store, err := NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	vector, err := NewVectorStore(t.Context(), "file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewVectorStore: %v", err)
+	}
+	t.Cleanup(func() { _ = vector.Close() })
+
+	manager := NewManager(
+		store,
+		WithVectorStore(vector),
+		WithEmbedder(testEmbedder{}),
+		WithRetrievePolicy(RetrievePolicy{Planner: vectorOnlyPlanner{}}),
+	)
+	threadA := Namespace{Scope: ScopeThread, ID: "semantic-ns-a"}
+	threadB := Namespace{Scope: ScopeThread, ID: "semantic-ns-b"}
+	threadC := Namespace{Scope: ScopeThread, ID: "semantic-ns-c"}
+	for _, input := range []WriteInput{
+		{Namespace: threadA, Role: RoleSemantic, Key: "a", Content: "shared vector namespace token"},
+		{Namespace: threadB, Role: RoleSemantic, Key: "b", Content: "shared vector namespace token"},
+		{Namespace: threadC, Role: RoleSemantic, Key: "c", Content: "shared vector namespace token"},
+	} {
+		if _, err := manager.Write(t.Context(), input); err != nil {
+			t.Fatalf("Write %s: %v", input.Namespace.ID, err)
+		}
+	}
+
+	results, err := manager.Retrieve(t.Context(), Query{
+		Namespaces:  []Namespace{threadA, threadB},
+		Roles:       []Role{RoleSemantic},
+		Text:        "shared vector namespace token",
+		UseSemantic: true,
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 namespace-filtered semantic hits, got %#v", results)
+	}
+	for _, result := range results {
+		if result.Namespace == threadC {
+			t.Fatalf("unexpected semantic hit outside requested namespaces: %#v", results)
+		}
+	}
+}
+
+func TestManager_SemanticRetrievalRespectsMultipleRoles(t *testing.T) {
+	store, err := NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	vector, err := NewVectorStore(t.Context(), "file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewVectorStore: %v", err)
+	}
+	t.Cleanup(func() { _ = vector.Close() })
+
+	manager := NewManager(
+		store,
+		WithVectorStore(vector),
+		WithEmbedder(testEmbedder{}),
+		WithRetrievePolicy(RetrievePolicy{Planner: vectorOnlyPlanner{}}),
+	)
+	ns := Namespace{Scope: ScopeWorkspace, ID: "semantic-role-filter"}
+	for _, input := range []WriteInput{
+		{Namespace: ns, Role: RoleSemantic, Key: "semantic", Content: "shared vector role token"},
+		{Namespace: ns, Role: RoleProcedural, Key: "procedural", Content: "shared vector role token"},
+		{Namespace: ns, Role: RoleEpisodic, Key: "episodic", Content: "shared vector role token"},
+	} {
+		if _, err := manager.Write(t.Context(), input); err != nil {
+			t.Fatalf("Write %s: %v", input.Role, err)
+		}
+	}
+
+	results, err := manager.Retrieve(t.Context(), Query{
+		Namespaces:  []Namespace{ns},
+		Roles:       []Role{RoleSemantic, RoleProcedural},
+		Text:        "shared vector role token",
+		UseSemantic: true,
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 role-filtered semantic hits, got %#v", results)
+	}
+	for _, result := range results {
+		if result.Role == RoleEpisodic {
+			t.Fatalf("unexpected semantic hit outside requested roles: %#v", results)
+		}
 	}
 }
 

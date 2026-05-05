@@ -197,12 +197,35 @@ func (m *Manager) retrieveVectorMemories(
 func filterMemories(memories []Memory, query Query) []Memory {
 	out := memories[:0]
 	for _, memory := range memories {
+		if !matchesNamespace(memory.Namespace, query.Namespaces) {
+			continue
+		}
+		if !matchesRole(memory.Role, query) {
+			continue
+		}
 		if !matchesLifecycle(memory, query) {
 			continue
 		}
 		out = append(out, memory)
 	}
 	return out
+}
+
+func matchesNamespace(namespace Namespace, namespaces []Namespace) bool {
+	if len(namespaces) == 0 {
+		return true
+	}
+	return slices.Contains(namespaces, namespace)
+}
+
+func matchesRole(role Role, query Query) bool {
+	if len(query.Roles) == 0 {
+		return true
+	}
+	if role == RoleCore && query.IncludeCore {
+		return true
+	}
+	return slices.Contains(query.Roles, role)
 }
 
 func matchesLifecycle(memory Memory, query Query) bool {
