@@ -2,11 +2,13 @@ package workspace
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"path"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -284,6 +286,34 @@ func TestOverlayFS_ReadDirStatAndDiscard(t *testing.T) {
 	}
 	if _, err := overlay.ReadFile("nested/spec.txt"); !os.IsNotExist(err) {
 		t.Fatalf("discard should remove spec file, got %v", err)
+	}
+}
+
+func TestOverlayFSConcurrentReadDirAndMutations(t *testing.T) {
+	base := &mockFS{
+		data: map[string]string{"base.txt": "base"},
+		dirs: map[string]struct{}{},
+	}
+	overlay := NewOverlayFS(base)
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 64)
+	for i := range 32 {
+		wg.Go(func() {
+			name := fmt.Sprintf("spec-%02d.txt", i)
+			errs <- overlay.WriteFile(name, []byte("spec"), 0o644)
+		})
+		wg.Go(func() {
+			_, err := overlay.ReadDir(".")
+			errs <- err
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("overlay operation: %v", err)
+		}
 	}
 }
 

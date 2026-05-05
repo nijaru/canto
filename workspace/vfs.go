@@ -145,8 +145,14 @@ func (o *OverlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
 		o.mu.RUnlock()
 		return nil, err
 	}
-	spec := o.speculative
-	deleted := o.deleted
+	spec := make(map[string]*overlayFile, len(o.speculative))
+	for key, value := range o.speculative {
+		spec[key] = value
+	}
+	deleted := make(map[string]struct{}, len(o.deleted))
+	for key := range o.deleted {
+		deleted[key] = struct{}{}
+	}
 	o.mu.RUnlock()
 
 	entryMap := make(map[string]fs.DirEntry)
