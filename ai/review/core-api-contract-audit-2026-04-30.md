@@ -149,6 +149,47 @@ go test -race ./agent ./runtime ./tracing ./x/swarm -count=1
 go test ./... -count=1
 ```
 
+### Phase 5 Whole-Codebase Follow-Up
+
+`canto-hr9r` extends the C1-C6 core audit into framework-adjacent packages.
+The rule is still concrete findings only: fix small correctness or boundary
+issues in green slices, refactor oversized files when that makes ownership
+clearer, and avoid Ion-specific product policy.
+
+Reviewed/refactored surfaces so far:
+
+- Root harness, runner/session APIs, prompt builder, provider request helpers,
+  session stores/rebuilder/export, runtime scheduler/child/coordinator/lane,
+  agent tool lifecycle, hooks, tracing, workspace VFS/search, memory manager,
+  memory stores/index/VFS/vector search, coding executor/file tools, approval,
+  service typed tools, skills, `x/context`, `x/tools`, `x/graph`, and `x/redis`.
+- Runtime coordinator/lane were inspected after focused and race coverage; no
+  local split was made because the files remain cohesive and better covered
+  than the remaining optional surfaces.
+- `x/redis` split and race-compiled under `-tags redis`; live Redis behavior
+  still requires `CANTO_TEST_REDIS_URL`.
+
+Recent concrete fixes from the follow-up pass:
+
+- Core memory block retrieval now uses namespace-qualified synthetic memory IDs
+  so same-name core blocks from multiple namespaces do not collapse during RRF
+  fusion.
+- File-reference expansion no longer treats email addresses as `@file`
+  references and handles angle-bracketed references.
+- Approval policy errors append a terminal `ApprovalCanceled` event so sessions
+  do not remain durably waiting with no pending HITL request.
+- `SmartResolver` now updates provider health when a stream finishes, so
+  transient streaming failures cool the provider instead of being counted as
+  success at stream start.
+- macOS Seatbelt sandbox profiles escape path strings before interpolating them
+  into profile rules.
+
+Remaining reasonable audit targets:
+
+- `tool/mcp`, `artifact`, `audit`, `examples/*`, and docs/godoc polish.
+- Broader public API shape review after the code audit, especially whether the
+  root `Harness` facade should absorb more common `Runner` use cases.
+
 ## Exit Criteria
 
 - Each core area above is reviewed against its contract, with findings either fixed, logged as Canto tasks, or explicitly deferred as non-core.
@@ -164,4 +205,7 @@ go test ./... -count=1
 
 ## Current Outcome
 
-No known Canto-owned native-loop blocker remains after C1-C6. Ion imported the last C6 code boundary fix (`c7f2fa9`) and passed focused core packages, full suite, native race gate, and `tencent/hy3-preview:free` live tool/resume/follow-up smoke with provider request history verified.
+No known Canto-owned native-loop blocker remains after C1-C6. Phase 5 is now a
+broader framework cleanup pass, not a reopened Ion blocker. The latest slices
+continue to pass focused package tests, `go test ./...`, `go build ./...`, and
+relevant race checks before commit.
