@@ -206,18 +206,8 @@ func (s *HNSWStore) Search(
 			continue
 		}
 
-		// Apply metadata filter
-		if len(filter) > 0 {
-			match := true
-			for fk, fv := range filter {
-				if mv, ok := metadata[fk]; !ok || mv != fv {
-					match = false
-					break
-				}
-			}
-			if !match {
-				continue
-			}
+		if len(filter) > 0 && !metadataMatchesFilter(metadata, filter) {
+			continue
 		}
 
 		node := nodeMap[id]

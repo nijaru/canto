@@ -82,3 +82,30 @@ func TestHNSWStore(t *testing.T) {
 		}
 	}
 }
+
+func TestHNSWStoreNumericMetadataFilter(t *testing.T) {
+	tmpDir := t.TempDir()
+	dsn := filepath.Join(tmpDir, "test_hnsw_filter.sqlite")
+	ctx := t.Context()
+
+	store, err := NewHNSWStore(ctx, dsn)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Upsert(ctx, "doc1", []float32{1, 0, 0}, map[string]any{"worker": 3}); err != nil {
+		t.Fatalf("upsert doc1: %v", err)
+	}
+	if err := store.Upsert(ctx, "doc2", []float32{0, 1, 0}, map[string]any{"worker": 4}); err != nil {
+		t.Fatalf("upsert doc2: %v", err)
+	}
+
+	results, err := store.Search(ctx, []float32{1, 0, 0}, 2, map[string]any{"worker": 3})
+	if err != nil {
+		t.Fatalf("filtered search: %v", err)
+	}
+	if len(results) != 1 || results[0].ID != "doc1" {
+		t.Fatalf("filtered results = %#v, want doc1 only", results)
+	}
+}
