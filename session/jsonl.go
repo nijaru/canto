@@ -58,7 +58,14 @@ func (s *JSONLStore) Save(ctx context.Context, e Event) error {
 	mu.Lock()
 	defer mu.Unlock()
 
-	return s.saveLocked(e)
+	if err := s.saveLocked(e); err != nil {
+		return err
+	}
+
+	s.ancestryMu.Lock()
+	defer s.ancestryMu.Unlock()
+	_, err := s.ensureRootAncestryLocked(e.SessionID, e.Timestamp)
+	return err
 }
 
 func (s *JSONLStore) saveLocked(e Event) error {
@@ -72,10 +79,7 @@ func (s *JSONLStore) saveLocked(e Event) error {
 	if err := writeEventJSON(f, e); err != nil {
 		return err
 	}
-	if _, err := f.Write([]byte("\n")); err != nil {
-		return err
-	}
-	_, err = s.ensureRootAncestryLocked(e.SessionID, e.Timestamp)
+	_, err = f.Write([]byte("\n"))
 	return err
 }
 

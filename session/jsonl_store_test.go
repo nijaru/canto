@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -235,5 +236,38 @@ func TestJSONLStoreSaveAncestryPreservesImportedLineage(t *testing.T) {
 		lineage[1].SessionID != "import-child" ||
 		lineage[1].BranchLabel != "mac branch" {
 		t.Fatalf("lineage = %#v, want imported parent and child", lineage)
+	}
+}
+
+func TestJSONLStoreConcurrentSaveAndAncestryImport(t *testing.T) {
+	store, err := NewJSONLStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new jsonl store: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 64)
+	for i := range 32 {
+		wg.Go(func() {
+			sessionID := "concurrent-save"
+			errs <- store.Save(t.Context(), NewEvent(sessionID, MessageAdded, llm.Message{
+				Role:    llm.RoleUser,
+				Content: "hello",
+			}))
+		})
+		wg.Go(func() {
+			errs <- store.SaveAncestry(t.Context(), SessionAncestry{
+				SessionID: "imported-concurrent-" + string(rune('a'+i)),
+				Depth:     0,
+				CreatedAt: time.Now().UTC(),
+			})
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent jsonl store operation: %v", err)
+		}
 	}
 }
