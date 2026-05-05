@@ -1,7 +1,7 @@
 # Status
 
-**Phase:** Phase 5: harness-facade cleanup before M1 docs/release
-**Focus:** `canto-2vxb` is active: implement the clean harness/session facade identified by the Flue/Pi/OpenAI/Mendral review before Ion refactors its runtime boundary again.
+**Phase:** Phase 5: post-Ion codebase audit and simplification
+**Focus:** `canto-hr9r` is active: review and refactor Canto's framework packages the same way Ion's C5 audit closed, keeping Canto general-purpose and fixing concrete boundary issues in green slices.
 **Blockers:** None.
 **Updated:** 2026-05-02
 
