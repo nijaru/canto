@@ -39,6 +39,9 @@ Current authoring-surface inputs:
 - Current hotspot: memory retrieval just landed a namespace-collision fix for
   core blocks; continue auditing memory/HNSW only if the next read finds a
   concrete contract gap.
+- Examples are now covered by the Phase 5 pass; remaining local targets are
+  `audit` and docs/godoc polish unless source review turns up another concrete
+  boundary issue.
 - Runtime coordinator/lane were inspected earlier in this audit and have strong
   FIFO/retry/cancel/parallel-session coverage; revisit only if new evidence
   points there.
@@ -99,7 +102,9 @@ Current authoring-surface inputs:
   interpolating them into Seatbelt rules; FileStore now rejects path-like
   caller-supplied artifact IDs before using them in the object layout; MCP
   client discovery/call handling now rejects nil external SDK tool/result
-  values cleanly. Each slice passed focused tests, `go test ./...`, `go build
+  values cleanly; reference examples now close persistent session stores and
+  the autoresearch example fails closed on restore/log write errors. Each slice
+  passed focused tests, `go test ./...`, `go build
   ./...`, and relevant race checks.
 - Phase 5 checkpoint after the latest slices: `go vet ./...` and broad race
   gate over core plus framework-adjacent packages passed:

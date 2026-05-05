@@ -69,6 +69,7 @@ func run(ctx context.Context, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+	defer store.Close()
 
 	auditLog := &strings.Builder{}
 	executor := coding.NewExecutor(5*time.Second, 64*1024)

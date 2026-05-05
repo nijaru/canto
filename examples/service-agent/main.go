@@ -42,6 +42,7 @@ func run(ctx context.Context, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+	defer store.Close()
 
 	searchTool, err := service.New(service.Config[searchArgs, searchResult]{
 		Name:        "web_search",

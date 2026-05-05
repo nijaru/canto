@@ -16,7 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"time"
 
@@ -66,6 +66,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer store.Close()
 
 	runner := runtime.NewRunner(store, a)
 	sessionID := "autoresearch-loop"
@@ -93,13 +94,15 @@ func main() {
 	jsonEncoder := json.NewEncoder(f)
 
 	// Log baseline
-	jsonEncoder.Encode(ExperimentRecord{
+	if err := jsonEncoder.Encode(ExperimentRecord{
 		Iteration: 0,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Score:     bestScore,
 		BestScore: bestScore,
 		Kept:      true,
-	})
+	}); err != nil {
+		log.Fatalf("failed to write baseline record: %v", err)
+	}
 
 	feedback := fmt.Sprintf(
 		"The current baseline score is %.2f ns/op. Please modify the target.go file to improve performance.",
@@ -133,7 +136,9 @@ func main() {
 		if evalErr != nil {
 			// Failed to compile or test failed
 			fmt.Printf("Evaluation failed: %v. Reverting to backup.\n", evalErr)
-			os.WriteFile(targetFile, backup, 0o644)
+			if err := restoreTarget(backup); err != nil {
+				log.Fatalf("failed to restore target.go: %v", err)
+			}
 			outcomeMessage = fmt.Sprintf(
 				"Your last change caused an error: %v. I have reverted target.go back to the previous state. Please try a different approach.",
 				evalErr,
@@ -159,12 +164,16 @@ func main() {
 				kept = true
 			} else if improvement > 0 {
 				fmt.Printf("Score slightly improved to %.2f, but within noise margin (Confidence: %.2fx MAD < 1.0). Reverting to avoid complexity bloat.\n", newScore, confidence)
-				os.WriteFile(targetFile, backup, 0o644)
+				if err := restoreTarget(backup); err != nil {
+					log.Fatalf("failed to restore target.go: %v", err)
+				}
 				outcomeMessage = fmt.Sprintf("The score slightly improved to %.2f, but it was within the margin of error (noise). I have reverted the file to avoid adding unnecessary code complexity. Try a more significant optimization.", newScore)
 				kept = false
 			} else {
 				fmt.Printf("Score worsened or did not improve (%.2f vs best %.2f). Reverting.\n", newScore, bestScore)
-				os.WriteFile(targetFile, backup, 0o644)
+				if err := restoreTarget(backup); err != nil {
+					log.Fatalf("failed to restore target.go: %v", err)
+				}
 				outcomeMessage = fmt.Sprintf("The optimization did not improve the score (got %.2f, best is %.2f). I have reverted the file. Please try a different strategy.", newScore, bestScore)
 				kept = false
 			}
@@ -184,7 +193,9 @@ func main() {
 		if evalErr != nil {
 			record.Error = evalErr.Error()
 		}
-		jsonEncoder.Encode(record)
+		if err := jsonEncoder.Encode(record); err != nil {
+			log.Fatalf("failed to write experiment record: %v", err)
+		}
 
 		// Feed the outcome into the next iteration through the canonical host path.
 		feedback = outcomeMessage
@@ -193,6 +204,10 @@ func main() {
 	fmt.Println(
 		"Autoresearch complete. Check target.go for the final optimized code and experiments.jsonl for the log.",
 	)
+}
+
+func restoreTarget(contents []byte) error {
+	return os.WriteFile(targetFile, contents, 0o644)
 }
 
 // evaluate runs the evaluation script and returns the parsed score.
@@ -247,7 +262,7 @@ func calculateMedian(data []float64) float64 {
 	if len(data) == 0 {
 		return 0
 	}
-	sort.Float64s(data)
+	slices.Sort(data)
 	mid := len(data) / 2
 	if len(data)%2 == 0 {
 		return (data[mid-1] + data[mid]) / 2.0

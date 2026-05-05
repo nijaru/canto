@@ -187,6 +187,9 @@ Recent concrete fixes from the follow-up pass:
   the `objects/<id>/...` storage layout.
 - MCP client discovery/call handling now rejects nil external SDK tool/result
   values cleanly instead of panicking at the protocol boundary.
+- Reference examples now close persistent session stores, and the autoresearch
+  example checks restore/log write errors instead of silently continuing after a
+  failed revert or JSONL append.
 
 Latest checkpoint:
 
@@ -197,7 +200,7 @@ go test -race ./agent ./session ./runtime ./prompt ./tool ./workspace ./llm ./go
 
 Remaining reasonable audit targets:
 
-- `audit`, `examples/*`, and docs/godoc polish.
+- `audit` and docs/godoc polish.
 - Broader public API shape review after the code audit, especially whether the
   root `Harness` facade should absorb more common `Runner` use cases.
 
