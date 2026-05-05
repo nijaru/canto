@@ -49,6 +49,20 @@ func TestManager_ScopeIsolationAndBlocks(t *testing.T) {
 	}
 }
 
+func TestManager_UpsertBlockRequiresStore(t *testing.T) {
+	manager := NewManager(nil)
+	err := manager.UpsertBlock(
+		t.Context(),
+		Namespace{Scope: ScopeThread, ID: "thread"},
+		"persona",
+		"content",
+		nil,
+	)
+	if err == nil {
+		t.Fatal("expected missing store error")
+	}
+}
+
 func TestManager_WriteConflictModesAndRetrieve(t *testing.T) {
 	store, err := NewCoreStore("file::memory:?cache=shared")
 	if err != nil {
