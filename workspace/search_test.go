@@ -128,6 +128,76 @@ func TestIndexWorkspaceIndexesWorkspaceFS(t *testing.T) {
 	}
 }
 
+func TestIndexWorkspaceIndexesOverlayFiles(t *testing.T) {
+	root, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+
+	overlay := NewOverlayFS(root)
+	if err := overlay.WriteFile("scratch/spec.txt", []byte("speculative overlay note"), 0o644); err != nil {
+		t.Fatalf("overlay WriteFile: %v", err)
+	}
+
+	index := NewSearchIndex()
+	count, err := IndexWorkspace(t.Context(), overlay, index)
+	if err != nil {
+		t.Fatalf("IndexWorkspace overlay: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("IndexWorkspace overlay count = %d, want 1", count)
+	}
+
+	hits, err := index.Search(t.Context(), "speculative", 10)
+	if err != nil {
+		t.Fatalf("Search(speculative): %v", err)
+	}
+	if len(hits) != 1 || hits[0].Ref.Path != "scratch/spec.txt" {
+		t.Fatalf("overlay hits = %#v, want scratch/spec.txt", hits)
+	}
+}
+
+func TestIndexWorkspaceIndexesMountedFilesystems(t *testing.T) {
+	base, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open base: %v", err)
+	}
+	t.Cleanup(func() { _ = base.Close() })
+	if err := base.WriteFile("base.txt", []byte("base workspace note"), 0o644); err != nil {
+		t.Fatalf("base WriteFile: %v", err)
+	}
+
+	mounted, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open mounted: %v", err)
+	}
+	t.Cleanup(func() { _ = mounted.Close() })
+	if err := mounted.WriteFile("note.txt", []byte("mounted memory note"), 0o644); err != nil {
+		t.Fatalf("mounted WriteFile: %v", err)
+	}
+
+	multi := NewMultiFS(base)
+	multi.Mount("memory", mounted)
+
+	index := NewSearchIndex()
+	count, err := IndexWorkspace(t.Context(), multi, index)
+	if err != nil {
+		t.Fatalf("IndexWorkspace multi: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("IndexWorkspace multi count = %d, want 2", count)
+	}
+
+	hits, err := index.Search(t.Context(), "mounted", 10)
+	if err != nil {
+		t.Fatalf("Search(mounted): %v", err)
+	}
+	if len(hits) != 1 || hits[0].Ref.Path != "memory/note.txt" {
+		t.Fatalf("mounted hits = %#v, want memory/note.txt", hits)
+	}
+}
+
 func TestTrigramIndexReturnsStablePathOrdering(t *testing.T) {
 	index := NewSearchIndex()
 	for _, file := range []ContentRef{

@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"io/fs"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -282,18 +282,9 @@ func IndexWorkspace(ctx context.Context, ws WorkspaceFS, index SearchIndex) (int
 		return 0, fmt.Errorf("workspace index: nil search index")
 	}
 
-	count := 0
-	err := fs.WalkDir(ws.FS(), ".", func(path string, d fs.DirEntry, walkErr error) error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if _, err := IndexFile(ctx, ws, index, path); err != nil {
+	var count int
+	err := walkWorkspaceFiles(ctx, ws, ".", func(filePath string) error {
+		if _, err := IndexFile(ctx, ws, index, filePath); err != nil {
 			return err
 		}
 		count++
@@ -303,6 +294,47 @@ func IndexWorkspace(ctx context.Context, ws WorkspaceFS, index SearchIndex) (int
 		return count, err
 	}
 	return count, nil
+}
+
+func walkWorkspaceFiles(
+	ctx context.Context,
+	ws WorkspaceFS,
+	dir string,
+	visit func(path string) error,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	entries, err := ws.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		child := entry.Name()
+		if dir != "." && dir != "" {
+			child = path.Join(dir, child)
+		}
+		if entry.IsDir() {
+			if err := walkWorkspaceFiles(ctx, ws, child, visit); err != nil {
+				return err
+			}
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		if err := visit(child); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func corpusTerms(path string, data []byte) []string {
