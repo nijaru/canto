@@ -109,3 +109,36 @@ func TestHNSWStoreNumericMetadataFilter(t *testing.T) {
 		t.Fatalf("filtered results = %#v, want doc1 only", results)
 	}
 }
+
+func TestHNSWStoreSearchNormalizesLimits(t *testing.T) {
+	tmpDir := t.TempDir()
+	dsn := filepath.Join(tmpDir, "test_hnsw_limits.sqlite")
+	ctx := t.Context()
+
+	store, err := NewHNSWStore(ctx, dsn)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Upsert(ctx, "doc1", []float32{1, 0, 0}, map[string]any{"color": "red"}); err != nil {
+		t.Fatalf("upsert doc1: %v", err)
+	}
+
+	results, err := store.Search(ctx, []float32{1, 0, 0}, 0, nil)
+	if err != nil {
+		t.Fatalf("zero-limit search: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("zero-limit search returned %#v, want none", results)
+	}
+
+	store.OverfetchFactor = 0
+	results, err = store.Search(ctx, []float32{1, 0, 0}, 1, nil)
+	if err != nil {
+		t.Fatalf("default-overfetch search: %v", err)
+	}
+	if len(results) != 1 || results[0].ID != "doc1" {
+		t.Fatalf("default-overfetch search returned %#v, want doc1", results)
+	}
+}

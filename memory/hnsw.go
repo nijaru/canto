@@ -154,9 +154,20 @@ func (s *HNSWStore) Search(
 	k int,
 	filter map[string]any,
 ) ([]SearchResult, error) {
+	if k <= 0 {
+		return nil, nil
+	}
+
 	// Request more nodes than k to allow for filtering downstream and to improve
 	// approximate search quality for large k.
-	searchK := int(float64(k) * s.OverfetchFactor)
+	overfetchFactor := s.OverfetchFactor
+	if overfetchFactor <= 0 {
+		overfetchFactor = 3.0
+	}
+	searchK := int(float64(k) * overfetchFactor)
+	if searchK < k {
+		searchK = k
+	}
 
 	var nodes []hnsw.Node[string]
 	func() {
