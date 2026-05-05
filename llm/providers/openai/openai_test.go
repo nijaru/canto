@@ -56,3 +56,12 @@ func TestNewProviderRespectsConfig(t *testing.T) {
 		t.Fatalf("models = %#v, want custom", gotModels)
 	}
 }
+
+func TestIsContextOverflowMessage(t *testing.T) {
+	if !isContextOverflowMessage("This model's context window has too many TOKENS") {
+		t.Fatal("expected mixed-case context/token message to match")
+	}
+	if isContextOverflowMessage("temporary server overload") {
+		t.Fatal("expected unrelated message not to match")
+	}
+}
