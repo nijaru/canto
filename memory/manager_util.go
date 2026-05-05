@@ -35,6 +35,18 @@ func memoryID(candidate Candidate) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func coreBlockMemoryID(namespace Namespace, name string) string {
+	if name == "" {
+		name = "default"
+	}
+	return strings.Join([]string{
+		string(namespace.Scope),
+		namespace.ID,
+		string(RoleCore),
+		name,
+	}, ":")
+}
+
 func cloneMap(src map[string]any) map[string]any {
 	if len(src) == 0 {
 		return nil

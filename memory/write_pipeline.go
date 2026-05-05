@@ -169,16 +169,7 @@ func dedupeCandidates(
 
 func candidateIdentity(candidate Candidate) string {
 	if candidate.Role == RoleCore {
-		name := candidate.Key
-		if name == "" {
-			name = "default"
-		}
-		return strings.Join([]string{
-			string(candidate.Namespace.Scope),
-			candidate.Namespace.ID,
-			string(RoleCore),
-			name,
-		}, ":")
+		return coreBlockMemoryID(candidate.Namespace, candidate.Key)
 	}
 	return memoryID(candidate)
 }

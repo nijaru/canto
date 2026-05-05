@@ -95,7 +95,7 @@ func (m *Manager) retrieveCoreBlocks(
 			continue
 		}
 		results = append(results, Memory{
-			ID:        block.Name,
+			ID:        coreBlockMemoryID(block.Namespace, block.Name),
 			Namespace: block.Namespace,
 			Role:      RoleCore,
 			Key:       block.Name,

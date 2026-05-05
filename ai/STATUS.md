@@ -36,6 +36,9 @@ Current authoring-surface inputs:
   framework surfaces over optional integration packages: memory store/write
   pipeline, coding executor/file tools, approval gate, runtime child/run
   helpers, provider/request helpers, and extension examples.
+- Current hotspot: memory retrieval just landed a namespace-collision fix for
+  core blocks; continue auditing memory/HNSW only if the next read finds a
+  concrete contract gap.
 - Runtime coordinator/lane were inspected earlier in this audit and have strong
   FIFO/retry/cancel/parallel-session coverage; revisit only if new evidence
   points there.
@@ -85,8 +88,9 @@ Current authoring-surface inputs:
   failures now surface through `Manager.Close`; tracing's streaming tool wrapper
   now starts spans on consumption and cancels wrapped streams when consumers
   stop early; OverlayFS rejects traversal/absolute speculative paths before
-  they can enter overlay state. Each slice passed focused tests,
-  `go test ./...`, `go build ./...`, and relevant race checks.
+  they can enter overlay state; core memory block retrieval now keeps same-name
+  blocks from different namespaces distinct through fusion. Each slice passed
+  focused tests, `go test ./...`, `go build ./...`, and relevant race checks.
 - Harness facade first slice landed locally: root `canto.NewAgent`/`App.Send`
   has been replaced with `canto.NewHarness` plus
   `h.Session(id).Prompt/Events`; no compatibility alias was retained. Focused

@@ -94,6 +94,47 @@ func TestManager_ScopeIsolationAndBlocks(t *testing.T) {
 	}
 }
 
+func TestManager_RetrieveCoreBlocksKeepsNamespacesDistinct(t *testing.T) {
+	store, err := NewCoreStore("file::memory:?cache=shared")
+	if err != nil {
+		t.Fatalf("NewCoreStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	manager := NewManager(store)
+	threadA := Namespace{Scope: ScopeThread, ID: "core-ns-a"}
+	threadB := Namespace{Scope: ScopeThread, ID: "core-ns-b"}
+	if err := manager.UpsertBlock(t.Context(), threadA, "persona", "A content", nil); err != nil {
+		t.Fatalf("UpsertBlock A: %v", err)
+	}
+	if err := manager.UpsertBlock(t.Context(), threadB, "persona", "B content", nil); err != nil {
+		t.Fatalf("UpsertBlock B: %v", err)
+	}
+
+	results, err := manager.Retrieve(t.Context(), Query{
+		Namespaces:  []Namespace{threadA, threadB},
+		Roles:       []Role{RoleCore},
+		IncludeCore: true,
+		Limit:       5,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected both core blocks, got %#v", results)
+	}
+	seen := map[Namespace]string{}
+	for _, result := range results {
+		if result.ID == "persona" {
+			t.Fatalf("core memory ID must include namespace, got %#v", result)
+		}
+		seen[result.Namespace] = result.Content
+	}
+	if seen[threadA] != "A content" || seen[threadB] != "B content" {
+		t.Fatalf("unexpected namespace contents: %#v", seen)
+	}
+}
+
 func TestManager_UpsertBlockRequiresStore(t *testing.T) {
 	manager := NewManager(nil)
 	err := manager.UpsertBlock(
