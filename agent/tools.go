@@ -526,21 +526,6 @@ func executeTool(
 	return res
 }
 
-// executeToolWithHooks is kept for backward compatibility with callers that
-// bypass the two-phase model. New code should use preflightTools + executeTools.
-func executeToolWithHooks(
-	ctx context.Context,
-	s *session.Session,
-	call llm.Call,
-	r *tool.Registry,
-	h *hook.Runner,
-	approvals *approval.Gate,
-) toolResult {
-	pfResults := preflightTools(ctx, s, []llm.Call{call}, r, h, approvals, "")
-	execResults := executeTools(ctx, s, pfResults, r, h, 1)
-	return execResults[0]
-}
-
 func toolIdempotencyKey(sessionID, assistantMessageID string, call llm.Call, index int) string {
 	sum := sha256.Sum256([]byte(call.Function.Arguments))
 	return fmt.Sprintf(
