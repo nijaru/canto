@@ -83,21 +83,25 @@ func (w *wrappedStreamingTool) ExecuteStreaming(
 			attribute.Bool("canto.tool.streaming", true),
 		),
 	)
+	streamCtx, cancel := context.WithCancel(ctx)
 
 	return func(yield func(string, error) bool) {
+		defer cancel()
 		defer span.End()
 		var buf strings.Builder
-		for delta, err := range w.innerStreaming.ExecuteStreaming(ctx, args) {
+		for delta, err := range w.innerStreaming.ExecuteStreaming(streamCtx, args) {
 			if err != nil {
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
 				if !yield("", err) {
+					cancel()
 					return
 				}
 				return
 			}
 			buf.WriteString(delta)
 			if !yield(delta, nil) {
+				cancel()
 				return
 			}
 		}

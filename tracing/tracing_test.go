@@ -2,7 +2,9 @@ package tracing_test
 
 import (
 	"context"
+	"iter"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -13,6 +15,34 @@ import (
 	"github.com/nijaru/canto/tracing"
 	xtest "github.com/nijaru/canto/x/testing"
 )
+
+type cancelAwareStreamingTool struct {
+	canceled chan struct{}
+}
+
+func (t *cancelAwareStreamingTool) Spec() llm.Spec {
+	return llm.Spec{Name: "streaming_tool", Description: "stream"}
+}
+
+func (t *cancelAwareStreamingTool) Execute(context.Context, string) (string, error) {
+	return "", nil
+}
+
+func (t *cancelAwareStreamingTool) ExecuteStreaming(
+	ctx context.Context,
+	_ string,
+) iter.Seq2[string, error] {
+	return func(yield func(string, error) bool) {
+		if yield("first", nil) {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			close(t.canceled)
+		case <-time.After(time.Second):
+		}
+	}
+}
 
 func setupTracer(t *testing.T) *tracetest.SpanRecorder {
 	t.Helper()
@@ -191,5 +221,28 @@ func TestWrapToolIdempotent(t *testing.T) {
 	}
 	if toolSpans != 1 {
 		t.Fatalf("expected one tool span, got %d", toolSpans)
+	}
+}
+
+func TestWrapStreamingToolCancelsInnerWhenConsumerStops(t *testing.T) {
+	setupTracer(t)
+
+	inner := &cancelAwareStreamingTool{canceled: make(chan struct{})}
+	wrapped := tracing.WrapTool(inner).(tool.StreamingTool)
+
+	for delta, err := range wrapped.ExecuteStreaming(t.Context(), "{}") {
+		if err != nil {
+			t.Fatalf("ExecuteStreaming: %v", err)
+		}
+		if delta != "first" {
+			t.Fatalf("delta = %q, want first", delta)
+		}
+		break
+	}
+
+	select {
+	case <-inner.canceled:
+	case <-time.After(time.Second):
+		t.Fatal("inner streaming tool was not canceled")
 	}
 }
