@@ -80,7 +80,8 @@ func AttachWriteThrough(ctx context.Context, sess *Session, store Store) func() 
 
 	return func() {
 		sess.unsetWriterChannel()
-		cancel()
+		close(ch)
 		<-done
+		cancel()
 	}
 }

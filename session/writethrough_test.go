@@ -40,6 +40,50 @@ func (m *memStore) saved() []Event {
 	return out
 }
 
+type blockingStore struct {
+	mu      sync.Mutex
+	events  []Event
+	started sync.Once
+	startCh chan struct{}
+	release chan struct{}
+}
+
+func newBlockingStore() *blockingStore {
+	return &blockingStore{
+		startCh: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (s *blockingStore) Save(_ context.Context, e Event) error {
+	s.started.Do(func() {
+		close(s.startCh)
+	})
+	<-s.release
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, e)
+	return nil
+}
+
+func (s *blockingStore) Load(_ context.Context, _ string) (*Session, error) { return nil, nil }
+
+func (s *blockingStore) LoadUntil(_ context.Context, _ string, _ ulid.ULID) (*Session, error) {
+	return nil, nil
+}
+
+func (s *blockingStore) Fork(_ context.Context, _, _ string) (*Session, error) {
+	return nil, nil
+}
+
+func (s *blockingStore) saved() []Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]Event, len(s.events))
+	copy(out, s.events)
+	return out
+}
+
 func TestAttachWriteThrough_SavesEvents(t *testing.T) {
 	sess := New("wt-1")
 	store := &memStore{}
@@ -57,6 +101,48 @@ func TestAttachWriteThrough_SavesEvents(t *testing.T) {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+
+	saved := store.saved()
+	if len(saved) != 2 {
+		t.Fatalf("saved %d events, want 2", len(saved))
+	}
+}
+
+func TestAttachWriteThrough_CancelDrainsAcceptedEvents(t *testing.T) {
+	sess := New("wt-drain")
+	store := newBlockingStore()
+
+	cancel := AttachWriteThrough(context.Background(), sess, store)
+	if err := sess.Append(context.Background(), NewEvent("wt-drain", Handoff, nil)); err != nil {
+		t.Fatalf("append first: %v", err)
+	}
+	select {
+	case <-store.startCh:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first save")
+	}
+	if err := sess.Append(context.Background(), NewEvent("wt-drain", Handoff, nil)); err != nil {
+		t.Fatalf("append second: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		cancel()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("cancel returned before accepted events drained")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(store.release)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for cancel")
 	}
 
 	saved := store.saved()
