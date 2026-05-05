@@ -514,6 +514,28 @@ func TestStepPreservesReasoningOnlyAssistantMessage(t *testing.T) {
 	}
 }
 
+func TestStepPreservesThinkingOnlyAssistantMessage(t *testing.T) {
+	p := &mockProvider{
+		responses: []*llm.Response{
+			{ThinkingBlocks: []llm.ThinkingBlock{{Type: "thinking", Thinking: "thinking only"}}},
+		},
+	}
+	a := New("test-agent", "You are helpful.", "gpt-4", p, nil)
+	s := userSession("s-thinking-step", "Hi!")
+
+	if _, err := a.Step(t.Context(), s); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	msgs := s.Messages()
+	if len(msgs) != 2 {
+		t.Fatalf("expected assistant thinking message, got %#v", msgs)
+	}
+	if got := msgs[1].ThinkingBlocks; len(got) != 1 || got[0].Thinking != "thinking only" {
+		t.Fatalf("thinking blocks = %#v, want thinking only", got)
+	}
+}
+
 func TestTurnRecordsTerminalEventOnProviderError(t *testing.T) {
 	providerErr := fmt.Errorf("provider unavailable")
 	a := New("test-agent", "You are helpful.", "gpt-4", &errorProvider{err: providerErr}, nil)

@@ -6,7 +6,6 @@ import (
 
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
-	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tracing"
 )
@@ -30,47 +29,16 @@ func (a *BaseAgent) StreamStep(
 	s *session.Session,
 	chunkFn func(*llm.Chunk),
 ) (res StepResult, err error) {
-	defer func() {
-		data := session.StepCompletedData{
-			AgentID: a.ID(),
-			Usage:   res.Usage,
-		}
-		if err != nil {
-			data.Error = err.Error()
-		}
-		_ = s.Append(context.WithoutCancel(ctx), session.NewStepCompletedEvent(s.ID(), data))
-	}()
+	cfg := a.stepConfig()
+	defer func() { appendStepCompleted(ctx, s, cfg.ID, res, err) }()
 
-	req := &llm.Request{
-		Model: a.model,
-	}
-	provider := tracing.WrapProvider(a.provider)
-
-	buildCtx, buildSpan := tracing.StartContext(ctx, a.ID(), s.ID(), a.model)
-	if err = a.builder.Build(buildCtx, provider, a.model, s, req); err != nil {
-		tracing.EndContext(buildSpan, err)
+	prepared, err := prepareStep(ctx, s, cfg)
+	if err != nil {
 		return
 	}
-	tracing.EndContext(buildSpan, nil)
-	ctx = buildCtx
+	ctx = prepared.Context
 
-	cacheFingerprint, err := prompt.FingerprintPromptCache(s, req)
-	if err != nil {
-		return StepResult{}, err
-	}
-	stepStarted := session.NewStepStartedEvent(s.ID(), session.StepStartedData{
-		AgentID: a.ID(),
-		Model:   a.model,
-		PromptCache: session.PromptCacheData{
-			PrefixHash:     cacheFingerprint.PrefixHash,
-			ToolSchemaHash: cacheFingerprint.ToolSchemaHash,
-		},
-	})
-	if err := s.Append(ctx, stepStarted); err != nil {
-		return StepResult{}, err
-	}
-
-	stream, err := provider.Stream(ctx, req)
+	stream, err := prepared.Provider.Stream(ctx, prepared.Request)
 	if err != nil {
 		return
 	}
@@ -104,16 +72,17 @@ func (a *BaseAgent) StreamStep(
 
 	resp := acc.Response()
 
-	// Record assistant message.
-	msg := llm.Message{
-		Role:           llm.RoleAssistant,
-		Content:        resp.Content,
-		Reasoning:      resp.Reasoning,
-		ThinkingBlocks: resp.ThinkingBlocks,
-		Calls:          resp.Calls,
+	assistantMessageID, appended, err := appendAssistantResponse(
+		ctx,
+		s,
+		prepared.Provider.ID(),
+		prepared.Request,
+		resp,
+	)
+	if err != nil {
+		return
 	}
-	llm.RecordUsage(ctx, provider.ID(), req.Model, resp.Usage)
-	if !hasAssistantPayload(msg) {
+	if !appended {
 		res.Usage = resp.Usage
 		return
 	}
@@ -121,13 +90,6 @@ func (a *BaseAgent) StreamStep(
 	if err = ctx.Err(); err != nil {
 		return
 	}
-	e := session.NewEvent(s.ID(), session.MessageAdded, msg)
-	e.Cost = resp.Usage.Cost
-	if err = s.Append(ctx, e); err != nil {
-		return
-	}
-
-	// Execute tool calls in parallel and append results to the session.
 	handoffTargets := getHandoffTargets(a.tools)
 	res, err = runTools(
 		ctx,
@@ -138,7 +100,7 @@ func (a *BaseAgent) StreamStep(
 		a.approvals,
 		handoffTargets,
 		a.maxParallelTools,
-		e.ID.String(),
+		assistantMessageID,
 	)
 	res.Usage = resp.Usage // Restore usage as RunTools only returns results/handoff
 

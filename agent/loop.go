@@ -37,61 +37,19 @@ func agentModel(a Agent) string {
 
 // Step executes a single turn of the agentic loop and returns its result.
 func (a *BaseAgent) Step(ctx context.Context, s *session.Session) (StepResult, error) {
-	return runStep(ctx, s, stepConfig{
-		ID:               a.agentID,
-		Model:            a.model,
-		Provider:         a.provider,
-		Builder:          a.builder,
-		Tools:            a.tools,
-		Hooks:            a.hooks,
-		Approvals:        a.approvals,
-		MaxParallelTools: a.maxParallelTools,
-	})
+	return runStep(ctx, s, a.stepConfig())
 }
 
 func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepResult, err error) {
-	defer func() {
-		data := session.StepCompletedData{
-			AgentID: cfg.ID,
-			Usage:   res.Usage,
-		}
-		if err != nil {
-			data.Error = err.Error()
-		}
-		_ = s.Append(context.WithoutCancel(ctx), session.NewStepCompletedEvent(s.ID(), data))
-	}()
+	defer func() { appendStepCompleted(ctx, s, cfg.ID, res, err) }()
 
-	req := &llm.Request{
-		Model: cfg.Model,
-	}
-	provider := tracing.WrapProvider(cfg.Provider)
-
-	// Build context
-	buildCtx, buildSpan := tracing.StartContext(ctx, cfg.ID, s.ID(), cfg.Model)
-	if err = cfg.Builder.Build(buildCtx, provider, cfg.Model, s, req); err != nil {
-		tracing.EndContext(buildSpan, err)
+	prepared, err := prepareStep(ctx, s, cfg)
+	if err != nil {
 		return
 	}
-	tracing.EndContext(buildSpan, nil)
-	ctx = buildCtx
+	ctx = prepared.Context
 
-	cacheFingerprint, err := prompt.FingerprintPromptCache(s, req)
-	if err != nil {
-		return StepResult{}, err
-	}
-	stepStarted := session.NewStepStartedEvent(s.ID(), session.StepStartedData{
-		AgentID: cfg.ID,
-		Model:   cfg.Model,
-		PromptCache: session.PromptCacheData{
-			PrefixHash:     cacheFingerprint.PrefixHash,
-			ToolSchemaHash: cacheFingerprint.ToolSchemaHash,
-		},
-	})
-	if err := s.Append(ctx, stepStarted); err != nil {
-		return StepResult{}, err
-	}
-
-	resp, err := provider.Generate(ctx, req)
+	resp, err := prepared.Provider.Generate(ctx, prepared.Request)
 	if err != nil {
 		return
 	}
@@ -100,28 +58,20 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 	}
 	res.Usage = resp.Usage
 
-	// Record assistant response with cost from the provider.
-	msg := llm.Message{
-		Role:      llm.RoleAssistant,
-		Content:   resp.Content,
-		Reasoning: resp.Reasoning,
-		Calls:     resp.Calls,
-	}
-	llm.RecordUsage(ctx, provider.ID(), req.Model, resp.Usage)
-	if !hasAssistantPayload(msg) {
+	assistantMessageID, appended, err := appendAssistantResponse(
+		ctx,
+		s,
+		prepared.Provider.ID(),
+		prepared.Request,
+		*resp,
+	)
+	if err != nil || !appended {
 		return
 	}
 
 	if err = ctx.Err(); err != nil {
 		return
 	}
-	e := session.NewEvent(s.ID(), session.MessageAdded, msg)
-	e.Cost = resp.Usage.Cost
-	if err = s.Append(ctx, e); err != nil {
-		return
-	}
-
-	// Execute tool calls in parallel and append results to the session.
 	handoffTargets := getHandoffTargets(cfg.Tools)
 	res, err = runTools(
 		ctx,
@@ -132,7 +82,7 @@ func runStep(ctx context.Context, s *session.Session, cfg stepConfig) (res StepR
 		cfg.Approvals,
 		handoffTargets,
 		cfg.MaxParallelTools,
-		e.ID.String(),
+		assistantMessageID,
 	)
 	res.Usage = resp.Usage // Restore usage as RunTools only returns results/handoff
 
