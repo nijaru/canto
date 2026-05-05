@@ -70,6 +70,7 @@ func NewSQLiteVectorStore(dsn string) (*SQLiteVectorStore, error) {
 
 	s := &SQLiteVectorStore{db: db}
 	if err := s.init(); err != nil {
+		db.Close()
 		return nil, err
 	}
 
@@ -123,6 +124,10 @@ func (s *SQLiteVectorStore) Search(
 	k int,
 	filter map[string]any,
 ) ([]SearchResult, error) {
+	if k <= 0 {
+		return nil, nil
+	}
+
 	rows, err := s.db.QueryContext(ctx, "SELECT id, vector, metadata FROM vectors")
 	if err != nil {
 		return nil, err
@@ -148,18 +153,8 @@ func (s *SQLiteVectorStore) Search(
 			continue // Skip corrupt entries
 		}
 
-		// Apply filter if provided
-		if len(filter) > 0 {
-			match := true
-			for k, v := range filter {
-				if mv, ok := metadata[k]; !ok || mv != v {
-					match = false
-					break
-				}
-			}
-			if !match {
-				continue
-			}
+		if len(filter) > 0 && !metadataMatchesFilter(metadata, filter) {
+			continue
 		}
 
 		if len(vData)%4 != 0 {

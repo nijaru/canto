@@ -2,7 +2,7 @@ package memory
 
 import (
 	"context"
-	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -19,8 +19,7 @@ func TestNewVectorStore_DefaultsToHNSW(t *testing.T) {
 }
 
 func TestSQLiteVectorStore(t *testing.T) {
-	dbFile := "test_vector.db"
-	defer os.Remove(dbFile)
+	dbFile := filepath.Join(t.TempDir(), "test_vector.db")
 
 	store, err := NewSQLiteVectorStore(dbFile)
 	if err != nil {
@@ -53,5 +52,37 @@ func TestSQLiteVectorStore(t *testing.T) {
 	// v1 should be the closest
 	if results[0].ID != "v1" {
 		t.Errorf("expected first result to be v1, got %s", results[0].ID)
+	}
+}
+
+func TestSQLiteVectorStoreSearchLimitAndNumericFilter(t *testing.T) {
+	store, err := NewSQLiteVectorStore(filepath.Join(t.TempDir(), "test_vector_filter.db"))
+	if err != nil {
+		t.Fatalf("failed to create vector store: %v", err)
+	}
+	defer store.Close()
+
+	ctx := t.Context()
+	if err := store.Upsert(ctx, "v1", []float32{1, 0}, map[string]any{"worker": 3}); err != nil {
+		t.Fatalf("upsert v1: %v", err)
+	}
+	if err := store.Upsert(ctx, "v2", []float32{0, 1}, map[string]any{"worker": 4}); err != nil {
+		t.Fatalf("upsert v2: %v", err)
+	}
+
+	results, err := store.Search(ctx, []float32{1, 0}, -1, nil)
+	if err != nil {
+		t.Fatalf("negative-limit search: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("negative-limit search returned %#v, want none", results)
+	}
+
+	results, err = store.Search(ctx, []float32{1, 0}, 2, map[string]any{"worker": 3})
+	if err != nil {
+		t.Fatalf("numeric filtered search: %v", err)
+	}
+	if len(results) != 1 || results[0].ID != "v1" {
+		t.Fatalf("numeric filtered results = %#v, want v1 only", results)
 	}
 }
