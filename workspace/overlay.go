@@ -59,10 +59,14 @@ func (o *OverlayFS) ensureParents(name string) {
 }
 
 func (o *OverlayFS) MkdirAll(name string, perm os.FileMode) error {
+	name, err := cleanOverlayPath(name, true)
+	if err != nil {
+		return err
+	}
+
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	name = path.Clean(name)
 	o.ensureParents(name)
 	o.speculative[name] = &overlayFile{
 		name:    path.Base(name),
@@ -75,10 +79,14 @@ func (o *OverlayFS) MkdirAll(name string, perm os.FileMode) error {
 }
 
 func (o *OverlayFS) ReadFile(name string) ([]byte, error) {
+	name, err := cleanOverlayPath(name, false)
+	if err != nil {
+		return nil, err
+	}
+
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 
-	name = path.Clean(name)
 	if _, ok := o.deleted[name]; ok {
 		return nil, os.ErrNotExist
 	}
@@ -92,10 +100,14 @@ func (o *OverlayFS) ReadFile(name string) ([]byte, error) {
 }
 
 func (o *OverlayFS) WriteFile(name string, data []byte, perm os.FileMode) error {
+	name, err := cleanOverlayPath(name, false)
+	if err != nil {
+		return err
+	}
+
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	name = path.Clean(name)
 	o.ensureParents(name)
 	o.speculative[name] = &overlayFile{
 		name:    path.Base(name),
@@ -109,17 +121,24 @@ func (o *OverlayFS) WriteFile(name string, data []byte, perm os.FileMode) error 
 }
 
 func (o *OverlayFS) Remove(name string) error {
+	name, err := cleanOverlayPath(name, false)
+	if err != nil {
+		return err
+	}
+
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	name = path.Clean(name)
 	o.deleted[name] = struct{}{}
 	delete(o.speculative, name)
 	return nil
 }
 
 func (o *OverlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
-	name = path.Clean(name)
+	name, err := cleanOverlayPath(name, true)
+	if err != nil {
+		return nil, err
+	}
 
 	o.mu.RLock()
 	baseEntries, err := o.base.ReadDir(name)
@@ -171,10 +190,14 @@ func (o *OverlayFS) ReadDir(name string) ([]fs.DirEntry, error) {
 }
 
 func (o *OverlayFS) Stat(name string) (fs.FileInfo, error) {
+	name, err := cleanOverlayPath(name, true)
+	if err != nil {
+		return nil, err
+	}
+
 	o.mu.RLock()
 	defer o.mu.RUnlock()
 
-	name = path.Clean(name)
 	if _, ok := o.deleted[name]; ok {
 		return nil, os.ErrNotExist
 	}
@@ -185,6 +208,11 @@ func (o *OverlayFS) Stat(name string) (fs.FileInfo, error) {
 }
 
 func (o *OverlayFS) Glob(ctx context.Context, pattern string) ([]string, error) {
+	pattern, err := cleanOverlayPath(pattern, false)
+	if err != nil {
+		return nil, err
+	}
+
 	baseMatches, err := o.base.Glob(ctx, pattern)
 	if err != nil {
 		return nil, err
@@ -226,6 +254,29 @@ func (o *OverlayFS) Glob(ctx context.Context, pattern string) ([]string, error) 
 	}
 	slices.Sort(matches)
 	return matches, nil
+}
+
+func cleanOverlayPath(name string, allowRoot bool) (string, error) {
+	if name == "" {
+		return "", fmt.Errorf("%w: path is required", ErrInvalidPath)
+	}
+	if strings.ContainsRune(name, '\x00') {
+		return "", fmt.Errorf("%w: NUL byte in path %q", ErrInvalidPath, name)
+	}
+	if path.IsAbs(name) {
+		return "", fmt.Errorf("%w: %q", ErrAbsolutePath, name)
+	}
+	cleaned := path.Clean(name)
+	if cleaned == "." {
+		if allowRoot {
+			return ".", nil
+		}
+		return "", fmt.Errorf("%w: root directory reference %q", ErrInvalidPath, name)
+	}
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", fmt.Errorf("%w: %q", ErrPathTraversal, name)
+	}
+	return cleaned, nil
 }
 
 // Commit applies all speculative changes to the base filesystem.

@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -286,6 +287,30 @@ func TestOverlayFS_ReadDirStatAndDiscard(t *testing.T) {
 	}
 	if _, err := overlay.ReadFile("nested/spec.txt"); !os.IsNotExist(err) {
 		t.Fatalf("discard should remove spec file, got %v", err)
+	}
+}
+
+func TestOverlayFSRejectsEscapingSpeculativePaths(t *testing.T) {
+	base := &mockFS{data: map[string]string{}}
+	overlay := NewOverlayFS(base)
+
+	if err := overlay.WriteFile("../escape.txt", []byte("escape"), 0o644); !errors.Is(
+		err,
+		ErrPathTraversal,
+	) {
+		t.Fatalf("WriteFile traversal err = %v, want ErrPathTraversal", err)
+	}
+	if _, err := overlay.ReadFile("../escape.txt"); !errors.Is(err, ErrPathTraversal) {
+		t.Fatalf("ReadFile traversal err = %v, want ErrPathTraversal", err)
+	}
+	if err := overlay.WriteFile("/tmp/escape.txt", []byte("escape"), 0o644); !errors.Is(
+		err,
+		ErrAbsolutePath,
+	) {
+		t.Fatalf("WriteFile absolute err = %v, want ErrAbsolutePath", err)
+	}
+	if _, err := overlay.ReadFile(".."); !errors.Is(err, ErrPathTraversal) {
+		t.Fatalf("ReadFile parent err = %v, want ErrPathTraversal", err)
 	}
 }
 
