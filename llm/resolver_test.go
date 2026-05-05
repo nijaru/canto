@@ -12,6 +12,7 @@ import (
 type mockProvider struct {
 	id                  string
 	genFn               func(ctx context.Context, req *Request) (*Response, error)
+	streamFn            func(ctx context.Context, req *Request) (Stream, error)
 	models              []Model
 	isTransientFn       func(error) bool
 	isContextOverflowFn func(error) bool
@@ -23,6 +24,9 @@ func (m *mockProvider) Generate(ctx context.Context, req *Request) (*Response, e
 }
 
 func (m *mockProvider) Stream(ctx context.Context, req *Request) (Stream, error) {
+	if m.streamFn != nil {
+		return m.streamFn(ctx, req)
+	}
 	return nil, errors.New("not implemented")
 }
 
@@ -250,6 +254,51 @@ func TestSmartResolverExhaustedTransientProvidersWrapsCause(t *testing.T) {
 	_, err := smart.Generate(t.Context(), &Request{})
 	if !errors.Is(err, transient) {
 		t.Fatalf("Generate error = %v, want wrapping %v", err, transient)
+	}
+}
+
+func TestSmartResolver_CoolsProviderAfterTransientStreamError(t *testing.T) {
+	transient := errors.New("stream interrupted")
+	p1Calls := 0
+	p1 := &mockProvider{
+		id: "p1",
+		streamFn: func(context.Context, *Request) (Stream, error) {
+			p1Calls++
+			stream := NewFauxStream(Chunk{Content: "partial"})
+			stream.err = transient
+			return stream, nil
+		},
+		isTransientFn: func(err error) bool {
+			return errors.Is(err, transient)
+		},
+	}
+	p2Calls := 0
+	p2 := &mockProvider{
+		id: "p2",
+		streamFn: func(context.Context, *Request) (Stream, error) {
+			p2Calls++
+			return NewFauxStream(Chunk{Content: "fallback"}), nil
+		},
+	}
+
+	smart := NewSmartResolver(StrategyPriority, p1, p2)
+	stream, err := smart.Stream(t.Context(), &Request{})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	if _, err := GenerateFromStream(stream); !errors.Is(err, transient) {
+		t.Fatalf("GenerateFromStream error = %v, want %v", err, transient)
+	}
+
+	stream, err = smart.Stream(t.Context(), &Request{})
+	if err != nil {
+		t.Fatalf("second Stream: %v", err)
+	}
+	if _, err := GenerateFromStream(stream); err != nil {
+		t.Fatalf("second GenerateFromStream: %v", err)
+	}
+	if p1Calls != 1 || p2Calls != 1 {
+		t.Fatalf("expected p1 cooled and p2 used, got p1=%d p2=%d", p1Calls, p2Calls)
 	}
 }
 

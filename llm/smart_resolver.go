@@ -85,8 +85,11 @@ func (r *SmartResolver) Stream(ctx context.Context, req *Request) (Stream, error
 	for _, p := range healthy {
 		s, err := p.provider.Stream(ctx, req)
 		if err == nil {
-			r.markSuccess(p)
-			return s, nil
+			return &smartResolverStream{
+				Stream:   s,
+				resolver: r,
+				provider: p,
+			}, nil
 		}
 		lastErr = err
 
@@ -99,6 +102,39 @@ func (r *SmartResolver) Stream(ctx context.Context, req *Request) (Stream, error
 	}
 
 	return nil, fmt.Errorf("all healthy providers exhausted or rate limited: %w", lastErr)
+}
+
+type smartResolverStream struct {
+	Stream
+	resolver *SmartResolver
+	provider *managedProvider
+	once     sync.Once
+}
+
+func (s *smartResolverStream) Err() error {
+	err := s.Stream.Err()
+	s.finish(err)
+	return err
+}
+
+func (s *smartResolverStream) Close() error {
+	err := s.Stream.Close()
+	if err != nil {
+		s.finish(err)
+		return err
+	}
+	s.finish(s.Stream.Err())
+	return err
+}
+
+func (s *smartResolverStream) finish(err error) {
+	s.once.Do(func() {
+		if err != nil && s.provider.provider.IsTransient(err) {
+			s.resolver.markCooling(s.provider)
+			return
+		}
+		s.resolver.markSuccess(s.provider)
+	})
 }
 
 func (r *SmartResolver) Models(ctx context.Context) ([]Model, error) {

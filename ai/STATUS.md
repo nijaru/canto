@@ -93,7 +93,9 @@ Current authoring-surface inputs:
   expansion no longer treats email addresses as `@file` references and handles
   angle-bracketed refs cleanly; approval policy errors now record a terminal
   cancellation event instead of leaving sessions durably waiting with no
-  pending HITL request. Each slice passed focused tests, `go test ./...`,
+  pending HITL request; SmartResolver now accounts for transient provider
+  failures that happen during stream consumption instead of marking the provider
+  healthy at stream start. Each slice passed focused tests, `go test ./...`,
   `go build ./...`, and relevant race checks.
 - Harness facade first slice landed locally: root `canto.NewAgent`/`App.Send`
   has been replaced with `canto.NewHarness` plus
