@@ -36,9 +36,18 @@ func (s *Session) Branch(
 // Fork creates a new session with a new ID, copying all existing events from
 // this session. The subscribers are not copied.
 func (s *Session) Fork(newID string) *Session {
+	forked, _ := s.forkWithOrigin(newID)
+	return forked
+}
+
+func (s *Session) forkWithOrigin(newID string) (*Session, string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	forkPointEventID := ""
+	if n := len(s.events); n > 0 {
+		forkPointEventID = s.events[n-1].ID.String()
+	}
 	events := make([]Event, len(s.events))
 	entropy := ulid.Monotonic(rand.Reader, 0)
 	idMap := make(map[string]string, len(s.events))
@@ -72,7 +81,7 @@ func (s *Session) Fork(newID string) *Session {
 	for k, v := range s.state {
 		res.state[k] = v
 	}
-	return res
+	return res, forkPointEventID
 }
 
 func cloneMetadata(src map[string]any) map[string]any {

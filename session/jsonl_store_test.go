@@ -60,6 +60,11 @@ func TestJSONLStoreForkPersistsTreeQueries(t *testing.T) {
 	if children[0].Depth != 1 {
 		t.Fatalf("child depth = %d, want 1", children[0].Depth)
 	}
+	loaded, err := store.Load(t.Context(), childID)
+	if err != nil {
+		t.Fatalf("load child: %v", err)
+	}
+	assertChildForkPointMatchesLastOrigin(t, loaded, children[0])
 
 	lineage, err := store.Lineage(t.Context(), childID)
 	if err != nil {
@@ -186,6 +191,11 @@ func TestSessionBranchUsesJSONLLiveParentState(t *testing.T) {
 	if parentAncestry == nil || parentAncestry.SessionID != parent.ID() {
 		t.Fatalf("child parent ancestry = %#v, want %q", parentAncestry, parent.ID())
 	}
+	lineage, err := store.Lineage(t.Context(), child.ID())
+	if err != nil {
+		t.Fatalf("lineage query failed: %v", err)
+	}
+	assertChildForkPointMatchesLastOrigin(t, reloaded, lineage[len(lineage)-1])
 }
 
 func TestJSONLStoreSaveAncestryPreservesImportedLineage(t *testing.T) {

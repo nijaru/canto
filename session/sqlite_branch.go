@@ -38,12 +38,7 @@ func (s *SQLiteStore) BranchSession(
 		return nil, fmt.Errorf("fork live session %q: nil parent", newID)
 	}
 	parentID := parent.ID()
-	forked := parent.Fork(newID)
-	parentEvents := parent.Events()
-	forkPointEventID := ""
-	if n := len(parentEvents); n > 0 {
-		forkPointEventID = parentEvents[n-1].ID.String()
-	}
+	forked, forkPointEventID := parent.forkWithOrigin(newID)
 	parentCreatedAt := sessionCreatedAt(parent)
 	childCreatedAt := time.Now().UTC()
 

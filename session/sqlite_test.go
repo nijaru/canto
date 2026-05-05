@@ -157,6 +157,7 @@ func TestSQLiteStoreFork(t *testing.T) {
 			parentEvents[len(parentEvents)-1].ID,
 		)
 	}
+	assertChildForkPointMatchesLastOrigin(t, loaded, children[0])
 
 	lineage, err := store.Lineage(ctx, childID)
 	if err != nil {
@@ -210,6 +211,11 @@ func TestSessionBranchUsesSQLiteLiveParentState(t *testing.T) {
 	if parentAncestry == nil || parentAncestry.SessionID != parent.ID() {
 		t.Fatalf("child parent ancestry = %#v, want %q", parentAncestry, parent.ID())
 	}
+	lineage, err := store.Lineage(t.Context(), child.ID())
+	if err != nil {
+		t.Fatalf("lineage query failed: %v", err)
+	}
+	assertChildForkPointMatchesLastOrigin(t, reloaded, lineage[len(lineage)-1])
 }
 
 func TestSQLiteStoreSaveAncestryPreservesImportedLineage(t *testing.T) {
