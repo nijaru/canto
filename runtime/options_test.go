@@ -43,6 +43,24 @@ func TestNewRunnerAppliesOptions(t *testing.T) {
 	}
 }
 
+func TestNewRunnerKeepsNoopHooksWhenOptionIsNil(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	runner := NewRunner(store, &echoAgent{}, WithHooks(nil))
+	defer runner.Close()
+
+	if runner.hooks == nil {
+		t.Fatal("expected nil hooks option to keep a no-op hook runner")
+	}
+	if _, err := runner.Send(t.Context(), "nil-hooks", "hello"); err != nil {
+		t.Fatalf("send with nil hooks option: %v", err)
+	}
+}
+
 func TestRunnerChildRunnerInheritsOptions(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {

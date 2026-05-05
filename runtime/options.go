@@ -115,5 +115,8 @@ func applyOptions(opts []Option) options {
 			opt(&cfg)
 		}
 	}
+	if cfg.hooks == nil {
+		cfg.hooks = hook.NewRunner()
+	}
 	return cfg
 }
