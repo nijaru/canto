@@ -178,7 +178,6 @@ func TestHistoryDemotesSessionSystemMessagesToTranscriptContext(t *testing.T) {
 	builder := NewBuilder(
 		Instructions("privileged instruction"),
 		History(),
-		Capabilities(),
 	)
 	if err := builder.Build(t.Context(), nil, "", sess, req); err != nil {
 		t.Fatalf("Build: %v", err)
@@ -197,19 +196,6 @@ func TestHistoryDemotesSessionSystemMessagesToTranscriptContext(t *testing.T) {
 	}
 	if req.Messages[1].Role != llm.RoleUser || req.Messages[1].Content != "app-local notice" {
 		t.Fatalf("expected app notice as user transcript context, got %#v", req.Messages[1])
-	}
-}
-
-func TestCapabilitiesRejectsMidConversationSystemMessages(t *testing.T) {
-	req := &llm.Request{
-		Messages: []llm.Message{
-			{Role: llm.RoleUser, Content: "hello"},
-			{Role: llm.RoleSystem, Content: "late privileged instruction"},
-		},
-	}
-
-	if err := Capabilities().ApplyRequest(t.Context(), nil, "", nil, req); err == nil {
-		t.Fatal("expected mid-conversation system message to be rejected")
 	}
 }
 
@@ -323,7 +309,6 @@ func TestBuilderInsertRequestProcessorsBeforeCache(t *testing.T) {
 		Instructions("base"),
 		History(),
 		CacheAligner(2),
-		Capabilities(),
 	)
 	builder.InsertRequestProcessorsBeforeCache(RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {
@@ -351,7 +336,6 @@ func TestBuilderAppendRequestProcessorsBeforeCacheFinalizers(t *testing.T) {
 		Instructions("base"),
 		History(),
 		CacheAligner(2),
-		Capabilities(),
 	)
 	builder.AppendRequestProcessors(RequestProcessorFunc(
 		func(ctx context.Context, p llm.Provider, model string, sess *session.Session, req *llm.Request) error {

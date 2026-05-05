@@ -87,7 +87,6 @@ Directives: Always search memory before answering. Memorize important new facts.
 	//  1. MemoryPrompt       — manager-driven retrieval (core + long-term memory)
 	//  2. History            — model-visible conversation transcript
 	//  3. Tools              — tool specs
-	//  4. Capabilities       — MUST be last; adapts system/temp for reasoning models
 	builder := prompt.NewBuilder(
 		prompt.MemoryPrompt(manager, prompt.MemoryPromptOptions{
 			Namespaces: []memory.Namespace{namespace},
@@ -96,7 +95,6 @@ Directives: Always search memory before answering. Memorize important new facts.
 		}),
 		prompt.History(),
 		prompt.Tools(reg),
-		prompt.Capabilities(),
 	)
 
 	const instructions = `You are a research assistant with persistent memory across sessions.

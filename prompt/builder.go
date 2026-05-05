@@ -175,7 +175,7 @@ func (b *Builder) InsertRequestProcessorsBeforeCache(processors ...RequestProces
 func (b *Builder) cacheBoundaryIndex() int {
 	for i, proc := range b.requestProcessors {
 		switch proc.(type) {
-		case cacheAlignerProcessor, *cacheAlignerProcessor, capabilitiesProcessor, *capabilitiesProcessor:
+		case cacheAlignerProcessor, *cacheAlignerProcessor:
 			return i
 		}
 	}
