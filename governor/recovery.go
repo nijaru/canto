@@ -2,6 +2,7 @@ package governor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/nijaru/canto/llm"
@@ -27,7 +28,7 @@ type CompactFunc func(ctx context.Context) error
 //
 // Construction:
 //
-//	rp := governor.NewRecoveryProvider(baseProvider, compactFn)
+//	rp, err := governor.NewRecoveryProvider(baseProvider, compactFn)
 //	agent, _ := agent.New(agent.WithProvider(rp), ...)
 type RecoveryProvider struct {
 	llm.Provider
@@ -37,11 +38,11 @@ type RecoveryProvider struct {
 // NewRecoveryProvider wraps inner so that context overflow errors trigger a
 // single compaction retry. compact is called exactly once on the first
 // overflow; a second overflow is returned as-is.
-func NewRecoveryProvider(inner llm.Provider, compact CompactFunc) *RecoveryProvider {
+func NewRecoveryProvider(inner llm.Provider, compact CompactFunc) (*RecoveryProvider, error) {
 	if compact == nil {
-		panic("governor: RecoveryProvider requires a non-nil CompactFunc")
+		return nil, errors.New("governor: recovery provider requires a compact function")
 	}
-	return &RecoveryProvider{Provider: inner, compact: compact}
+	return &RecoveryProvider{Provider: inner, compact: compact}, nil
 }
 
 // Generate intercepts context overflow errors. On the first overflow it calls

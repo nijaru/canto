@@ -18,13 +18,26 @@ func overflowProvider(steps ...xtesting.Step) *xtesting.FauxProvider {
 	return p
 }
 
+func newRecoveryProvider(
+	t *testing.T,
+	inner llm.Provider,
+	compact governor.CompactFunc,
+) *governor.RecoveryProvider {
+	t.Helper()
+	rp, err := governor.NewRecoveryProvider(inner, compact)
+	if err != nil {
+		t.Fatalf("NewRecoveryProvider: %v", err)
+	}
+	return rp
+}
+
 func TestRecoveryProvider_PassThrough(t *testing.T) {
 	mock := xtesting.NewFauxProvider("test",
 		xtesting.Step{Content: "ok"},
 	)
 
 	compactCalled := false
-	rp := governor.NewRecoveryProvider(mock, func(_ context.Context) error {
+	rp := newRecoveryProvider(t, mock, func(_ context.Context) error {
 		compactCalled = true
 		return nil
 	})
@@ -48,7 +61,7 @@ func TestRecoveryProvider_OverflowThenSuccess(t *testing.T) {
 	)
 
 	compactCalls := 0
-	rp := governor.NewRecoveryProvider(mock, func(_ context.Context) error {
+	rp := newRecoveryProvider(t, mock, func(_ context.Context) error {
 		compactCalls++
 		return nil
 	})
@@ -72,7 +85,7 @@ func TestRecoveryProvider_DoubleOverflow(t *testing.T) {
 	)
 
 	compactCalls := 0
-	rp := governor.NewRecoveryProvider(mock, func(_ context.Context) error {
+	rp := newRecoveryProvider(t, mock, func(_ context.Context) error {
 		compactCalls++
 		return nil
 	})
@@ -94,7 +107,7 @@ func TestRecoveryProvider_CompactFailure(t *testing.T) {
 		xtesting.Step{Err: errors.New("context_length_exceeded")},
 	)
 
-	rp := governor.NewRecoveryProvider(mock, func(_ context.Context) error {
+	rp := newRecoveryProvider(t, mock, func(_ context.Context) error {
 		return errors.New("disk full")
 	})
 
@@ -113,7 +126,7 @@ func TestRecoveryProvider_NonOverflowError(t *testing.T) {
 	)
 
 	compactCalled := false
-	rp := governor.NewRecoveryProvider(mock, func(_ context.Context) error {
+	rp := newRecoveryProvider(t, mock, func(_ context.Context) error {
 		compactCalled = true
 		return nil
 	})
@@ -137,7 +150,7 @@ func TestRecoveryProvider_StreamOverflow(t *testing.T) {
 	)
 
 	compactCalls := 0
-	rp := governor.NewRecoveryProvider(mock, func(_ context.Context) error {
+	rp := newRecoveryProvider(t, mock, func(_ context.Context) error {
 		compactCalls++
 		return nil
 	})
@@ -162,7 +175,7 @@ func TestRecoveryProvider_ContextCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 
-	rp := governor.NewRecoveryProvider(mock, func(compactCtx context.Context) error {
+	rp := newRecoveryProvider(t, mock, func(compactCtx context.Context) error {
 		cancel()
 		return compactCtx.Err()
 	})
@@ -173,13 +186,10 @@ func TestRecoveryProvider_ContextCancellation(t *testing.T) {
 	}
 }
 
-func TestRecoveryProvider_NilCompactPanics(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic with nil compact func")
-		}
-	}()
-
+func TestRecoveryProvider_NilCompactReturnsError(t *testing.T) {
 	mock := xtesting.NewFauxProvider("test")
-	_ = governor.NewRecoveryProvider(mock, nil)
+	_, err := governor.NewRecoveryProvider(mock, nil)
+	if err == nil {
+		t.Fatal("expected nil compact error")
+	}
 }
