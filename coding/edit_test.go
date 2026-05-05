@@ -83,6 +83,52 @@ func TestMultiEditTool_AllOrNothing(t *testing.T) {
 	}
 }
 
+func TestMultiEditTool_AppliesSameFileEditsSequentially(t *testing.T) {
+	root := openEditRoot(t)
+	if err := root.WriteFile("a.txt", []byte("alpha beta gamma"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	tool := NewMultiEditTool(root)
+	_, err := tool.Execute(
+		context.Background(),
+		`{"edits":[{"path":"a.txt","before":"alpha","after":"A"},{"path":"a.txt","before":"beta","after":"B"}]}`,
+	)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	data, err := root.ReadFile("a.txt")
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(data) != "A B gamma" {
+		t.Fatalf("got %q", string(data))
+	}
+}
+
+func TestMultiEditTool_SameFileValidationBeforeWrite(t *testing.T) {
+	root := openEditRoot(t)
+	if err := root.WriteFile("a.txt", []byte("alpha beta"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	tool := NewMultiEditTool(root)
+	_, err := tool.Execute(
+		context.Background(),
+		`{"edits":[{"path":"a.txt","before":"alpha","after":"A"},{"path":"a.txt","before":"missing","after":"B"}]}`,
+	)
+	if err == nil {
+		t.Fatal("expected multi_edit to fail")
+	}
+	data, err := root.ReadFile("a.txt")
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(data) != "alpha beta" {
+		t.Fatalf("file changed on failed multi_edit: %q", string(data))
+	}
+}
+
 func TestMultiEditTool_ApprovalRequirementIsWrite(t *testing.T) {
 	root := openEditRoot(t)
 	req, ok, err := NewMultiEditTool(root).ApprovalRequirement(
