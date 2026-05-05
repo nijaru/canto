@@ -190,6 +190,9 @@ Recent concrete fixes from the follow-up pass:
 - Reference examples now close persistent session stores, and the autoresearch
   example checks restore/log write errors instead of silently continuing after a
   failed revert or JSONL append.
+- JSONL audit logger close is serialized with log writes and leaves the logger
+  explicitly closed, so concurrent close/log callers cannot close the file while
+  a line is being written.
 
 Latest checkpoint:
 
@@ -200,7 +203,7 @@ go test -race ./agent ./session ./runtime ./prompt ./tool ./workspace ./llm ./go
 
 Remaining reasonable audit targets:
 
-- `audit` and docs/godoc polish.
+- Docs/godoc polish.
 - Broader public API shape review after the code audit, especially whether the
   root `Harness` facade should absorb more common `Runner` use cases.
 

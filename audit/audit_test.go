@@ -1,10 +1,10 @@
 package audit
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/go-json-experiment/json"
@@ -18,7 +18,7 @@ func TestJSONLLogger_AppendsEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewJSONLLogger: %v", err)
 	}
-	if err := logger.Log(context.Background(), Event{
+	if err := logger.Log(t.Context(), Event{
 		Kind:      KindToolDenied,
 		SessionID: "sess-1",
 		Tool:      "bash",
@@ -28,7 +28,7 @@ func TestJSONLLogger_AppendsEvents(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Log #1: %v", err)
 	}
-	if err := logger.Log(context.Background(), Event{
+	if err := logger.Log(t.Context(), Event{
 		Kind:      KindSandboxEscapeAttempt,
 		SessionID: "sess-1",
 		Tool:      "bash",
@@ -60,4 +60,43 @@ func TestJSONLLogger_AppendsEvents(t *testing.T) {
 	if first.Time.IsZero() {
 		t.Fatal("expected event time to be populated")
 	}
+}
+
+func TestJSONLLogger_CloseIsIdempotentAndStopsLogging(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "security.jsonl")
+
+	logger, err := NewJSONLLogger(path)
+	if err != nil {
+		t.Fatalf("NewJSONLLogger: %v", err)
+	}
+	if err := logger.Close(); err != nil {
+		t.Fatalf("Close #1: %v", err)
+	}
+	if err := logger.Close(); err != nil {
+		t.Fatalf("Close #2: %v", err)
+	}
+
+	if err := logger.Log(t.Context(), Event{Kind: KindToolAllowed}); err == nil {
+		t.Fatal("Log after Close succeeded")
+	}
+}
+
+func TestJSONLLogger_ConcurrentLogAndClose(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "security.jsonl")
+
+	logger, err := NewJSONLLogger(path)
+	if err != nil {
+		t.Fatalf("NewJSONLLogger: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Go(func() {
+			_ = logger.Log(t.Context(), Event{Kind: KindToolAllowed})
+		})
+	}
+	wg.Go(func() {
+		_ = logger.Close()
+	})
+	wg.Wait()
 }

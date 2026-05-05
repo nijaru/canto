@@ -63,7 +63,7 @@ func NewStreamLogger(w io.Writer) *StreamLogger {
 
 // Log appends event as one JSON line.
 func (l *StreamLogger) Log(ctx context.Context, event Event) error {
-	if l == nil || l.w == nil {
+	if l == nil {
 		return errors.New("audit logger is nil")
 	}
 	if err := ctx.Err(); err != nil {
@@ -84,6 +84,9 @@ func (l *StreamLogger) Log(ctx context.Context, event Event) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	if l.w == nil {
+		return errors.New("audit logger is closed")
+	}
 	_, err = l.w.Write(append(b, '\n'))
 	return err
 }
@@ -114,10 +117,19 @@ func NewJSONLLogger(path string) (*JSONLLogger, error) {
 
 // Close closes the underlying log file.
 func (l *JSONLLogger) Close() error {
-	if l == nil || l.closer == nil {
+	if l == nil || l.StreamLogger == nil {
 		return nil
 	}
-	return l.closer.Close()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.closer == nil {
+		return nil
+	}
+	closer := l.closer
+	l.closer = nil
+	l.w = nil
+	return closer.Close()
 }
 
 func cloneMetadata(src map[string]any) map[string]any {
