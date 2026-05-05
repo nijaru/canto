@@ -6,6 +6,39 @@ import (
 	"sync"
 )
 
+// subscriber is a single fan-out recipient.
+// The mu guards ch against concurrent trySend and close calls.
+type subscriber struct {
+	mu     sync.Mutex
+	ch     chan Event
+	closed bool
+}
+
+// trySend delivers e to the subscriber without blocking.
+// Safe to call concurrently with close.
+func (sub *subscriber) trySend(e Event) {
+	sub.mu.Lock()
+	defer sub.mu.Unlock()
+	if sub.closed {
+		return
+	}
+	select {
+	case sub.ch <- e:
+	default: // slow subscriber; drop
+	}
+}
+
+// close marks the subscriber done and closes the channel.
+// Idempotent; safe to call concurrently with trySend.
+func (sub *subscriber) close() {
+	sub.mu.Lock()
+	defer sub.mu.Unlock()
+	if !sub.closed {
+		sub.closed = true
+		close(sub.ch)
+	}
+}
+
 // Subscription is a live, lossy watch over newly appended session events.
 //
 // Close is idempotent and should be called when the caller is done consuming

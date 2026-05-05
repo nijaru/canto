@@ -2,13 +2,10 @@ package session
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"iter"
 	"log/slog"
 	"sync"
-
-	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/oklog/ulid/v2"
@@ -58,72 +55,6 @@ var errInvalidMessageRole = errors.New("session append: message has invalid role
 var errUnmatchedToolMessage = errors.New(
 	"session append: tool message has no matching pending assistant tool call",
 )
-
-// subscriber is a single fan-out recipient.
-// The mu guards ch against concurrent trySend and close calls.
-type subscriber struct {
-	mu     sync.Mutex
-	ch     chan Event
-	closed bool
-}
-
-type writerChannel struct {
-	mu     sync.RWMutex
-	ch     chan<- Event
-	closed bool
-	wg     sync.WaitGroup
-}
-
-func (w *writerChannel) send(ctx context.Context, e Event) error {
-	w.mu.RLock()
-	if w.closed {
-		w.mu.RUnlock()
-		return nil
-	}
-	w.wg.Add(1)
-	ch := w.ch
-	w.mu.RUnlock()
-
-	defer w.wg.Done()
-	select {
-	case ch <- e:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func (w *writerChannel) close() {
-	w.mu.Lock()
-	w.closed = true
-	w.mu.Unlock()
-	w.wg.Wait()
-}
-
-// trySend delivers e to the subscriber without blocking.
-// Safe to call concurrently with close.
-func (sub *subscriber) trySend(e Event) {
-	sub.mu.Lock()
-	defer sub.mu.Unlock()
-	if sub.closed {
-		return
-	}
-	select {
-	case sub.ch <- e:
-	default: // slow subscriber; drop
-	}
-}
-
-// close marks the subscriber done and closes the channel.
-// Idempotent; safe to call concurrently with trySend.
-func (sub *subscriber) close() {
-	sub.mu.Lock()
-	defer sub.mu.Unlock()
-	if !sub.closed {
-		sub.closed = true
-		close(sub.ch)
-	}
-}
 
 // Writer persists events to a durable store.
 type Writer interface {
@@ -184,105 +115,6 @@ func (s *Session) WithWriter(w Writer) *Session {
 	defer s.mu.Unlock()
 	s.writer = w
 	return s
-}
-
-// Branch creates a persisted child branch from the current in-memory parent
-// session, including copied history and ancestry metadata.
-func (s *Session) Branch(
-	ctx context.Context,
-	newID string,
-	opts ForkOptions,
-) (*Session, error) {
-	s.mu.RLock()
-	writer := s.writer
-	s.mu.RUnlock()
-
-	if writer == nil {
-		return nil, errors.New("branch session: session has no durable writer")
-	}
-	store, ok := writer.(SessionBranchStore)
-	if !ok {
-		return nil, errors.New(
-			"branch session: writer does not support branching from a live session",
-		)
-	}
-	return store.BranchSession(ctx, s, newID, opts)
-}
-
-// Fork creates a new session with a new ID, copying all existing events from
-// this session. The subscribers are not copied.
-func (s *Session) Fork(newID string) *Session {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	events := make([]Event, len(s.events))
-	entropy := ulid.Monotonic(rand.Reader, 0)
-	idMap := make(map[string]string, len(s.events))
-	for i, e := range s.events {
-		if err := e.ensureMetadata(); err != nil {
-			slog.Warn("fork metadata decode failed", "event_id", e.ID, "error", err)
-		}
-		originSessionID := e.SessionID
-		originEventID := e.ID
-		e.ID = ulid.MustNew(ulid.Timestamp(e.Timestamp), entropy)
-		idMap[originEventID.String()] = e.ID.String()
-		e.SessionID = newID
-		e.Metadata = cloneMetadata(e.Metadata)
-		e.Metadata["fork_origin"] = ForkOrigin{
-			SessionID: originSessionID,
-			EventID:   originEventID.String(),
-		}.metadataValue()
-		events[i] = e
-	}
-	for i, e := range events {
-		events[i] = remapForkedEventData(e, idMap)
-	}
-
-	res := &Session{
-		id:      newID,
-		events:  events,
-		state:   make(map[string]any, len(s.state)),
-		writer:  s.writer,
-		reducer: s.reducer,
-	}
-	for k, v := range s.state {
-		res.state[k] = v
-	}
-	return res
-}
-
-func cloneMetadata(src map[string]any) map[string]any {
-	if len(src) == 0 {
-		return make(map[string]any)
-	}
-
-	dst := make(map[string]any, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
-}
-
-func remapForkedEventData(e Event, idMap map[string]string) Event {
-	snapshot, ok, err := e.ProjectionSnapshot()
-	if err == nil && ok {
-		rewritten, marshalErr := json.Marshal(remapCompactionSnapshot(snapshot, idMap))
-		if marshalErr == nil {
-			e.Data = rewritten
-		}
-		return e
-	}
-	snapshot, ok, err = e.CompactionSnapshot()
-	if err != nil || !ok {
-		return e
-	}
-
-	rewritten, marshalErr := json.Marshal(remapCompactionSnapshot(snapshot, idMap))
-	if marshalErr != nil {
-		return e
-	}
-	e.Data = rewritten
-	return e
 }
 
 // ID returns the session identifier.
