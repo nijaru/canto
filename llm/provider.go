@@ -162,16 +162,7 @@ type Capabilities struct {
 	// RoleDeveloper means the model accepts a privileged instruction channel
 	// distinct from the assistant conversation.
 	SystemRole Role
-	// ReasoningEffort indicates the model accepts a hint for reasoning depth.
-	// When true, Request.ReasoningEffort is forwarded to the provider.
-	ReasoningEffort bool
-	// Thinking indicates the model supports extended chain-of-thought reasoning
-	// with an explicit token budget. When true, Request.ThinkingBudget is
-	// forwarded to the provider.
-	Thinking bool
 	// Reasoning describes typed reasoning controls accepted by the model.
-	// ReasoningEffort and Thinking are legacy booleans kept for compatibility;
-	// provider adapters should prefer this structured metadata when present.
 	Reasoning ReasoningCapabilities
 }
 
@@ -204,19 +195,7 @@ func DefaultCapabilities() Capabilities {
 }
 
 func (c Capabilities) ReasoningCaps() ReasoningCapabilities {
-	caps := c.Reasoning
-	if caps.Kind != ReasoningKindNone {
-		return caps
-	}
-	if c.ReasoningEffort {
-		caps.Kind = ReasoningKindEffort
-		return caps
-	}
-	if c.Thinking {
-		caps.Kind = ReasoningKindBudget
-		return caps
-	}
-	return caps
+	return c.Reasoning
 }
 
 func (c Capabilities) SupportsReasoningEffort(effort string) bool {
@@ -232,9 +211,13 @@ func (c Capabilities) SupportsReasoningEffort(effort string) bool {
 		return caps.CanDisable
 	}
 	if len(caps.Efforts) == 0 {
-		return c.ReasoningEffort
+		return true
 	}
 	return slices.Contains(caps.Efforts, effort)
+}
+
+func (c Capabilities) SupportsThinking() bool {
+	return c.ReasoningCaps().Kind == ReasoningKindBudget
 }
 
 func (c Capabilities) SupportsThinkingBudget(tokens int) bool {
@@ -251,7 +234,7 @@ func (c Capabilities) SupportsThinkingBudget(tokens int) bool {
 	if caps.BudgetMaxTokens > 0 && tokens > caps.BudgetMaxTokens {
 		return false
 	}
-	return c.Thinking || caps.Kind == ReasoningKindBudget
+	return true
 }
 
 // GenerateFromStream collects chunks from a stream and assembles an Response.

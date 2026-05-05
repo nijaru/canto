@@ -129,7 +129,6 @@ func TestTransformRequestForCapabilitiesKeepsSupportedReasoningEffort(t *testing
 	}
 
 	TransformRequestForCapabilities(req, Capabilities{
-		ReasoningEffort: true,
 		Reasoning: ReasoningCapabilities{
 			Kind:       ReasoningKindEffort,
 			Efforts:    []string{"low", "medium", "high"},
@@ -149,7 +148,6 @@ func TestTransformRequestForCapabilitiesDropsUnsupportedReasoningEffortValue(t *
 	}
 
 	TransformRequestForCapabilities(req, Capabilities{
-		ReasoningEffort: true,
 		Reasoning: ReasoningCapabilities{
 			Kind:    ReasoningKindEffort,
 			Efforts: []string{"low", "medium", "high"},
@@ -168,7 +166,6 @@ func TestTransformRequestForCapabilitiesKeepsSupportedThinkingBudget(t *testing.
 	}
 
 	TransformRequestForCapabilities(req, Capabilities{
-		Thinking: true,
 		Reasoning: ReasoningCapabilities{
 			Kind:            ReasoningKindBudget,
 			BudgetMinTokens: 1024,
@@ -188,7 +185,6 @@ func TestTransformRequestForCapabilitiesDropsOutOfRangeThinkingBudget(t *testing
 	}
 
 	TransformRequestForCapabilities(req, Capabilities{
-		Thinking: true,
 		Reasoning: ReasoningCapabilities{
 			Kind:            ReasoningKindBudget,
 			BudgetMinTokens: 1024,
@@ -328,7 +324,7 @@ func TestPrepareRequestForCapabilitiesLeavesOriginalReusable(t *testing.T) {
 	anthropicReady, err := PrepareRequestForCapabilities(req, Capabilities{
 		SystemRole:  RoleSystem,
 		Temperature: true,
-		Thinking:    true,
+		Reasoning:   ReasoningCapabilities{Kind: ReasoningKindBudget},
 	})
 	if err != nil {
 		t.Fatalf("prepare anthropic: %v", err)

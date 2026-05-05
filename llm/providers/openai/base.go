@@ -257,10 +257,9 @@ func containsSubstringImpl(s, substr string) bool {
 func DefaultModelCaps() map[string]llm.Capabilities {
 	reasoning := func(systemRole llm.Role) llm.Capabilities {
 		return llm.Capabilities{
-			Streaming:       true,
-			Tools:           true,
-			SystemRole:      systemRole,
-			ReasoningEffort: true,
+			Streaming:  true,
+			Tools:      true,
+			SystemRole: systemRole,
 			Reasoning: llm.ReasoningCapabilities{
 				Kind:       llm.ReasoningKindEffort,
 				Efforts:    []string{"minimal", "low", "medium", "high"},

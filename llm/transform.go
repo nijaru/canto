@@ -29,7 +29,7 @@ func TransformRequestForCapabilities(req *Request, caps Capabilities) {
 	}
 
 	normalizeToolIDs(req.Messages)
-	if !caps.Thinking {
+	if !caps.SupportsThinking() {
 		flattenUnsupportedThinking(req.Messages)
 	}
 	synthesizeMissingToolResults(req)

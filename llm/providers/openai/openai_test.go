@@ -15,7 +15,7 @@ func TestNewProviderDefaults(t *testing.T) {
 	if got, want := p.Config.APIEndpoint, "https://api.openai.com/v1"; got != want {
 		t.Fatalf("endpoint = %q, want %q", got, want)
 	}
-	if caps := p.Capabilities("o4-mini"); !caps.ReasoningEffort {
+	if caps := p.Capabilities("o4-mini"); caps.Reasoning.Kind != llm.ReasoningKindEffort {
 		t.Fatal("expected OpenAI reasoning model capability defaults")
 	} else if !caps.SupportsReasoningEffort("high") || !caps.SupportsReasoningEffort("none") {
 		t.Fatalf("unexpected OpenAI reasoning capabilities: %#v", caps.Reasoning)
@@ -28,7 +28,7 @@ func TestCompatibleProviderDefaultsToNoReasoningCaps(t *testing.T) {
 		DefaultAPIEndpoint: "http://localhost:8080/v1",
 	})
 
-	if caps := p.Capabilities("o4-mini"); caps.ReasoningEffort ||
+	if caps := p.Capabilities("o4-mini"); caps.Reasoning.Kind != llm.ReasoningKindNone ||
 		caps.SupportsReasoningEffort("high") {
 		t.Fatalf("compatible provider caps = %#v, want no reasoning by default", caps)
 	}
