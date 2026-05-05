@@ -159,6 +159,12 @@ func TestExportRunDemotesPrivilegedTranscriptInput(t *testing.T) {
 		t.Fatalf("append system: %v", err)
 	}
 	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleDeveloper,
+		Content: "developer notice",
+	})); err != nil {
+		t.Fatalf("append developer: %v", err)
+	}
+	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
 		Role:    llm.RoleAssistant,
 		Content: "ok",
 	})); err != nil {
@@ -169,7 +175,7 @@ func TestExportRunDemotesPrivilegedTranscriptInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(traj.Turns) != 1 || len(traj.Turns[0].Input) != 1 {
+	if len(traj.Turns) != 1 || len(traj.Turns[0].Input) != 2 {
 		t.Fatalf("unexpected trajectory: %#v", traj)
 	}
 	if traj.Turns[0].Input[0].Role != llm.RoleUser {
@@ -178,8 +184,16 @@ func TestExportRunDemotesPrivilegedTranscriptInput(t *testing.T) {
 			traj.Turns[0].Input[0],
 		)
 	}
-	if traj.Turns[0].InputEntries[0].EventType != MessageAdded {
-		t.Fatalf("expected transcript marker, got %#v", traj.Turns[0].InputEntries[0])
+	if traj.Turns[0].Input[1].Role != llm.RoleUser {
+		t.Fatalf(
+			"expected exported durable developer input to be demoted, got %#v",
+			traj.Turns[0].Input[1],
+		)
+	}
+	for _, entry := range traj.Turns[0].InputEntries {
+		if entry.EventType != MessageAdded {
+			t.Fatalf("expected transcript marker, got %#v", entry)
+		}
 	}
 }
 
