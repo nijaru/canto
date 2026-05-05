@@ -139,3 +139,67 @@ func TestFuncHook_Block(t *testing.T) {
 		t.Fatal("expected block error")
 	}
 }
+
+func TestFuncHookNilFunctionBlocks(t *testing.T) {
+	runner := NewRunner()
+	runner.Register(FromFunc("nil-func", []Event{EventSessionStart}, nil))
+
+	results, err := runner.Run(context.Background(), EventSessionStart, SessionMeta{ID: "s"}, nil)
+	if err == nil {
+		t.Fatal("expected nil func hook to block")
+	}
+	if len(results) != 1 || results[0].Action != ActionBlock {
+		t.Fatalf("unexpected results: %#v", results)
+	}
+}
+
+func TestRunnerConvertsPanicToBlock(t *testing.T) {
+	runner := NewRunner()
+	runner.Register(FromFunc(
+		"panic-hook",
+		[]Event{EventSessionStart},
+		func(_ context.Context, _ *Payload) *Result {
+			panic("boom")
+		},
+	))
+
+	results, err := runner.Run(context.Background(), EventSessionStart, SessionMeta{ID: "s"}, nil)
+	if err == nil {
+		t.Fatal("expected panic hook to block")
+	}
+	if len(results) != 1 || results[0].Action != ActionBlock {
+		t.Fatalf("unexpected results: %#v", results)
+	}
+}
+
+func TestRunnerConvertsNilResultToBlock(t *testing.T) {
+	runner := NewRunner()
+	runner.Register(FromFunc(
+		"nil-result",
+		[]Event{EventSessionStart},
+		func(_ context.Context, _ *Payload) *Result {
+			return nil
+		},
+	))
+
+	results, err := runner.Run(context.Background(), EventSessionStart, SessionMeta{ID: "s"}, nil)
+	if err == nil {
+		t.Fatal("expected nil result hook to block")
+	}
+	if len(results) != 1 || results[0].Action != ActionBlock {
+		t.Fatalf("unexpected results: %#v", results)
+	}
+}
+
+func TestRunnerIgnoresNilHandler(t *testing.T) {
+	runner := NewRunner()
+	runner.Register(nil)
+
+	results, err := runner.Run(context.Background(), EventSessionStart, SessionMeta{ID: "s"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("unexpected results: %#v", results)
+	}
+}
