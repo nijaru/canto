@@ -20,9 +20,9 @@ const taskRefAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 
 // taskRecord mirrors the .tasks/*.json storage format used by the tk CLI.
 // Only fields needed for agent operations are handled; unknown fields are
-// preserved via json.RawMessage round-tripping (the full object is re-encoded
-// after mutations).
+// preserved via raw field round-tripping after mutations.
 type taskRecord struct {
+	raw         map[string]jsontext.Value
 	Project     string         `json:"project"`
 	Ref         string         `json:"ref"`
 	Title       string         `json:"title"`
@@ -244,26 +244,6 @@ func (t *TaskTool) findTask(ref string) (string, *taskRecord, error) {
 		return "", nil, fmt.Errorf("task %q not found: %w", ref, err)
 	}
 	return filename, rec, nil
-}
-
-func (t *TaskTool) readTask(filename string) (*taskRecord, error) {
-	b, err := t.root.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-	var rec taskRecord
-	if err := json.Unmarshal(b, &rec); err != nil {
-		return nil, err
-	}
-	return &rec, nil
-}
-
-func (t *TaskTool) writeTask(filename string, rec *taskRecord) error {
-	b, err := json.Marshal(rec, jsontext.WithIndent("  "))
-	if err != nil {
-		return err
-	}
-	return t.root.WriteFile(filename, append(b, '\n'), 0o644)
 }
 
 func randomRef(n int) (string, error) {
