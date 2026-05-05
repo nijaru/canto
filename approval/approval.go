@@ -3,55 +3,12 @@ package approval
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/nijaru/canto/audit"
 	"github.com/nijaru/canto/session"
 	"github.com/oklog/ulid/v2"
 )
-
-type Decision string
-
-const (
-	DecisionAllow Decision = "allow"
-	DecisionDeny  Decision = "deny"
-)
-
-var (
-	ErrRequestNotFound = errors.New("approval request not found")
-	ErrRequestResolved = errors.New("approval request already resolved")
-	ErrInvalidDecision = errors.New("invalid approval decision")
-)
-
-type Requirement struct {
-	Category  string
-	Operation string
-	Resource  string
-	Metadata  map[string]any
-}
-
-type Request struct {
-	ID        string
-	SessionID string
-	Tool      string
-	Args      string
-	Category  string
-	Operation string
-	Resource  string
-	Metadata  map[string]any
-}
-
-type Result struct {
-	RequestID string
-	Decision  Decision
-	Reason    string
-	Automated bool // true if decided by policy, false if resolved via Resolve (HITL)
-}
-
-type Policy interface {
-	Decide(ctx context.Context, sess *session.Session, req Request) (Result, bool, error)
-}
 
 // Gate coordinates tool approval requests across automated policies and
 // human-in-the-loop (HITL) resolution. It includes a circuit breaker that
@@ -295,64 +252,4 @@ func (m *Gate) appendResolved(ctx context.Context, sess *session.Session, result
 		"decision": result.Decision,
 		"reason":   result.Reason,
 	}))
-}
-
-func (m *Gate) logAudit(ctx context.Context, event audit.Event) {
-	if m == nil {
-		return
-	}
-	m.mu.Lock()
-	logger := m.audit
-	m.mu.Unlock()
-	if logger == nil {
-		return
-	}
-	_ = logger.Log(ctx, event)
-}
-
-func auditEventForApprovalResolution(
-	sessionID, toolName string,
-	requirement Requirement,
-	result Result,
-) audit.Event {
-	kind := audit.KindToolAllowed
-	if result.Decision == DecisionDeny {
-		kind = audit.KindToolDenied
-	}
-	return audit.Event{
-		Kind:      kind,
-		SessionID: sessionID,
-		Tool:      toolName,
-		Category:  requirement.Category,
-		Operation: requirement.Operation,
-		Resource:  requirement.Resource,
-		Decision:  string(result.Decision),
-		Reason:    result.Reason,
-		Metadata:  cloneMetadata(requirement.Metadata),
-	}
-}
-
-func cloneMetadata(src map[string]any) map[string]any {
-	if len(src) == 0 {
-		return nil
-	}
-	dst := make(map[string]any, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
-}
-
-func (r Result) Allowed() bool {
-	return r.Decision == DecisionAllow
-}
-
-func (r Result) Error() error {
-	if r.Decision == DecisionDeny {
-		if r.Reason == "" {
-			return fmt.Errorf("approval denied")
-		}
-		return fmt.Errorf("approval denied: %s", r.Reason)
-	}
-	return nil
 }
