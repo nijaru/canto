@@ -1,9 +1,15 @@
 #!/bin/sh
 set -eu
 
-make fmt
+files="$(git diff --name-only --cached -- '*.go' | while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done)"
+if [ -z "$files" ]; then
+	exit 0
+fi
 
-changed_files="$(git diff --name-only -- '*.go')"
+goimports -w $files
+golines --base-formatter gofumpt -w $files
+
+changed_files="$(git diff --name-only -- $files)"
 if [ -n "$changed_files" ]; then
 	echo "pre-commit: formatting changed these Go files:"
 	printf '%s\n' "$changed_files"
