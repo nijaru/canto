@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -219,6 +220,32 @@ func appendAssistantToolCalls(t *testing.T, s *session.Session, calls []llm.Call
 		Calls: calls,
 	})); err != nil {
 		t.Fatalf("append assistant tool calls: %v", err)
+	}
+}
+
+func assertNoToolResultMessage(t *testing.T, events []session.Event, content string) {
+	t.Helper()
+	for _, ev := range events {
+		if ev.Type != session.MessageAdded {
+			continue
+		}
+		var msg llm.Message
+		if err := ev.UnmarshalData(&msg); err != nil {
+			t.Fatalf("decode message: %v", err)
+		}
+		if msg.Role == llm.RoleTool && strings.Contains(msg.Content, content) {
+			t.Fatalf("unexpected tool result message: %#v", msg)
+		}
+	}
+}
+
+func assertNoToolLifecycleEvent(t *testing.T, events []session.Event) {
+	t.Helper()
+	for _, ev := range events {
+		switch ev.Type {
+		case session.ToolStarted, session.ToolCompleted:
+			t.Fatalf("unexpected tool lifecycle event: %#v", ev)
+		}
 	}
 }
 
@@ -1372,6 +1399,56 @@ func TestRunTools_PreflightCompletesBeforeParallelExecution(t *testing.T) {
 	}
 }
 
+func TestRunTools_PreToolHookContextCancelAbortsWithoutToolResult(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&simpleTool{name: "needs_approval", output: "should-not-run"})
+
+	hooks := hook.NewRunner()
+	hooks.Register(hook.FromFunc(
+		"canceling-hook",
+		[]hook.Event{hook.EventPreToolUse},
+		func(ctx context.Context, _ *hook.Payload) *hook.Result {
+			<-ctx.Done()
+			return &hook.Result{
+				Action: hook.ActionBlock,
+				Error:  ctx.Err(),
+			}
+		},
+	))
+
+	writer := &rejectCanceledWriter{}
+	s := session.New("s-pretool-cancel").WithWriter(writer)
+	calls := []llm.Call{{
+		ID:   "c1",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "needs_approval", Arguments: `{}`},
+	}}
+	appendAssistantToolCalls(t, s, calls)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := runTools(ctx, s, calls, reg, hooks, nil, nil, 10, "step-1")
+		done <- err
+	}()
+
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("runTools error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for canceled hook")
+	}
+
+	assertNoToolResultMessage(t, writer.events, context.Canceled.Error())
+	assertNoToolLifecycleEvent(t, writer.events)
+}
+
 func TestRunTools_ParallelResultsEmitInSourceOrder(t *testing.T) {
 	releaseA := make(chan struct{})
 	toolA := &orderedTool{
@@ -2352,4 +2429,51 @@ func TestRunTools_ApprovalDeny(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for denied tool")
 	}
+}
+
+func TestRunTools_ApprovalContextCancelAbortsWithoutToolResult(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&gatedTool{simpleTool{name: "gated", output: "ok"}})
+	manager := approval.NewGate(nil)
+	writer := &rejectCanceledWriter{}
+	s := session.New("s-approval-cancel").WithWriter(writer)
+	calls := []llm.Call{{
+		ID:   "c1",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "gated", Arguments: `{}`},
+	}}
+	appendAssistantToolCalls(t, s, calls)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := runTools(ctx, s, calls, reg, nil, manager, nil, 10, "step-1")
+		done <- err
+	}()
+
+	for range 100 {
+		if len(manager.Pending()) == 1 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if pending := manager.Pending(); len(pending) != 1 {
+		t.Fatalf("expected 1 pending approval, got %d", len(pending))
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("runTools error = %v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for canceled approval")
+	}
+
+	assertNoToolResultMessage(t, writer.events, context.Canceled.Error())
+	assertNoToolLifecycleEvent(t, writer.events)
 }

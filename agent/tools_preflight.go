@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/nijaru/canto/approval"
@@ -47,6 +48,10 @@ func preflightTools(
 			applyPreToolHookData(&call, hookResults)
 			results[i].call = call
 			if err != nil {
+				if isPreflightAbort(err) {
+					results[i].err = err
+					continue
+				}
 				results[i].output = hookOutput + fmt.Sprintf("Error: %v", err)
 				results[i].skipExecute = true
 				continue
@@ -103,6 +108,10 @@ func preflightTools(
 						req,
 					)
 					if err != nil {
+						if isPreflightAbort(err) {
+							results[i].err = err
+							continue
+						}
 						results[i].output = hookOutput + fmt.Sprintf("Error: %v", err)
 						results[i].skipExecute = true
 						continue
@@ -134,4 +143,8 @@ func preflightTools(
 	}
 
 	return results
+}
+
+func isPreflightAbort(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
