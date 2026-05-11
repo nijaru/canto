@@ -72,6 +72,15 @@ func (r *Runner) Watch(ctx context.Context, sessionID string) (*session.Subscrip
 	return sess.Watch(ctx), nil
 }
 
+// Events returns a snapshot of the durable event log for sessionID.
+func (r *Runner) Events(ctx context.Context, sessionID string) ([]session.Event, error) {
+	sess, err := r.getOrLoad(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return sess.Events(), nil
+}
+
 // Search searches the session history for the given query.
 func (r *Runner) Search(ctx context.Context, sessionID, query string) ([]session.Event, error) {
 	searchStore, ok := r.store.(session.SearchStore)

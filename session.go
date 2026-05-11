@@ -61,6 +61,15 @@ func (s *Session) PromptStream(
 		return nil, fmt.Errorf("canto harness: nil runner")
 	}
 
+	baseline, err := s.harness.Runner.Events(ctx, s.id)
+	if err != nil {
+		return nil, err
+	}
+	known := make(map[string]struct{}, len(baseline))
+	for _, event := range baseline {
+		known[event.ID.String()] = struct{}{}
+	}
+
 	sub, err := s.Events(ctx)
 	if err != nil {
 		return nil, err
@@ -73,11 +82,26 @@ func (s *Session) PromptStream(
 
 		var wg sync.WaitGroup
 		done := make(chan struct{})
+		var emittedMu sync.Mutex
+		emitted := make(map[string]struct{})
 		emit := func(event RunEvent) bool {
 			select {
 			case out <- event:
 				return true
 			case <-ctx.Done():
+				return false
+			}
+		}
+		emitSession := func(event session.Event) bool {
+			select {
+			case out <- RunEvent{Type: RunEventSession, Event: event}:
+				emittedMu.Lock()
+				emitted[event.ID.String()] = struct{}{}
+				emittedMu.Unlock()
+				return true
+			case <-ctx.Done():
+				return false
+			case <-done:
 				return false
 			}
 		}
@@ -89,7 +113,7 @@ func (s *Session) PromptStream(
 					if !ok {
 						return
 					}
-					if !emit(RunEvent{Type: RunEventSession, Event: event}) {
+					if !emitSession(event) {
 						return
 					}
 				case <-done:
@@ -106,6 +130,30 @@ func (s *Session) PromptStream(
 		close(done)
 		sub.Close()
 		wg.Wait()
+
+		events, snapshotErr := s.harness.Runner.Events(context.WithoutCancel(ctx), s.id)
+		if snapshotErr != nil {
+			if err == nil {
+				emit(RunEvent{Type: RunEventError, Err: snapshotErr})
+				return
+			}
+		} else {
+			for _, event := range events {
+				eventID := event.ID.String()
+				if _, ok := known[eventID]; ok {
+					continue
+				}
+				emittedMu.Lock()
+				_, ok := emitted[eventID]
+				emittedMu.Unlock()
+				if ok {
+					continue
+				}
+				if !emit(RunEvent{Type: RunEventSession, Event: event}) {
+					return
+				}
+			}
+		}
 
 		if err != nil {
 			emit(RunEvent{Type: RunEventError, Err: err})
