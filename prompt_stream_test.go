@@ -100,6 +100,164 @@ func TestPromptStreamReplaysSessionEventsDroppedByLiveWatch(t *testing.T) {
 	}
 }
 
+type gatedBurstEventAgent struct {
+	firstBurst int
+	tail       int
+	burstDone  chan struct{}
+	continueCh chan struct{}
+}
+
+func (a gatedBurstEventAgent) ID() string {
+	return "gated-burst"
+}
+
+func (a gatedBurstEventAgent) Step(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a gatedBurstEventAgent) Turn(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	if err := sess.Append(ctx, session.NewTurnStartedEvent(sess.ID(), session.TurnStartedData{
+		AgentID: a.ID(),
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	for i := range a.firstBurst {
+		if err := appendIndexedHandoff(ctx, sess, i); err != nil {
+			return agent.StepResult{}, err
+		}
+	}
+	close(a.burstDone)
+	select {
+	case <-a.continueCh:
+	case <-ctx.Done():
+		return agent.StepResult{}, ctx.Err()
+	}
+	for i := a.firstBurst; i < a.firstBurst+a.tail; i++ {
+		if err := appendIndexedHandoff(ctx, sess, i); err != nil {
+			return agent.StepResult{}, err
+		}
+	}
+	if err := sess.Append(ctx, session.NewTurnCompletedEvent(sess.ID(), session.TurnCompletedData{
+		AgentID: a.ID(),
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{Content: "done"}, nil
+}
+
+func TestPromptStreamPreservesEventOrderWhenLiveWatchDropsMiddle(t *testing.T) {
+	const (
+		firstBurst           = 96
+		tail                 = 10
+		bufferedLivePrefix   = 66
+		expectedHandoffCount = firstBurst + tail
+	)
+
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	a := gatedBurstEventAgent{
+		firstBurst: firstBurst,
+		tail:       tail,
+		burstDone:  make(chan struct{}),
+		continueCh: make(chan struct{}),
+	}
+	harness := &Harness{
+		Agent:     a,
+		Runner:    runtime.NewRunner(store, a),
+		Store:     store,
+		ownsStore: true,
+	}
+	defer harness.Close()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+
+	events, err := harness.Session("ordered-session").PromptStream(ctx, "go")
+	if err != nil {
+		t.Fatalf("PromptStream: %v", err)
+	}
+
+	var indexes []int
+	readHandoff := func() {
+		t.Helper()
+		for {
+			select {
+			case event, ok := <-events:
+				if !ok {
+					t.Fatal("stream closed before expected handoff event")
+				}
+				switch event.Type {
+				case RunEventSession:
+					index, ok := handoffIndex(t, event.Event)
+					if ok {
+						indexes = append(indexes, index)
+						return
+					}
+				case RunEventError:
+					t.Fatalf("stream error: %v", event.Err)
+				}
+			case <-ctx.Done():
+				t.Fatalf("timed out waiting for handoff event: %v", ctx.Err())
+			}
+		}
+	}
+
+	readHandoff()
+	if indexes[0] != 0 {
+		t.Fatalf("first handoff index = %d, want 0", indexes[0])
+	}
+	select {
+	case <-a.burstDone:
+	case <-ctx.Done():
+		t.Fatalf("timed out waiting for burst: %v", ctx.Err())
+	}
+	for len(indexes) < bufferedLivePrefix {
+		readHandoff()
+	}
+	close(a.continueCh)
+
+	var gotResult bool
+	for event := range events {
+		switch event.Type {
+		case RunEventSession:
+			index, ok := handoffIndex(t, event.Event)
+			if ok {
+				indexes = append(indexes, index)
+			}
+		case RunEventResult:
+			gotResult = true
+		case RunEventError:
+			t.Fatalf("stream error: %v", event.Err)
+		}
+	}
+
+	if !gotResult {
+		t.Fatal("missing terminal result")
+	}
+	if len(indexes) != expectedHandoffCount {
+		t.Fatalf("handoff events = %d, want %d: %v", len(indexes), expectedHandoffCount, indexes)
+	}
+	for i, got := range indexes {
+		if got != i {
+			t.Fatalf(
+				"handoff index at stream position %d = %d, want %d; order=%v",
+				i,
+				got,
+				i,
+				indexes,
+			)
+		}
+	}
+}
+
 func waitForDurableBurstEvents(
 	t *testing.T,
 	store *session.SQLiteStore,
@@ -133,4 +291,24 @@ func waitForDurableBurstEvents(
 		case <-tick.C:
 		}
 	}
+}
+
+func appendIndexedHandoff(ctx context.Context, sess *session.Session, index int) error {
+	return sess.Append(ctx, session.NewEvent(sess.ID(), session.Handoff, map[string]int{
+		"index": index,
+	}))
+}
+
+func handoffIndex(t *testing.T, event session.Event) (int, bool) {
+	t.Helper()
+	if event.Type != session.Handoff {
+		return 0, false
+	}
+	var data struct {
+		Index int `json:"index"`
+	}
+	if err := event.UnmarshalData(&data); err != nil {
+		t.Fatalf("decode handoff event: %v", err)
+	}
+	return data.Index, true
 }
