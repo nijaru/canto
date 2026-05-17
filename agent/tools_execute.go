@@ -147,14 +147,16 @@ func executeTool(
 				break
 			}
 			output.WriteString(delta)
-			_ = s.Append(
+			if err := s.Append(
 				ctx,
 				session.NewEvent(s.ID(), session.ToolOutputDelta, map[string]any{
 					"tool":  call.Function.Name,
 					"id":    call.ID,
 					"delta": delta,
 				}),
-			)
+			); err != nil {
+				return toolResult{call: call, output: output.String(), err: err}
+			}
 		}
 	} else {
 		var execOutput string

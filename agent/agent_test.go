@@ -108,6 +108,20 @@ func (w *rejectCanceledWriter) Save(ctx context.Context, e session.Event) error 
 	return nil
 }
 
+type eventTypeFailingWriter struct {
+	failType session.EventType
+	err      error
+	events   []session.Event
+}
+
+func (w *eventTypeFailingWriter) Save(_ context.Context, e session.Event) error {
+	if e.Type == w.failType {
+		return w.err
+	}
+	w.events = append(w.events, e)
+	return nil
+}
+
 type recordingProvider struct {
 	mockProvider
 	lastMessages []llm.Message
@@ -1257,6 +1271,60 @@ func TestRunTools_StreamingToolRecordsDeltasAndFinalOutput(t *testing.T) {
 		completed.Output != "alphabetagamma" ||
 		completed.Error != "" {
 		t.Fatalf("unexpected completed tool event: %#v", completed)
+	}
+}
+
+func TestRunTools_StreamingToolDeltaAppendErrorFailsTurn(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&streamingTool{
+		name:   "stream",
+		chunks: []string{"alpha", "beta"},
+	})
+
+	writerErr := errors.New("persist delta")
+	writer := &eventTypeFailingWriter{
+		failType: session.ToolOutputDelta,
+		err:      writerErr,
+	}
+	s := session.New("s-streaming-tool-delta-error").WithWriter(writer)
+	call := llm.Call{
+		ID:   "c1",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "stream", Arguments: `{}`},
+	}
+	appendAssistantToolCalls(t, s, []llm.Call{call})
+
+	_, err := runTools(
+		t.Context(),
+		s,
+		[]llm.Call{call},
+		reg,
+		nil,
+		nil,
+		nil,
+		10,
+		"step-1",
+	)
+	if !errors.Is(err, writerErr) {
+		t.Fatalf("runTools error = %v, want %v", err, writerErr)
+	}
+
+	for _, ev := range s.Events() {
+		switch ev.Type {
+		case session.ToolOutputDelta, session.ToolCompleted:
+			t.Fatalf("unexpected event after delta append failure: %#v", ev)
+		case session.MessageAdded:
+			var msg llm.Message
+			if err := ev.UnmarshalData(&msg); err != nil {
+				t.Fatalf("decode message: %v", err)
+			}
+			if msg.Role == llm.RoleTool {
+				t.Fatalf("unexpected tool result message after delta append failure: %#v", msg)
+			}
+		}
 	}
 }
 
