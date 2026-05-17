@@ -84,6 +84,46 @@ func TestRetryProvider_NormalizesZeroAttempts(t *testing.T) {
 	}
 }
 
+func TestRetryProvider_ExhaustionIsTerminalToOuterRetry(t *testing.T) {
+	transient := errors.New("transient")
+	inner := &retryProviderStub{
+		generateFn: func(context.Context, *Request) (*Response, error) {
+			return nil, transient
+		},
+		isTransientFn: func(err error) bool { return errors.Is(err, transient) },
+	}
+	rp := &RetryProvider{
+		Provider: inner,
+		Config: RetryConfig{
+			MaxAttempts: 2,
+			MinInterval: 1 * time.Millisecond,
+			MaxInterval: 1 * time.Millisecond,
+			Multiplier:  2,
+		},
+	}
+
+	resp, err := rp.Generate(t.Context(), &Request{})
+	if resp != nil {
+		t.Fatalf("expected nil response, got %#v", resp)
+	}
+	if !errors.Is(err, transient) {
+		t.Fatalf("expected exhausted error to wrap transient cause, got %v", err)
+	}
+	var exhausted *RetryExhaustedError
+	if !errors.As(err, &exhausted) {
+		t.Fatalf("expected RetryExhaustedError, got %T %v", err, err)
+	}
+	if exhausted.Attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", exhausted.Attempts)
+	}
+	if rp.IsTransient(err) {
+		t.Fatal("exhausted retry error should be terminal to outer retry layers")
+	}
+	if !rp.IsTransient(transient) {
+		t.Fatal("raw transient error should still be classified as transient")
+	}
+}
+
 func TestRetryProvider_CancelsDuringBackoff(t *testing.T) {
 	inner := &retryProviderStub{
 		generateFn: func(context.Context, *Request) (*Response, error) {

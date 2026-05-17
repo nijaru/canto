@@ -27,7 +27,8 @@ func IsRateLimit(err error) bool {
 	type statusCoder interface {
 		StatusCode() int
 	}
-	if sc, ok := err.(statusCoder); ok && sc.StatusCode() == http.StatusTooManyRequests {
+	var sc statusCoder
+	if errors.As(err, &sc) && sc.StatusCode() == http.StatusTooManyRequests {
 		return true
 	}
 

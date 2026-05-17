@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -31,6 +32,27 @@ type RetryEvent struct {
 	Attempt int
 	Delay   time.Duration
 	Err     error
+}
+
+// RetryExhaustedError marks a transient provider error as terminal after the
+// configured retry policy has already handled it.
+type RetryExhaustedError struct {
+	Attempts int
+	Err      error
+}
+
+func (e *RetryExhaustedError) Error() string {
+	if e == nil || e.Err == nil {
+		return "provider retry failed"
+	}
+	return e.Err.Error()
+}
+
+func (e *RetryExhaustedError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
 }
 
 // RetryProvider wraps an LLM provider and automatically retries transient
@@ -88,6 +110,13 @@ func notifyRetry(cfg RetryConfig, event RetryEvent) {
 	}
 }
 
+func retryExhausted(attempts int, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &RetryExhaustedError{Attempts: attempts, Err: err}
+}
+
 func waitForRetry(ctx context.Context, delay time.Duration) error {
 	if delay <= 0 {
 		select {
@@ -126,8 +155,11 @@ func (r *RetryProvider) Generate(ctx context.Context, req *Request) (*Response, 
 			return resp, nil
 		}
 
-		if !r.Provider.IsTransient(err) || retryLimitReached(cfg, i+1, err) {
+		if !r.Provider.IsTransient(err) {
 			return nil, err
+		}
+		if retryLimitReached(cfg, i+1, err) {
+			return nil, retryExhausted(i+1, err)
 		}
 
 		notifyRetry(cfg, RetryEvent{Attempt: i + 1, Delay: interval, Err: err})
@@ -151,8 +183,11 @@ func (r *RetryProvider) Stream(ctx context.Context, req *Request) (Stream, error
 			return s, nil
 		}
 
-		if !r.Provider.IsTransient(err) || retryLimitReached(cfg, i+1, err) {
+		if !r.Provider.IsTransient(err) {
 			return nil, err
+		}
+		if retryLimitReached(cfg, i+1, err) {
+			return nil, retryExhausted(i+1, err)
 		}
 
 		notifyRetry(cfg, RetryEvent{Attempt: i + 1, Delay: interval, Err: err})
@@ -164,4 +199,12 @@ func (r *RetryProvider) Stream(ctx context.Context, req *Request) (Stream, error
 			interval = cfg.MaxInterval
 		}
 	}
+}
+
+func (r *RetryProvider) IsTransient(err error) bool {
+	var exhausted *RetryExhaustedError
+	if errors.As(err, &exhausted) {
+		return false
+	}
+	return r.Provider.IsTransient(err)
 }

@@ -324,6 +324,11 @@ func TestIsRateLimit(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "retry exhausted preserves wrapped rate limit",
+			err:  &RetryExhaustedError{Attempts: 2, Err: statusErr(429)},
+			want: true,
+		},
+		{
 			name: "nil error",
 			err:  nil,
 			want: false,
