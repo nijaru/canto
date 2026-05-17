@@ -328,6 +328,124 @@ func TestRebuilderRecoversMissingToolMessageFromCompletedLifecycle(t *testing.T)
 	}
 }
 
+func TestRebuilderScopesToolHistoryToMatchingOccurrence(t *testing.T) {
+	firstCall := llm.Call{ID: "call-1", Type: "function"}
+	firstCall.Function.Name = "read"
+	firstCall.Function.Arguments = `{"file_path":"first.md"}`
+	secondCall := llm.Call{ID: "call-1", Type: "function"}
+	secondCall.Function.Name = "read"
+	secondCall.Function.Arguments = `{"file_path":"second.md"}`
+
+	sess := New("tool-history-reused-id")
+	for _, event := range []Event{
+		NewMessage(sess.ID(), llm.Message{Role: llm.RoleAssistant, Calls: []llm.Call{firstCall}}),
+		NewToolStartedEvent(sess.ID(), ToolStartedData{
+			Tool:           "read",
+			Arguments:      `{"file_path":"first.md"}`,
+			ID:             "call-1",
+			IdempotencyKey: "turn-1:call-1",
+		}),
+		NewMessage(sess.ID(), llm.Message{
+			Role:    llm.RoleTool,
+			ToolID:  "call-1",
+			Name:    "read",
+			Content: "first contents",
+		}),
+		NewToolCompletedEvent(sess.ID(), ToolCompletedData{
+			Tool:           "read",
+			ID:             "call-1",
+			IdempotencyKey: "turn-1:call-1",
+			Output:         "first contents",
+		}),
+		NewMessage(sess.ID(), llm.Message{Role: llm.RoleUser, Content: "next turn"}),
+		NewMessage(sess.ID(), llm.Message{Role: llm.RoleAssistant, Calls: []llm.Call{secondCall}}),
+		NewToolStartedEvent(sess.ID(), ToolStartedData{
+			Tool:           "read",
+			Arguments:      `{"file_path":"second.md"}`,
+			ID:             "call-1",
+			IdempotencyKey: "turn-2:call-1",
+		}),
+		NewMessage(sess.ID(), llm.Message{
+			Role:    llm.RoleTool,
+			ToolID:  "call-1",
+			Name:    "read",
+			Content: "second contents",
+		}),
+		NewToolCompletedEvent(sess.ID(), ToolCompletedData{
+			Tool:           "read",
+			ID:             "call-1",
+			IdempotencyKey: "turn-2:call-1",
+			Output:         "second contents",
+		}),
+	} {
+		if err := sess.Append(t.Context(), event); err != nil {
+			t.Fatalf("append %s: %v", event.Type, err)
+		}
+	}
+
+	entries, err := sess.EffectiveEntries()
+	if err != nil {
+		t.Fatalf("EffectiveEntries: %v", err)
+	}
+	if len(entries) != 5 {
+		t.Fatalf("entries len = %d, want 5: %#v", len(entries), entries)
+	}
+	if tool := entries[1].Tool; tool == nil ||
+		tool.Arguments != `{"file_path":"first.md"}` ||
+		tool.IdempotencyKey != "turn-1:call-1" {
+		t.Fatalf("first tool metadata = %#v", tool)
+	}
+	if tool := entries[4].Tool; tool == nil ||
+		tool.Arguments != `{"file_path":"second.md"}` ||
+		tool.IdempotencyKey != "turn-2:call-1" {
+		t.Fatalf("second tool metadata = %#v", tool)
+	}
+}
+
+func TestRebuilderDoesNotRecoverToolLifecycleAcrossTurnBoundary(t *testing.T) {
+	firstCall := llm.Call{ID: "call-1", Type: "function"}
+	firstCall.Function.Name = "read"
+	secondCall := llm.Call{ID: "call-1", Type: "function"}
+	secondCall.Function.Name = "read"
+
+	sess := New("tool-recovery-reused-id")
+	for _, event := range []Event{
+		NewMessage(sess.ID(), llm.Message{Role: llm.RoleAssistant, Calls: []llm.Call{firstCall}}),
+		NewMessage(sess.ID(), llm.Message{Role: llm.RoleUser, Content: "next turn"}),
+		NewMessage(sess.ID(), llm.Message{Role: llm.RoleAssistant, Calls: []llm.Call{secondCall}}),
+		NewToolStartedEvent(sess.ID(), ToolStartedData{
+			Tool:           "read",
+			Arguments:      `{"file_path":"second.md"}`,
+			ID:             "call-1",
+			IdempotencyKey: "turn-2:call-1",
+		}),
+		NewToolCompletedEvent(sess.ID(), ToolCompletedData{
+			Tool:           "read",
+			ID:             "call-1",
+			IdempotencyKey: "turn-2:call-1",
+			Output:         "second contents",
+		}),
+	} {
+		if err := sess.Append(t.Context(), event); err != nil {
+			t.Fatalf("append %s: %v", event.Type, err)
+		}
+	}
+
+	messages, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	if len(messages) != 3 {
+		t.Fatalf("expected first dangling assistant omitted, got %#v", messages)
+	}
+	if messages[0].Role != llm.RoleUser ||
+		messages[1].Role != llm.RoleAssistant ||
+		messages[2].Role != llm.RoleTool ||
+		messages[2].Content != "second contents" {
+		t.Fatalf("unexpected effective history: %#v", messages)
+	}
+}
+
 func TestRebuilderDropsDanglingAssistantToolCalls(t *testing.T) {
 	call := llm.Call{ID: "call-missing", Type: "function"}
 	call.Function.Name = "read"

@@ -8,15 +8,31 @@ import (
 )
 
 type toolLifecycle struct {
-	started      ToolStartedData
-	completed    ToolCompletedData
-	completedID  string
-	hasStarted   bool
-	hasCompleted bool
+	started       ToolStartedData
+	completed     ToolCompletedData
+	completedID   string
+	id            string
+	startIndex    int
+	completeIndex int
+	hasStarted    bool
+	hasCompleted  bool
+}
+
+type toolLifecycleIndex struct {
+	records      []toolLifecycle
+	eventIndexes map[string]int
+	eventsLen    int
+}
+
+type toolLifecycleMatcher struct {
+	index          *toolLifecycleIndex
+	assistantIndex int
+	boundaryIndex  int
+	used           map[int]struct{}
 }
 
 func recoverCompletedToolResults(entries []HistoryEntry, events []Event) ([]HistoryEntry, error) {
-	lifecycle, err := toolLifecycleByID(events)
+	lifecycle, err := newToolLifecycleIndex(events)
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +62,7 @@ func recoverCompletedToolResults(entries []HistoryEntry, events []Event) ([]Hist
 		}
 
 		assistant := entry
+		matcher := lifecycle.matcher(entry, entries, j)
 		keptCalls := make([]llm.Call, 0, len(msg.Calls))
 		toolEntries := make([]HistoryEntry, 0, len(msg.Calls))
 		for _, call := range msg.Calls {
@@ -57,10 +74,11 @@ func recoverCompletedToolResults(entries []HistoryEntry, events []Event) ([]Hist
 				toolEntries = append(toolEntries, queue[0])
 				existing[call.ID] = queue[1:]
 				keptCalls = append(keptCalls, call)
+				matcher.consume(call.ID, false)
 				continue
 			}
-			record, ok := lifecycle[call.ID]
-			if !ok || !record.hasCompleted {
+			record, ok := matcher.consume(call.ID, true)
+			if !ok {
 				continue
 			}
 			toolEntries = append(toolEntries, toolEntryFromLifecycle(call, record))
@@ -106,10 +124,14 @@ func toolEntryFromLifecycle(call llm.Call, record toolLifecycle) HistoryEntry {
 	}
 }
 
-func toolLifecycleByID(events []Event) (map[string]toolLifecycle, error) {
-	lifecycle := make(map[string]toolLifecycle)
+func newToolLifecycleIndex(events []Event) (*toolLifecycleIndex, error) {
+	index := &toolLifecycleIndex{
+		eventIndexes: make(map[string]int, len(events)),
+		eventsLen:    len(events),
+	}
 	for i := range events {
 		e := &events[i]
+		index.eventIndexes[e.ID.String()] = i
 		switch e.Type {
 		case ToolStarted:
 			data, ok, err := e.ToolStartedData()
@@ -119,10 +141,12 @@ func toolLifecycleByID(events []Event) (map[string]toolLifecycle, error) {
 			if !ok || data.ID == "" {
 				continue
 			}
-			record := lifecycle[data.ID]
-			record.started = data
-			record.hasStarted = true
-			lifecycle[data.ID] = record
+			index.records = append(index.records, toolLifecycle{
+				id:         data.ID,
+				started:    data,
+				startIndex: i,
+				hasStarted: true,
+			})
 		case ToolCompleted:
 			data, ok, err := e.ToolCompletedData()
 			if err != nil {
@@ -131,35 +155,156 @@ func toolLifecycleByID(events []Event) (map[string]toolLifecycle, error) {
 			if !ok || data.ID == "" {
 				continue
 			}
-			record := lifecycle[data.ID]
+			recordIndex := index.latestOpenRecord(data.ID)
+			if recordIndex < 0 {
+				index.records = append(index.records, toolLifecycle{
+					id:            data.ID,
+					startIndex:    -1,
+					completeIndex: i,
+					completed:     data,
+					completedID:   e.ID.String(),
+					hasCompleted:  true,
+				})
+				continue
+			}
+			record := index.records[recordIndex]
 			record.completed = data
 			record.completedID = e.ID.String()
+			record.completeIndex = i
 			record.hasCompleted = true
-			lifecycle[data.ID] = record
+			index.records[recordIndex] = record
 		}
 	}
-	return lifecycle, nil
+	return index, nil
+}
+
+func (idx *toolLifecycleIndex) latestOpenRecord(id string) int {
+	for i := len(idx.records) - 1; i >= 0; i-- {
+		record := idx.records[i]
+		if record.id == id && !record.hasCompleted {
+			return i
+		}
+	}
+	return -1
+}
+
+func (idx *toolLifecycleIndex) matcher(
+	assistant HistoryEntry,
+	entries []HistoryEntry,
+	boundaryEntryIndex int,
+) *toolLifecycleMatcher {
+	assistantIndex := idx.entryIndex(assistant)
+	boundaryIndex := -1
+	if assistantIndex >= 0 {
+		boundaryIndex = idx.eventsLen
+		if boundaryEntryIndex < len(entries) {
+			if next := idx.entryIndex(entries[boundaryEntryIndex]); next >= 0 {
+				boundaryIndex = next
+			}
+		}
+	}
+	return &toolLifecycleMatcher{
+		index:          idx,
+		assistantIndex: assistantIndex,
+		boundaryIndex:  boundaryIndex,
+		used:           make(map[int]struct{}),
+	}
+}
+
+func (idx *toolLifecycleIndex) entryIndex(entry HistoryEntry) int {
+	if entry.EventID == "" {
+		return -1
+	}
+	eventIndex, ok := idx.eventIndexes[entry.EventID]
+	if !ok {
+		return -1
+	}
+	return eventIndex
+}
+
+func (m *toolLifecycleMatcher) consume(
+	id string,
+	requireCompleted bool,
+) (toolLifecycle, bool) {
+	if m == nil || m.assistantIndex < 0 || id == "" {
+		return toolLifecycle{}, false
+	}
+	for i, record := range m.index.records {
+		if _, ok := m.used[i]; ok || record.id != id {
+			continue
+		}
+		if requireCompleted && !record.hasCompleted {
+			continue
+		}
+		if !m.inScope(record) {
+			continue
+		}
+		m.used[i] = struct{}{}
+		return record, true
+	}
+	return toolLifecycle{}, false
+}
+
+func (m *toolLifecycleMatcher) inScope(record toolLifecycle) bool {
+	first, last := recordRange(record)
+	if first < 0 || last < 0 {
+		return false
+	}
+	return first > m.assistantIndex && last < m.boundaryIndex
+}
+
+func recordRange(record toolLifecycle) (int, int) {
+	first := record.startIndex
+	last := record.startIndex
+	if !record.hasStarted {
+		first = record.completeIndex
+		last = record.completeIndex
+	}
+	if record.hasCompleted {
+		last = record.completeIndex
+	}
+	return first, last
 }
 
 func withToolHistory(entries []HistoryEntry, events []Event) ([]HistoryEntry, error) {
-	lifecycle, err := toolLifecycleByID(events)
+	lifecycle, err := newToolLifecycleIndex(events)
 	if err != nil {
 		return nil, err
 	}
-	if len(lifecycle) == 0 {
+	if len(lifecycle.records) == 0 {
 		return entries, nil
 	}
 
-	for i := range entries {
-		if entries[i].Message.Role != llm.RoleTool || entries[i].Message.ToolID == "" {
+	for i := 0; i < len(entries); {
+		entry := entries[i]
+		msg := normalizeTranscriptMessage(entry.Message)
+		if msg.Role != llm.RoleAssistant || len(msg.Calls) == 0 {
+			i++
 			continue
 		}
-		record, ok := lifecycle[entries[i].Message.ToolID]
-		if !ok && entries[i].Tool == nil {
-			continue
+
+		j := i + 1
+		for j < len(entries) {
+			next := normalizeTranscriptMessage(entries[j].Message)
+			if next.Role != llm.RoleTool {
+				break
+			}
+			j++
 		}
-		tool := mergeToolHistory(entries[i].Tool, entries[i].Message, record)
-		entries[i].Tool = &tool
+
+		matcher := lifecycle.matcher(entry, entries, j)
+		for k := i + 1; k < j; k++ {
+			if entries[k].Message.ToolID == "" {
+				continue
+			}
+			record, ok := matcher.consume(entries[k].Message.ToolID, false)
+			if !ok && entries[k].Tool == nil {
+				continue
+			}
+			tool := mergeToolHistory(entries[k].Tool, entries[k].Message, record)
+			entries[k].Tool = &tool
+		}
+		i = j
 	}
 	return entries, nil
 }
