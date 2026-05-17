@@ -279,3 +279,62 @@ func TestSummarizerSplitTurnSummarizesActivePrefix(t *testing.T) {
 		}
 	}
 }
+
+func TestSummarizerSplitTurnKeepsToolResultWithAssistantCall(t *testing.T) {
+	sess := session.New("split-turn-tool-group")
+	call := llm.Call{ID: "call-1", Type: "function"}
+	call.Function.Name = "read_file"
+	call.Function.Arguments = `{"path":"README.md"}`
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: strings.Repeat("older user ", 20)},
+		{Role: llm.RoleAssistant, Content: strings.Repeat("older assistant ", 20)},
+		{Role: llm.RoleUser, Content: "inspect README.md"},
+		{Role: llm.RoleAssistant, Calls: []llm.Call{call}},
+		{Role: llm.RoleTool, Name: "read_file", ToolID: "call-1", Content: "README content"},
+	} {
+		if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+
+	provider := &mockProvider{
+		id: "mock",
+		genFn: func(ctx context.Context, req *llm.Request) (*llm.Response, error) {
+			if strings.Contains(req.Messages[0].Content, "partial agent turn") {
+				return &llm.Response{Content: "Active request summary"}, nil
+			}
+			return &llm.Response{Content: "Stable history summary"}, nil
+		},
+	}
+	processor := NewSummarizer(100, provider, "mock-model")
+	processor.ThresholdPct = 0.10
+	processor.MinKeepTurns = 1
+
+	if err := processor.Mutate(context.Background(), nil, "", sess); err != nil {
+		t.Fatalf("processor failed: %v", err)
+	}
+
+	messages, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	toolCallIndex, toolResultIndex := -1, -1
+	for i, msg := range messages {
+		if msg.Role == llm.RoleAssistant && len(msg.Calls) == 1 &&
+			msg.Calls[0].ID == "call-1" {
+			toolCallIndex = i
+		}
+		if msg.Role == llm.RoleTool && msg.ToolID == "call-1" &&
+			msg.Content == "README content" {
+			toolResultIndex = i
+		}
+	}
+	if toolCallIndex < 0 || toolResultIndex < 0 || toolResultIndex < toolCallIndex {
+		t.Fatalf(
+			"compacted history lost assistant/tool group, call=%d result=%d messages=%#v",
+			toolCallIndex,
+			toolResultIndex,
+			messages,
+		)
+	}
+}
