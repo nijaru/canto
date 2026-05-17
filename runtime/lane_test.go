@@ -106,3 +106,26 @@ func TestSerialQueue_IdleTimeout(t *testing.T) {
 		t.Fatal("expected lane to be removed after idle timeout")
 	}
 }
+
+func TestStopTimerDoesNotDrainExpiredTimer(t *testing.T) {
+	timer := time.NewTimer(time.Nanosecond)
+	defer timer.Stop()
+
+	select {
+	case <-timer.C:
+	case <-time.After(time.Second):
+		t.Fatal("timer did not expire")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		stopTimer(timer)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("stopTimer blocked after timer had already expired")
+	}
+}

@@ -212,9 +212,7 @@ func (m *serialQueue) runLane(ctx context.Context, l *lane) {
 	for {
 		select {
 		case req := <-l.requests:
-			if !timer.Stop() {
-				<-timer.C
-			}
+			stopTimer(timer)
 
 			if !req.begin() {
 				timer.Reset(m.IdleTimeout)
@@ -265,6 +263,10 @@ func (m *serialQueue) runLane(ctx context.Context, l *lane) {
 			return
 		}
 	}
+}
+
+func stopTimer(timer *time.Timer) {
+	timer.Stop()
 }
 
 // stop prevents new requests and drains active local work.

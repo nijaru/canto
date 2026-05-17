@@ -114,9 +114,7 @@ collect:
 				break collect
 			}
 			events = append(events, e)
-			if !idle.Stop() {
-				<-idle.C
-			}
+			stopTimer(idle)
 			idle.Reset(50 * time.Millisecond)
 		case <-idle.C:
 			break collect
