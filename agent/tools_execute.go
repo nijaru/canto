@@ -121,11 +121,10 @@ func executeTool(
 	h *hook.Runner,
 ) toolResult {
 	call := pf.call
-	output := pf.output // hook context from preflight
 	t := pf.tool
 	if t == nil {
 		// Should not happen — preflight already checked — but guard defensively.
-		output = fmt.Sprintf("Error: tool %q not found", call.Function.Name)
+		output := fmt.Sprintf("Error: tool %q not found", call.Function.Name)
 		return toolResult{call: call, output: output}
 	}
 
@@ -135,9 +134,11 @@ func executeTool(
 		ID:             call.ID,
 		IdempotencyKey: pf.idempotencyKey,
 	})); err != nil {
-		return toolResult{call: call, output: output, err: err}
+		return toolResult{call: call, output: pf.output, err: err}
 	}
 
+	var output strings.Builder
+	output.WriteString(pf.output) // hook context from preflight
 	var execErr error
 	if st, ok := t.(tool.StreamingTool); ok {
 		for delta, err := range st.ExecuteStreaming(ctx, call.Function.Arguments) {
@@ -145,7 +146,7 @@ func executeTool(
 				execErr = err
 				break
 			}
-			output += delta
+			output.WriteString(delta)
 			_ = s.Append(
 				ctx,
 				session.NewEvent(s.ID(), session.ToolOutputDelta, map[string]any{
@@ -158,12 +159,13 @@ func executeTool(
 	} else {
 		var execOutput string
 		execOutput, execErr = t.Execute(ctx, call.Function.Arguments)
-		output += execOutput
+		output.WriteString(execOutput)
 	}
 
+	outputText := output.String()
 	if execErr != nil {
-		output = strings.TrimSpace(
-			strings.TrimSpace(output) + "\n" + fmt.Sprintf("Error: %s", execErr),
+		outputText = strings.TrimSpace(
+			strings.TrimSpace(outputText) + "\n" + fmt.Sprintf("Error: %s", execErr),
 		)
 		if h != nil {
 			metadata, _ := r.Metadata(call.Function.Name)
@@ -172,13 +174,13 @@ func executeTool(
 				hook.EventPostToolUseFailure,
 				hook.SessionMeta{ID: s.ID()},
 				toolHookData(call, metadata, map[string]any{
-					"output": output,
+					"output": outputText,
 					"error":  execErr.Error(),
 				}),
 			)
-			applyPostToolHookData(&output, &execErr, hookResults)
+			applyPostToolHookData(&outputText, &execErr, hookResults)
 			if hookErr != nil {
-				output = postHookBlockOutput(hookErr, output)
+				outputText = postHookBlockOutput(hookErr, outputText)
 				execErr = nil
 			}
 		}
@@ -189,22 +191,22 @@ func executeTool(
 				ctx,
 				hook.EventPostToolUse,
 				hook.SessionMeta{ID: s.ID()},
-				toolHookData(call, metadata, map[string]any{"output": output}),
+				toolHookData(call, metadata, map[string]any{"output": outputText}),
 			)
-			applyPostToolHookData(&output, &execErr, hookResults)
+			applyPostToolHookData(&outputText, &execErr, hookResults)
 			if hookErr != nil {
-				output = postHookBlockOutput(hookErr, output)
+				outputText = postHookBlockOutput(hookErr, outputText)
 				execErr = nil
 			}
 		}
 	}
-	if execErr != nil && !strings.Contains(output, execErr.Error()) {
-		output = strings.TrimSpace(
-			strings.TrimSpace(output) + "\n" + fmt.Sprintf("Error: %s", execErr),
+	if execErr != nil && !strings.Contains(outputText, execErr.Error()) {
+		outputText = strings.TrimSpace(
+			strings.TrimSpace(outputText) + "\n" + fmt.Sprintf("Error: %s", execErr),
 		)
 	}
 
-	res := toolResult{call: call, output: output}
+	res := toolResult{call: call, output: outputText}
 	var errorText string
 	if execErr != nil {
 		errorText = execErr.Error()
@@ -214,7 +216,7 @@ func executeTool(
 		Tool:           call.Function.Name,
 		ID:             call.ID,
 		IdempotencyKey: pf.idempotencyKey,
-		Output:         output,
+		Output:         outputText,
 		Error:          errorText,
 	})); err != nil {
 		res.err = err

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"iter"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -150,6 +152,36 @@ func (t *simpleTool) Spec() llm.Spec {
 
 func (t *simpleTool) Execute(_ context.Context, _ string) (string, error) {
 	return t.output, nil
+}
+
+type streamingTool struct {
+	name   string
+	chunks []string
+}
+
+func (t *streamingTool) Spec() llm.Spec {
+	return llm.Spec{
+		Name:        t.name,
+		Description: "A streaming test tool",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+	}
+}
+
+func (t *streamingTool) Execute(_ context.Context, _ string) (string, error) {
+	return strings.Join(t.chunks, ""), nil
+}
+
+func (t *streamingTool) ExecuteStreaming(
+	_ context.Context,
+	_ string,
+) iter.Seq2[string, error] {
+	return func(yield func(string, error) bool) {
+		for _, chunk := range t.chunks {
+			if !yield(chunk, nil) {
+				return
+			}
+		}
+	}
 }
 
 type blockingTool struct {
@@ -1151,6 +1183,80 @@ func TestRunTools_ReusesCompletedOutputForMatchingIdempotencyKey(t *testing.T) {
 	}
 	if len(res.ToolResults) != 1 || res.ToolResults[0].Content != "cached output" {
 		t.Fatalf("unexpected reused tool results: %#v", res.ToolResults)
+	}
+}
+
+func TestRunTools_StreamingToolRecordsDeltasAndFinalOutput(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&streamingTool{
+		name:   "stream",
+		chunks: []string{"alpha", "beta", "gamma"},
+	})
+
+	s := session.New("s-streaming-tool")
+	call := llm.Call{
+		ID:   "c1",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "stream", Arguments: `{}`},
+	}
+	appendAssistantToolCalls(t, s, []llm.Call{call})
+
+	res, err := runTools(
+		t.Context(),
+		s,
+		[]llm.Call{call},
+		reg,
+		nil,
+		nil,
+		nil,
+		10,
+		"step-1",
+	)
+	if err != nil {
+		t.Fatalf("runTools: %v", err)
+	}
+	if len(res.ToolResults) != 1 || res.ToolResults[0].Content != "alphabetagamma" {
+		t.Fatalf("unexpected tool results: %#v", res.ToolResults)
+	}
+
+	var deltas []string
+	var completed session.ToolCompletedData
+	for _, ev := range s.Events() {
+		switch ev.Type {
+		case session.ToolOutputDelta:
+			var payload struct {
+				Tool  string `json:"tool"`
+				ID    string `json:"id"`
+				Delta string `json:"delta"`
+			}
+			if err := ev.UnmarshalData(&payload); err != nil {
+				t.Fatalf("decode tool output delta: %v", err)
+			}
+			if payload.Tool != "stream" || payload.ID != "c1" {
+				t.Fatalf("unexpected tool output delta payload: %#v", payload)
+			}
+			deltas = append(deltas, payload.Delta)
+		case session.ToolCompleted:
+			data, ok, err := ev.ToolCompletedData()
+			if err != nil {
+				t.Fatalf("decode tool completed: %v", err)
+			}
+			if ok {
+				completed = data
+			}
+		}
+	}
+	if !slices.Equal(deltas, []string{"alpha", "beta", "gamma"}) {
+		t.Fatalf("tool output deltas = %#v, want alpha/beta/gamma", deltas)
+	}
+	if completed.Tool != "stream" ||
+		completed.ID != "c1" ||
+		completed.Output != "alphabetagamma" ||
+		completed.Error != "" {
+		t.Fatalf("unexpected completed tool event: %#v", completed)
 	}
 }
 
