@@ -2,10 +2,10 @@
 
 ## Root
 
-- [STATUS.md](STATUS.md) — current phase, next tasks, backlog, blockers
+- [STATUS.md](STATUS.md) — current phase, phase-1 acceptance state, next tasks, backlog, blockers
 - [DESIGN.md](DESIGN.md) — canonical 6-pillar framework architecture and package boundaries
 - [DECISIONS.md](DECISIONS.md) — stable principles plus recent architecture and planning decisions
-- [PLAN.md](PLAN.md) — sprint history, completed tranche, and current frontier
+- [PLAN.md](PLAN.md) — sprint history, Ion acceptance closure, M1 readiness gate, and current frontier
 
 ## Completed Sprints
 
@@ -41,7 +41,7 @@ All six sprints are complete. See [PLAN.md](PLAN.md) for full history.
 - [review/core-api-contract-audit-2026-04-30.md](review/core-api-contract-audit-2026-04-30.md) — active Canto core API contract audit under Ion validation
 - [review/ion-feedback-tracker-2026-04-28.md](review/ion-feedback-tracker-2026-04-28.md) — single active tracker for confirmed Ion-derived Canto framework issues
 - [design/authoring-surface.md](design/authoring-surface.md) — Phase 5 authoring design plus current harness/session facade refactor target
-- [design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) — post-Ion Canto roadmap: M1 readiness first, SOTA tracks later
+- [design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) — post-Ion phase-1 roadmap: M1 readiness first, SOTA tracks later
 - [design/api-surface-review-canto-3p5m.md](design/api-surface-review-canto-3p5m.md) — API surface DX findings and friction points (Phase 5)
 - [design/ion-friction-intake.md](design/ion-friction-intake.md) — historical intake pattern for turning consumer findings into concrete Canto issues
 - [design/model-context-contract-2026-04.md](design/model-context-contract-2026-04.md) — canonical neutral context/provider-prep contract and audit gates

@@ -3,9 +3,9 @@
 Go primitives for durable agent backends.
 Focus on session durability, context construction, tools, and orchestration. Not a hosted platform or full-stack agent product.
 
-## Current Ion Stabilization Policy
+## Current Ion Acceptance Policy
 
-Ion is the active acceptance test for Canto's native agent-loop contracts. Until Ion's minimal native loop is stable, Canto work should stay focused on framework-owned defects exposed by Ion:
+Ion has reached its current phase-1 Pi-parity acceptance bar and remains the main downstream acceptance test for Canto's native agent-loop contracts. Canto work should stay focused on framework-owned defects exposed by Ion or on explicitly selected M1 framework-readiness work:
 
 - durable session log and projection validity
 - runner/session coordination
@@ -14,7 +14,7 @@ Ion is the active acceptance test for Canto's native agent-loop contracts. Until
 - prompt/provider-visible history construction
 - retry/compaction behavior that protects real agent reliability
 
-Do not expand Canto's public-framework surface, SOTA primitives, or docs/release posture while Ion is finding core-loop issues. Keep Canto as the source of truth for framework-owned fixes, but make those fixes prove themselves through Ion. Prefer targeted rewrites of flawed modules over isolated symptom patches or whole-repo rewrites.
+Do not expand Canto's public-framework surface or SOTA primitives just because phase 1 is closed. Keep Canto as the source of truth for framework-owned fixes, make those fixes prove themselves through Ion, and resume docs/release posture only when the M1 lane is explicitly selected. Prefer targeted rewrites of flawed modules over isolated symptom patches or whole-repo rewrites.
 
 ## Project Structure
 

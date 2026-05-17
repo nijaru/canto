@@ -12,14 +12,34 @@ Canto is the primitives layer for building durable agent backends. It sits _belo
 
 The test: if you can build an overnight autoresearch loop, a long-horizon SWE agent, a Claude Code/Codex/Cursor-class coding agent, or an agent that safely acts across external services/APIs using these primitives, the framework is correct.
 
+## 1.1. Reference Discipline
+
+Ion is the active consumer and has reached its current Pi-level phase-1
+acceptance gate. Use local Pi as the primary regression control for core agent
+behavior, and Claude Code plus Codex as secondary long-term product references.
+Agent products such as Amp, Droid, Crush, OpenCode, Gemini CLI, Copilot CLI,
+Cursor, and Zed are evidence for specific UX or workflow questions, not product
+checklists.
+
+Canto is an agent framework, so framework and SDK references remain relevant:
+Claude Agent SDK, OpenAI Agents SDK, LangGraph/LangChain, Pydantic AI, Google
+ADK, Microsoft Agent Framework/Semantic Kernel, CrewAI, LlamaIndex, Vercel AI
+SDK, Agno, Flue, and similar current systems can inform primitives such as
+sessions, tool loops, approvals, checkpoints, hooks, tracing, evals, memory,
+and extension packaging. Reviews and fit are mixed across those frameworks, so
+extract small testable patterns instead of adopting their architectures.
+
+Recent academic/SOTA paper scans should be delta-based. They are deferred until
+a phase-2 research lane is selected, unless a concrete framework defect needs
+current research to resolve it.
+
 ## 2. Core Architectural Pillars (Synthesized from SOTA)
 
 ### 2.0. Headless Harness Facade
 
-Canto has strong primitives, but the product-level lesson from Flue, Pi,
-OpenAI Agents SDK, and harness/sandbox architecture work is that app authors
-need one obvious programmable harness path before they need every primitive.
-The facade should make this path natural:
+Canto has strong primitives, but the product/framework reference lesson is
+that app authors need one obvious programmable harness path before they need
+every primitive. The facade should make this path natural:
 
 ```text
 harness -> session -> prompt/skill/task/shell -> ordered run events -> store

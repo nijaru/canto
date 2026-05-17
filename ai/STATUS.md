@@ -1,9 +1,9 @@
 # Status
 
-**Phase:** Phase 5: post-Ion codebase audit complete
-**Focus:** Canto's whole-codebase audit is closed. The repo is back to a maintenance-ready state: keep Canto general-purpose, fix future issues as concrete framework defects, and import the audited revision into Ion before using Ion as downstream acceptance evidence.
+**Phase:** Post-Ion phase-1 acceptance / M1 readiness gated
+**Focus:** Ion phase 1 is complete by its current Pi-parity acceptance bar. Canto has no open native-loop blocker from Ion. Keep Canto general-purpose, fix future Ion findings as concrete framework defects, and resume M1 docs/release work only when that lane is explicitly selected.
 **Blockers:** None.
-**Updated:** 2026-05-05
+**Updated:** 2026-05-17
 
 ## Context
 
@@ -28,6 +28,14 @@ Current authoring-surface inputs:
 - `ai/research/dspy-authoring-insights-2026-04.md` captures DSPy lessons for signatures, modules, adapters, eval metrics, and offline optimization.
 - Existing `ai/research/frameworks/` notes already cover LangGraph, PydanticAI, AutoGen, Vercel AI SDK, MCP, and adjacent framework comparisons. Future SOTA work should be delta-based.
 
+Current Ion/Canto reference discipline: Ion has closed the current Pi-level
+core/TUI acceptance gate, with Claude Code and Codex as secondary long-term
+product references. Canto should inspect major current frameworks and SDKs for
+primitive insights, but no framework or paper should create implementation
+work here unless M1 readiness or a concrete Canto contract gap requires it. The
+next recent-paper scan is tracked from Ion as `tk-k4y8` and is deferred until a
+phase-2 research lane is selected.
+
 ## Next
 
 **Audit outcome:**
@@ -43,21 +51,27 @@ Current authoring-surface inputs:
   points there.
 - `x/redis` is structurally split and compile/race-checked under `-tags redis`,
   but live Redis behavior still requires `CANTO_TEST_REDIS_URL`.
-- No known Canto-owned native-loop blocker remains. Future Canto work should
-  start from a concrete Ion/framework defect, M1 docs readiness, or a scoped
-  API-shape decision.
+- No known Canto-owned native-loop blocker remains after Ion phase 1. Future
+  Canto work should start from a concrete Ion/framework defect, M1 docs
+  readiness, or a scoped API-shape decision.
 
-**M1 stabilization after audit:**
+**M1 stabilization after Ion phase 1:**
 
-- Active work is `canto-2vxb`: reshape the common authoring/runtime path around
-  a framework `Harness`, durable session handle, and one ordered run-event
-  stream. The review output is captured in
+- No Canto M1 work is active by default. The next selectable Canto lane is M1
+  framework readiness: docs/examples/API posture, alpha contract, and any
+  framework issue returned by continued Ion use.
+- The `canto-2vxb` harness-facade work shaped the common authoring/runtime path
+  around a framework `Harness`, durable session handle, and one ordered
+  run-event stream. The review output is captured in
   `ai/design/authoring-surface.md`.
-- Refactor target: replace the current `App`/`Runner`-first common path with
-  `Harness.Session(id).Prompt/PromptStream`, then expose environment
-  capabilities for workspace/executor/sandbox/secrets/bootstrap context.
-- Do this as a clean pre-alpha break, not a compatibility wrapper.
-- Do not create Canto implementation work from Mesa/Archil/OpenHands/DSPy/GEPA research alone. Those are roadmap inputs; implementation starts only when Ion stability or M1 readiness exposes a concrete framework seam.
+- M1 follow-up target: keep examples, docs, and hosts on
+  `Harness.Session(id).Prompt/PromptStream` plus explicit environment
+  capabilities instead of reintroducing lower-level lifecycle wiring.
+- Future M1 work should continue as clean pre-alpha breaks, not compatibility
+  wrappers.
+- Do not create Canto implementation work from Mesa/Archil/OpenHands/DSPy/GEPA
+  research alone. Those are roadmap inputs; implementation starts only when M1
+  readiness or continued Ion use exposes a concrete framework seam.
 
 **Release/doc gate:**
 

@@ -23,22 +23,28 @@ The Canto/Ion split is:
 
 The next-phase roadmap lives in [design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md). Use it to keep work ordered: C0 Ion acceptance, C1 M1 docs/examples/API readiness, C2 API/DX simplification, C3 workspace/sandbox, C4 eval/optimizer artifacts, C5 multi-agent/extensibility. Do not let C3-C5 research jump ahead of C0-C1.
 
-Existing research already covers LangGraph, PydanticAI, AutoGen, Vercel AI SDK, provider SDKs, HITL, durability, graph workflows, tool orchestration, context engineering, memory, and security. Do not restart a broad framework survey unless a concrete gap appears. DSPy and GEPA deserve deeper reviews because neither was previously covered at the same depth and they target the optimization surface (signatures/modules/compilers vs. reflective prompt evolution). They are inputs among several, not the center of the design; pair them so the reviews inform each other.
+Existing research already covers LangGraph, PydanticAI, AutoGen, Vercel AI SDK, provider SDKs, HITL, durability, graph workflows, tool orchestration, context engineering, memory, and security. Do not restart a broad framework survey unless a concrete gap appears. Current framework references are examples for Canto primitives, not blueprints; mixed reviews are expected. Ion is tracking a deferred recent-paper delta scan as `tk-k4y8`; it is no longer blocked by phase-1 stabilization, but it should wait until a phase-2 research lane is selected. DSPy and GEPA remain inputs for the optimization surface (signatures/modules/compilers vs. reflective prompt evolution), not the center of the design.
 
-2026-05-01 delta: OpenAI Agents SDK, OpenHands SDK, Mesa, Archil, BranchFS, and foldb reinforce the same direction: durable state, versioned/isolated workspaces, snapshots/rehydration, sandbox/process boundaries, and rich traces matter. They do not change the immediate order. Canto should first finish M1 readiness after Ion stabilizes; external workspace/storage systems are future adapters or design references, not core dependencies.
+2026-05-01 delta: OpenAI Agents SDK, Mesa, Archil, BranchFS, foldb, and
+similar systems reinforce the same direction: durable state,
+versioned/isolated workspaces, snapshots/rehydration, sandbox/process
+boundaries, and rich traces matter. They do not change the immediate order.
+Canto can now resume M1 readiness when explicitly selected; external
+workspace/storage systems are future adapters or design references, not core
+dependencies.
 
-### Active Canto Stabilization Roadmap
+### Canto Stabilization Roadmap
 
-The near-term goal is a targeted harness-facade review, not another broad
-survey. Flue's headless runtime shape, Pi's small core, OpenAI's model-native
-harness/sandbox direction, and Mendral's harness-outside-sandbox argument are
-concrete enough to re-check Canto's M1 authoring surface before more Ion
-runtime refactors. Keep the queue focused on Canto-owned framework work; bring
-Ion findings back only when they identify a concrete Canto issue.
+The next selectable goal is M1 framework readiness, not another broad survey.
+Pi's small core, mature coding-agent products, and current framework SDKs are
+concrete enough to keep checking Canto's authoring surface, but no Canto work
+is active by default after Ion phase 1. Keep the queue focused on Canto-owned
+framework work; bring Ion findings back only when they identify a concrete
+Canto issue.
 
 | Gate | Task | Intent |
 | :--- | :--- | :--- |
-| 0 active | `canto-2vxb` Flue/Pi harness facade review | Implement the now-named harness/session target before Ion aligns `CantoBackend` to it |
+| 0 done | `canto-2vxb` Flue/Pi harness facade review | Implemented the named harness/session target used as the M1 authoring seam |
 | 0 done | `canto-5qb6` Roadmap stabilization pass | Aligned the roadmap around Canto mechanism vs Ion policy and removed stale frontier entries |
 | 1 done | `canto-7mp1` Two-phase tool execution | Finalized sequential preflight, concurrent I/O, deterministic ordered observation emission, and execution-boundary `ToolStarted` events |
 | 1 done | `canto-btl6` Alpha contract preflight | Named the concrete M1 blockers and updated `canto-2if9` so the alpha release note has a real gate |
@@ -64,18 +70,13 @@ These remain valid but should not block returning to Ion:
 
 The initial authoring seam, typed service helper, coding-agent reference, core-vs-`x/` boundary cleanup, hello example, compaction hardening, `context/` -> `prompt` rename, cross-provider request transform, and pure turn-state extraction are already landed.
 
-`canto-2vxb` produced one concrete pre-M1 cleanup target: replace the current root `App`/`Runner`-first common path with a `Harness` + durable session handle + ordered run-event stream. This is not a new feature track; it is the missing authoring/runtime boundary that lets Ion become a thin product adapter instead of rebuilding Canto lifecycle behavior.
+`canto-2vxb` produced and landed the pre-M1 harness direction: a `Harness`,
+durable session handle, ordered run-event stream, and explicit environment
+capabilities. That is now the authoring seam to preserve during M1 readiness.
 
-Next implementation sequence:
-
-1. Rename/reshape the root facade around `Harness` without compatibility aliases.
-2. Add `Harness.Session(id)` and move common prompt/send methods to the session handle.
-3. Add one ordered run-event stream that includes model chunks, durable session events, tool lifecycle, approval/input waits, terminal state, and final result.
-4. Group environment capabilities explicitly: workspace, executor, sandbox, secrets, and bootstrap context.
-5. Update the hello and reference coding/service examples to use the same path Ion will use.
-6. Return to Ion `tk-ezms` and align `CantoBackend` to the facade.
-
-Remaining work after that is Canto docs/release posture plus any concrete framework issues returned from consumer validation.
+Next selectable work is Canto docs/release posture plus any concrete framework
+issues returned from continued Ion validation. No Canto implementation task is
+active by default after Ion phase 1.
 
 ## Definition of Complete
 
