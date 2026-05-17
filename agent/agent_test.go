@@ -522,7 +522,7 @@ func TestStepNoToolCalls(t *testing.T) {
 	}
 }
 
-func TestStepSkipsEmptyAssistantMessage(t *testing.T) {
+func TestStepRejectsEmptyAssistantMessage(t *testing.T) {
 	usage := llm.Usage{InputTokens: 4, OutputTokens: 1, TotalTokens: 5}
 	p := &mockProvider{
 		responses: []*llm.Response{
@@ -533,8 +533,8 @@ func TestStepSkipsEmptyAssistantMessage(t *testing.T) {
 	s := userSession("s-empty-step", "Hi!")
 
 	result, err := a.Step(t.Context(), s)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, ErrEmptyAssistantResponse) {
+		t.Fatalf("Step error = %v, want ErrEmptyAssistantResponse", err)
 	}
 	if result.Usage.TotalTokens != usage.TotalTokens {
 		t.Fatalf("usage = %+v, want %+v", result.Usage, usage)
@@ -546,7 +546,7 @@ func TestStepSkipsEmptyAssistantMessage(t *testing.T) {
 	}
 }
 
-func TestStepSkipsWhitespaceOnlyAssistantMessage(t *testing.T) {
+func TestStepRejectsWhitespaceOnlyAssistantMessage(t *testing.T) {
 	p := &mockProvider{
 		responses: []*llm.Response{
 			{Content: " \n\t ", Reasoning: "  "},
@@ -555,8 +555,8 @@ func TestStepSkipsWhitespaceOnlyAssistantMessage(t *testing.T) {
 	a := New("test-agent", "You are helpful.", "gpt-4", p, nil)
 	s := userSession("s-whitespace-step", "Hi!")
 
-	if _, err := a.Step(t.Context(), s); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if _, err := a.Step(t.Context(), s); !errors.Is(err, ErrEmptyAssistantResponse) {
+		t.Fatalf("Step error = %v, want ErrEmptyAssistantResponse", err)
 	}
 
 	msgs := s.Messages()

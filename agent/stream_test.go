@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -174,7 +175,7 @@ func TestStreamStepNilChunkFn(t *testing.T) {
 	}
 }
 
-func TestStreamStepSkipsEmptyAssistantMessage(t *testing.T) {
+func TestStreamStepRejectsEmptyAssistantMessage(t *testing.T) {
 	usage := &llm.Usage{InputTokens: 4, OutputTokens: 1, TotalTokens: 5}
 	p := &streamMockProvider{
 		chunks: [][]llm.Chunk{
@@ -185,8 +186,8 @@ func TestStreamStepSkipsEmptyAssistantMessage(t *testing.T) {
 	s := userSession("s-empty-stream", "hi")
 
 	result, err := a.StreamStep(t.Context(), s, nil)
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, ErrEmptyAssistantResponse) {
+		t.Fatalf("StreamStep error = %v, want ErrEmptyAssistantResponse", err)
 	}
 	if result.Usage.TotalTokens != usage.TotalTokens {
 		t.Fatalf("usage = %+v, want %+v", result.Usage, *usage)
@@ -566,7 +567,8 @@ func TestWithRequestProcessorsInsertBeforeCacheAlignment(t *testing.T) {
 	a := New("a", "", "m", &mockProvider{}, nil)
 	origLen := len(a.builder.RequestProcessors())
 
-	a2 := New("a2", "", "m", &mockProvider{}, nil,
+	a2 := New(
+		"a2", "", "m", &mockProvider{}, nil,
 		WithRequestProcessors(prompt.RequestProcessorFunc(noopRequestProcessor)),
 		WithRequestProcessors(prompt.RequestProcessorFunc(noopRequestProcessor)),
 	)
@@ -586,7 +588,8 @@ func TestWithRequestProcessorsAndMutatorsInsertBeforeCacheAlignment(t *testing.T
 	origLen := len(a.builder.RequestProcessors())
 	origMutators := len(a.builder.Mutators())
 
-	a2 := New("a2", "", "m", &mockProvider{}, nil,
+	a2 := New(
+		"a2", "", "m", &mockProvider{}, nil,
 		WithRequestProcessors(prompt.RequestProcessorFunc(noopRequestProcessor)),
 		WithMutators(prompt.ContextMutatorFunc(noopMutator)),
 	)

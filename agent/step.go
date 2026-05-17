@@ -2,11 +2,16 @@ package agent
 
 import (
 	"context"
+	"errors"
 
 	"github.com/nijaru/canto/llm"
 	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tracing"
+)
+
+var ErrEmptyAssistantResponse = errors.New(
+	"assistant response has no content, reasoning, thinking blocks, or tool calls",
 )
 
 type preparedStep struct {
@@ -95,7 +100,7 @@ func appendAssistantResponse(
 	}
 	llm.RecordUsage(ctx, providerID, req.Model, resp.Usage)
 	if !hasAssistantPayload(msg) {
-		return "", false, nil
+		return "", false, ErrEmptyAssistantResponse
 	}
 
 	e := session.NewEvent(s.ID(), session.MessageAdded, msg)

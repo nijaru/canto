@@ -71,6 +71,7 @@ func (a *BaseAgent) StreamStep(
 	}
 
 	resp := acc.Response()
+	res.Usage = resp.Usage
 
 	assistantMessageID, appended, err := appendAssistantResponse(
 		ctx,
@@ -83,7 +84,6 @@ func (a *BaseAgent) StreamStep(
 		return
 	}
 	if !appended {
-		res.Usage = resp.Usage
 		return
 	}
 
