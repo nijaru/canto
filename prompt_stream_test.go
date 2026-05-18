@@ -345,6 +345,71 @@ func TestPromptStreamEmitsTurnStartedBeforeImmediateChunk(t *testing.T) {
 	}
 }
 
+func TestPromptStreamEmitsUserMessageBeforeTurnAndChunks(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	a := immediateChunkAgent{}
+	harness := &Harness{
+		Agent:     a,
+		Runner:    runtime.NewRunner(store, a),
+		Store:     store,
+		ownsStore: true,
+	}
+	defer harness.Close()
+
+	events, err := harness.Session("committed-user-session").PromptStream(t.Context(), "go")
+	if err != nil {
+		t.Fatalf("PromptStream: %v", err)
+	}
+
+	var (
+		sawUser        bool
+		sawTurnStarted bool
+		sawChunk       bool
+	)
+	for event := range events {
+		switch event.Type {
+		case RunEventSession:
+			switch event.Event.Type {
+			case session.MessageAdded:
+				var msg llm.Message
+				if err := event.Event.UnmarshalData(&msg); err != nil {
+					t.Fatalf("decode message event: %v", err)
+				}
+				if msg.Role == llm.RoleUser && msg.Content == "go" {
+					sawUser = true
+				}
+			case session.TurnStarted:
+				if !sawUser {
+					t.Fatal("received turn_started before committed user message")
+				}
+				sawTurnStarted = true
+			}
+		case RunEventChunk:
+			if !sawUser {
+				t.Fatal("received model chunk before committed user message")
+			}
+			if !sawTurnStarted {
+				t.Fatal("received model chunk before turn_started session event")
+			}
+			sawChunk = true
+		case RunEventError:
+			t.Fatalf("stream error: %v", event.Err)
+		}
+	}
+	if !sawUser {
+		t.Fatal("missing committed user message session event")
+	}
+	if !sawTurnStarted {
+		t.Fatal("missing turn_started session event")
+	}
+	if !sawChunk {
+		t.Fatal("missing model chunk")
+	}
+}
+
 func waitForDurableBurstEvents(
 	t *testing.T,
 	store *session.SQLiteStore,
