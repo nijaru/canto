@@ -80,9 +80,10 @@ func (b *Base) Generate(ctx context.Context, req *llm.Request) (*llm.Response, e
 	usage.Cost = b.Cost(ctx, prepared.Model, usage)
 
 	return &llm.Response{
-		Content: choice.Message.Content,
-		Calls:   b.ConvertToolCalls(choice.Message.ToolCalls),
-		Usage:   usage,
+		Content:   choice.Message.Content,
+		Reasoning: choice.Message.ReasoningContent,
+		Calls:     b.ConvertToolCalls(choice.Message.ToolCalls),
+		Usage:     usage,
 	}, nil
 }
 

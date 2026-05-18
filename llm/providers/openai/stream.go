@@ -43,7 +43,8 @@ func (s *OpenAIStream) Next() (*llm.Chunk, bool) {
 
 		choice := resp.Choices[0]
 		chunk := &llm.Chunk{
-			Content: choice.Delta.Content,
+			Content:   choice.Delta.Content,
+			Reasoning: choice.Delta.ReasoningContent,
 		}
 
 		if len(choice.Delta.ToolCalls) > 0 {

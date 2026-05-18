@@ -167,6 +167,14 @@ func TestTransformRequestForCapabilitiesDropsUnsupportedReasoningControls(t *tes
 	}
 }
 
+func TestAppendThinkingTextWrapsRawReasoning(t *testing.T) {
+	got := appendThinkingText("answer", "private reasoning", nil)
+	want := "answer\n\n<thinking>\nprivate reasoning\n</thinking>"
+	if got != want {
+		t.Fatalf("thinking text = %q, want %q", got, want)
+	}
+}
+
 func TestTransformRequestForCapabilitiesKeepsSupportedReasoningEffort(t *testing.T) {
 	req := &Request{
 		ReasoningEffort: "high",

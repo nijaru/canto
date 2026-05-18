@@ -1,6 +1,8 @@
 package openai
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/nijaru/canto/llm"
@@ -54,6 +56,106 @@ func TestNewProviderRespectsConfig(t *testing.T) {
 	}
 	if len(gotModels) != 1 || gotModels[0].ID != "custom" {
 		t.Fatalf("models = %#v, want custom", gotModels)
+	}
+}
+
+func TestGeneratePreservesReasoningContent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id": "chatcmpl-test",
+			"object": "chat.completion",
+			"choices": [{
+				"index": 0,
+				"message": {
+					"role": "assistant",
+					"reasoning_content": "thinking through it",
+					"content": "done"
+				},
+				"finish_reason": "stop"
+			}],
+			"usage": {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7}
+		}`))
+	}))
+	defer server.Close()
+
+	p := NewCompatibleProvider(llm.ProviderConfig{
+		ID:          "local-api",
+		APIEndpoint: server.URL + "/v1",
+		APIKey:      "test",
+	}, CompatibleSpec{ID: "local-api"})
+
+	resp, err := p.Generate(t.Context(), &llm.Request{
+		Model:    "test-model",
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if resp.Content != "done" {
+		t.Fatalf("content = %q, want done", resp.Content)
+	}
+	if resp.Reasoning != "thinking through it" {
+		t.Fatalf("reasoning = %q, want thinking through it", resp.Reasoning)
+	}
+}
+
+func TestStreamPreservesReasoningContent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write(
+			[]byte(
+				`data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"reasoning_content":"thinking "}}]}
+
+data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"reasoning_content":"through it"}}]}
+
+data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"done"}}]}
+
+data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"chatcmpl-test","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}
+
+data: [DONE]
+
+`,
+			),
+		)
+	}))
+	defer server.Close()
+
+	p := NewCompatibleProvider(llm.ProviderConfig{
+		ID:          "local-api",
+		APIEndpoint: server.URL + "/v1",
+		APIKey:      "test",
+	}, CompatibleSpec{ID: "local-api"})
+
+	stream, err := p.Stream(t.Context(), &llm.Request{
+		Model:    "test-model",
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	resp, err := llm.GenerateFromStream(stream)
+	if err != nil {
+		t.Fatalf("GenerateFromStream: %v", err)
+	}
+	if resp.Content != "done" {
+		t.Fatalf("content = %q, want done", resp.Content)
+	}
+	if resp.Reasoning != "thinking through it" {
+		t.Fatalf("reasoning = %q, want thinking through it", resp.Reasoning)
+	}
+	if resp.Usage.TotalTokens != 7 {
+		t.Fatalf("total tokens = %d, want 7", resp.Usage.TotalTokens)
 	}
 }
 

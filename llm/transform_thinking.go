@@ -17,7 +17,7 @@ func flattenUnsupportedThinking(messages []Message) {
 func appendThinkingText(content, reasoning string, blocks []ThinkingBlock) string {
 	var parts []string
 	if reasoning != "" {
-		parts = append(parts, reasoning)
+		parts = append(parts, "<thinking>\n"+reasoning+"\n</thinking>")
 	}
 	for _, block := range blocks {
 		switch block.Type {
