@@ -132,9 +132,13 @@ func (s *Session) PromptStream(
 		})
 
 		result, err := s.harness.Runner.SendStream(ctx, s.id, message, func(chunk *llm.Chunk) {
-			if chunk != nil {
-				emit(RunEvent{Type: RunEventChunk, Chunk: *chunk})
+			if chunk == nil {
+				return
 			}
+			if err := flushEvents(done); err != nil {
+				return
+			}
+			emit(RunEvent{Type: RunEventChunk, Chunk: *chunk})
 		})
 		close(done)
 		sub.Close()

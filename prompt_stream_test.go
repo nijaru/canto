@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nijaru/canto/agent"
+	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
 )
@@ -255,6 +256,92 @@ func TestPromptStreamPreservesEventOrderWhenLiveWatchDropsMiddle(t *testing.T) {
 				indexes,
 			)
 		}
+	}
+}
+
+type immediateChunkAgent struct{}
+
+func (a immediateChunkAgent) ID() string {
+	return "immediate-chunk"
+}
+
+func (a immediateChunkAgent) Step(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a immediateChunkAgent) Turn(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.StreamTurn(ctx, sess, nil)
+}
+
+func (a immediateChunkAgent) StreamTurn(
+	ctx context.Context,
+	sess *session.Session,
+	chunkFn func(*llm.Chunk),
+) (agent.StepResult, error) {
+	if err := sess.Append(ctx, session.NewTurnStartedEvent(sess.ID(), session.TurnStartedData{
+		AgentID: a.ID(),
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	if chunkFn != nil {
+		chunkFn(&llm.Chunk{Content: "hello"})
+	}
+	if err := sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleAssistant,
+		Content: "hello",
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	if err := sess.Append(ctx, session.NewTurnCompletedEvent(sess.ID(), session.TurnCompletedData{
+		AgentID: a.ID(),
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{Content: "hello"}, nil
+}
+
+func TestPromptStreamEmitsTurnStartedBeforeImmediateChunk(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	a := immediateChunkAgent{}
+	harness := &Harness{
+		Agent:     a,
+		Runner:    runtime.NewRunner(store, a),
+		Store:     store,
+		ownsStore: true,
+	}
+	defer harness.Close()
+
+	events, err := harness.Session("immediate-chunk-session").PromptStream(t.Context(), "go")
+	if err != nil {
+		t.Fatalf("PromptStream: %v", err)
+	}
+
+	var sawTurnStarted bool
+	for event := range events {
+		switch event.Type {
+		case RunEventSession:
+			if event.Event.Type == session.TurnStarted {
+				sawTurnStarted = true
+			}
+		case RunEventChunk:
+			if !sawTurnStarted {
+				t.Fatal("received model chunk before turn_started session event")
+			}
+		case RunEventError:
+			t.Fatalf("stream error: %v", event.Err)
+		}
+	}
+	if !sawTurnStarted {
+		t.Fatal("missing turn_started session event")
 	}
 }
 
