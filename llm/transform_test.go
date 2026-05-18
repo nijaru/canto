@@ -194,6 +194,39 @@ func TestTransformRequestForCapabilitiesKeepsSupportedReasoningEffort(t *testing
 	}
 }
 
+func TestTransformRequestForCapabilitiesKeepsSupportedReasoningToggle(t *testing.T) {
+	req := &Request{
+		ReasoningEffort: "high",
+		Messages:        []Message{{Role: RoleUser, Content: "hello"}},
+	}
+
+	TransformRequestForCapabilities(req, Capabilities{
+		Reasoning: ReasoningCapabilities{
+			Kind:       ReasoningKindBoolean,
+			CanDisable: true,
+		},
+	})
+
+	if req.ReasoningEffort != "high" {
+		t.Fatalf("reasoning control = %q, want high", req.ReasoningEffort)
+	}
+}
+
+func TestTransformRequestForCapabilitiesDropsUnsupportedReasoningToggleOff(t *testing.T) {
+	req := &Request{
+		ReasoningEffort: "off",
+		Messages:        []Message{{Role: RoleUser, Content: "hello"}},
+	}
+
+	TransformRequestForCapabilities(req, Capabilities{
+		Reasoning: ReasoningCapabilities{Kind: ReasoningKindBoolean},
+	})
+
+	if req.ReasoningEffort != "" {
+		t.Fatalf("reasoning control = %q, want empty", req.ReasoningEffort)
+	}
+}
+
 func TestTransformRequestForCapabilitiesDropsUnsupportedReasoningEffortValue(t *testing.T) {
 	req := &Request{
 		ReasoningEffort: "xhigh",

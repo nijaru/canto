@@ -1,6 +1,8 @@
 package openai
 
 import (
+	"strings"
+
 	"github.com/go-json-experiment/json"
 	"github.com/nijaru/canto/llm"
 	"github.com/sashabaranov/go-openai"
@@ -64,7 +66,13 @@ func (b *Base) ConvertRequest(req *llm.Request) openai.ChatCompletionRequest {
 		// which counts both visible output and internal reasoning tokens.
 		cr.MaxCompletionTokens = req.MaxTokens
 	}
-	if caps.SupportsReasoningEffort(req.ReasoningEffort) {
+	if caps.ReasoningCaps().Kind == llm.ReasoningKindBoolean &&
+		caps.SupportsReasoningToggle(req.ReasoningEffort) {
+		cr.ChatTemplateKwargs = map[string]any{
+			"enable_thinking":   reasoningToggleEnabled(req.ReasoningEffort),
+			"preserve_thinking": true,
+		}
+	} else if caps.SupportsReasoningEffort(req.ReasoningEffort) {
 		cr.ReasoningEffort = req.ReasoningEffort
 	}
 	if rf := req.ResponseFormat; rf != nil {
@@ -85,6 +93,15 @@ func (b *Base) ConvertRequest(req *llm.Request) openai.ChatCompletionRequest {
 		}
 	}
 	return cr
+}
+
+func reasoningToggleEnabled(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "off", "none", "disabled":
+		return false
+	default:
+		return true
+	}
 }
 
 // schemaMarshaler wraps a map[string]any to implement json.Marshaler,

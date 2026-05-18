@@ -76,6 +76,25 @@ func (c Capabilities) SupportsReasoningEffort(effort string) bool {
 	return slices.Contains(caps.Efforts, effort)
 }
 
+func (c Capabilities) SupportsReasoningControl(value string) bool {
+	return c.SupportsReasoningEffort(value) || c.SupportsReasoningToggle(value)
+}
+
+func (c Capabilities) SupportsReasoningToggle(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return false
+	}
+	caps := c.ReasoningCaps()
+	if caps.Kind != ReasoningKindBoolean {
+		return false
+	}
+	if value == "off" || value == "none" || value == "disabled" {
+		return caps.CanDisable
+	}
+	return true
+}
+
 func (c Capabilities) SupportsThinking() bool {
 	return c.ReasoningCaps().Kind == ReasoningKindBudget
 }

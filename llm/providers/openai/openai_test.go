@@ -159,6 +159,46 @@ data: [DONE]
 	}
 }
 
+func TestConvertRequestBooleanReasoningUsesChatTemplateKwargs(t *testing.T) {
+	p := NewCompatibleProvider(llm.ProviderConfig{ID: "local-api"}, CompatibleSpec{
+		ID:                 "local-api",
+		DefaultAPIEndpoint: "http://localhost:8080/v1",
+		ModelCaps: map[string]llm.Capabilities{
+			"qwen": {
+				Streaming: true,
+				Tools:     true,
+				Reasoning: llm.ReasoningCapabilities{
+					Kind:       llm.ReasoningKindBoolean,
+					CanDisable: true,
+				},
+			},
+		},
+	})
+
+	enabled := p.ConvertRequest(&llm.Request{
+		Model:           "qwen",
+		ReasoningEffort: "high",
+		Messages:        []llm.Message{{Role: llm.RoleUser, Content: "hello"}},
+	})
+	if enabled.ReasoningEffort != "" {
+		t.Fatalf("reasoning effort = %q, want empty", enabled.ReasoningEffort)
+	}
+	if enabled.ChatTemplateKwargs["enable_thinking"] != true ||
+		enabled.ChatTemplateKwargs["preserve_thinking"] != true {
+		t.Fatalf("enabled chat template kwargs = %#v", enabled.ChatTemplateKwargs)
+	}
+
+	disabled := p.ConvertRequest(&llm.Request{
+		Model:           "qwen",
+		ReasoningEffort: "none",
+		Messages:        []llm.Message{{Role: llm.RoleUser, Content: "hello"}},
+	})
+	if disabled.ChatTemplateKwargs["enable_thinking"] != false ||
+		disabled.ChatTemplateKwargs["preserve_thinking"] != true {
+		t.Fatalf("disabled chat template kwargs = %#v", disabled.ChatTemplateKwargs)
+	}
+}
+
 func TestIsContextOverflowMessage(t *testing.T) {
 	if !isContextOverflowMessage("This model's context window has too many TOKENS") {
 		t.Fatal("expected mixed-case context/token message to match")

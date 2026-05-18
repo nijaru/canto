@@ -16,7 +16,7 @@ func TransformRequestForCapabilities(req *Request, caps Capabilities) {
 	if !caps.Temperature {
 		req.Temperature = 0
 	}
-	if req.ReasoningEffort != "" && !caps.SupportsReasoningEffort(req.ReasoningEffort) {
+	if req.ReasoningEffort != "" && !caps.SupportsReasoningControl(req.ReasoningEffort) {
 		req.ReasoningEffort = ""
 	}
 	if req.ThinkingBudget > 0 && !caps.SupportsThinkingBudget(req.ThinkingBudget) {
