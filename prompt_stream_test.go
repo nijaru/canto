@@ -410,6 +410,145 @@ func TestPromptStreamEmitsUserMessageBeforeTurnAndChunks(t *testing.T) {
 	}
 }
 
+type toolLifecycleAgent struct{}
+
+func (a toolLifecycleAgent) ID() string {
+	return "tool-lifecycle"
+}
+
+func (a toolLifecycleAgent) Step(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a toolLifecycleAgent) Turn(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.StreamTurn(ctx, sess, nil)
+}
+
+func (a toolLifecycleAgent) StreamTurn(
+	ctx context.Context,
+	sess *session.Session,
+	chunkFn func(*llm.Chunk),
+) (agent.StepResult, error) {
+	if err := sess.Append(ctx, session.NewTurnStartedEvent(sess.ID(), session.TurnStartedData{
+		AgentID: a.ID(),
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	call := llm.Call{ID: "tool-1", Type: "function"}
+	call.Function.Name = "bash"
+	call.Function.Arguments = `{"command":"printf ok"}`
+	if err := sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
+		Role:  llm.RoleAssistant,
+		Calls: []llm.Call{call},
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	if err := sess.Append(ctx, session.NewToolStartedEvent(sess.ID(), session.ToolStartedData{
+		Tool:      "bash",
+		Arguments: `{"command":"printf ok"}`,
+		ID:        "tool-1",
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.ToolOutputDelta, map[string]any{
+		"tool":  "bash",
+		"id":    "tool-1",
+		"delta": "ok",
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	if err := sess.Append(ctx, session.NewToolCompletedEvent(sess.ID(), session.ToolCompletedData{
+		Tool:   "bash",
+		ID:     "tool-1",
+		Output: "ok",
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	if err := sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
+		Role:    llm.RoleTool,
+		Name:    "bash",
+		ToolID:  "tool-1",
+		Content: "ok",
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	if err := sess.Append(ctx, session.NewTurnCompletedEvent(sess.ID(), session.TurnCompletedData{
+		AgentID: a.ID(),
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{Content: "ok"}, nil
+}
+
+func TestPromptStreamFlushesToolLifecycleBeforeResult(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	a := toolLifecycleAgent{}
+	harness := &Harness{
+		Agent:     a,
+		Runner:    runtime.NewRunner(store, a),
+		Store:     store,
+		ownsStore: true,
+	}
+	defer harness.Close()
+
+	events, err := harness.Session("tool-lifecycle-session").PromptStream(t.Context(), "run tool")
+	if err != nil {
+		t.Fatalf("PromptStream: %v", err)
+	}
+
+	var order []string
+	for event := range events {
+		switch event.Type {
+		case RunEventSession:
+			switch event.Event.Type {
+			case session.ToolStarted:
+				order = append(order, "tool_started")
+			case session.ToolOutputDelta:
+				order = append(order, "tool_output_delta")
+			case session.ToolCompleted:
+				order = append(order, "tool_completed")
+			case session.MessageAdded:
+				var msg llm.Message
+				if err := event.Event.UnmarshalData(&msg); err != nil {
+					t.Fatalf("decode message event: %v", err)
+				}
+				if msg.Role == llm.RoleTool && msg.ToolID == "tool-1" {
+					order = append(order, "tool_message")
+				}
+			}
+		case RunEventResult:
+			order = append(order, "result")
+		case RunEventError:
+			t.Fatalf("stream error: %v", event.Err)
+		}
+	}
+
+	want := []string{
+		"tool_started",
+		"tool_output_delta",
+		"tool_completed",
+		"tool_message",
+		"result",
+	}
+	if len(order) != len(want) {
+		t.Fatalf("tool lifecycle order = %v, want %v", order, want)
+	}
+	for i, got := range order {
+		if got != want[i] {
+			t.Fatalf("tool lifecycle order = %v, want %v", order, want)
+		}
+	}
+}
+
 func waitForDurableBurstEvents(
 	t *testing.T,
 	store *session.SQLiteStore,
