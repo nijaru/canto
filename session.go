@@ -80,7 +80,7 @@ func (s *Session) PromptStream(
 		done := make(chan struct{})
 		var flushMu sync.Mutex
 		nextEvent := len(baseline)
-		emit := func(event RunEvent) bool {
+		emitLive := func(event RunEvent) bool {
 			select {
 			case out <- event:
 				return true
@@ -88,7 +88,11 @@ func (s *Session) PromptStream(
 				return false
 			}
 		}
-		emitSession := func(event session.Event, stop <-chan struct{}) bool {
+		emitFinal := func(event RunEvent) bool {
+			out <- event
+			return true
+		}
+		emitLiveSession := func(event session.Event, stop <-chan struct{}) bool {
 			select {
 			case out <- RunEvent{Type: RunEventSession, Event: event}:
 				return true
@@ -98,7 +102,14 @@ func (s *Session) PromptStream(
 				return false
 			}
 		}
-		flushEvents := func(stop <-chan struct{}) error {
+		emitFinalSession := func(event session.Event, _ <-chan struct{}) bool {
+			out <- RunEvent{Type: RunEventSession, Event: event}
+			return true
+		}
+		flushEvents := func(
+			stop <-chan struct{},
+			emitSession func(session.Event, <-chan struct{}) bool,
+		) error {
 			flushMu.Lock()
 			defer flushMu.Unlock()
 
@@ -122,7 +133,7 @@ func (s *Session) PromptStream(
 					if !ok {
 						return
 					}
-					if err := flushEvents(done); err != nil {
+					if err := flushEvents(done, emitLiveSession); err != nil {
 						return
 					}
 				case <-done:
@@ -135,25 +146,25 @@ func (s *Session) PromptStream(
 			if chunk == nil {
 				return
 			}
-			if err := flushEvents(done); err != nil {
+			if err := flushEvents(done, emitLiveSession); err != nil {
 				return
 			}
-			emit(RunEvent{Type: RunEventChunk, Chunk: *chunk})
+			emitLive(RunEvent{Type: RunEventChunk, Chunk: *chunk})
 		})
 		close(done)
 		sub.Close()
 		wg.Wait()
 
-		if snapshotErr := flushEvents(nil); snapshotErr != nil && err == nil {
-			emit(RunEvent{Type: RunEventError, Err: snapshotErr})
+		if snapshotErr := flushEvents(nil, emitFinalSession); snapshotErr != nil && err == nil {
+			emitFinal(RunEvent{Type: RunEventError, Err: snapshotErr})
 			return
 		}
 
 		if err != nil {
-			emit(RunEvent{Type: RunEventError, Err: err})
+			emitFinal(RunEvent{Type: RunEventError, Err: err})
 			return
 		}
-		emit(RunEvent{Type: RunEventResult, Result: result})
+		emitFinal(RunEvent{Type: RunEventResult, Result: result})
 	}()
 	return out, nil
 }

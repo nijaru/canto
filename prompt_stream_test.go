@@ -642,6 +642,104 @@ func TestPromptStreamFlushesTerminalSessionErrorBeforeRunError(t *testing.T) {
 	}
 }
 
+type cancelAfterTurnStartedAgent struct{}
+
+func (a cancelAfterTurnStartedAgent) ID() string {
+	return "cancel-after-turn-started"
+}
+
+func (a cancelAfterTurnStartedAgent) Step(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a cancelAfterTurnStartedAgent) Turn(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.StreamTurn(ctx, sess, nil)
+}
+
+func (a cancelAfterTurnStartedAgent) StreamTurn(
+	ctx context.Context,
+	sess *session.Session,
+	chunkFn func(*llm.Chunk),
+) (agent.StepResult, error) {
+	if err := sess.Append(ctx, session.NewTurnStartedEvent(sess.ID(), session.TurnStartedData{
+		AgentID: a.ID(),
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	<-ctx.Done()
+	if err := sess.Append(context.WithoutCancel(ctx), session.NewTurnCompletedEvent(sess.ID(), session.TurnCompletedData{
+		AgentID: a.ID(),
+		Error:   context.Canceled.Error(),
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{}, ctx.Err()
+}
+
+func TestPromptStreamFlushesCanceledTurnBeforeRunError(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	a := cancelAfterTurnStartedAgent{}
+	harness := &Harness{
+		Agent:     a,
+		Runner:    runtime.NewRunner(store, a),
+		Store:     store,
+		ownsStore: true,
+	}
+	defer harness.Close()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	events, err := harness.Session("canceled-turn-session").PromptStream(ctx, "go")
+	if err != nil {
+		t.Fatalf("PromptStream: %v", err)
+	}
+
+	var order []string
+	for event := range events {
+		switch event.Type {
+		case RunEventSession:
+			if event.Event.Type == session.TurnStarted {
+				cancel()
+				order = append(order, "turn_started")
+				continue
+			}
+			data, ok, err := event.Event.TurnCompletedData()
+			if err != nil {
+				t.Fatalf("decode turn completed: %v", err)
+			}
+			if ok && data.Error == context.Canceled.Error() {
+				order = append(order, "turn_canceled")
+			}
+		case RunEventError:
+			if !errors.Is(event.Err, context.Canceled) {
+				t.Fatalf("run error = %v, want context canceled", event.Err)
+			}
+			order = append(order, "run_error")
+		case RunEventResult:
+			t.Fatal("unexpected result for canceled turn")
+		}
+	}
+
+	want := []string{"turn_started", "turn_canceled", "run_error"}
+	if len(order) != len(want) {
+		t.Fatalf("canceled turn order = %v, want %v", order, want)
+	}
+	for i, got := range order {
+		if got != want[i] {
+			t.Fatalf("canceled turn order = %v, want %v", order, want)
+		}
+	}
+}
+
 func waitForDurableBurstEvents(
 	t *testing.T,
 	store *session.SQLiteStore,
