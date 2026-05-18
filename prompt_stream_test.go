@@ -2,6 +2,7 @@ package canto
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -545,6 +546,98 @@ func TestPromptStreamFlushesToolLifecycleBeforeResult(t *testing.T) {
 	for i, got := range order {
 		if got != want[i] {
 			t.Fatalf("tool lifecycle order = %v, want %v", order, want)
+		}
+	}
+}
+
+type terminalErrorAgent struct {
+	err error
+}
+
+func (a terminalErrorAgent) ID() string {
+	return "terminal-error"
+}
+
+func (a terminalErrorAgent) Step(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a terminalErrorAgent) Turn(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.StreamTurn(ctx, sess, nil)
+}
+
+func (a terminalErrorAgent) StreamTurn(
+	ctx context.Context,
+	sess *session.Session,
+	chunkFn func(*llm.Chunk),
+) (agent.StepResult, error) {
+	if err := sess.Append(ctx, session.NewTurnStartedEvent(sess.ID(), session.TurnStartedData{
+		AgentID: a.ID(),
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	if err := sess.Append(context.WithoutCancel(ctx), session.NewTurnCompletedEvent(sess.ID(), session.TurnCompletedData{
+		AgentID: a.ID(),
+		Error:   a.err.Error(),
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{}, a.err
+}
+
+func TestPromptStreamFlushesTerminalSessionErrorBeforeRunError(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	a := terminalErrorAgent{err: errors.New("provider exploded")}
+	harness := &Harness{
+		Agent:     a,
+		Runner:    runtime.NewRunner(store, a),
+		Store:     store,
+		ownsStore: true,
+	}
+	defer harness.Close()
+
+	events, err := harness.Session("terminal-error-session").PromptStream(t.Context(), "go")
+	if err != nil {
+		t.Fatalf("PromptStream: %v", err)
+	}
+
+	var order []string
+	for event := range events {
+		switch event.Type {
+		case RunEventSession:
+			data, ok, err := event.Event.TurnCompletedData()
+			if err != nil {
+				t.Fatalf("decode turn completed: %v", err)
+			}
+			if ok && data.Error == "provider exploded" {
+				order = append(order, "turn_error")
+			}
+		case RunEventError:
+			if event.Err == nil || event.Err.Error() != "provider exploded" {
+				t.Fatalf("run error = %v, want provider exploded", event.Err)
+			}
+			order = append(order, "run_error")
+		case RunEventResult:
+			t.Fatal("unexpected result for terminal error turn")
+		}
+	}
+
+	want := []string{"turn_error", "run_error"}
+	if len(order) != len(want) {
+		t.Fatalf("terminal error order = %v, want %v", order, want)
+	}
+	for i, got := range order {
+		if got != want[i] {
+			t.Fatalf("terminal error order = %v, want %v", order, want)
 		}
 	}
 }
