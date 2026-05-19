@@ -1,7 +1,7 @@
 # Status
 
 **Phase:** Post-Ion phase-1 acceptance / M1 readiness gated
-**Focus:** Ion phase 1 is complete by its current Pi-parity acceptance bar. Canto has no open native-loop blocker from Ion. Keep Canto general-purpose, fix future Ion findings as concrete framework defects, and resume M1 docs/release work only when that lane is explicitly selected.
+**Focus:** Ion is the first-class Pi -> Pi+ product built on Canto, and Canto is the general-purpose agent framework. Canto has no open native-loop blocker from Ion. Keep Canto primitives general, fix future Ion findings as concrete framework defects when they expose shared mechanisms, and resume M1 docs/release work only when that lane is explicitly selected.
 **Blockers:** None.
 **Updated:** 2026-05-17
 
@@ -13,10 +13,16 @@ Phase 5 still has SOTA and DX inputs, but the active operating mode is now Canto
 
 - **Canto owns mechanism:** durable sessions, prompt/runtime boundaries, tool execution, workspace capability, compaction, approval state-machine seams, provider normalization, and examples that prove the pieces compose.
 - **Ion owns product policy:** terminal UX, task/planner behavior, approval delivery and thresholds, shell classifier heuristics, memory aggressiveness, command catalog choices, and end-user workflow.
-- **Ion validates Canto externally:** Ion should expose missing or awkward primitives, but Ion work is not active in this repo. Do not keep standing Ion tasks in Canto; add a Canto task only when separate Ion work identifies a concrete framework issue.
+- **Ion is the flagship consumer:** Ion should expose missing or awkward
+  primitives through real product use, but Ion work is not active in this repo.
+  Do not keep standing Ion product tasks in Canto; add a Canto task only when
+  separate Ion work identifies a concrete framework issue.
 - **Canto API audit:** active core-contract review lives in `ai/review/core-api-contract-audit-2026-04-30.md`; use it to track which core packages have actually been reviewed.
 - **Ion feedback tracker:** confirmed Ion-derived framework issues live in `ai/review/ion-feedback-tracker-2026-04-28.md`.
-- **Ion as acceptance test:** defer public-framework expansion, SOTA primitives, and release/docs polish while Ion is exposing native core-loop failures. Fix concrete framework defects here, then import the Canto revision into Ion and verify there.
+- **Ion as framework pressure:** defer public-framework expansion, SOTA
+  primitives, and release/docs polish while Ion is exposing native core-loop
+  failures. Fix concrete framework defects here, then import the Canto revision
+  into Ion and verify there.
 - **Next-phase roadmap:** [ai/design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) remains the sequencing source, amended by `canto-2vxb`: make the harness facade clear before polishing M1 docs/release language.
 
 SOTA/DX research is part of the Canto pre-Ion gate when it can change stable API or primitives. New research remains delta-based and must name the Canto primitive it would change.
@@ -28,13 +34,18 @@ Current authoring-surface inputs:
 - `ai/research/dspy-authoring-insights-2026-04.md` captures DSPy lessons for signatures, modules, adapters, eval metrics, and offline optimization.
 - Existing `ai/research/frameworks/` notes already cover LangGraph, PydanticAI, AutoGen, Vercel AI SDK, MCP, and adjacent framework comparisons. Future SOTA work should be delta-based.
 
-Current Ion/Canto reference discipline: Ion has closed the current Pi-level
-core/TUI acceptance gate, with Claude Code and Codex as secondary long-term
-product references. Canto should inspect major current frameworks and SDKs for
-primitive insights, but no framework or paper should create implementation
-work here unless M1 readiness or a concrete Canto contract gap requires it. The
-next recent-paper scan is tracked from Ion as `tk-k4y8` and is deferred until a
-phase-2 research lane is selected.
+Current Ion/Canto reference discipline: Ion's roadmap is Pi -> Pi+, with Pi as
+the primary phase-1 internal control and Claude Code/Codex as secondary
+long-term product references. Canto should inspect major current frameworks and
+SDKs for primitive insights, including OpenAI Agents SDK, Anthropic/Claude
+Agent SDK, MCP, A2A, Google ADK, Microsoft Agent Framework, Semantic Kernel,
+AutoGen, LangGraph/LangChain, Pydantic AI, LlamaIndex, CrewAI, Agno, Mastra,
+Vercel AI SDK, BeeAI, Letta, Flue, DSPy/GEPA, and durable-execution systems
+such as Temporal, DBOS, and Inngest. That list is a living map, not exhaustive.
+No framework or paper should create implementation work here unless M1
+readiness or a concrete Canto contract gap requires it. The next recent-paper
+scan is tracked from Ion as `tk-k4y8` and is deferred until a phase-2 research
+lane is selected.
 
 ## Next
 

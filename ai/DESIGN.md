@@ -14,20 +14,25 @@ The test: if you can build an overnight autoresearch loop, a long-horizon SWE ag
 
 ## 1.1. Reference Discipline
 
-Ion is the active consumer and has reached its current Pi-level phase-1
-acceptance gate. Use local Pi as the primary regression control for core agent
-behavior, and Claude Code plus Codex as secondary long-term product references.
+Ion is the active first-party consumer and a first-class product built on
+Canto, not merely a test harness. Use local Pi as the primary regression
+control for Ion's phase-1 core-agent internals, and Claude Code plus Codex as
+secondary long-term product references.
 Agent products such as Amp, Droid, Crush, OpenCode, Gemini CLI, Copilot CLI,
-Cursor, and Zed are evidence for specific UX or workflow questions, not product
+Cursor, Zed, Factory Droid, Jules, Slate-style swarms, mem0, Letta, and similar
+systems are evidence for specific UX or workflow questions, not product
 checklists.
 
 Canto is an agent framework, so framework and SDK references remain relevant:
-Claude Agent SDK, OpenAI Agents SDK, LangGraph/LangChain, Pydantic AI, Google
-ADK, Microsoft Agent Framework/Semantic Kernel, CrewAI, LlamaIndex, Vercel AI
-SDK, Agno, Flue, and similar current systems can inform primitives such as
-sessions, tool loops, approvals, checkpoints, hooks, tracing, evals, memory,
-and extension packaging. Reviews and fit are mixed across those frameworks, so
-extract small testable patterns instead of adopting their architectures.
+OpenAI Agents SDK, Anthropic/Claude Agent SDK, MCP, A2A, Google ADK, Microsoft
+Agent Framework, Semantic Kernel, AutoGen, LangGraph/LangChain, Pydantic AI,
+LlamaIndex, CrewAI, Agno, Mastra, Vercel AI SDK, BeeAI, Letta, Flue,
+DSPy/GEPA, and Temporal/DBOS/Inngest-style durable execution systems can inform
+primitives such as sessions, tool loops, approvals, checkpoints, hooks, tracing,
+evals, memory, and extension packaging. The map is intentionally
+non-exhaustive and current-state dependent. Reviews and fit are mixed across
+those frameworks, so extract small testable patterns instead of adopting their
+architectures.
 
 Recent academic/SOTA paper scans should be delta-based. They are deferred until
 a phase-2 research lane is selected, unless a concrete framework defect needs

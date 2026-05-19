@@ -8,7 +8,7 @@ status: active
 
 ## Purpose
 
-Audit Canto from the framework/API-contract side, not from isolated Ion symptoms. Ion remains the acceptance test, but Canto must stay a general-purpose agent framework: move mechanisms every serious host needs into Canto, and leave product policy, terminal UX, and coding-agent defaults in Ion.
+Audit Canto from the framework/API-contract side, not from isolated Ion symptoms. Ion is the first-class downstream product and primary real consumer pressure, but Canto must stay a general-purpose agent framework: move mechanisms every serious host needs into Canto, and leave product policy, terminal UX, and coding-agent defaults in Ion.
 
 No whole-repo rewrite is planned. Targeted redesign or module rewrite is allowed when an API boundary is structurally wrong or makes the core-loop invariant hard to prove.
 

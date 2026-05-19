@@ -3,9 +3,15 @@
 Go primitives for durable agent backends.
 Focus on session durability, context construction, tools, and orchestration. Not a hosted platform or full-stack agent product.
 
-## Current Ion Acceptance Policy
+## Ion Product Pressure
 
-Ion has reached its current phase-1 Pi-parity acceptance bar and remains the main downstream acceptance test for Canto's native agent-loop contracts. Canto work should stay focused on framework-owned defects exposed by Ion or on explicitly selected M1 framework-readiness work:
+Ion is the first-class Pi -> Pi+ terminal coding-agent product built on Canto.
+Canto is the general-purpose framework underneath it. Ion is the primary real
+consumer pressure for Canto's native agent-loop contracts, but it is not merely
+a test harness and it does not define the whole framework scope.
+
+Canto work should stay focused on framework-owned defects exposed by Ion or on
+explicitly selected M1 framework-readiness work:
 
 - durable session log and projection validity
 - runner/session coordination
@@ -14,7 +20,12 @@ Ion has reached its current phase-1 Pi-parity acceptance bar and remains the mai
 - prompt/provider-visible history construction
 - retry/compaction behavior that protects real agent reliability
 
-Do not expand Canto's public-framework surface or SOTA primitives just because phase 1 is closed. Keep Canto as the source of truth for framework-owned fixes, make those fixes prove themselves through Ion, and resume docs/release posture only when the M1 lane is explicitly selected. Prefer targeted rewrites of flawed modules over isolated symptom patches or whole-repo rewrites.
+Do not expand Canto's public-framework surface or SOTA primitives just because
+Ion's current phase-1 bar is green. Keep Canto as the source of truth for
+framework-owned fixes, make those fixes prove themselves through Ion, and
+resume docs/release posture only when the M1 lane is explicitly selected.
+Prefer targeted rewrites of flawed modules over isolated symptom patches or
+whole-repo rewrites.
 
 ## Project Structure
 
@@ -30,21 +41,22 @@ Do not expand Canto's public-framework surface or SOTA primitives just because p
 | `memory/`    | Layer 3f: In-context + external memory, SQLite-backed, vector store  |
 | `workspace/` | Rooted, symlink-safe workspace filesystem capability                 |
 | `x/`         | Extension packages: graph, swarm, eval, channel, rl, obs, guardrail  |
-| `ai/`        | Local-only AI session context — excluded via `.git/info/exclude`     |
+| `ai/`        | Tracked AI project context and design memory                         |
 | `.tasks/`    | Local-only task tracker state — excluded via `.git/info/exclude`     |
 
 ### AI Context Organization
 
-**Purpose:** Keep project state between sessions without polluting public git history.
+**Purpose:** Keep project state, architecture, and decisions aligned between
+sessions.
 
-**Session files** (local only, read every session):
+**Session files** (read every session):
 
 - `ai/STATUS.md` — current state, blockers, active work (read FIRST)
 - `ai/DESIGN.md` — architecture, layer breakdown, interface decisions
 - `ai/DECISIONS.md` — append-only design decisions with rationale
 - `ai/PLAN.md` — current phase frontier plus completed sprint archive
 
-**Reference files** (local only, loaded on demand):
+**Reference files** (loaded on demand):
 
 - `ai/research/` — external research, prior art notes
 - `ai/design/` — per-package deep specs

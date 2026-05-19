@@ -2,10 +2,10 @@
 
 ## Root
 
-- [STATUS.md](STATUS.md) — current phase, phase-1 acceptance state, next tasks, backlog, blockers
-- [DESIGN.md](DESIGN.md) — canonical 6-pillar framework architecture and package boundaries
+- [STATUS.md](STATUS.md) — current phase, Ion product pressure, Canto M1 gate, next tasks, backlog, blockers
+- [DESIGN.md](DESIGN.md) — canonical framework architecture, Ion boundary, reference discipline, and package boundaries
 - [DECISIONS.md](DECISIONS.md) — stable principles plus recent architecture and planning decisions
-- [PLAN.md](PLAN.md) — sprint history, Ion acceptance closure, M1 readiness gate, and current frontier
+- [PLAN.md](PLAN.md) — sprint history, Ion/Canto framing, M1 readiness gate, and current frontier
 
 ## Completed Sprints
 
