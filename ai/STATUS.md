@@ -3,7 +3,7 @@
 **Phase:** Post-Ion phase-1 acceptance / M1 readiness gated
 **Focus:** Ion is the first-class Pi -> Pi+ product built on Canto, and Canto is the general-purpose agent framework. Canto has no open native-loop blocker from Ion. Keep Canto primitives general, fix future Ion findings as concrete framework defects when they expose shared mechanisms, and resume M1 docs/release work only when that lane is explicitly selected.
 **Blockers:** None.
-**Updated:** 2026-05-17
+**Updated:** 2026-05-19
 
 ## Context
 
