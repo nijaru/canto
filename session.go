@@ -8,6 +8,7 @@ import (
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
+	"github.com/oklog/ulid/v2"
 )
 
 // Session is a host-facing handle for one durable conversation in a Harness.
@@ -42,13 +43,27 @@ const (
 	RunEventError   RunEventType = "error"
 )
 
+// RunEventDurability identifies whether a streamed event is backed by the
+// durable session log, live-only stream data, or terminal turn settlement.
+type RunEventDurability string
+
+const (
+	RunEventDurable  RunEventDurability = "durable"
+	RunEventLiveOnly RunEventDurability = "live_only"
+	RunEventTerminal RunEventDurability = "terminal"
+)
+
 // RunEvent is one item in a host-facing streamed turn.
 type RunEvent struct {
-	Type   RunEventType
-	Chunk  llm.Chunk
-	Event  session.Event
-	Result agent.StepResult
-	Err    error
+	Type       RunEventType
+	SessionID  string
+	TurnID     string
+	Seq        int64
+	Durability RunEventDurability
+	Chunk      llm.Chunk
+	Event      session.Event
+	Result     agent.StepResult
+	Err        error
 }
 
 // PromptStream appends a user message and emits one ordered stream containing
@@ -72,6 +87,7 @@ func (s *Session) PromptStream(
 	}
 
 	out := make(chan RunEvent)
+	turnID := ulid.Make().String()
 	go func() {
 		defer close(out)
 		defer sub.Close()
@@ -79,32 +95,67 @@ func (s *Session) PromptStream(
 		var wg sync.WaitGroup
 		done := make(chan struct{})
 		var flushMu sync.Mutex
+		var emitMu sync.Mutex
+		var seq int64
 		nextEvent := len(baseline)
-		emitLive := func(event RunEvent) bool {
+		emit := func(event RunEvent, durability RunEventDurability, respectCancel bool) bool {
+			emitMu.Lock()
+			defer emitMu.Unlock()
+
+			seq++
+			event.SessionID = s.id
+			event.TurnID = turnID
+			event.Seq = seq
+			event.Durability = durability
+
+			if !respectCancel {
+				out <- event
+				return true
+			}
 			select {
 			case out <- event:
 				return true
 			case <-ctx.Done():
+				seq--
 				return false
 			}
 		}
+		emitLive := func(event RunEvent) bool {
+			return emit(event, RunEventLiveOnly, true)
+		}
 		emitFinal := func(event RunEvent) bool {
-			out <- event
-			return true
+			return emit(event, RunEventTerminal, false)
 		}
 		emitLiveSession := func(event session.Event, stop <-chan struct{}) bool {
+			emitMu.Lock()
+			defer emitMu.Unlock()
+
+			seq++
+			streamEvent := RunEvent{
+				Type:       RunEventSession,
+				SessionID:  s.id,
+				TurnID:     turnID,
+				Seq:        seq,
+				Durability: RunEventDurable,
+				Event:      event,
+			}
 			select {
-			case out <- RunEvent{Type: RunEventSession, Event: event}:
+			case out <- streamEvent:
 				return true
 			case <-ctx.Done():
+				seq--
 				return false
 			case <-stop:
+				seq--
 				return false
 			}
 		}
 		emitFinalSession := func(event session.Event, _ <-chan struct{}) bool {
-			out <- RunEvent{Type: RunEventSession, Event: event}
-			return true
+			return emit(
+				RunEvent{Type: RunEventSession, Event: event},
+				RunEventDurable,
+				false,
+			)
 		}
 		flushEvents := func(
 			stop <-chan struct{},

@@ -7,9 +7,12 @@ import (
 	"time"
 
 	"github.com/nijaru/canto/agent"
+	"github.com/nijaru/canto/governor"
+	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
+	"github.com/nijaru/canto/tool"
 )
 
 type burstEventAgent struct {
@@ -737,6 +740,345 @@ func TestPromptStreamFlushesCanceledTurnBeforeRunError(t *testing.T) {
 		if got != want[i] {
 			t.Fatalf("canceled turn order = %v, want %v", order, want)
 		}
+	}
+}
+
+func TestPromptStreamAnnotatesOrderedRunEvents(t *testing.T) {
+	h, err := NewHarness("metadata").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{
+			Chunks: []llm.Chunk{{Content: "he"}, {Content: "llo"}},
+		})).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	const sessionID = "metadata-session"
+	events, err := h.Session(sessionID).PromptStream(t.Context(), "go")
+	if err != nil {
+		t.Fatalf("PromptStream: %v", err)
+	}
+
+	var (
+		seq           int64
+		turnID        string
+		sawChunk      bool
+		sawSession    bool
+		sawTerminal   bool
+		sawDurability bool
+	)
+	for event := range events {
+		seq++
+		if event.Seq != seq {
+			t.Fatalf("event seq = %d, want %d for %#v", event.Seq, seq, event.Type)
+		}
+		if event.SessionID != sessionID {
+			t.Fatalf("event session id = %q, want %q", event.SessionID, sessionID)
+		}
+		if event.TurnID == "" {
+			t.Fatalf("event %d has empty turn id", event.Seq)
+		}
+		if turnID == "" {
+			turnID = event.TurnID
+		}
+		if event.TurnID != turnID {
+			t.Fatalf("event turn id = %q, want stable %q", event.TurnID, turnID)
+		}
+
+		switch event.Type {
+		case RunEventChunk:
+			sawChunk = true
+			if event.Durability != RunEventLiveOnly {
+				t.Fatalf("chunk durability = %q, want %q", event.Durability, RunEventLiveOnly)
+			}
+		case RunEventSession:
+			sawSession = true
+			if event.Durability != RunEventDurable {
+				t.Fatalf("session durability = %q, want %q", event.Durability, RunEventDurable)
+			}
+		case RunEventResult:
+			sawTerminal = true
+			if event.Durability != RunEventTerminal {
+				t.Fatalf("result durability = %q, want %q", event.Durability, RunEventTerminal)
+			}
+		case RunEventError:
+			t.Fatalf("stream error: %v", event.Err)
+		}
+		if event.Durability != "" {
+			sawDurability = true
+		}
+	}
+	if !sawSession {
+		t.Fatal("missing durable session event")
+	}
+	if !sawChunk {
+		t.Fatal("missing live chunk event")
+	}
+	if !sawTerminal {
+		t.Fatal("missing terminal result event")
+	}
+	if !sawDurability {
+		t.Fatal("missing durability annotations")
+	}
+}
+
+func TestPromptStreamFlushesTurnUsageBeforeResult(t *testing.T) {
+	usage := llm.Usage{InputTokens: 3, OutputTokens: 4, TotalTokens: 7, Cost: 0.25}
+	h, err := NewHarness("usage").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{
+			Content: "done",
+			Usage:   usage,
+		})).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	events, err := h.Session("usage-session").PromptStream(t.Context(), "go")
+	if err != nil {
+		t.Fatalf("PromptStream: %v", err)
+	}
+
+	var order []string
+	for event := range events {
+		switch event.Type {
+		case RunEventSession:
+			data, ok, err := event.Event.TurnCompletedData()
+			if err != nil {
+				t.Fatalf("decode turn completed: %v", err)
+			}
+			if ok && data.Usage.TotalTokens == usage.TotalTokens {
+				order = append(order, "turn_usage")
+			}
+		case RunEventResult:
+			if event.Result.Usage.TotalTokens != usage.TotalTokens {
+				t.Fatalf("result usage = %#v, want %#v", event.Result.Usage, usage)
+			}
+			order = append(order, "result")
+		case RunEventError:
+			t.Fatalf("stream error: %v", event.Err)
+		}
+	}
+
+	want := []string{"turn_usage", "result"}
+	if len(order) != len(want) {
+		t.Fatalf("usage order = %v, want %v", order, want)
+	}
+	for i, got := range order {
+		if got != want[i] {
+			t.Fatalf("usage order = %v, want %v", order, want)
+		}
+	}
+}
+
+func TestPromptStreamWaitsForYieldingPostToolHookBeforeResult(t *testing.T) {
+	call := llm.Call{ID: "tool-1", Type: "function"}
+	call.Function.Name = "echo"
+	call.Function.Arguments = `{"text":"ok"}`
+
+	hookEntered := make(chan struct{})
+	releaseHook := make(chan struct{})
+	hooks := hook.NewRunner()
+	hooks.Register(hook.FromFunc(
+		"yield-post-tool",
+		[]hook.Event{hook.EventPostToolUse},
+		func(ctx context.Context, _ *hook.Payload) *hook.Result {
+			close(hookEntered)
+			select {
+			case <-releaseHook:
+				return &hook.Result{
+					Action: hook.ActionProceed,
+					Data:   map[string]any{"output": "hooked"},
+				}
+			case <-ctx.Done():
+				return &hook.Result{Action: hook.ActionBlock, Error: ctx.Err()}
+			}
+		},
+	))
+
+	h, err := NewHarness("yield-hook").
+		Model("faux").
+		Provider(llm.NewFauxProvider(
+			"faux",
+			llm.FauxStep{Calls: []llm.Call{call}},
+			llm.FauxStep{Content: "done"},
+		)).
+		Tools(tool.Func(
+			"echo",
+			"Echo input.",
+			map[string]any{"type": "object"},
+			func(_ context.Context, _ string) (string, error) {
+				return "ok", nil
+			},
+		)).
+		Hooks(hooks).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	events, err := h.Session("yield-hook-session").PromptStream(t.Context(), "run tool")
+	if err != nil {
+		t.Fatalf("PromptStream: %v", err)
+	}
+
+	var (
+		order        []string
+		hookReleased bool
+	)
+	record := func(event RunEvent) {
+		t.Helper()
+		switch event.Type {
+		case RunEventSession:
+			switch event.Event.Type {
+			case session.ToolStarted:
+				order = append(order, "tool_started")
+			case session.ToolCompleted:
+				data, ok, err := event.Event.ToolCompletedData()
+				if err != nil {
+					t.Fatalf("decode tool completed: %v", err)
+				}
+				if ok {
+					if !hookReleased {
+						t.Fatalf(
+							"tool completed before yielding post-tool hook released: %#v",
+							data,
+						)
+					}
+					if data.Output != "hooked" {
+						t.Fatalf("tool completed output = %q, want hooked", data.Output)
+					}
+					order = append(order, "tool_completed")
+				}
+			}
+		case RunEventResult:
+			if !hookReleased {
+				t.Fatal("terminal result arrived before yielding post-tool hook released")
+			}
+			order = append(order, "result")
+		case RunEventError:
+			t.Fatalf("stream error: %v", event.Err)
+		}
+	}
+
+	for event := range events {
+		record(event)
+		if hookReleased || !isClosed(hookEntered) {
+			continue
+		}
+		assertNoToolCompletionOrResultBeforeHookRelease(t, events, record)
+		close(releaseHook)
+		hookReleased = true
+	}
+
+	if !hookReleased {
+		t.Fatal("post-tool hook never ran")
+	}
+	want := []string{"tool_started", "tool_completed", "result"}
+	if len(order) != len(want) {
+		t.Fatalf("yielding hook order = %v, want %v", order, want)
+	}
+	for i, got := range order {
+		if got != want[i] {
+			t.Fatalf("yielding hook order = %v, want %v", order, want)
+		}
+	}
+}
+
+func TestPromptStreamKeepsStableTurnIDAcrossOverflowRecovery(t *testing.T) {
+	overflow := errors.New("context_length_exceeded")
+	provider := llm.NewFauxProvider(
+		"faux",
+		llm.FauxStep{Err: overflow},
+		llm.FauxStep{Content: "recovered"},
+	)
+	provider.IsContextOverflowFn = func(err error) bool {
+		return errors.Is(err, overflow)
+	}
+	h, err := NewHarness("overflow-stream").
+		Model("faux").
+		Provider(provider).
+		Ephemeral().
+		Compaction(governor.CompactOptions{
+			MaxTokens:  1000,
+			OffloadDir: t.TempDir(),
+		}).
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	events, err := h.Session("overflow-stream-session").PromptStream(t.Context(), "go")
+	if err != nil {
+		t.Fatalf("PromptStream: %v", err)
+	}
+
+	var (
+		turnID      string
+		resultCount int
+	)
+	for event := range events {
+		if event.TurnID == "" {
+			t.Fatalf("event %d has empty turn id", event.Seq)
+		}
+		if turnID == "" {
+			turnID = event.TurnID
+		}
+		if event.TurnID != turnID {
+			t.Fatalf("event turn id = %q, want stable %q", event.TurnID, turnID)
+		}
+		switch event.Type {
+		case RunEventResult:
+			resultCount++
+			if event.Result.Content != "recovered" {
+				t.Fatalf("result content = %q, want recovered", event.Result.Content)
+			}
+		case RunEventError:
+			t.Fatalf("stream error after overflow recovery: %v", event.Err)
+		}
+	}
+	if resultCount != 1 {
+		t.Fatalf("result events = %d, want 1", resultCount)
+	}
+}
+
+func assertNoToolCompletionOrResultBeforeHookRelease(
+	t *testing.T,
+	events <-chan RunEvent,
+	record func(RunEvent),
+) {
+	t.Helper()
+	timer := time.NewTimer(25 * time.Millisecond)
+	defer timer.Stop()
+
+	for {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				t.Fatal("stream closed before yielding post-tool hook released")
+			}
+			record(event)
+		case <-timer.C:
+			return
+		}
+	}
+}
+
+func isClosed(ch <-chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
 	}
 }
 

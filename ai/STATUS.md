@@ -67,9 +67,16 @@ lane is selected.
   `ai/design/optimal-core-redesign-2026-05.md`. The first target is Canto
   contract tests for ordered turn transactions, async hook/handler settlement,
   tool/usage/cancel/terminal ordering, and overflow recovery.
-- Active task graph: `canto-uduq` is active for contract tests; `canto-dvtd`
-  rewrites the session stream as a turn transaction; `canto-xz1w` exposes
-  lifecycle events/metadata; `canto-iq8h` tracks the Ion import/removal proof.
+- Active task graph: `canto-uduq` is complete; `canto-dvtd` is active to
+  rewrite the session stream as a turn transaction; `canto-xz1w` exposes
+  lifecycle events/metadata after that; `canto-iq8h` tracks the Ion
+  import/removal proof.
+- `canto-uduq` landed the first executable contract slice: `RunEvent` now
+  carries session id, stable external turn id, monotonic sequence, and
+  durability classification. PromptStream tests now cover ordered metadata,
+  durable usage before terminal result, yielding post-tool hook settlement
+  before tool completion/result, and overflow recovery with stable turn id plus
+  one host terminal result.
 - Reference posture: P1 stays Pi-level, with Codex app/CLI and Claude Code as
   P1 ergonomics/performance references. AX, DSPy, GEPA, Slate, Droid, richer
   Codex/Claude workflows, and similar systems are Phase 2/Pi+ inputs unless

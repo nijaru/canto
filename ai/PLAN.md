@@ -52,8 +52,8 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 
 | Gate | Task | Intent |
 | :--- | :--- | :--- |
-| 0 active | `canto-uduq` optimal-core contract tests | Prove ordered turn transactions, async hook/handler settlement, usage/tool/cancel/terminal ordering, and overflow recovery before rewrite |
-| 1 blocked | `canto-dvtd` optimal-core turn transaction | Replace `PromptStream` snapshot/watch/callback assembly with one native ordered turn stream |
+| 0 done | `canto-uduq` optimal-core contract tests | Added stream metadata and tests for ordered run events, usage-before-result, yielding hook settlement, and overflow-recovery stream identity |
+| 1 active | `canto-dvtd` optimal-core turn transaction | Replace `PromptStream` snapshot/watch/callback assembly with one native ordered turn stream |
 | 2 blocked | `canto-xz1w` optimal-core lifecycle events | Expose usage, active tools, compaction, retry, cancel, and terminal state as framework events/metadata |
 | 3 blocked | `canto-iq8h` Ion import/removal proof | Import into Ion and remove generic lifecycle reconstruction from the Ion adapter |
 | 0 done | `canto-2vxb` Flue/Pi harness facade review | Implemented the named harness/session target used as the M1 authoring seam |
