@@ -347,7 +347,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 		if err != nil || !ok {
 			return
 		}
-		usage := usageFromCumulative(RunUsageChild, data.Usage)
+		usage := childUsage(data.Usage)
 		event.Usage = usage
 		event.Lifecycle = &RunLifecycle{
 			Type:     RunLifecycleChild,
@@ -584,6 +584,14 @@ func usageFromCumulative(kind RunUsageKind, cumulative llm.Usage) *RunUsage {
 		return nil
 	}
 	return &RunUsage{Kind: kind, Cumulative: cumulative}
+}
+
+func childUsage(usage llm.Usage) *RunUsage {
+	usage = normalizeUsage(usage)
+	if !usageHasValue(usage) {
+		return nil
+	}
+	return &RunUsage{Kind: RunUsageChild, Delta: usage, Cumulative: usage}
 }
 
 func normalizeUsage(usage llm.Usage) llm.Usage {

@@ -217,7 +217,8 @@ func TestRunLifecycleAnnotatesChildEvents(t *testing.T) {
 			if tt.status == RunLifecycleCompleted &&
 				(event.Usage == nil ||
 					event.Usage.Kind != RunUsageChild ||
-					event.Usage.Cumulative.TotalTokens != 7) {
+					event.Usage.Cumulative.TotalTokens != 7 ||
+					event.Usage.Delta.TotalTokens != 7) {
 				t.Fatalf("child usage = %#v", event.Usage)
 			}
 		})
