@@ -109,6 +109,12 @@ lane is selected.
   still taught `Prompt` / `PromptStream` as primary. The fix makes `Submit`
   the obvious common path and documents `Prompt` / `PromptStream` as
   convenience wrappers.
+- `canto-cvqs` is the current Ion-exposed framework seam: terminal
+  `RunUsage` metadata must be delta-consumable by hosts. Canto now records
+  provider usage deltas already emitted on the stream and attaches one
+  terminal delta correction when the final turn/run cumulative usage exceeds
+  those deltas, while keeping later terminal result usage cumulative-only to
+  avoid double-counting.
 - The `canto-2vxb` harness-facade work shaped the common authoring/runtime path
   around a framework `Harness`, durable session handle, and one ordered
   run-event stream. The review output is captured in

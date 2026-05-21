@@ -101,6 +101,7 @@ type RunLifecycle struct {
 
 type runLifecycleState struct {
 	providerUsage runUsageAccumulator
+	emittedUsage  llm.Usage
 	activeTools   map[string]RunToolLifecycle
 }
 
@@ -122,6 +123,7 @@ func (s *runLifecycleState) annotateChunk(event *RunEvent) {
 	if !ok {
 		return
 	}
+	s.recordEmittedUsage(usage.Delta)
 	event.Usage = &usage
 	event.Lifecycle = &RunLifecycle{
 		Type:   RunLifecycleUsage,
@@ -147,7 +149,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 		if err != nil || !ok {
 			return
 		}
-		usage := usageFromCumulative(RunUsageTurn, data.Usage)
+		usage := s.terminalUsage(RunUsageTurn, data.Usage)
 		status, canceled := statusFromError(data.Error)
 		event.Usage = usage
 		event.Lifecycle = &RunLifecycle{
@@ -288,7 +290,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 }
 
 func (s *runLifecycleState) annotateResult(event *RunEvent) {
-	usage := usageFromCumulative(RunUsageTurn, event.Result.Usage)
+	usage := s.terminalUsage(RunUsageTurn, event.Result.Usage)
 	event.Usage = usage
 	event.Lifecycle = &RunLifecycle{
 		Type:       RunLifecycleRun,
@@ -297,6 +299,31 @@ func (s *runLifecycleState) annotateResult(event *RunEvent) {
 		Terminal:   true,
 		Usage:      usage,
 	}
+}
+
+func (s *runLifecycleState) recordEmittedUsage(delta llm.Usage) {
+	s.emittedUsage.InputTokens += delta.InputTokens
+	s.emittedUsage.OutputTokens += delta.OutputTokens
+	s.emittedUsage.CacheReadTokens += delta.CacheReadTokens
+	s.emittedUsage.CacheCreationTokens += delta.CacheCreationTokens
+	s.emittedUsage.TotalTokens += delta.TotalTokens
+	s.emittedUsage.Cost += delta.Cost
+}
+
+func (s *runLifecycleState) terminalUsage(kind RunUsageKind, cumulative llm.Usage) *RunUsage {
+	cumulative = normalizeUsage(cumulative)
+	if !usageHasValue(cumulative) {
+		return nil
+	}
+	usage := &RunUsage{Kind: kind, Cumulative: cumulative}
+	if !usageRegressed(cumulative, s.emittedUsage) {
+		delta := subtractUsage(cumulative, s.emittedUsage)
+		if usageHasValue(delta) {
+			usage.Delta = delta
+			s.recordEmittedUsage(delta)
+		}
+	}
+	return usage
 }
 
 func (s *runLifecycleState) annotateError(event *RunEvent) {

@@ -1038,6 +1038,9 @@ func TestPromptStreamAnnotatesLifecycleMetadata(t *testing.T) {
 		turnTerminalUsage.Cumulative.TotalTokens != 18 {
 		t.Fatalf("turn terminal usage = %#v", turnTerminalUsage)
 	}
+	if usageHasValue(turnTerminalUsage.Delta) {
+		t.Fatalf("turn terminal usage delta = %#v, want already emitted", turnTerminalUsage.Delta)
+	}
 	if !runTerminal {
 		t.Fatal("missing run terminal lifecycle")
 	}
@@ -1072,6 +1075,11 @@ func TestPromptStreamFlushesTurnUsageBeforeResult(t *testing.T) {
 				t.Fatalf("decode turn completed: %v", err)
 			}
 			if ok && data.Usage.TotalTokens == usage.TotalTokens {
+				if event.Usage == nil ||
+					event.Usage.Cumulative.TotalTokens != usage.TotalTokens ||
+					event.Usage.Cumulative.Cost != usage.Cost {
+					t.Fatalf("turn event usage = %#v, want cumulative usage", event.Usage)
+				}
 				order = append(order, "turn_usage")
 			}
 		case RunEventResult:
