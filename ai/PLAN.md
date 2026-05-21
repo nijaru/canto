@@ -35,15 +35,27 @@ dependencies.
 
 ### Canto Stabilization Roadmap
 
-The next selectable goal is M1 framework readiness, not another broad survey.
-Pi's small core, mature coding-agent products, and current framework SDKs are
-concrete enough to keep checking Canto's authoring surface, but no Canto work
-is active by default after Ion phase 1. Keep the queue focused on Canto-owned
-framework work; bring Ion findings back only when they identify a concrete
-Canto issue.
+The active goal is now Ion-driven optimal-core redesign before M1 release/docs
+or Ion Phase 2. This is proactive framework work, not a broad survey and not
+only reactive defect intake. Pi's small core, mature coding-agent products, and
+current framework SDKs are concrete enough to justify strengthening the Canto
+session/turn contract before Ion builds more product surface on top.
+
+Design source:
+[`design/optimal-core-redesign-2026-05.md`](design/optimal-core-redesign-2026-05.md).
+P1 stays Pi-level, with Pi as the primary core control. Codex app/CLI and
+Claude Code inform P1 performance, UX, and lifecycle ergonomics. AX, DSPy,
+GEPA, Slate, Droid, richer Codex/Claude workflows, and similar systems are
+Phase 2/Pi+ references unless they reveal a primitive required for P1
+correctness. Performance matters in this lane: stream latency, replay/resume
+cost, and host-side assembly overhead are design inputs, not polish items.
 
 | Gate | Task | Intent |
 | :--- | :--- | :--- |
+| 0 active | `canto-uduq` optimal-core contract tests | Prove ordered turn transactions, async hook/handler settlement, usage/tool/cancel/terminal ordering, and overflow recovery before rewrite |
+| 1 blocked | `canto-dvtd` optimal-core turn transaction | Replace `PromptStream` snapshot/watch/callback assembly with one native ordered turn stream |
+| 2 blocked | `canto-xz1w` optimal-core lifecycle events | Expose usage, active tools, compaction, retry, cancel, and terminal state as framework events/metadata |
+| 3 blocked | `canto-iq8h` Ion import/removal proof | Import into Ion and remove generic lifecycle reconstruction from the Ion adapter |
 | 0 done | `canto-2vxb` Flue/Pi harness facade review | Implemented the named harness/session target used as the M1 authoring seam |
 | 0 done | `canto-5qb6` Roadmap stabilization pass | Aligned the roadmap around Canto mechanism vs Ion policy and removed stale frontier entries |
 | 1 done | `canto-7mp1` Two-phase tool execution | Finalized sequential preflight, concurrent I/O, deterministic ordered observation emission, and execution-boundary `ToolStarted` events |
@@ -74,9 +86,10 @@ The initial authoring seam, typed service helper, coding-agent reference, core-v
 durable session handle, ordered run-event stream, and explicit environment
 capabilities. That is now the authoring seam to preserve during M1 readiness.
 
-Next selectable work is Canto docs/release posture plus any concrete framework
-issues returned from continued Ion validation. No Canto implementation task is
-active by default after Ion phase 1.
+Next selectable work after the optimal-core lane is Canto docs/release posture
+plus any concrete framework issues returned from Ion validation. Do not resume
+M1 docs/release work until the session/turn rewrite and Ion import proof are
+done or explicitly deferred.
 
 ## Definition of Complete
 

@@ -1,15 +1,16 @@
 # Status
 
-**Phase:** Post-Ion phase-1 acceptance / M1 readiness gated
-**Focus:** Ion is the first-class Pi -> Pi+ product built on Canto, and Canto is the general-purpose agent framework. Canto has no open native-loop blocker from Ion. Keep Canto primitives general, fix future Ion findings as concrete framework defects when they expose shared mechanisms, and resume M1 docs/release work only when that lane is explicitly selected.
+**Phase:** Ion-driven optimal-core redesign
+**Focus:** Ion is the first-class Pi -> Pi+ product built on Canto, and Canto is the general-purpose agent framework. Before Ion Phase 2 or normal dogfood resumes, proactively strengthen Canto's primary session/turn contract so hosts do not assemble ordering, settlement, usage, cancel, or compaction semantics themselves.
 **Blockers:** None.
-**Updated:** 2026-05-19
+**Updated:** 2026-05-20
 
 ## Context
 
 Sprints 01-06 and the Phase 4 architecture-correction tranche are complete. The primitives are load-bearing: durable sessions with replay/projections, identity-first workspace (WorkspaceFS, ContentRef, dedup, search, OverlayFS, MultiFS+memory.FS), tiered compaction, cache-aware mutations, subagent delegation, progressive-disclosure skills, MCP tools, approval/auto-mode with circuit breaker, OTel tracing, and eval harnesses.
 
-Phase 5 still has SOTA and DX inputs, but the active operating mode is now Canto stabilization:
+Phase 5 still has SOTA and DX inputs, but the active operating mode is now
+Canto optimal-core stabilization under Ion pressure:
 
 - **Canto owns mechanism:** durable sessions, prompt/runtime boundaries, tool execution, workspace capability, compaction, approval state-machine seams, provider normalization, and examples that prove the pieces compose.
 - **Ion owns product policy:** terminal UX, task/planner behavior, approval delivery and thresholds, shell classifier heuristics, memory aggressiveness, command catalog choices, and end-user workflow.
@@ -20,9 +21,9 @@ Phase 5 still has SOTA and DX inputs, but the active operating mode is now Canto
 - **Canto API audit:** active core-contract review lives in `ai/review/core-api-contract-audit-2026-04-30.md`; use it to track which core packages have actually been reviewed.
 - **Ion feedback tracker:** confirmed Ion-derived framework issues live in `ai/review/ion-feedback-tracker-2026-04-28.md`.
 - **Ion as framework pressure:** defer public-framework expansion, SOTA
-  primitives, and release/docs polish while Ion is exposing native core-loop
-  failures. Fix concrete framework defects here, then import the Canto revision
-  into Ion and verify there.
+  primitives, and release/docs polish while the Canto/Ion core is reshaped.
+  This lane is proactive, not only reactive: replace weak session/turn
+  ownership now when the scratch design says hosts should not carry it.
 - **Next-phase roadmap:** [ai/design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) remains the sequencing source, amended by `canto-2vxb`: make the harness facade clear before polishing M1 docs/release language.
 
 SOTA/DX research is part of the Canto pre-Ion gate when it can change stable API or primitives. New research remains delta-based and must name the Canto primitive it would change.
@@ -62,24 +63,35 @@ lane is selected.
   points there.
 - `x/redis` is structurally split and compile/race-checked under `-tags redis`,
   but live Redis behavior still requires `CANTO_TEST_REDIS_URL`.
-- No known Canto-owned native-loop blocker remains after Ion phase 1. Future
-  Canto work should start from a concrete Ion/framework defect, M1 docs
-  readiness, or a scoped API-shape decision.
+- The active Canto redesign source is
+  `ai/design/optimal-core-redesign-2026-05.md`. The first target is Canto
+  contract tests for ordered turn transactions, async hook/handler settlement,
+  tool/usage/cancel/terminal ordering, and overflow recovery.
+- Active task graph: `canto-uduq` is active for contract tests; `canto-dvtd`
+  rewrites the session stream as a turn transaction; `canto-xz1w` exposes
+  lifecycle events/metadata; `canto-iq8h` tracks the Ion import/removal proof.
+- Reference posture: P1 stays Pi-level, with Codex app/CLI and Claude Code as
+  P1 ergonomics/performance references. AX, DSPy, GEPA, Slate, Droid, richer
+  Codex/Claude workflows, and similar systems are Phase 2/Pi+ inputs unless
+  they expose a Canto primitive needed for P1 correctness.
+- Performance is part of this Canto lane: reduce host-side stream assembly,
+  avoid unnecessary polling/flush loops, keep replay/resume bounded, and give
+  Ion a low-latency stream it can render without reconstruction.
 
-**M1 stabilization after Ion phase 1:**
+**Optimal-core stabilization before Ion Phase 2:**
 
-- No Canto M1 work is active by default. The next selectable Canto lane is M1
-  framework readiness: docs/examples/API posture, alpha contract, and any
-  framework issue returned by continued Ion use.
+- Canto M1 docs/release work is paused. The active lane is strengthening the
+  session facade and turn stream so Ion can remove generic lifecycle
+  reconstruction from its adapter.
 - The `canto-2vxb` harness-facade work shaped the common authoring/runtime path
   around a framework `Harness`, durable session handle, and one ordered
   run-event stream. The review output is captured in
   `ai/design/authoring-surface.md`.
-- M1 follow-up target: keep examples, docs, and hosts on
-  `Harness.Session(id).Prompt/PromptStream` plus explicit environment
-  capabilities instead of reintroducing lower-level lifecycle wiring.
-- Future M1 work should continue as clean pre-alpha breaks, not compatibility
-  wrappers.
+- New follow-up target: replace `PromptStream` snapshot/watch/callback
+  assembly with a native turn transaction/broker, then expose lifecycle
+  metadata/events for usage, active tools, compaction, retry, cancel, and
+  terminal settlement.
+- Work should continue as clean pre-alpha breaks, not compatibility wrappers.
 - Do not create Canto implementation work from Mesa/Archil/OpenHands/DSPy/GEPA
   research alone. Those are roadmap inputs; implementation starts only when M1
   readiness or continued Ion use exposes a concrete framework seam.

@@ -10,8 +10,9 @@ Canto is the general-purpose framework underneath it. Ion is the primary real
 consumer pressure for Canto's native agent-loop contracts, but it is not merely
 a test harness and it does not define the whole framework scope.
 
-Canto work should stay focused on framework-owned defects exposed by Ion or on
-explicitly selected M1 framework-readiness work:
+Canto work should stay focused on framework-owned defects exposed by Ion,
+explicitly selected optimal-core redesign work, or explicitly selected M1
+framework-readiness work:
 
 - durable session log and projection validity
 - runner/session coordination
@@ -20,12 +21,20 @@ explicitly selected M1 framework-readiness work:
 - prompt/provider-visible history construction
 - retry/compaction behavior that protects real agent reliability
 
+For the optimal-core lane, keep P1 Pi-level. Use Pi as the primary core
+control; use Codex app/CLI and Claude Code for P1 ergonomics/performance
+lessons; treat AX, DSPy, GEPA, Slate, Droid, and richer multi-agent/workflow
+systems as Phase 2/Pi+ references unless they expose a primitive required for
+P1 correctness.
+
 Do not expand Canto's public-framework surface or SOTA primitives just because
-Ion's current phase-1 bar is green. Keep Canto as the source of truth for
-framework-owned fixes, make those fixes prove themselves through Ion, and
-resume docs/release posture only when the M1 lane is explicitly selected.
-Prefer targeted rewrites of flawed modules over isolated symptom patches or
-whole-repo rewrites.
+Ion's current phase-1 bar is green. When Ion's long-term foundation requires a
+stronger core, proactively rewrite or replace flawed Canto session/turn
+surfaces instead of waiting for each flaw to appear as dogfood failure. Keep
+Canto as the source of truth for framework-owned mechanisms, make those fixes
+prove themselves through Ion, and resume docs/release posture only when the M1
+lane is explicitly selected. Prefer targeted rewrites of load-bearing flawed
+modules over isolated symptom patches or whole-repo rewrites.
 
 ## Project Structure
 
@@ -149,7 +158,8 @@ Use the `go-expert` skill for full guidance. Key modern idioms:
 During Ion stabilization:
 
 - Check Ion's active core-loop audit docs before broad new Canto planning.
-- Add Canto tasks only for concrete framework issues, not Ion product work.
+- Add Canto tasks for concrete framework issues and for explicitly selected
+  optimal-core redesign slices, not Ion product work.
 - After a Canto fix, run the focused package test and `go test ./...`; then import the commit into Ion and verify Ion.
 
 ## Current Focus
