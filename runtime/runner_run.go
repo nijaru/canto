@@ -183,6 +183,9 @@ func (r *Runner) execute(
 	mutate sessionMutation,
 ) (agent.StepResult, error) {
 	if mutate != nil {
+		if err := r.runBeforeRun(ctx, sess); err != nil {
+			return agent.StepResult{}, err
+		}
 		if err := mutate(ctx, sess); err != nil {
 			return agent.StepResult{}, err
 		}
@@ -203,8 +206,8 @@ func (r *Runner) execute(
 		err    error
 	)
 	for attempt := 0; ; attempt++ {
-		for _, fn := range r.beforeRun {
-			if err := fn(ctx, sess); err != nil {
+		if mutate == nil || attempt > 0 {
+			if err := r.runBeforeRun(ctx, sess); err != nil {
 				return agent.StepResult{}, err
 			}
 		}
@@ -233,6 +236,15 @@ func (r *Runner) execute(
 			)
 		}
 	}
+}
+
+func (r *Runner) runBeforeRun(ctx context.Context, sess *session.Session) error {
+	for _, fn := range r.beforeRun {
+		if err := fn(ctx, sess); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *Runner) shouldRecoverOverflow(err error, attempt int) bool {

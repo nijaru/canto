@@ -3,6 +3,7 @@ package canto
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -250,7 +251,7 @@ func TestHarnessBuilderCompactionRunsBeforePrompt(t *testing.T) {
 		Compaction(governor.CompactOptions{
 			MaxTokens:    20,
 			ThresholdPct: 0.10,
-			MinKeepTurns: 1,
+			MinKeepTurns: 2,
 			OffloadDir:   t.TempDir(),
 		}).
 		Build()
@@ -260,18 +261,7 @@ func TestHarnessBuilderCompactionRunsBeforePrompt(t *testing.T) {
 	defer h.Close()
 
 	sess := session.New("compact-session").WithWriter(h.Store)
-	if err := sess.AppendUser(t.Context(), "old user message with enough text to compact"); err != nil {
-		t.Fatalf("append user: %v", err)
-	}
-	if err := sess.Append(
-		t.Context(),
-		session.NewMessage(
-			sess.ID(),
-			session.AssistantMessage("old assistant message with enough text to compact"),
-		),
-	); err != nil {
-		t.Fatalf("append assistant: %v", err)
-	}
+	appendCompactionHistory(t, sess)
 
 	result, err := h.Session(sess.ID()).Prompt(t.Context(), "new request")
 	if err != nil {
@@ -281,6 +271,17 @@ func TestHarnessBuilderCompactionRunsBeforePrompt(t *testing.T) {
 		t.Fatalf("content = %q, want answer", result.Content)
 	}
 
+	calls := provider.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("provider calls = %d, want 2", len(calls))
+	}
+	if requestMessagesContain(calls[0], "new request") {
+		t.Fatal("proactive compaction request unexpectedly included the new prompt")
+	}
+	if !requestMessagesContain(calls[1], "new request") {
+		t.Fatal("agent request did not include the new prompt")
+	}
+
 	loaded, err := h.Store.Load(t.Context(), sess.ID())
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -288,6 +289,67 @@ func TestHarnessBuilderCompactionRunsBeforePrompt(t *testing.T) {
 	if countCompactions(loaded) == 0 {
 		t.Fatal("expected proactive compaction event")
 	}
+}
+
+func TestHarnessBuilderCompactionFailureDoesNotAppendPrompt(t *testing.T) {
+	compactErr := errors.New("compact failed")
+	provider := llm.NewFauxProvider("faux", llm.FauxStep{Err: compactErr})
+	h, err := NewHarness("compact-failure").
+		Model("faux").
+		Provider(provider).
+		Ephemeral().
+		Compaction(governor.CompactOptions{
+			MaxTokens:    20,
+			ThresholdPct: 0.10,
+			MinKeepTurns: 2,
+			OffloadDir:   t.TempDir(),
+		}).
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	sess := session.New("compact-failure-session").WithWriter(h.Store)
+	appendCompactionHistory(t, sess)
+
+	_, err = h.Session(sess.ID()).Prompt(t.Context(), "new request")
+	if !errors.Is(err, compactErr) {
+		t.Fatalf("Prompt error = %v, want %v", err, compactErr)
+	}
+
+	loaded, err := h.Store.Load(t.Context(), sess.ID())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	for _, msg := range loaded.Messages() {
+		if msg.Role == llm.RoleUser && msg.Content == "new request" {
+			t.Fatal("failed proactive compaction appended the new prompt")
+		}
+	}
+}
+
+func appendCompactionHistory(t *testing.T, sess *session.Session) {
+	t.Helper()
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: "old user message one with enough text to compact"},
+		session.AssistantMessage("old assistant message one with enough text to compact"),
+		{Role: llm.RoleUser, Content: "old user message two with enough text to compact"},
+		session.AssistantMessage("old assistant message two with enough text to compact"),
+	} {
+		if err := sess.Append(t.Context(), session.NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append message: %v", err)
+		}
+	}
+}
+
+func requestMessagesContain(req *llm.Request, content string) bool {
+	for _, msg := range req.Messages {
+		if strings.Contains(msg.Content, content) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestHarnessBuilderCompactionValidatesOptions(t *testing.T) {

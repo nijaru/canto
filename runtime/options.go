@@ -75,8 +75,10 @@ func WithMaxConcurrent(n int) Option {
 	}
 }
 
-// WithBeforeRun registers a session hook that runs before each agent execution
-// attempt. It is intended for orchestration work such as proactive compaction.
+// WithBeforeRun registers a session hook for orchestration work such as
+// proactive compaction. Send and SendStream run these hooks before appending
+// the next user message; Run and RunStream run them before each agent
+// execution attempt.
 func WithBeforeRun(fn SessionFunc) Option {
 	return func(opts *options) {
 		if fn != nil {
