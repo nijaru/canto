@@ -19,6 +19,56 @@ type burstEventAgent struct {
 	count int
 }
 
+var errPromptStreamTransient = errors.New("transient provider failure")
+
+type promptStreamRetryProvider struct {
+	attempts int
+}
+
+func (p *promptStreamRetryProvider) ID() string {
+	return "retry-faux"
+}
+
+func (p *promptStreamRetryProvider) Capabilities(string) llm.Capabilities {
+	return llm.DefaultCapabilities()
+}
+
+func (p *promptStreamRetryProvider) Generate(context.Context, *llm.Request) (*llm.Response, error) {
+	return &llm.Response{Content: "done"}, nil
+}
+
+func (p *promptStreamRetryProvider) Stream(context.Context, *llm.Request) (llm.Stream, error) {
+	p.attempts++
+	if p.attempts == 1 {
+		return nil, errPromptStreamTransient
+	}
+	return llm.NewFauxStream(llm.Chunk{Content: "done"}), nil
+}
+
+func (p *promptStreamRetryProvider) Models(context.Context) ([]llm.Model, error) {
+	return nil, nil
+}
+
+func (p *promptStreamRetryProvider) CountTokens(
+	context.Context,
+	string,
+	[]llm.Message,
+) (int, error) {
+	return 0, nil
+}
+
+func (p *promptStreamRetryProvider) Cost(context.Context, string, llm.Usage) float64 {
+	return 0
+}
+
+func (p *promptStreamRetryProvider) IsTransient(err error) bool {
+	return errors.Is(err, errPromptStreamTransient)
+}
+
+func (p *promptStreamRetryProvider) IsContextOverflow(error) bool {
+	return false
+}
+
 func (a burstEventAgent) ID() string {
 	return "burst"
 }
@@ -101,6 +151,72 @@ func TestPromptStreamDeliversBurstSessionEventsWithoutDrops(t *testing.T) {
 	}
 	if !gotResult {
 		t.Fatal("missing terminal result")
+	}
+}
+
+func TestPromptStreamEmitsProviderRetryLifecycle(t *testing.T) {
+	provider := llm.NewRetryProvider(&promptStreamRetryProvider{})
+	provider.Config.MinInterval = time.Nanosecond
+	provider.Config.MaxInterval = time.Nanosecond
+
+	h, err := NewHarness("provider-retry").
+		Model("retry-faux").
+		Provider(provider).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	events, err := h.Session("provider-retry-session").PromptStream(t.Context(), "go")
+	if err != nil {
+		t.Fatalf("PromptStream: %v", err)
+	}
+
+	var sawRetry bool
+	var sawChunk bool
+	for event := range events {
+		switch event.Type {
+		case RunEventRetry:
+			sawRetry = true
+			if event.Durability != RunEventLiveOnly {
+				t.Fatalf("retry durability = %q, want %q", event.Durability, RunEventLiveOnly)
+			}
+			if event.Lifecycle == nil || event.Lifecycle.Type != RunLifecycleRetry {
+				t.Fatalf("retry lifecycle = %#v", event.Lifecycle)
+			}
+			if event.Lifecycle.Retry == nil {
+				t.Fatal("retry lifecycle missing retry metadata")
+			}
+			retry := event.Lifecycle.Retry
+			if retry.Scope != "provider" || retry.Target != "provider" {
+				t.Fatalf(
+					"retry scope/target = %q/%q, want provider/provider",
+					retry.Scope,
+					retry.Target,
+				)
+			}
+			if retry.Attempt != 1 {
+				t.Fatalf("retry attempt = %d, want 1", retry.Attempt)
+			}
+			if retry.Error != errPromptStreamTransient.Error() {
+				t.Fatalf("retry error = %q, want %q", retry.Error, errPromptStreamTransient.Error())
+			}
+		case RunEventChunk:
+			if !sawRetry {
+				t.Fatal("content chunk arrived before provider retry lifecycle")
+			}
+			sawChunk = true
+		case RunEventError:
+			t.Fatalf("stream error after retry: %v", event.Err)
+		}
+	}
+	if !sawRetry {
+		t.Fatal("missing provider retry lifecycle event")
+	}
+	if !sawChunk {
+		t.Fatal("missing chunk after retry")
 	}
 }
 

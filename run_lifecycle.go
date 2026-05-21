@@ -75,10 +75,11 @@ type RunCompactionLifecycle struct {
 // RunRetryLifecycle summarizes a framework-owned retry that is hidden from the
 // outer host result.
 type RunRetryLifecycle struct {
-	Scope   string `json:"scope,omitzero"`
-	Target  string `json:"target,omitzero"`
-	Attempt int    `json:"attempt,omitzero"`
-	Error   string `json:"error,omitzero"`
+	Scope       string `json:"scope,omitzero"`
+	Target      string `json:"target,omitzero"`
+	Attempt     int    `json:"attempt,omitzero"`
+	DelayMillis int64  `json:"delay_ms,omitzero"`
+	Error       string `json:"error,omitzero"`
 }
 
 // RunLifecycle is normalized framework lifecycle metadata for a RunEvent.
@@ -109,6 +110,8 @@ func (s *runLifecycleState) annotate(event *RunEvent) {
 	switch event.Type {
 	case RunEventChunk:
 		s.annotateChunk(event)
+	case RunEventRetry:
+		s.annotateRetry(event)
 	case RunEventSession:
 		s.annotateSession(event)
 	case RunEventResult:
@@ -129,6 +132,24 @@ func (s *runLifecycleState) annotateChunk(event *RunEvent) {
 		Type:   RunLifecycleUsage,
 		Status: RunLifecycleUpdated,
 		Usage:  &usage,
+	}
+}
+
+func (s *runLifecycleState) annotateRetry(event *RunEvent) {
+	errText := ""
+	if event.Retry.Err != nil {
+		errText = event.Retry.Err.Error()
+	}
+	event.Lifecycle = &RunLifecycle{
+		Type:   RunLifecycleRetry,
+		Status: RunLifecycleRetrying,
+		Retry: &RunRetryLifecycle{
+			Scope:       "provider",
+			Target:      "provider",
+			Attempt:     event.Retry.Attempt,
+			DelayMillis: event.Retry.Delay.Milliseconds(),
+			Error:       errText,
+		},
 	}
 }
 

@@ -34,6 +34,25 @@ type RetryEvent struct {
 	Err     error
 }
 
+type retryObserverKey struct{}
+
+// WithRetryObserver returns a context that receives retry notifications from
+// RetryProvider calls made with that context.
+func WithRetryObserver(ctx context.Context, observer func(RetryEvent)) context.Context {
+	if ctx == nil || observer == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, retryObserverKey{}, observer)
+}
+
+func retryObserver(ctx context.Context) func(RetryEvent) {
+	if ctx == nil {
+		return nil
+	}
+	observer, _ := ctx.Value(retryObserverKey{}).(func(RetryEvent))
+	return observer
+}
+
 // RetryExhaustedError marks a transient provider error as terminal after the
 // configured retry policy has already handled it.
 type RetryExhaustedError struct {
@@ -104,9 +123,12 @@ func retryLimitReached(cfg RetryConfig, attempt int, err error) bool {
 	return attempt >= cfg.MaxAttempts
 }
 
-func notifyRetry(cfg RetryConfig, event RetryEvent) {
+func notifyRetry(ctx context.Context, cfg RetryConfig, event RetryEvent) {
 	if cfg.OnRetry != nil {
 		cfg.OnRetry(event)
+	}
+	if observer := retryObserver(ctx); observer != nil {
+		observer(event)
 	}
 }
 
@@ -162,7 +184,7 @@ func (r *RetryProvider) Generate(ctx context.Context, req *Request) (*Response, 
 			return nil, retryExhausted(i+1, err)
 		}
 
-		notifyRetry(cfg, RetryEvent{Attempt: i + 1, Delay: interval, Err: err})
+		notifyRetry(ctx, cfg, RetryEvent{Attempt: i + 1, Delay: interval, Err: err})
 		if err := waitForRetry(ctx, interval); err != nil {
 			return nil, err
 		}
@@ -190,7 +212,7 @@ func (r *RetryProvider) Stream(ctx context.Context, req *Request) (Stream, error
 			return nil, retryExhausted(i+1, err)
 		}
 
-		notifyRetry(cfg, RetryEvent{Attempt: i + 1, Delay: interval, Err: err})
+		notifyRetry(ctx, cfg, RetryEvent{Attempt: i + 1, Delay: interval, Err: err})
 		if err := waitForRetry(ctx, interval); err != nil {
 			return nil, err
 		}

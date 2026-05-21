@@ -104,6 +104,7 @@ type RunEventType string
 const (
 	RunEventChunk   RunEventType = "chunk"
 	RunEventSession RunEventType = "session"
+	RunEventRetry   RunEventType = "retry"
 	RunEventResult  RunEventType = "result"
 	RunEventError   RunEventType = "error"
 )
@@ -128,6 +129,7 @@ type RunEvent struct {
 	Usage      *RunUsage
 	Lifecycle  *RunLifecycle
 	Chunk      llm.Chunk
+	Retry      llm.RetryEvent
 	Event      session.Event
 	Result     agent.StepResult
 	Err        error
@@ -243,7 +245,10 @@ func (s *Session) Submit(ctx context.Context, message string) (*Turn, error) {
 		defer close(out)
 		defer detach()
 
-		result, err := s.harness.Runner.SendStream(ctx, s.id, message, func(chunk *llm.Chunk) {
+		runCtx := llm.WithRetryObserver(ctx, func(event llm.RetryEvent) {
+			emitter.emitLive(RunEvent{Type: RunEventRetry, Retry: event})
+		})
+		result, err := s.harness.Runner.SendStream(runCtx, s.id, message, func(chunk *llm.Chunk) {
 			if chunk == nil {
 				return
 			}
