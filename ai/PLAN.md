@@ -35,9 +35,9 @@ dependencies.
 
 ### Canto Stabilization Roadmap
 
-The Ion-driven optimal-core redesign lane is complete. Canto now returns to
-consumer validation and selectable M1 readiness work: add new implementation
-work only when Ion dogfood, another consumer, or an explicitly selected release
+The Ion-driven optimal-core redesign lane is complete, but Ion is now in
+pre-v0 design-closure review before live validation. Add Canto implementation
+work only when that review, another consumer, or an explicitly selected release
 lane exposes a concrete framework seam.
 
 Design source:
@@ -54,6 +54,7 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 | 0 done | `canto-01ge` native Turn/Submit facade | Promoted the accepted turn transaction to the primary host API before Ion deleted adapter fallbacks |
 | 0 done | `canto-sqtc` sequence-bounded event reads | Expose framework-owned `EventsAfter` so hosts can maintain typed projections without reaching into store internals |
 | 0 done | `canto-d6kl` durable turn transaction identity and sequence | Moved turn identity/session sequence from host-only `RunEvent` metadata into durable session events/logs, aligned with AX `seq`/`exec_id` and Pi session-owned prompt lifecycle |
+| 0 active | `canto-wuev` Submit/Turn public surface alignment | Make README, prompt docs, examples, and godoc teach native `Submit` / `Turn` as the common host path; `Prompt` and `PromptStream` are convenience wrappers |
 | 0 done | `canto-uduq` optimal-core contract tests | Added stream metadata and tests for ordered run events, usage-before-result, yielding hook settlement, and overflow-recovery stream identity |
 | 1 done | `canto-dvtd` optimal-core turn transaction | Replaced `PromptStream` snapshot/watch/callback repair with an ordered session observer stream |
 | 2 done | `canto-xz1w` optimal-core lifecycle events | Added typed RunEvent lifecycle/usage metadata plus compaction-start and overflow-retry events |
@@ -89,8 +90,8 @@ durable session handle, ordered run-event stream, and explicit environment
 capabilities. That is now the authoring seam to preserve during M1 readiness.
 
 Next selectable work after the optimal-core lane is Canto docs/release posture
-plus any concrete framework issues returned from Ion validation. The
-session/turn rewrite and Ion import proof are done.
+plus any concrete framework issues returned from Ion design closure or later
+validation. The session/turn rewrite and Ion import proof are done.
 
 ## Definition of Complete
 

@@ -139,15 +139,20 @@ func run(ctx context.Context, w io.Writer) error {
 	seen := make(chan []session.EventType, 1)
 	go collectEvents(events, seen)
 
-	result, err := sessionHandle.Prompt(
+	result, err := submitPrompt(
 		ctx,
+		sessionHandle,
 		"Inspect the project, update README.md, consult web search, run tests, and summarize.",
 	)
 	if err != nil {
 		return err
 	}
 
-	resume, err := sessionHandle.Prompt(ctx, "Resume the session and report the current state.")
+	resume, err := submitPrompt(
+		ctx,
+		sessionHandle,
+		"Resume the session and report the current state.",
+	)
 	if err != nil {
 		return err
 	}
@@ -166,6 +171,20 @@ func run(ctx context.Context, w io.Writer) error {
 	fmt.Fprintf(w, "Events: %s\n", eventSummary(eventTypes))
 	_, err = fmt.Fprintf(w, "Audit:\n%s", auditLog.String())
 	return err
+}
+
+func submitPrompt(
+	ctx context.Context,
+	sessionHandle *canto.Session,
+	message string,
+) (agent.StepResult, error) {
+	turn, err := sessionHandle.Submit(ctx, message)
+	if err != nil {
+		return agent.StepResult{}, err
+	}
+	for range turn.Events() {
+	}
+	return turn.Result()
 }
 
 func referenceTools(

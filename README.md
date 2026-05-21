@@ -51,7 +51,15 @@ func main() {
 	}
 	defer h.Close()
 
-	res, err := h.Session("session-1").Prompt(context.Background(), "Say hello.")
+	turn, err := h.Session("session-1").Submit(context.Background(), "Say hello.")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for range turn.Events() {
+	}
+
+	res, err := turn.Result()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -60,6 +68,9 @@ func main() {
 ```
 
 Use `SessionStore(store)` instead of `Ephemeral()` for durable applications.
+Use `Prompt` only when a blocking one-shot helper is enough; live hosts should
+use `Submit` so turn identity, ordered events, cancellation, and terminal
+settlement stay attached to one transaction.
 
 ## Packages
 

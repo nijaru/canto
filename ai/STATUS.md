@@ -1,9 +1,9 @@
 # Status
 
-**Phase:** Post-Ion ideal-core validation
-**Focus:** Ion dogfood is the active validation source. Canto has closed the
-Ion-driven optimal-core session/turn work; add new Canto implementation work
-only when Ion or another consumer exposes a concrete framework seam.
+**Phase:** Ion pre-v0 design-closure support
+**Focus:** Ion is reviewing Canto/Ion against the clean-sheet ideal before live
+validation. Canto implementation work should stay tied to concrete framework
+seams exposed by that review or explicitly selected M1 readiness work.
 **Blockers:** None.
 **Updated:** 2026-05-21
 
@@ -12,20 +12,21 @@ only when Ion or another consumer exposes a concrete framework seam.
 Sprints 01-06 and the Phase 4 architecture-correction tranche are complete. The primitives are load-bearing: durable sessions with replay/projections, identity-first workspace (WorkspaceFS, ContentRef, dedup, search, OverlayFS, MultiFS+memory.FS), tiered compaction, cache-aware mutations, subagent delegation, progressive-disclosure skills, MCP tools, approval/auto-mode with circuit breaker, OTel tracing, and eval harnesses.
 
 Phase 5 still has SOTA and DX inputs, but the active operating mode is now
-consumer validation after the Ion-driven optimal-core work:
+supporting Ion's pre-v0 design-closure review after the Ion-driven optimal-core
+work:
 
 - **Canto owns mechanism:** durable sessions, prompt/runtime boundaries, tool execution, workspace capability, compaction, approval state-machine seams, provider normalization, and examples that prove the pieces compose.
 - **Ion owns product policy:** terminal UX, task/planner behavior, approval delivery and thresholds, shell classifier heuristics, memory aggressiveness, command catalog choices, and end-user workflow.
 - **Ion is the flagship consumer:** Ion should expose missing or awkward
-  primitives through real product use, but Ion work is not active in this repo.
-  Do not keep standing Ion product tasks in Canto; add a Canto task only when
-  separate Ion work identifies a concrete framework issue.
+  primitives through design review or real product use, but Ion work is not
+  active in this repo. Do not keep standing Ion product tasks in Canto; add a
+  Canto task only when separate Ion work identifies a concrete framework issue.
 - **Canto API audit:** active core-contract review lives in `ai/review/core-api-contract-audit-2026-04-30.md`; use it to track which core packages have actually been reviewed.
 - **Ion feedback tracker:** confirmed Ion-derived framework issues live in `ai/review/ion-feedback-tracker-2026-04-28.md`.
-- **Ion as framework pressure:** Ion's ideal-core lane is complete. Keep public
-  framework expansion, SOTA primitives, and release/docs polish behind explicit
-  selection or concrete consumer evidence instead of reopening broad
-  stabilization work.
+- **Ion as framework pressure:** Ion's ideal-core implementation lane is the
+  baseline, not final proof. Keep public framework expansion and SOTA
+  primitives behind explicit selection, but fix concrete framework seams found
+  during the pre-v0 design-closure review.
 - **Next-phase roadmap:** [ai/design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) remains the sequencing source, amended by `canto-2vxb`: make the harness facade clear before polishing M1 docs/release language.
 
 SOTA/DX research is part of the Canto pre-Ion gate when it can change stable API or primitives. New research remains delta-based and must name the Canto primitive it would change.
@@ -70,7 +71,9 @@ lane is selected.
   `/Users/nick/github/nijaru/ion/ai/sprints/02-ideal-core-completion.md`.
   The refreshed Pi/AX comparison drove durable turn identity and session
   sequence; that P1 architecture blocker is closed.
-- Active task graph: no ready Canto tasks. `canto-sqtc` added the
+- Active task graph: `canto-wuev` is the current design-closure support slice:
+  align public harness docs/examples around native `Submit` / `Turn`.
+  `canto-sqtc` added the
   sequence-bounded event-read API required by Ion's typed display projection.
   `canto-01ge` landed the native `Turn`/`Submit` facade; `canto-d6kl` landed
   durable event `TurnID`/`Seq`; `canto-iq8h`, `canto-uduq`, `canto-dvtd`, and
@@ -97,10 +100,15 @@ lane is selected.
   avoid unnecessary polling/flush loops, keep replay/resume bounded, and give
   Ion a low-latency stream it can render without reconstruction.
 
-**Post-Ion ideal-core validation:**
+**Ion pre-v0 design-closure support:**
 
 - Canto M1 docs/release work is selectable again when the user wants release
-  posture. It is not blocking Ion dogfood.
+  posture. It is not the active milestone unless selected.
+- `canto-wuev` found a real public-surface mismatch: Canto code had the native
+  `Session.Submit` / `Turn` transaction, but README, prompt docs, and examples
+  still taught `Prompt` / `PromptStream` as primary. The fix makes `Submit`
+  the obvious common path and documents `Prompt` / `PromptStream` as
+  convenience wrappers.
 - The `canto-2vxb` harness-facade work shaped the common authoring/runtime path
   around a framework `Harness`, durable session handle, and one ordered
   run-event stream. The review output is captured in

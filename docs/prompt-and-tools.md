@@ -18,13 +18,34 @@ h, err := canto.NewHarness("assistant").
 	Tools(tools...).
 	Build()
 
-result, err := h.Session("session-1").Prompt(ctx, "Say hello.")
+turn, err := h.Session("session-1").Submit(ctx, "Say hello.")
+if err != nil {
+	return err
+}
+for event := range turn.Events() {
+	switch event.Type {
+	case canto.RunEventChunk:
+		renderChunk(event.Chunk)
+	case canto.RunEventSession:
+		updateProjection(event.Event)
+	case canto.RunEventError:
+		renderError(event.Err)
+	}
+}
+result, err := turn.Result()
+if err != nil {
+	return err
+}
 ```
 
-For live hosts, `PromptStream` returns one stream of `RunEvent` values that
-contains model chunks, durable session events, and the final result/error.
-Hosts should prefer that over wiring `runtime.Runner.SendStream` and
-`runtime.Runner.Watch` separately.
+`Submit` accepts one durable turn transaction. The returned `Turn` owns the
+stable turn ID, cancellation handle, one ordered `RunEvent` stream, and final
+settlement through `Turn.Result`.
+
+`Prompt` is the blocking convenience wrapper for hosts that do not need turn
+events. `PromptStream` is a stream convenience wrapper for older/simple hosts
+that do not need a `Turn` handle. New live hosts should prefer `Submit` over
+wiring `runtime.Runner.SendStream` and `runtime.Runner.Watch` separately.
 
 `Environment(...)` groups optional capabilities such as workspace, executor,
 sandbox, secrets, and bootstrap context. It does not register tools or make

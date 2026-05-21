@@ -85,6 +85,9 @@ func (s *Session) ID() string {
 }
 
 // Prompt appends a user message and executes one agent turn.
+//
+// It is a blocking convenience wrapper around Submit. Hosts that need
+// streaming events, cancellation, or stable turn identity should call Submit.
 func (s *Session) Prompt(ctx context.Context, message string) (agent.StepResult, error) {
 	turn, err := s.Submit(ctx, message)
 	if err != nil {
@@ -264,6 +267,9 @@ func (s *Session) Submit(ctx context.Context, message string) (*Turn, error) {
 
 // PromptStream appends a user message and emits one ordered stream containing
 // model chunks, live durable session events, and the terminal result/error.
+//
+// It is a convenience wrapper around Submit for hosts that do not need direct
+// access to the Turn handle. New live hosts should prefer Submit.
 func (s *Session) PromptStream(
 	ctx context.Context,
 	message string,

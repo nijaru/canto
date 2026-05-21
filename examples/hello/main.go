@@ -29,7 +29,15 @@ func run(ctx context.Context, w io.Writer) error {
 	}
 	defer h.Close()
 
-	res, err := h.Session("hello-session").Prompt(ctx, "Say hello.")
+	turn, err := h.Session("hello-session").Submit(ctx, "Say hello.")
+	if err != nil {
+		return err
+	}
+
+	for range turn.Events() {
+	}
+
+	res, err := turn.Result()
 	if err != nil {
 		return err
 	}
