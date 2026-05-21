@@ -20,6 +20,7 @@ const (
 	RunLifecycleStep       RunLifecycleType = "step"
 	RunLifecycleTool       RunLifecycleType = "tool"
 	RunLifecycleChild      RunLifecycleType = "child"
+	RunLifecycleWait       RunLifecycleType = "wait"
 	RunLifecycleCompaction RunLifecycleType = "compaction"
 	RunLifecycleRetry      RunLifecycleType = "retry"
 )
@@ -83,6 +84,12 @@ type RunChildLifecycle struct {
 	Error     string            `json:"error,omitzero"`
 }
 
+// RunWaitLifecycle is a normalized view of external wait lifecycle events.
+type RunWaitLifecycle struct {
+	Reason     string `json:"reason,omitzero"`
+	ExternalID string `json:"external_id,omitzero"`
+}
+
 // RunCompactionLifecycle summarizes a durable compaction snapshot event.
 type RunCompactionLifecycle struct {
 	Strategy      string  `json:"strategy,omitzero"`
@@ -117,6 +124,7 @@ type RunLifecycle struct {
 	Tool        *RunToolLifecycle       `json:"tool,omitempty"`
 	ActiveTools []RunToolLifecycle      `json:"active_tools,omitzero"`
 	Child       *RunChildLifecycle      `json:"child,omitempty"`
+	Wait        *RunWaitLifecycle       `json:"wait,omitempty"`
 	Compaction  *RunCompactionLifecycle `json:"compaction,omitempty"`
 	Retry       *RunRetryLifecycle      `json:"retry,omitempty"`
 }
@@ -404,6 +412,32 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 				ID:        data.ChildID,
 				SessionID: data.ChildSessionID,
 				Message:   data.Note,
+			},
+		}
+	case session.WaitStarted:
+		data, ok, err := event.Event.WaitData()
+		if err != nil || !ok {
+			return
+		}
+		event.Lifecycle = &RunLifecycle{
+			Type:   RunLifecycleWait,
+			Status: RunLifecycleStarted,
+			Wait: &RunWaitLifecycle{
+				Reason:     data.Reason,
+				ExternalID: data.ExternalID,
+			},
+		}
+	case session.WaitResolved:
+		data, ok, err := event.Event.WaitData()
+		if err != nil || !ok {
+			return
+		}
+		event.Lifecycle = &RunLifecycle{
+			Type:   RunLifecycleWait,
+			Status: RunLifecycleCompleted,
+			Wait: &RunWaitLifecycle{
+				Reason:     data.Reason,
+				ExternalID: data.ExternalID,
 			},
 		}
 	case session.CompactionStarted:

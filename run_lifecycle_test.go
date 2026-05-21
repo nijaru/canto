@@ -225,6 +225,47 @@ func TestRunLifecycleAnnotatesChildEvents(t *testing.T) {
 	}
 }
 
+func TestRunLifecycleAnnotatesWaitEvents(t *testing.T) {
+	tests := []struct {
+		name   string
+		event  session.Event
+		status RunLifecycleStatus
+	}{
+		{
+			name: "started",
+			event: session.NewWaitStartedEvent("sess", session.WaitData{
+				Reason:     "approval required",
+				ExternalID: "approver-1",
+			}),
+			status: RunLifecycleStarted,
+		},
+		{
+			name: "resolved",
+			event: session.NewWaitResolvedEvent("sess", session.WaitData{
+				Reason:     "approval complete",
+				ExternalID: "approver-1",
+			}),
+			status: RunLifecycleCompleted,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var state runLifecycleState
+			event := RunEvent{Type: RunEventSession, Event: tt.event}
+			state.annotate(&event)
+			if event.Lifecycle == nil ||
+				event.Lifecycle.Type != RunLifecycleWait ||
+				event.Lifecycle.Status != tt.status ||
+				event.Lifecycle.Wait == nil ||
+				event.Lifecycle.Wait.ExternalID != "approver-1" ||
+				event.Lifecycle.Wait.Reason == "" {
+				t.Fatalf("wait lifecycle = %#v", event.Lifecycle)
+			}
+		})
+	}
+}
+
 func TestRunLifecycleTerminalUsageEmitsUnreportedDeltaOnce(t *testing.T) {
 	var state runLifecycleState
 
