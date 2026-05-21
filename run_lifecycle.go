@@ -19,6 +19,7 @@ const (
 	RunLifecycleTurn       RunLifecycleType = "turn"
 	RunLifecycleStep       RunLifecycleType = "step"
 	RunLifecycleTool       RunLifecycleType = "tool"
+	RunLifecycleChild      RunLifecycleType = "child"
 	RunLifecycleCompaction RunLifecycleType = "compaction"
 	RunLifecycleRetry      RunLifecycleType = "retry"
 )
@@ -28,10 +29,13 @@ type RunLifecycleStatus string
 
 const (
 	RunLifecycleStarted   RunLifecycleStatus = "started"
+	RunLifecycleRequested RunLifecycleStatus = "requested"
 	RunLifecycleUpdated   RunLifecycleStatus = "updated"
+	RunLifecycleBlocked   RunLifecycleStatus = "blocked"
 	RunLifecycleCompleted RunLifecycleStatus = "completed"
 	RunLifecycleFailed    RunLifecycleStatus = "failed"
 	RunLifecycleCanceled  RunLifecycleStatus = "canceled"
+	RunLifecycleMerged    RunLifecycleStatus = "merged"
 	RunLifecycleRetrying  RunLifecycleStatus = "retrying"
 )
 
@@ -42,6 +46,7 @@ const (
 	RunUsageProviderDelta RunUsageKind = "provider_delta"
 	RunUsageStep          RunUsageKind = "step"
 	RunUsageTurn          RunUsageKind = "turn"
+	RunUsageChild         RunUsageKind = "child"
 )
 
 // RunUsage carries both a cumulative usage observation and, when meaningful,
@@ -61,6 +66,21 @@ type RunToolLifecycle struct {
 	Output         string `json:"output,omitzero"`
 	Delta          string `json:"delta,omitzero"`
 	Error          string `json:"error,omitzero"`
+}
+
+// RunChildLifecycle is a normalized view of child-agent lifecycle events.
+type RunChildLifecycle struct {
+	ID        string            `json:"id,omitzero"`
+	SessionID string            `json:"session_id,omitzero"`
+	AgentID   string            `json:"agent_id,omitzero"`
+	Mode      session.ChildMode `json:"mode,omitzero"`
+	Task      string            `json:"task,omitzero"`
+	Context   string            `json:"context,omitzero"`
+	Status    string            `json:"status,omitzero"`
+	Message   string            `json:"message,omitzero"`
+	Summary   string            `json:"summary,omitzero"`
+	Reason    string            `json:"reason,omitzero"`
+	Error     string            `json:"error,omitzero"`
 }
 
 // RunCompactionLifecycle summarizes a durable compaction snapshot event.
@@ -96,6 +116,7 @@ type RunLifecycle struct {
 	Usage       *RunUsage               `json:"usage,omitempty"`
 	Tool        *RunToolLifecycle       `json:"tool,omitempty"`
 	ActiveTools []RunToolLifecycle      `json:"active_tools,omitzero"`
+	Child       *RunChildLifecycle      `json:"child,omitempty"`
 	Compaction  *RunCompactionLifecycle `json:"compaction,omitempty"`
 	Retry       *RunRetryLifecycle      `json:"retry,omitempty"`
 }
@@ -258,6 +279,132 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			ActiveTools: s.activeToolSnapshot(),
 			Canceled:    canceled,
 			Error:       data.Error,
+		}
+	case session.ChildRequested:
+		data, ok, err := event.Event.ChildRequestedData()
+		if err != nil || !ok {
+			return
+		}
+		event.Lifecycle = &RunLifecycle{
+			Type:    RunLifecycleChild,
+			Status:  RunLifecycleRequested,
+			AgentID: data.AgentID,
+			Child: &RunChildLifecycle{
+				ID:        data.ChildID,
+				SessionID: data.ChildSessionID,
+				AgentID:   data.AgentID,
+				Mode:      data.Mode,
+				Task:      data.Task,
+				Context:   data.Context,
+			},
+		}
+	case session.ChildStarted:
+		data, ok, err := event.Event.ChildStartedData()
+		if err != nil || !ok {
+			return
+		}
+		event.Lifecycle = &RunLifecycle{
+			Type:    RunLifecycleChild,
+			Status:  RunLifecycleStarted,
+			AgentID: data.AgentID,
+			Child: &RunChildLifecycle{
+				ID:        data.ChildID,
+				SessionID: data.ChildSessionID,
+				AgentID:   data.AgentID,
+			},
+		}
+	case session.ChildProgressed:
+		data, ok, err := event.Event.ChildProgressedData()
+		if err != nil || !ok {
+			return
+		}
+		event.Lifecycle = &RunLifecycle{
+			Type:   RunLifecycleChild,
+			Status: RunLifecycleUpdated,
+			Child: &RunChildLifecycle{
+				ID:        data.ChildID,
+				SessionID: data.ChildSessionID,
+				Status:    data.Status,
+				Message:   data.Message,
+			},
+		}
+	case session.ChildBlocked:
+		data, ok, err := event.Event.ChildBlockedData()
+		if err != nil || !ok {
+			return
+		}
+		event.Lifecycle = &RunLifecycle{
+			Type:   RunLifecycleChild,
+			Status: RunLifecycleBlocked,
+			Child: &RunChildLifecycle{
+				ID:        data.ChildID,
+				SessionID: data.ChildSessionID,
+				Reason:    data.Reason,
+			},
+		}
+	case session.ChildCompleted:
+		data, ok, err := event.Event.ChildCompletedData()
+		if err != nil || !ok {
+			return
+		}
+		usage := usageFromCumulative(RunUsageChild, data.Usage)
+		event.Usage = usage
+		event.Lifecycle = &RunLifecycle{
+			Type:     RunLifecycleChild,
+			Status:   RunLifecycleCompleted,
+			Terminal: true,
+			Usage:    usage,
+			Child: &RunChildLifecycle{
+				ID:        data.ChildID,
+				SessionID: data.ChildSessionID,
+				Summary:   data.Summary,
+			},
+		}
+	case session.ChildFailed:
+		data, ok, err := event.Event.ChildFailedData()
+		if err != nil || !ok {
+			return
+		}
+		event.Lifecycle = &RunLifecycle{
+			Type:     RunLifecycleChild,
+			Status:   RunLifecycleFailed,
+			Error:    data.Error,
+			Terminal: true,
+			Child: &RunChildLifecycle{
+				ID:        data.ChildID,
+				SessionID: data.ChildSessionID,
+				Error:     data.Error,
+			},
+		}
+	case session.ChildCanceled:
+		data, ok, err := event.Event.ChildCanceledData()
+		if err != nil || !ok {
+			return
+		}
+		event.Lifecycle = &RunLifecycle{
+			Type:     RunLifecycleChild,
+			Status:   RunLifecycleCanceled,
+			Terminal: true,
+			Canceled: true,
+			Child: &RunChildLifecycle{
+				ID:        data.ChildID,
+				SessionID: data.ChildSessionID,
+				Reason:    data.Reason,
+			},
+		}
+	case session.ChildMerged:
+		data, ok, err := event.Event.ChildMergedData()
+		if err != nil || !ok {
+			return
+		}
+		event.Lifecycle = &RunLifecycle{
+			Type:   RunLifecycleChild,
+			Status: RunLifecycleMerged,
+			Child: &RunChildLifecycle{
+				ID:        data.ChildID,
+				SessionID: data.ChildSessionID,
+				Message:   data.Note,
+			},
 		}
 	case session.CompactionStarted:
 		data, ok, err := event.Event.CompactionStartedData()

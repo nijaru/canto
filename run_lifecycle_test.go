@@ -108,6 +108,122 @@ func TestRunLifecycleAnnotatesFailedRunError(t *testing.T) {
 	}
 }
 
+func TestRunLifecycleAnnotatesChildEvents(t *testing.T) {
+	tests := []struct {
+		name     string
+		event    session.Event
+		status   RunLifecycleStatus
+		terminal bool
+		canceled bool
+	}{
+		{
+			name: "requested",
+			event: session.NewChildRequestedEvent("sess", session.ChildRequestedData{
+				ChildID:        "child-1",
+				ChildSessionID: "child-session",
+				AgentID:        "reviewer",
+				Mode:           session.ChildModeHandoff,
+				Task:           "inspect",
+				Context:        "repo",
+			}),
+			status: RunLifecycleRequested,
+		},
+		{
+			name: "started",
+			event: session.NewChildStartedEvent("sess", session.ChildStartedData{
+				ChildID:        "child-1",
+				ChildSessionID: "child-session",
+				AgentID:        "reviewer",
+			}),
+			status: RunLifecycleStarted,
+		},
+		{
+			name: "progressed",
+			event: session.NewChildProgressedEvent("sess", session.ChildProgressedData{
+				ChildID:        "child-1",
+				ChildSessionID: "child-session",
+				Status:         "running tests",
+				Message:        "partial output",
+			}),
+			status: RunLifecycleUpdated,
+		},
+		{
+			name: "blocked",
+			event: session.NewChildBlockedEvent("sess", session.ChildBlockedData{
+				ChildID:        "child-1",
+				ChildSessionID: "child-session",
+				Reason:         "approval required",
+			}),
+			status: RunLifecycleBlocked,
+		},
+		{
+			name: "completed",
+			event: session.NewChildCompletedEvent("sess", session.ChildCompletedData{
+				ChildID:        "child-1",
+				ChildSessionID: "child-session",
+				Summary:        "done",
+				Usage:          llm.Usage{InputTokens: 3, OutputTokens: 4, TotalTokens: 7},
+			}),
+			status:   RunLifecycleCompleted,
+			terminal: true,
+		},
+		{
+			name: "failed",
+			event: session.NewChildFailedEvent("sess", session.ChildFailedData{
+				ChildID:        "child-1",
+				ChildSessionID: "child-session",
+				Error:          "boom",
+			}),
+			status:   RunLifecycleFailed,
+			terminal: true,
+		},
+		{
+			name: "canceled",
+			event: session.NewChildCanceledEvent("sess", session.ChildCanceledData{
+				ChildID:        "child-1",
+				ChildSessionID: "child-session",
+				Reason:         "user",
+			}),
+			status:   RunLifecycleCanceled,
+			terminal: true,
+			canceled: true,
+		},
+		{
+			name: "merged",
+			event: session.NewChildMergedEvent("sess", session.ChildMergedData{
+				ChildID:        "child-1",
+				ChildSessionID: "child-session",
+				Note:           "merged artifacts",
+			}),
+			status: RunLifecycleMerged,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var state runLifecycleState
+			event := RunEvent{Type: RunEventSession, Event: tt.event}
+			state.annotate(&event)
+			if event.Lifecycle == nil ||
+				event.Lifecycle.Type != RunLifecycleChild ||
+				event.Lifecycle.Status != tt.status ||
+				event.Lifecycle.Terminal != tt.terminal ||
+				event.Lifecycle.Canceled != tt.canceled ||
+				event.Lifecycle.Child == nil ||
+				event.Lifecycle.Child.ID != "child-1" ||
+				event.Lifecycle.Child.SessionID != "child-session" {
+				t.Fatalf("child lifecycle = %#v", event.Lifecycle)
+			}
+			if tt.status == RunLifecycleCompleted &&
+				(event.Usage == nil ||
+					event.Usage.Kind != RunUsageChild ||
+					event.Usage.Cumulative.TotalTokens != 7) {
+				t.Fatalf("child usage = %#v", event.Usage)
+			}
+		})
+	}
+}
+
 func TestRunLifecycleTerminalUsageEmitsUnreportedDeltaOnce(t *testing.T) {
 	var state runLifecycleState
 
