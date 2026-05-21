@@ -35,11 +35,10 @@ dependencies.
 
 ### Canto Stabilization Roadmap
 
-The active goal is now Ion-driven optimal-core redesign before M1 release/docs
-or Ion Phase 2. This is proactive framework work, not a broad survey and not
-only reactive defect intake. Pi's small core, mature coding-agent products, and
-current framework SDKs are concrete enough to justify strengthening the Canto
-session/turn contract before Ion builds more product surface on top.
+The Ion-driven optimal-core redesign lane is complete. Canto now returns to
+consumer validation and selectable M1 readiness work: add new implementation
+work only when Ion dogfood, another consumer, or an explicitly selected release
+lane exposes a concrete framework seam.
 
 Design source:
 [`design/optimal-core-redesign-2026-05.md`](design/optimal-core-redesign-2026-05.md).
@@ -58,7 +57,7 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 | 0 done | `canto-uduq` optimal-core contract tests | Added stream metadata and tests for ordered run events, usage-before-result, yielding hook settlement, and overflow-recovery stream identity |
 | 1 done | `canto-dvtd` optimal-core turn transaction | Replaced `PromptStream` snapshot/watch/callback repair with an ordered session observer stream |
 | 2 done | `canto-xz1w` optimal-core lifecycle events | Added typed RunEvent lifecycle/usage metadata plus compaction-start and overflow-retry events |
-| 3 active | `canto-iq8h` Ion import/removal proof | Import into Ion and remove generic lifecycle reconstruction from the Ion adapter |
+| 3 done | `canto-iq8h` Ion import/removal proof | Imported into Ion and removed generic lifecycle reconstruction from the Ion adapter |
 | 0 done | `canto-2vxb` Flue/Pi harness facade review | Implemented the named harness/session target used as the M1 authoring seam |
 | 0 done | `canto-5qb6` Roadmap stabilization pass | Aligned the roadmap around Canto mechanism vs Ion policy and removed stale frontier entries |
 | 1 done | `canto-7mp1` Two-phase tool execution | Finalized sequential preflight, concurrent I/O, deterministic ordered observation emission, and execution-boundary `ToolStarted` events |
@@ -90,9 +89,8 @@ durable session handle, ordered run-event stream, and explicit environment
 capabilities. That is now the authoring seam to preserve during M1 readiness.
 
 Next selectable work after the optimal-core lane is Canto docs/release posture
-plus any concrete framework issues returned from Ion validation. Do not resume
-M1 docs/release work until the session/turn rewrite and Ion import proof are
-done or explicitly deferred.
+plus any concrete framework issues returned from Ion validation. The
+session/turn rewrite and Ion import proof are done.
 
 ## Definition of Complete
 

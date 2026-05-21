@@ -2,10 +2,10 @@
 
 ## Root
 
-- [STATUS.md](STATUS.md) — current optimal-core phase, active Canto/Ion task gate, recent evidence, backlog, blockers
+- [STATUS.md](STATUS.md) — post-Ion ideal-core validation state, current evidence, backlog, and blockers
 - [DESIGN.md](DESIGN.md) — canonical architecture, Ion boundary, run-event lifecycle contract, and package boundaries
 - [DECISIONS.md](DECISIONS.md) — stable principles plus recent architecture and planning decisions
-- [PLAN.md](PLAN.md) — sprint history, Ion/Canto framing, M1 readiness gate, and active optimal-core sequence
+- [PLAN.md](PLAN.md) — sprint history, Ion/Canto framing, M1 readiness gate, and completed optimal-core sequence
 
 ## Completed Sprints
 
