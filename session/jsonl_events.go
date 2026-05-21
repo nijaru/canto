@@ -120,6 +120,56 @@ func (s *JSONLStore) Load(ctx context.Context, sessionID string) (*Session, erro
 	return sess, nil
 }
 
+// EventsAfter returns durable events with sequence numbers greater than afterSeq.
+func (s *JSONLStore) EventsAfter(
+	ctx context.Context,
+	sessionID string,
+	afterSeq int64,
+) ([]Event, error) {
+	mu := s.getSessionMu(sessionID)
+	mu.RLock()
+	defer mu.RUnlock()
+
+	path := fmt.Sprintf("%s.jsonl", sessionID)
+	f, err := s.root.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer f.Close()
+
+	reader := bufio.NewReader(f)
+	var events []Event
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		line, readErr := reader.ReadBytes('\n')
+		if readErr != nil && readErr != io.EOF {
+			return nil, readErr
+		}
+		line = bytes.TrimSpace(line)
+		if len(line) > 0 {
+			e, err := decodeEventJSON(line)
+			if err != nil {
+				return nil, err
+			}
+			if e.Seq > afterSeq {
+				events = append(events, e)
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+	}
+	return events, nil
+}
+
 // LoadUntil loads a session up to (and including) the given event ID.
 func (s *JSONLStore) LoadUntil(
 	ctx context.Context,

@@ -18,46 +18,5 @@ func (s *SQLiteStore) Search(ctx context.Context, sessionID string, query string
 		return nil, err
 	}
 	defer rows.Close()
-
-	var res []Event
-	for rows.Next() {
-		var idStr, turnID, typeStr, timeStr string
-		var sessionID string
-		var seq int64
-		var data, metadata []byte
-		var cost float64
-		if err := rows.Scan(
-			&idStr,
-			&sessionID,
-			&turnID,
-			&seq,
-			&typeStr,
-			&timeStr,
-			&data,
-			&metadata,
-			&cost,
-		); err != nil {
-			return nil, err
-		}
-
-		e, err := decodeEventRow(
-			idStr,
-			sessionID,
-			turnID,
-			typeStr,
-			timeStr,
-			seq,
-			data,
-			metadata,
-			cost,
-		)
-		if err != nil {
-			return nil, err
-		}
-		res = append(res, e)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return res, nil
+	return scanEventRows(rows)
 }

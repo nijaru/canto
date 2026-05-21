@@ -87,6 +87,26 @@ func TestStoresPersistSequenceAndTurnID(t *testing.T) {
 	})
 }
 
+func TestStoresReturnEventsAfterSequence(t *testing.T) {
+	t.Run("jsonl", func(t *testing.T) {
+		store, err := NewJSONLStore(t.TempDir())
+		if err != nil {
+			t.Fatalf("NewJSONLStore: %v", err)
+		}
+		defer store.Close()
+		assertStoreReturnsEventsAfterSequence(t, store, "jsonl-events-after")
+	})
+
+	t.Run("sqlite", func(t *testing.T) {
+		store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "sessions.db"))
+		if err != nil {
+			t.Fatalf("NewSQLiteStore: %v", err)
+		}
+		defer store.Close()
+		assertStoreReturnsEventsAfterSequence(t, store, "sqlite-events-after")
+	})
+}
+
 func assertStorePersistsSequenceAndTurnID(t *testing.T, store Store, sessionID string) {
 	t.Helper()
 
@@ -114,6 +134,44 @@ func assertStorePersistsSequenceAndTurnID(t *testing.T, store Store, sessionID s
 		}
 		if event.TurnID != "turn-store" {
 			t.Fatalf("loaded event %d turn id = %q, want turn-store", i, event.TurnID)
+		}
+	}
+}
+
+func assertStoreReturnsEventsAfterSequence(
+	t *testing.T,
+	store interface {
+		Store
+		EventQueryStore
+	},
+	sessionID string,
+) {
+	t.Helper()
+
+	sess := New(sessionID).WithWriter(store)
+	ctx := WithTurnID(t.Context(), "turn-after")
+	for _, eventType := range []EventType{Handoff, ExternalInput, WaitStarted, WaitResolved} {
+		if err := sess.Append(ctx, NewEvent(sessionID, eventType, map[string]string{
+			"type": string(eventType),
+		})); err != nil {
+			t.Fatalf("Append %s: %v", eventType, err)
+		}
+	}
+
+	events, err := store.EventsAfter(t.Context(), sessionID, 2)
+	if err != nil {
+		t.Fatalf("EventsAfter: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("EventsAfter count = %d, want 2", len(events))
+	}
+	for i, event := range events {
+		wantSeq := int64(i + 3)
+		if event.Seq != wantSeq {
+			t.Fatalf("event %d seq = %d, want %d", i, event.Seq, wantSeq)
+		}
+		if event.TurnID != "turn-after" {
+			t.Fatalf("event %d turn id = %q, want turn-after", i, event.TurnID)
 		}
 	}
 }

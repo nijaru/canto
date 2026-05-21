@@ -23,6 +23,28 @@ func (s *SQLiteStore) Load(ctx context.Context, sessionID string) (*Session, err
 	return loadSessionRows(sessionID, s, rows)
 }
 
+// EventsAfter returns durable events with sequence numbers greater than afterSeq.
+func (s *SQLiteStore) EventsAfter(
+	ctx context.Context,
+	sessionID string,
+	afterSeq int64,
+) ([]Event, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, session_id, COALESCE(turn_id, ''), seq, type, timestamp, data, metadata, cost
+		   FROM events
+		  WHERE session_id = ? AND seq > ?
+		  ORDER BY seq ASC, rowid ASC`,
+		sessionID,
+		afterSeq,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanEventRows(rows)
+}
+
 // LoadUntil loads a session up to (and including) the given event ID.
 func (s *SQLiteStore) LoadUntil(
 	ctx context.Context,
@@ -64,40 +86,58 @@ func (s *SQLiteStore) LoadUntil(
 	return loadSessionRows(sessionID, s, rows)
 }
 
+func scanEventRows(rows *sql.Rows) ([]Event, error) {
+	var events []Event
+	for rows.Next() {
+		e, err := scanEventRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
+func scanEventRow(rows *sql.Rows) (Event, error) {
+	var idStr, turnID, typeStr, timeStr string
+	var loadedSessionID string
+	var seq int64
+	var data, metadata []byte
+	var cost float64
+	if err := rows.Scan(
+		&idStr,
+		&loadedSessionID,
+		&turnID,
+		&seq,
+		&typeStr,
+		&timeStr,
+		&data,
+		&metadata,
+		&cost,
+	); err != nil {
+		return Event{}, err
+	}
+	return decodeEventRow(
+		idStr,
+		loadedSessionID,
+		turnID,
+		typeStr,
+		timeStr,
+		seq,
+		data,
+		metadata,
+		cost,
+	)
+}
+
 func loadSessionRows(sessionID string, store *SQLiteStore, rows *sql.Rows) (*Session, error) {
 	replayer := NewReplayer()
 	sess := replayer.NewSession(sessionID).WithWriter(store)
 	for rows.Next() {
-		var idStr, turnID, typeStr, timeStr string
-		var loadedSessionID string
-		var seq int64
-		var data, metadata []byte
-		var cost float64
-		if err := rows.Scan(
-			&idStr,
-			&loadedSessionID,
-			&turnID,
-			&seq,
-			&typeStr,
-			&timeStr,
-			&data,
-			&metadata,
-			&cost,
-		); err != nil {
-			return nil, err
-		}
-
-		e, err := decodeEventRow(
-			idStr,
-			loadedSessionID,
-			turnID,
-			typeStr,
-			timeStr,
-			seq,
-			data,
-			metadata,
-			cost,
-		)
+		e, err := scanEventRow(rows)
 		if err != nil {
 			return nil, err
 		}

@@ -22,11 +22,20 @@ type SearchStore interface {
 	Search(ctx context.Context, sessionID string, query string) ([]Event, error)
 }
 
+// EventQueryStore exposes sequence-bounded reads over persisted session events.
+// Hosts use this to keep derived projections current without loading the full
+// session log on every read.
+type EventQueryStore interface {
+	EventsAfter(ctx context.Context, sessionID string, afterSeq int64) ([]Event, error)
+}
+
 var (
 	_ SessionTreeStore   = (*SQLiteStore)(nil)
 	_ ForkStore          = (*SQLiteStore)(nil)
 	_ SessionBranchStore = (*SQLiteStore)(nil)
+	_ EventQueryStore    = (*SQLiteStore)(nil)
 	_ SessionTreeStore   = (*JSONLStore)(nil)
 	_ ForkStore          = (*JSONLStore)(nil)
 	_ SessionBranchStore = (*JSONLStore)(nil)
+	_ EventQueryStore    = (*JSONLStore)(nil)
 )
