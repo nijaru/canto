@@ -11,6 +11,7 @@ import (
 	"github.com/nijaru/canto/coding"
 	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/safety"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
@@ -79,6 +80,100 @@ func TestHarnessSessionPromptStream(t *testing.T) {
 	}
 	if result.Content != "hello" {
 		t.Fatalf("result content = %q, want hello", result.Content)
+	}
+}
+
+func TestHarnessSessionSubmitTurn(t *testing.T) {
+	h, err := NewHarness("submit").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{
+			Chunks: []llm.Chunk{{Content: "ok"}},
+		})).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	turn, err := h.Session("submit-session").Submit(t.Context(), "hi")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if turn.ID() == "" {
+		t.Fatal("turn ID is empty")
+	}
+
+	var sawResult bool
+	for event := range turn.Events() {
+		if event.TurnID != turn.ID() {
+			t.Fatalf("event turn id = %q, want %q", event.TurnID, turn.ID())
+		}
+		if event.Type == RunEventSession && event.Event.TurnID != turn.ID() {
+			t.Fatalf("durable event turn id = %q, want %q", event.Event.TurnID, turn.ID())
+		}
+		if event.Type == RunEventResult {
+			sawResult = true
+		}
+		if event.Type == RunEventError {
+			t.Fatalf("stream error: %v", event.Err)
+		}
+	}
+	if !sawResult {
+		t.Fatal("missing terminal result event")
+	}
+
+	result, err := turn.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+	if result.Content != "ok" {
+		t.Fatalf("result content = %q, want ok", result.Content)
+	}
+}
+
+func TestHarnessSessionSubmitTurnCancel(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	a := cancelAfterTurnStartedAgent{}
+	h := &Harness{
+		Agent:     a,
+		Runner:    runtime.NewRunner(store, a),
+		Store:     store,
+		ownsStore: true,
+	}
+	defer h.Close()
+
+	turn, err := h.Session("submit-cancel-session").Submit(t.Context(), "go")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+
+	var sawCancel bool
+	for event := range turn.Events() {
+		switch event.Type {
+		case RunEventSession:
+			if event.Event.Type == session.TurnStarted {
+				if err := turn.Cancel(t.Context()); err != nil {
+					t.Fatalf("Cancel: %v", err)
+				}
+			}
+		case RunEventError:
+			if !errors.Is(event.Err, context.Canceled) {
+				t.Fatalf("stream error = %v, want context canceled", event.Err)
+			}
+			sawCancel = true
+		case RunEventResult:
+			t.Fatal("unexpected result for canceled turn")
+		}
+	}
+	if !sawCancel {
+		t.Fatal("missing canceled terminal event")
+	}
+	if _, err := turn.Result(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Result error = %v, want context canceled", err)
 	}
 }
 

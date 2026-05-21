@@ -16,6 +16,66 @@ type Session struct {
 	id      string
 }
 
+// Turn is one accepted host-facing execution transaction.
+type Turn struct {
+	id         string
+	events     <-chan RunEvent
+	cancel     context.CancelFunc
+	resultCh   <-chan turnOutcome
+	resultOnce sync.Once
+	result     turnOutcome
+	resultOK   bool
+}
+
+type turnOutcome struct {
+	result agent.StepResult
+	err    error
+}
+
+// ID returns the durable turn identity.
+func (t *Turn) ID() string {
+	if t == nil {
+		return ""
+	}
+	return t.id
+}
+
+// Events returns the single ordered event stream for this turn.
+func (t *Turn) Events() <-chan RunEvent {
+	if t == nil {
+		return nil
+	}
+	return t.events
+}
+
+// Cancel requests cancellation of the turn.
+func (t *Turn) Cancel(ctx context.Context) error {
+	if t == nil {
+		return fmt.Errorf("canto turn: nil turn")
+	}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	t.cancel()
+	return nil
+}
+
+// Result waits for terminal turn settlement and returns the final result.
+func (t *Turn) Result() (agent.StepResult, error) {
+	if t == nil {
+		return agent.StepResult{}, fmt.Errorf("canto turn: nil turn")
+	}
+	t.resultOnce.Do(func() {
+		t.result, t.resultOK = <-t.resultCh
+	})
+	if !t.resultOK {
+		return agent.StepResult{}, fmt.Errorf("canto turn %s: missing result", t.id)
+	}
+	return t.result.result, t.result.err
+}
+
 // ID returns the durable session ID.
 func (s *Session) ID() string {
 	if s == nil {
@@ -26,10 +86,13 @@ func (s *Session) ID() string {
 
 // Prompt appends a user message and executes one agent turn.
 func (s *Session) Prompt(ctx context.Context, message string) (agent.StepResult, error) {
-	if s == nil || s.harness == nil || s.harness.Runner == nil {
-		return agent.StepResult{}, fmt.Errorf("canto harness: nil runner")
+	turn, err := s.Submit(ctx, message)
+	if err != nil {
+		return agent.StepResult{}, err
 	}
-	return s.harness.Runner.Send(ctx, s.id, message)
+	for range turn.Events() {
+	}
+	return turn.Result()
 }
 
 // RunEventType identifies the source and meaning of a streamed harness event.
@@ -141,16 +204,13 @@ func (e *runEventEmitter) emit(
 	}
 }
 
-// PromptStream appends a user message and emits one ordered stream containing
-// model chunks, live durable session events, and the terminal result/error.
-func (s *Session) PromptStream(
-	ctx context.Context,
-	message string,
-) (<-chan RunEvent, error) {
+// Submit accepts a user message as one turn transaction and starts execution.
+func (s *Session) Submit(ctx context.Context, message string) (*Turn, error) {
 	if s == nil || s.harness == nil || s.harness.Runner == nil {
 		return nil, fmt.Errorf("canto harness: nil runner")
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
 	out := make(chan RunEvent)
 	ctx, turnID := session.EnsureTurnID(ctx)
 	emitter := newRunEventEmitter(ctx, out, s.id, turnID)
@@ -171,9 +231,11 @@ func (s *Session) PromptStream(
 		},
 	)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
+	resultCh := make(chan turnOutcome, 1)
 	go func() {
 		defer close(out)
 		defer detach()
@@ -186,11 +248,31 @@ func (s *Session) PromptStream(
 		})
 		if err != nil {
 			emitter.emitFinal(RunEvent{Type: RunEventError, Err: err})
+			resultCh <- turnOutcome{err: err}
 			return
 		}
 		emitter.emitFinal(RunEvent{Type: RunEventResult, Result: result})
+		resultCh <- turnOutcome{result: result}
 	}()
-	return out, nil
+	return &Turn{
+		id:       turnID,
+		events:   out,
+		cancel:   cancel,
+		resultCh: resultCh,
+	}, nil
+}
+
+// PromptStream appends a user message and emits one ordered stream containing
+// model chunks, live durable session events, and the terminal result/error.
+func (s *Session) PromptStream(
+	ctx context.Context,
+	message string,
+) (<-chan RunEvent, error) {
+	turn, err := s.Submit(ctx, message)
+	if err != nil {
+		return nil, err
+	}
+	return turn.Events(), nil
 }
 
 // Run executes the agent on the existing session without appending a message.

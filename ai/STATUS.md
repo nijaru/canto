@@ -68,9 +68,10 @@ lane is selected.
   `/Users/nick/github/nijaru/ion/ai/sprints/02-ideal-core-completion.md`.
   The refreshed Pi/AX comparison makes durable turn identity and session
   sequence the immediate P1 architecture blocker.
-- Active task graph: `canto-d6kl` is active for durable turn transaction
-  identity and sequence. `canto-uduq`, `canto-dvtd`, and `canto-xz1w` are
-  complete.
+- Active task graph: `canto-01ge` is active for the native `Turn`/`Submit`
+  facade. `canto-d6kl` landed in commit `83d76d3` and remains the imported
+  durable identity dependency for Ion. `canto-uduq`, `canto-dvtd`, and
+  `canto-xz1w` are complete.
 - `canto-uduq` landed the first executable contract slice: `RunEvent` now
   carries session id, stable external turn id, monotonic sequence, and
   durability classification. PromptStream tests now cover ordered metadata,
