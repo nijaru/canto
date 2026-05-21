@@ -21,6 +21,7 @@ type Session struct {
 	events      []Event
 	state       map[string]any
 	subscribers []*subscriber
+	observers   []*eventObserver
 	writer      Writer
 	writerCh    *writerChannel
 	reducer     Reducer

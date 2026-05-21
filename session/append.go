@@ -67,12 +67,13 @@ func (s *Session) Append(ctx context.Context, e Event) error {
 		s.state = s.reducer(s.state, e)
 	}
 	subs := append([]*subscriber(nil), s.subscribers...)
+	observerErr := s.notifyObserversLocked(ctx, e)
 	s.mu.Unlock()
 
 	for _, sub := range subs {
 		sub.trySend(e)
 	}
-	return nil
+	return observerErr
 }
 
 func (s *Session) validateWritableSequenceLocked(e *Event) error {

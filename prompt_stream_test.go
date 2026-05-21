@@ -54,7 +54,7 @@ func (a burstEventAgent) Turn(
 	return agent.StepResult{Content: "done"}, nil
 }
 
-func TestPromptStreamReplaysSessionEventsDroppedByLiveWatch(t *testing.T) {
+func TestPromptStreamDeliversBurstSessionEventsWithoutDrops(t *testing.T) {
 	const burstEvents = 96
 
 	store, err := session.NewSQLiteStore(":memory:")
@@ -73,7 +73,6 @@ func TestPromptStreamReplaysSessionEventsDroppedByLiveWatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PromptStream: %v", err)
 	}
-	waitForDurableBurstEvents(t, store, "burst-session", burstEvents)
 
 	seen := make(map[int]struct{}, burstEvents)
 	var gotResult bool
@@ -156,11 +155,10 @@ func (a gatedBurstEventAgent) Turn(
 	return agent.StepResult{Content: "done"}, nil
 }
 
-func TestPromptStreamPreservesEventOrderWhenLiveWatchDropsMiddle(t *testing.T) {
+func TestPromptStreamBackpressuresSlowConsumersAndPreservesEventOrder(t *testing.T) {
 	const (
 		firstBurst           = 96
 		tail                 = 10
-		bufferedLivePrefix   = 66
 		expectedHandoffCount = firstBurst + tail
 	)
 
@@ -188,6 +186,12 @@ func TestPromptStreamPreservesEventOrderWhenLiveWatchDropsMiddle(t *testing.T) {
 	events, err := harness.Session("ordered-session").PromptStream(ctx, "go")
 	if err != nil {
 		t.Fatalf("PromptStream: %v", err)
+	}
+
+	select {
+	case <-a.burstDone:
+		t.Fatal("agent completed first burst before stream was consumed")
+	case <-time.After(25 * time.Millisecond):
 	}
 
 	var indexes []int
@@ -219,13 +223,13 @@ func TestPromptStreamPreservesEventOrderWhenLiveWatchDropsMiddle(t *testing.T) {
 	if indexes[0] != 0 {
 		t.Fatalf("first handoff index = %d, want 0", indexes[0])
 	}
+	for len(indexes) < firstBurst {
+		readHandoff()
+	}
 	select {
 	case <-a.burstDone:
 	case <-ctx.Done():
 		t.Fatalf("timed out waiting for burst: %v", ctx.Err())
-	}
-	for len(indexes) < bufferedLivePrefix {
-		readHandoff()
 	}
 	close(a.continueCh)
 
@@ -1079,41 +1083,6 @@ func isClosed(ch <-chan struct{}) bool {
 		return true
 	default:
 		return false
-	}
-}
-
-func waitForDurableBurstEvents(
-	t *testing.T,
-	store *session.SQLiteStore,
-	sessionID string,
-	want int,
-) {
-	t.Helper()
-
-	deadline := time.After(2 * time.Second)
-	tick := time.NewTicker(10 * time.Millisecond)
-	defer tick.Stop()
-
-	for {
-		sess, err := store.Load(t.Context(), sessionID)
-		if err != nil {
-			t.Fatalf("load session: %v", err)
-		}
-		var got int
-		for _, event := range sess.Events() {
-			if event.Type == session.Handoff {
-				got++
-			}
-		}
-		if got == want {
-			return
-		}
-
-		select {
-		case <-deadline:
-			t.Fatalf("durable burst events = %d, want %d", got, want)
-		case <-tick.C:
-		}
 	}
 }
 

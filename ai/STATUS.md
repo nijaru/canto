@@ -67,16 +67,19 @@ lane is selected.
   `ai/design/optimal-core-redesign-2026-05.md`. The first target is Canto
   contract tests for ordered turn transactions, async hook/handler settlement,
   tool/usage/cancel/terminal ordering, and overflow recovery.
-- Active task graph: `canto-uduq` is complete; `canto-dvtd` is active to
-  rewrite the session stream as a turn transaction; `canto-xz1w` exposes
-  lifecycle events/metadata after that; `canto-iq8h` tracks the Ion
-  import/removal proof.
+- Active task graph: `canto-uduq` and `canto-dvtd` are complete; `canto-xz1w`
+  is active to expose lifecycle events/metadata; `canto-iq8h` tracks the Ion
+  import/removal proof after that.
 - `canto-uduq` landed the first executable contract slice: `RunEvent` now
   carries session id, stable external turn id, monotonic sequence, and
   durability classification. PromptStream tests now cover ordered metadata,
   durable usage before terminal result, yielding post-tool hook settlement
   before tool completion/result, and overflow recovery with stable turn id plus
   one host terminal result.
+- `canto-dvtd` replaced `PromptStream` snapshot/watch repair with synchronous
+  session event observers: durable session events now emit from `Append` order,
+  chunks and terminal results share the same host sequence, and slow stream
+  consumers backpressure instead of dropping and replaying live events.
 - Reference posture: P1 stays Pi-level, with Codex app/CLI and Claude Code as
   P1 ergonomics/performance references. AX, DSPy, GEPA, Slate, Droid, richer
   Codex/Claude workflows, and similar systems are Phase 2/Pi+ inputs unless
@@ -94,10 +97,9 @@ lane is selected.
   around a framework `Harness`, durable session handle, and one ordered
   run-event stream. The review output is captured in
   `ai/design/authoring-surface.md`.
-- New follow-up target: replace `PromptStream` snapshot/watch/callback
-  assembly with a native turn transaction/broker, then expose lifecycle
-  metadata/events for usage, active tools, compaction, retry, cancel, and
-  terminal settlement.
+- New follow-up target: expose lifecycle metadata/events for usage, active
+  tools, compaction, retry, cancel, and terminal settlement so Ion does not
+  reconstruct framework-owned state.
 - Work should continue as clean pre-alpha breaks, not compatibility wrappers.
 - Do not create Canto implementation work from Mesa/Archil/OpenHands/DSPy/GEPA
   research alone. Those are roadmap inputs; implementation starts only when M1
@@ -119,6 +121,12 @@ lane is selected.
 
 ## Recently landed
 
+- `canto-dvtd` — PromptStream is now driven by an ordered session observer
+  rather than snapshot/watch/callback repair. `session.Append` supports
+  synchronous non-lossy observers, `runtime.Runner.ObserveEvents` exposes the
+  hook, and root stream events now come from one sequenced emitter. Focused
+  PromptStream/session observer tests, `go test ./...`, `go vet ./...`,
+  `git diff --check`, and focused race tests pass.
 - `canto-hr9r` closed the Phase 5 audit in green commits. Current checkpoint:
   semantic retrieval enforces namespace/role filters after fusion;
   graph/Redis/tool storage were split by responsibility; task JSON mutations

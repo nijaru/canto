@@ -72,6 +72,21 @@ func (r *Runner) Watch(ctx context.Context, sessionID string) (*session.Subscrip
 	return sess.Watch(ctx), nil
 }
 
+// ObserveEvents attaches an ordered, non-lossy observer to newly appended
+// session events. Unlike Watch, the observer backpressures Append and must be
+// detached by calling the returned function.
+func (r *Runner) ObserveEvents(
+	ctx context.Context,
+	sessionID string,
+	observer session.EventObserver,
+) (func(), error) {
+	sess, err := r.getOrLoad(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return sess.ObserveEvents(observer), nil
+}
+
 // Events returns a snapshot of the durable event log for sessionID.
 func (r *Runner) Events(ctx context.Context, sessionID string) ([]session.Event, error) {
 	sess, err := r.getOrLoad(ctx, sessionID)

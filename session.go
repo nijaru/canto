@@ -66,6 +66,78 @@ type RunEvent struct {
 	Err        error
 }
 
+type runEventEmitter struct {
+	ctx       context.Context
+	out       chan<- RunEvent
+	sessionID string
+	turnID    string
+	mu        sync.Mutex
+	seq       int64
+}
+
+func newRunEventEmitter(
+	ctx context.Context,
+	out chan<- RunEvent,
+	sessionID string,
+	turnID string,
+) *runEventEmitter {
+	return &runEventEmitter{
+		ctx:       ctx,
+		out:       out,
+		sessionID: sessionID,
+		turnID:    turnID,
+	}
+}
+
+func (e *runEventEmitter) emitLive(event RunEvent) bool {
+	return e.emit(e.ctx, event, RunEventLiveOnly, true)
+}
+
+func (e *runEventEmitter) emitSession(ctx context.Context, event session.Event) bool {
+	return e.emit(
+		ctx,
+		RunEvent{Type: RunEventSession, Event: event},
+		RunEventDurable,
+		true,
+	)
+}
+
+func (e *runEventEmitter) emitFinal(event RunEvent) bool {
+	return e.emit(context.Background(), event, RunEventTerminal, false)
+}
+
+func (e *runEventEmitter) emit(
+	ctx context.Context,
+	event RunEvent,
+	durability RunEventDurability,
+	respectCancel bool,
+) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.seq++
+	event.SessionID = e.sessionID
+	event.TurnID = e.turnID
+	event.Seq = e.seq
+	event.Durability = durability
+
+	if !respectCancel {
+		e.out <- event
+		return true
+	}
+	if ctx == nil || ctx.Done() == nil {
+		e.out <- event
+		return true
+	}
+	select {
+	case e.out <- event:
+		return true
+	case <-ctx.Done():
+		e.seq--
+		return false
+	}
+}
+
 // PromptStream appends a user message and emits one ordered stream containing
 // model chunks, live durable session events, and the terminal result/error.
 func (s *Session) PromptStream(
@@ -76,146 +148,44 @@ func (s *Session) PromptStream(
 		return nil, fmt.Errorf("canto harness: nil runner")
 	}
 
-	baseline, err := s.harness.Runner.Events(ctx, s.id)
-	if err != nil {
-		return nil, err
-	}
-
-	sub, err := s.Events(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	out := make(chan RunEvent)
 	turnID := ulid.Make().String()
-	go func() {
-		defer close(out)
-		defer sub.Close()
-
-		var wg sync.WaitGroup
-		done := make(chan struct{})
-		var flushMu sync.Mutex
-		var emitMu sync.Mutex
-		var seq int64
-		nextEvent := len(baseline)
-		emit := func(event RunEvent, durability RunEventDurability, respectCancel bool) bool {
-			emitMu.Lock()
-			defer emitMu.Unlock()
-
-			seq++
-			event.SessionID = s.id
-			event.TurnID = turnID
-			event.Seq = seq
-			event.Durability = durability
-
-			if !respectCancel {
-				out <- event
-				return true
+	emitter := newRunEventEmitter(ctx, out, s.id, turnID)
+	detach, err := s.harness.Runner.ObserveEvents(
+		ctx,
+		s.id,
+		func(eventCtx context.Context, event session.Event) error {
+			if emitter.emitSession(eventCtx, event) {
+				return nil
 			}
-			select {
-			case out <- event:
-				return true
-			case <-ctx.Done():
-				seq--
-				return false
-			}
-		}
-		emitLive := func(event RunEvent) bool {
-			return emit(event, RunEventLiveOnly, true)
-		}
-		emitFinal := func(event RunEvent) bool {
-			return emit(event, RunEventTerminal, false)
-		}
-		emitLiveSession := func(event session.Event, stop <-chan struct{}) bool {
-			emitMu.Lock()
-			defer emitMu.Unlock()
-
-			seq++
-			streamEvent := RunEvent{
-				Type:       RunEventSession,
-				SessionID:  s.id,
-				TurnID:     turnID,
-				Seq:        seq,
-				Durability: RunEventDurable,
-				Event:      event,
-			}
-			select {
-			case out <- streamEvent:
-				return true
-			case <-ctx.Done():
-				seq--
-				return false
-			case <-stop:
-				seq--
-				return false
-			}
-		}
-		emitFinalSession := func(event session.Event, _ <-chan struct{}) bool {
-			return emit(
-				RunEvent{Type: RunEventSession, Event: event},
-				RunEventDurable,
-				false,
-			)
-		}
-		flushEvents := func(
-			stop <-chan struct{},
-			emitSession func(session.Event, <-chan struct{}) bool,
-		) error {
-			flushMu.Lock()
-			defer flushMu.Unlock()
-
-			events, err := s.harness.Runner.Events(context.WithoutCancel(ctx), s.id)
-			if err != nil {
+			if err := eventCtx.Err(); err != nil {
 				return err
 			}
-			for nextEvent < len(events) {
-				if !emitSession(events[nextEvent], stop) {
-					return context.Cause(ctx)
-				}
-				nextEvent++
+			if err := ctx.Err(); err != nil {
+				return err
 			}
-			return nil
-		}
+			return context.Canceled
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
 
-		wg.Go(func() {
-			for {
-				select {
-				case _, ok := <-sub.Events():
-					if !ok {
-						return
-					}
-					if err := flushEvents(done, emitLiveSession); err != nil {
-						return
-					}
-				case <-done:
-					return
-				}
-			}
-		})
+	go func() {
+		defer close(out)
+		defer detach()
 
 		result, err := s.harness.Runner.SendStream(ctx, s.id, message, func(chunk *llm.Chunk) {
 			if chunk == nil {
 				return
 			}
-			if err := flushEvents(done, emitLiveSession); err != nil {
-				return
-			}
-			emitLive(RunEvent{Type: RunEventChunk, Chunk: *chunk})
+			emitter.emitLive(RunEvent{Type: RunEventChunk, Chunk: *chunk})
 		})
-		close(done)
-		sub.Close()
-		wg.Wait()
-
-		if snapshotErr := flushEvents(nil, emitFinalSession); snapshotErr != nil && err == nil {
-			emitFinal(RunEvent{Type: RunEventError, Err: snapshotErr})
-			return
-		}
-
 		if err != nil {
-			emitFinal(RunEvent{Type: RunEventError, Err: err})
+			emitter.emitFinal(RunEvent{Type: RunEventError, Err: err})
 			return
 		}
-		emitFinal(RunEvent{Type: RunEventResult, Result: result})
+		emitter.emitFinal(RunEvent{Type: RunEventResult, Result: result})
 	}()
 	return out, nil
 }
