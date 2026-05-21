@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/nijaru/canto/agent"
+	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -261,6 +262,62 @@ func TestRunLifecycleAnnotatesWaitEvents(t *testing.T) {
 				event.Lifecycle.Wait.ExternalID != "approver-1" ||
 				event.Lifecycle.Wait.Reason == "" {
 				t.Fatalf("wait lifecycle = %#v", event.Lifecycle)
+			}
+		})
+	}
+}
+
+func TestRunLifecycleAnnotatesApprovalEvents(t *testing.T) {
+	tests := []struct {
+		name     string
+		event    session.Event
+		status   RunLifecycleStatus
+		canceled bool
+	}{
+		{
+			name: "requested",
+			event: session.NewEvent("sess", session.ApprovalRequested, approval.Request{
+				ID:        "approval-1",
+				Tool:      "bash",
+				Category:  "execution",
+				Operation: "run",
+				Resource:  "make test",
+			}),
+			status: RunLifecycleRequested,
+		},
+		{
+			name: "resolved",
+			event: session.NewEvent("sess", session.ApprovalResolved, map[string]any{
+				"id":       "approval-1",
+				"decision": approval.DecisionAllow,
+				"reason":   "safe",
+			}),
+			status: RunLifecycleCompleted,
+		},
+		{
+			name: "canceled",
+			event: session.NewEvent("sess", session.ApprovalCanceled, map[string]any{
+				"id":     "approval-1",
+				"tool":   "bash",
+				"reason": "context canceled",
+			}),
+			status:   RunLifecycleCanceled,
+			canceled: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var state runLifecycleState
+			event := RunEvent{Type: RunEventSession, Event: tt.event}
+			state.annotate(&event)
+			if event.Lifecycle == nil ||
+				event.Lifecycle.Type != RunLifecycleApproval ||
+				event.Lifecycle.Status != tt.status ||
+				event.Lifecycle.Canceled != tt.canceled ||
+				event.Lifecycle.Approval == nil ||
+				event.Lifecycle.Approval.ID != "approval-1" {
+				t.Fatalf("approval lifecycle = %#v", event.Lifecycle)
 			}
 		})
 	}

@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -21,6 +22,7 @@ const (
 	RunLifecycleTool       RunLifecycleType = "tool"
 	RunLifecycleChild      RunLifecycleType = "child"
 	RunLifecycleWait       RunLifecycleType = "wait"
+	RunLifecycleApproval   RunLifecycleType = "approval"
 	RunLifecycleCompaction RunLifecycleType = "compaction"
 	RunLifecycleRetry      RunLifecycleType = "retry"
 )
@@ -90,6 +92,17 @@ type RunWaitLifecycle struct {
 	ExternalID string `json:"external_id,omitzero"`
 }
 
+// RunApprovalLifecycle is a normalized view of tool approval lifecycle events.
+type RunApprovalLifecycle struct {
+	ID        string            `json:"id,omitzero"`
+	Tool      string            `json:"tool,omitzero"`
+	Category  string            `json:"category,omitzero"`
+	Operation string            `json:"operation,omitzero"`
+	Resource  string            `json:"resource,omitzero"`
+	Decision  approval.Decision `json:"decision,omitzero"`
+	Reason    string            `json:"reason,omitzero"`
+}
+
 // RunCompactionLifecycle summarizes a durable compaction snapshot event.
 type RunCompactionLifecycle struct {
 	Strategy      string  `json:"strategy,omitzero"`
@@ -125,6 +138,7 @@ type RunLifecycle struct {
 	ActiveTools []RunToolLifecycle      `json:"active_tools,omitzero"`
 	Child       *RunChildLifecycle      `json:"child,omitempty"`
 	Wait        *RunWaitLifecycle       `json:"wait,omitempty"`
+	Approval    *RunApprovalLifecycle   `json:"approval,omitempty"`
 	Compaction  *RunCompactionLifecycle `json:"compaction,omitempty"`
 	Retry       *RunRetryLifecycle      `json:"retry,omitempty"`
 }
@@ -438,6 +452,59 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			Wait: &RunWaitLifecycle{
 				Reason:     data.Reason,
 				ExternalID: data.ExternalID,
+			},
+		}
+	case session.ApprovalRequested:
+		var data approval.Request
+		if err := event.Event.UnmarshalData(&data); err != nil {
+			return
+		}
+		event.Lifecycle = &RunLifecycle{
+			Type:   RunLifecycleApproval,
+			Status: RunLifecycleRequested,
+			Approval: &RunApprovalLifecycle{
+				ID:        data.ID,
+				Tool:      data.Tool,
+				Category:  data.Category,
+				Operation: data.Operation,
+				Resource:  data.Resource,
+			},
+		}
+	case session.ApprovalResolved:
+		var data struct {
+			ID       string            `json:"id"`
+			Decision approval.Decision `json:"decision"`
+			Reason   string            `json:"reason"`
+		}
+		if err := event.Event.UnmarshalData(&data); err != nil {
+			return
+		}
+		event.Lifecycle = &RunLifecycle{
+			Type:   RunLifecycleApproval,
+			Status: RunLifecycleCompleted,
+			Approval: &RunApprovalLifecycle{
+				ID:       data.ID,
+				Decision: data.Decision,
+				Reason:   data.Reason,
+			},
+		}
+	case session.ApprovalCanceled:
+		var data struct {
+			ID     string `json:"id"`
+			Tool   string `json:"tool"`
+			Reason string `json:"reason"`
+		}
+		if err := event.Event.UnmarshalData(&data); err != nil {
+			return
+		}
+		event.Lifecycle = &RunLifecycle{
+			Type:     RunLifecycleApproval,
+			Status:   RunLifecycleCanceled,
+			Canceled: true,
+			Approval: &RunApprovalLifecycle{
+				ID:     data.ID,
+				Tool:   data.Tool,
+				Reason: data.Reason,
 			},
 		}
 	case session.CompactionStarted:
