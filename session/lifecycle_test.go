@@ -82,6 +82,23 @@ func TestLifecycleEventsRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected tool completed payload: %+v", completedData)
 	}
 
+	compaction := NewCompactionStartedEvent("sess", CompactionStartedData{
+		Strategy:      "summarize",
+		MaxTokens:     1000,
+		ThresholdPct:  0.75,
+		CurrentTokens: 1500,
+	})
+	compactionData, ok, err := compaction.CompactionStartedData()
+	if err != nil {
+		t.Fatalf("decode compaction started: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected compaction started payload")
+	}
+	if compactionData.Strategy != "summarize" || compactionData.CurrentTokens != 1500 {
+		t.Fatalf("unexpected compaction started payload: %+v", compactionData)
+	}
+
 	retry := NewEscalationRetriedEvent("sess", EscalationRetriedData{
 		AgentID: "agent",
 		Scope:   "model",

@@ -829,6 +829,208 @@ func TestPromptStreamAnnotatesOrderedRunEvents(t *testing.T) {
 	}
 }
 
+type lifecycleMetadataAgent struct{}
+
+func (a lifecycleMetadataAgent) ID() string {
+	return "lifecycle-metadata"
+}
+
+func (a lifecycleMetadataAgent) Step(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.Turn(ctx, sess)
+}
+
+func (a lifecycleMetadataAgent) Turn(
+	ctx context.Context,
+	sess *session.Session,
+) (agent.StepResult, error) {
+	return a.StreamTurn(ctx, sess, nil)
+}
+
+func (a lifecycleMetadataAgent) StreamTurn(
+	ctx context.Context,
+	sess *session.Session,
+	chunkFn func(*llm.Chunk),
+) (agent.StepResult, error) {
+	if err := sess.Append(ctx, session.NewTurnStartedEvent(sess.ID(), session.TurnStartedData{
+		AgentID: a.ID(),
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	if chunkFn != nil {
+		chunkFn(&llm.Chunk{Usage: &llm.Usage{
+			InputTokens: 10,
+			TotalTokens: 10,
+			Cost:        0.01,
+		}})
+		chunkFn(&llm.Chunk{Usage: &llm.Usage{
+			InputTokens:  10,
+			OutputTokens: 5,
+			TotalTokens:  15,
+			Cost:         0.015,
+		}})
+	}
+	if err := sess.Append(ctx, session.NewToolStartedEvent(sess.ID(), session.ToolStartedData{
+		Tool:           "read",
+		Arguments:      `{"file_path":"AGENTS.md"}`,
+		ID:             "tool-1",
+		IdempotencyKey: "turn-1:tool-1",
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.ToolOutputDelta, map[string]any{
+		"tool":  "read",
+		"id":    "tool-1",
+		"delta": "ok",
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	if err := sess.Append(ctx, session.NewToolCompletedEvent(sess.ID(), session.ToolCompletedData{
+		Tool:           "read",
+		ID:             "tool-1",
+		IdempotencyKey: "turn-1:tool-1",
+		Output:         "ok",
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	if chunkFn != nil {
+		chunkFn(&llm.Chunk{Usage: &llm.Usage{
+			InputTokens:  2,
+			OutputTokens: 1,
+			TotalTokens:  3,
+			Cost:         0.003,
+		}})
+	}
+	usage := llm.Usage{
+		InputTokens:  12,
+		OutputTokens: 6,
+		TotalTokens:  18,
+		Cost:         0.018,
+	}
+	if err := sess.Append(ctx, session.NewTurnCompletedEvent(sess.ID(), session.TurnCompletedData{
+		AgentID:        a.ID(),
+		Steps:          2,
+		Usage:          usage,
+		TurnStopReason: string(agent.TurnStopCompleted),
+	})); err != nil {
+		return agent.StepResult{}, err
+	}
+	return agent.StepResult{
+		Content:        "done",
+		Usage:          usage,
+		TurnStopReason: agent.TurnStopCompleted,
+	}, nil
+}
+
+func TestPromptStreamAnnotatesLifecycleMetadata(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	a := lifecycleMetadataAgent{}
+	harness := &Harness{
+		Agent:     a,
+		Runner:    runtime.NewRunner(store, a),
+		Store:     store,
+		ownsStore: true,
+	}
+	defer harness.Close()
+
+	events, err := harness.Session("lifecycle-session").PromptStream(t.Context(), "go")
+	if err != nil {
+		t.Fatalf("PromptStream: %v", err)
+	}
+
+	var (
+		usageDeltas       []llm.Usage
+		toolStarted       bool
+		toolOutputDelta   bool
+		toolCompleted     bool
+		turnTerminalUsage *RunUsage
+		runTerminal       bool
+	)
+	for event := range events {
+		if event.Usage != nil && event.Usage.Kind == RunUsageProviderDelta {
+			usageDeltas = append(usageDeltas, event.Usage.Delta)
+		}
+		if event.Lifecycle == nil {
+			continue
+		}
+		switch event.Lifecycle.Type {
+		case RunLifecycleTool:
+			if event.Lifecycle.Tool == nil {
+				t.Fatalf("tool lifecycle missing tool payload: %#v", event.Lifecycle)
+			}
+			switch event.Lifecycle.Status {
+			case RunLifecycleStarted:
+				toolStarted = true
+				if len(event.Lifecycle.ActiveTools) != 1 ||
+					event.Lifecycle.ActiveTools[0].ID != "tool-1" {
+					t.Fatalf("active tools after start = %#v", event.Lifecycle.ActiveTools)
+				}
+			case RunLifecycleUpdated:
+				toolOutputDelta = true
+				if event.Lifecycle.Tool.Delta != "ok" {
+					t.Fatalf("tool delta = %q, want ok", event.Lifecycle.Tool.Delta)
+				}
+			case RunLifecycleCompleted:
+				toolCompleted = true
+				if len(event.Lifecycle.ActiveTools) != 0 {
+					t.Fatalf("active tools after completion = %#v", event.Lifecycle.ActiveTools)
+				}
+				if event.Lifecycle.Tool.Output != "ok" {
+					t.Fatalf("tool output = %q, want ok", event.Lifecycle.Tool.Output)
+				}
+			}
+		case RunLifecycleTurn:
+			if event.Lifecycle.Terminal {
+				turnTerminalUsage = event.Lifecycle.Usage
+			}
+		case RunLifecycleRun:
+			if event.Lifecycle.Terminal && event.Lifecycle.Status == RunLifecycleCompleted {
+				runTerminal = true
+			}
+		}
+	}
+
+	if len(usageDeltas) != 3 {
+		t.Fatalf("usage deltas = %#v, want 3 deltas", usageDeltas)
+	}
+	if usageDeltas[0].InputTokens != 10 ||
+		usageDeltas[0].OutputTokens != 0 ||
+		usageDeltas[0].TotalTokens != 10 {
+		t.Fatalf("first usage delta = %#v", usageDeltas[0])
+	}
+	if usageDeltas[1].InputTokens != 0 ||
+		usageDeltas[1].OutputTokens != 5 ||
+		usageDeltas[1].TotalTokens != 5 {
+		t.Fatalf("second usage delta = %#v", usageDeltas[1])
+	}
+	if usageDeltas[2].InputTokens != 2 ||
+		usageDeltas[2].OutputTokens != 1 ||
+		usageDeltas[2].TotalTokens != 3 {
+		t.Fatalf("usage delta after tool completion = %#v", usageDeltas[2])
+	}
+	if !toolStarted || !toolOutputDelta || !toolCompleted {
+		t.Fatalf(
+			"tool lifecycle started=%t delta=%t completed=%t",
+			toolStarted,
+			toolOutputDelta,
+			toolCompleted,
+		)
+	}
+	if turnTerminalUsage == nil ||
+		turnTerminalUsage.Kind != RunUsageTurn ||
+		turnTerminalUsage.Cumulative.TotalTokens != 18 {
+		t.Fatalf("turn terminal usage = %#v", turnTerminalUsage)
+	}
+	if !runTerminal {
+		t.Fatal("missing run terminal lifecycle")
+	}
+}
+
 func TestPromptStreamFlushesTurnUsageBeforeResult(t *testing.T) {
 	usage := llm.Usage{InputTokens: 3, OutputTokens: 4, TotalTokens: 7, Cost: 0.25}
 	h, err := NewHarness("usage").
@@ -937,6 +1139,7 @@ func TestPromptStreamWaitsForYieldingPostToolHookBeforeResult(t *testing.T) {
 	var (
 		order        []string
 		hookReleased bool
+		sawToolStart bool
 	)
 	record := func(event RunEvent) {
 		t.Helper()
@@ -944,6 +1147,7 @@ func TestPromptStreamWaitsForYieldingPostToolHookBeforeResult(t *testing.T) {
 		case RunEventSession:
 			switch event.Event.Type {
 			case session.ToolStarted:
+				sawToolStart = true
 				order = append(order, "tool_started")
 			case session.ToolCompleted:
 				data, ok, err := event.Event.ToolCompletedData()
@@ -975,8 +1179,13 @@ func TestPromptStreamWaitsForYieldingPostToolHookBeforeResult(t *testing.T) {
 
 	for event := range events {
 		record(event)
-		if hookReleased || !isClosed(hookEntered) {
+		if hookReleased || !sawToolStart {
 			continue
+		}
+		select {
+		case <-hookEntered:
+		case <-time.After(time.Second):
+			t.Fatal("post-tool hook did not run after tool started")
 		}
 		assertNoToolCompletionOrResultBeforeHookRelease(t, events, record)
 		close(releaseHook)
@@ -1029,6 +1238,7 @@ func TestPromptStreamKeepsStableTurnIDAcrossOverflowRecovery(t *testing.T) {
 	var (
 		turnID      string
 		resultCount int
+		sawRecovery bool
 	)
 	for event := range events {
 		if event.TurnID == "" {
@@ -1039,6 +1249,12 @@ func TestPromptStreamKeepsStableTurnIDAcrossOverflowRecovery(t *testing.T) {
 		}
 		if event.TurnID != turnID {
 			t.Fatalf("event turn id = %q, want stable %q", event.TurnID, turnID)
+		}
+		if event.Lifecycle != nil &&
+			event.Lifecycle.Type == RunLifecycleRetry &&
+			event.Lifecycle.Retry != nil &&
+			event.Lifecycle.Retry.Scope == "overflow_recovery" {
+			sawRecovery = true
 		}
 		switch event.Type {
 		case RunEventResult:
@@ -1052,6 +1268,9 @@ func TestPromptStreamKeepsStableTurnIDAcrossOverflowRecovery(t *testing.T) {
 	}
 	if resultCount != 1 {
 		t.Fatalf("result events = %d, want 1", resultCount)
+	}
+	if !sawRecovery {
+		t.Fatal("missing overflow recovery retry lifecycle event")
 	}
 }
 
@@ -1074,15 +1293,6 @@ func assertNoToolCompletionOrResultBeforeHookRelease(
 		case <-timer.C:
 			return
 		}
-	}
-}
-
-func isClosed(ch <-chan struct{}) bool {
-	select {
-	case <-ch:
-		return true
-	default:
-		return false
 	}
 }
 

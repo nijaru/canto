@@ -110,6 +110,17 @@ func (p *Offloader) compact(
 	if p.OnPreCompact != nil {
 		p.OnPreCompact(ctx, sess)
 	}
+	if err := sess.Append(ctx, session.NewCompactionStartedEvent(
+		sess.ID(),
+		session.CompactionStartedData{
+			Strategy:      "offload",
+			MaxTokens:     p.MaxTokens,
+			ThresholdPct:  p.ThresholdPct,
+			CurrentTokens: currentTokens,
+		},
+	)); err != nil {
+		return err
+	}
 	cutoffEventID := lastMessageEventID(sess)
 	store, closeStore, err := p.artifactStore()
 	if err != nil {

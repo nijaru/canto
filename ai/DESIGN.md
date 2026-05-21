@@ -68,6 +68,10 @@ Target shape:
   durable lifecycle events, tool starts/results, approval/input waits, terminal
   state, and final result. Hosts should not merge a chunk callback and watcher
   channel to reconstruct one turn.
+- `RunEvent.Lifecycle` and `RunEvent.Usage` project generic framework state
+  directly: usage deltas/cumulative usage, tool status and active tool
+  snapshots, compaction start/completion, retry, cancellation, and terminal
+  settlement.
 - `Environment` groups workspace, executor, sandbox, secret injection, and
   bootstrap/context capabilities. It describes where effects happen; it does
   not encode product policy.

@@ -47,6 +47,14 @@ type CompactionSnapshot struct {
 	ModifiedFiles []string `json:"modified_files,omitzero"`
 }
 
+// CompactionStartedData records that a compaction strategy has begun.
+type CompactionStartedData struct {
+	Strategy      string  `json:"strategy"`
+	MaxTokens     int     `json:"max_tokens,omitzero"`
+	ThresholdPct  float64 `json:"threshold_pct,omitzero"`
+	CurrentTokens int     `json:"current_tokens,omitzero"`
+}
+
 // ForkOrigin identifies the parent event copied into a forked session.
 type ForkOrigin struct {
 	SessionID string `json:"session_id"`
@@ -63,6 +71,28 @@ func (o ForkOrigin) metadataValue() map[string]any {
 // NewCompactionEvent records a durable compaction snapshot in the session log.
 func NewCompactionEvent(sessionID string, snapshot CompactionSnapshot) Event {
 	return NewEvent(sessionID, CompactionTriggered, snapshot)
+}
+
+// NewCompactionStartedEvent records the start of a compaction strategy.
+func NewCompactionStartedEvent(sessionID string, data CompactionStartedData) Event {
+	return NewEvent(sessionID, CompactionStarted, data)
+}
+
+// CompactionStartedData decodes the payload of a compaction-started event.
+func (e Event) CompactionStartedData() (CompactionStartedData, bool, error) {
+	if e.Type != CompactionStarted {
+		return CompactionStartedData{}, false, nil
+	}
+
+	var data CompactionStartedData
+	if err := e.UnmarshalData(&data); err != nil {
+		return CompactionStartedData{}, true, fmt.Errorf(
+			"decode compaction started event %s: %w",
+			e.ID,
+			err,
+		)
+	}
+	return data, true, nil
 }
 
 // CompactionSnapshot decodes the payload of a compaction event.

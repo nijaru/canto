@@ -228,6 +228,9 @@ func (r *Runner) execute(
 		if !r.shouldRecoverOverflow(err, attempt) {
 			return agent.StepResult{}, err
 		}
+		if retryErr := r.appendOverflowRecoveryRetry(ctx, sess, attempt+1, err); retryErr != nil {
+			return agent.StepResult{}, retryErr
+		}
 		if compactErr := r.overflowRecovery.compact(ctx, sess); compactErr != nil {
 			return agent.StepResult{}, fmt.Errorf(
 				"overflow recovery: compact failed: %w (original: %v)",
@@ -253,4 +256,20 @@ func (r *Runner) shouldRecoverOverflow(err error, attempt int) bool {
 		recovery.compact != nil &&
 		attempt < recovery.maxRetries &&
 		recovery.isOverflow(err)
+}
+
+func (r *Runner) appendOverflowRecoveryRetry(
+	ctx context.Context,
+	sess *session.Session,
+	attempt int,
+	err error,
+) error {
+	data := session.EscalationRetriedData{
+		AgentID: r.agent.ID(),
+		Scope:   "overflow_recovery",
+		Target:  "turn",
+		Attempt: attempt,
+		Error:   err.Error(),
+	}
+	return sess.Append(ctx, session.NewEscalationRetriedEvent(sess.ID(), data))
 }

@@ -60,6 +60,8 @@ type RunEvent struct {
 	TurnID     string
 	Seq        int64
 	Durability RunEventDurability
+	Usage      *RunUsage
+	Lifecycle  *RunLifecycle
 	Chunk      llm.Chunk
 	Event      session.Event
 	Result     agent.StepResult
@@ -71,6 +73,7 @@ type runEventEmitter struct {
 	out       chan<- RunEvent
 	sessionID string
 	turnID    string
+	lifecycle runLifecycleState
 	mu        sync.Mutex
 	seq       int64
 }
@@ -120,6 +123,7 @@ func (e *runEventEmitter) emit(
 	event.TurnID = e.turnID
 	event.Seq = e.seq
 	event.Durability = durability
+	e.lifecycle.annotate(&event)
 
 	if !respectCancel {
 		e.out <- event

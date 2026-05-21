@@ -32,6 +32,7 @@ const (
 	WaitStarted           EventType = "wait_started"
 	WaitResolved          EventType = "wait_resolved"
 	EscalationRetried     EventType = "escalation_retried"
+	CompactionStarted     EventType = "compaction_started"
 	CompactionTriggered   EventType = "compaction_triggered"
 	ProjectionSnapshotted EventType = "projection_snapshotted"
 	ChildRequested        EventType = "child_requested"

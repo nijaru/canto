@@ -122,6 +122,17 @@ func (p *Summarizer) summarize(
 	if len(historyCandidates) == 0 && len(turnPrefix) == 0 {
 		return nil
 	}
+	if err := sess.Append(ctx, session.NewCompactionStartedEvent(
+		sess.ID(),
+		session.CompactionStartedData{
+			Strategy:      "summarize",
+			MaxTokens:     p.MaxTokens,
+			ThresholdPct:  p.ThresholdPct,
+			CurrentTokens: currentTokens,
+		},
+	)); err != nil {
+		return err
+	}
 
 	summaryContent, err := p.generateSummary(
 		ctx,
