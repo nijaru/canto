@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -55,6 +56,8 @@ func (s *SQLiteStore) init() error {
 			rowid INTEGER PRIMARY KEY AUTOINCREMENT,
 			id TEXT UNIQUE,
 			session_id TEXT,
+			turn_id TEXT,
+			seq INTEGER NOT NULL DEFAULT 0,
 			type TEXT,
 			timestamp TEXT,
 			data BLOB,
@@ -98,7 +101,43 @@ func (s *SQLiteStore) init() error {
 			return err
 		}
 	}
+	if err := s.ensureEventsColumn("turn_id", "TEXT"); err != nil {
+		return err
+	}
+	if err := s.ensureEventsColumn("seq", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (s *SQLiteStore) ensureEventsColumn(name, definition string) error {
+	rows, err := s.db.Query("PRAGMA table_info(events)")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			cid        int
+			columnName string
+			columnType string
+			notNull    int
+			defaultVal any
+			pk         int
+		)
+		if err := rows.Scan(&cid, &columnName, &columnType, &notNull, &defaultVal, &pk); err != nil {
+			return err
+		}
+		if columnName == name {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(fmt.Sprintf("ALTER TABLE events ADD COLUMN %s %s", name, definition))
+	return err
 }
 
 // Save persists an event to the database.
@@ -106,7 +145,27 @@ func (s *SQLiteStore) Save(ctx context.Context, e Event) error {
 	if err := validateWritableEvent(&e); err != nil {
 		return err
 	}
+	if e.Seq < 0 {
+		return errInvalidEventSequence
+	}
+	if e.Seq == 0 {
+		seq, err := s.nextEventSequence(ctx, e.SessionID)
+		if err != nil {
+			return err
+		}
+		e.Seq = seq
+	}
 	return s.saveTx(ctx, s.db, e)
+}
+
+func (s *SQLiteStore) nextEventSequence(ctx context.Context, sessionID string) (int64, error) {
+	var seq int64
+	err := s.db.QueryRowContext(
+		ctx,
+		"SELECT COALESCE(MAX(seq), 0) + 1 FROM events WHERE session_id = ?",
+		sessionID,
+	).Scan(&seq)
+	return seq, err
 }
 
 func (s *SQLiteStore) saveTx(ctx context.Context, exec interface {
@@ -120,9 +179,11 @@ func (s *SQLiteStore) saveTx(ctx context.Context, exec interface {
 
 	_, err = exec.ExecContext(
 		ctx,
-		"INSERT INTO events (id, session_id, type, timestamp, data, metadata, cost) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"INSERT INTO events (id, session_id, turn_id, seq, type, timestamp, data, metadata, cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		e.ID.String(),
 		e.SessionID,
+		e.TurnID,
+		e.Seq,
 		string(e.Type),
 		e.Timestamp.Format(time.RFC3339Nano),
 		e.Data,

@@ -768,6 +768,7 @@ func TestPromptStreamAnnotatesOrderedRunEvents(t *testing.T) {
 
 	var (
 		seq           int64
+		durableSeq    int64
 		turnID        string
 		sawChunk      bool
 		sawSession    bool
@@ -802,6 +803,17 @@ func TestPromptStreamAnnotatesOrderedRunEvents(t *testing.T) {
 			sawSession = true
 			if event.Durability != RunEventDurable {
 				t.Fatalf("session durability = %q, want %q", event.Durability, RunEventDurable)
+			}
+			durableSeq++
+			if event.Event.Seq != durableSeq {
+				t.Fatalf("durable event seq = %d, want %d", event.Event.Seq, durableSeq)
+			}
+			if event.Event.TurnID != event.TurnID {
+				t.Fatalf(
+					"durable event turn id = %q, want stream turn id %q",
+					event.Event.TurnID,
+					event.TurnID,
+				)
 			}
 		case RunEventResult:
 			sawTerminal = true

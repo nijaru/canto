@@ -19,6 +19,7 @@ type Session struct {
 	mu          sync.RWMutex
 	id          string
 	events      []Event
+	nextSeq     int64
 	state       map[string]any
 	subscribers []*subscriber
 	observers   []*eventObserver
@@ -30,8 +31,9 @@ type Session struct {
 // New creates a new session.
 func New(id string) *Session {
 	return &Session{
-		id:    id,
-		state: make(map[string]any),
+		id:      id,
+		nextSeq: 1,
+		state:   make(map[string]any),
 	}
 }
 

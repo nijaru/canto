@@ -53,6 +53,8 @@ const (
 type Event struct {
 	ID        ulid.ULID      `json:"id"`
 	SessionID string         `json:"session_id"`
+	TurnID    string         `json:"turn_id,omitzero"`
+	Seq       int64          `json:"seq,omitzero"`
 	Type      EventType      `json:"type"`
 	Timestamp time.Time      `json:"timestamp"`
 	Data      jsontext.Value `json:"data"`

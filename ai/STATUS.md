@@ -3,7 +3,7 @@
 **Phase:** Ion-driven optimal-core redesign
 **Focus:** Ion is the first-class Pi -> Pi+ product built on Canto, and Canto is the general-purpose agent framework. Before Ion Phase 2 or normal dogfood resumes, proactively strengthen Canto's primary session/turn contract so hosts do not assemble ordering, settlement, usage, cancel, or compaction semantics themselves.
 **Blockers:** None.
-**Updated:** 2026-05-20
+**Updated:** 2026-05-21
 
 ## Context
 
@@ -64,11 +64,13 @@ lane is selected.
 - `x/redis` is structurally split and compile/race-checked under `-tags redis`,
   but live Redis behavior still requires `CANTO_TEST_REDIS_URL`.
 - The active Canto redesign source is
-  `ai/design/optimal-core-redesign-2026-05.md`. The first target is Canto
-  contract tests for ordered turn transactions, async hook/handler settlement,
-  tool/usage/cancel/terminal ordering, and overflow recovery.
-- Active task graph: `canto-uduq`, `canto-dvtd`, and `canto-xz1w` are
-  complete; `canto-iq8h` is active for the Ion import/removal proof.
+  `ai/design/optimal-core-redesign-2026-05.md`, plus Ion's
+  `/Users/nick/github/nijaru/ion/ai/sprints/02-ideal-core-completion.md`.
+  The refreshed Pi/AX comparison makes durable turn identity and session
+  sequence the immediate P1 architecture blocker.
+- Active task graph: `canto-d6kl` is active for durable turn transaction
+  identity and sequence. `canto-uduq`, `canto-dvtd`, and `canto-xz1w` are
+  complete.
 - `canto-uduq` landed the first executable contract slice: `RunEvent` now
   carries session id, stable external turn id, monotonic sequence, and
   durability classification. PromptStream tests now cover ordered metadata,

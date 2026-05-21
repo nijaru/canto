@@ -17,6 +17,10 @@ var errUnmatchedToolMessage = errors.New(
 	"session append: tool message has no matching pending assistant tool call",
 )
 
+var errInvalidEventSequence = errors.New("session append: event sequence cannot be negative")
+
+var errNonMonotonicEventSequence = errors.New("session append: event sequence is not monotonic")
+
 // Append adds a new event to the session and notifies all subscribers.
 // If a writer is attached, the event is persisted to the store immediately.
 // If the context contains metadata, it is merged into the event's metadata.
@@ -42,6 +46,10 @@ func (s *Session) Append(ctx context.Context, e Event) error {
 
 	s.mu.Lock()
 	if err := s.validateWritableSequenceLocked(&e); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	if err := s.assignEventIdentityLocked(ctx, &e); err != nil {
 		s.mu.Unlock()
 		return err
 	}
@@ -74,6 +82,37 @@ func (s *Session) Append(ctx context.Context, e Event) error {
 		sub.trySend(e)
 	}
 	return observerErr
+}
+
+func (s *Session) assignEventIdentityLocked(ctx context.Context, e *Event) error {
+	if e.Seq < 0 {
+		return errInvalidEventSequence
+	}
+	if s.nextSeq == 0 {
+		s.nextSeq = int64(len(s.events) + 1)
+	}
+	if e.Seq == 0 {
+		e.Seq = s.nextSeq
+		s.nextSeq++
+	} else if e.Seq < s.nextSeq {
+		return errNonMonotonicEventSequence
+	} else if e.Seq >= s.nextSeq {
+		s.nextSeq = e.Seq + 1
+	}
+	if e.TurnID == "" {
+		e.TurnID = TurnIDFromContext(ctx)
+	}
+	return nil
+}
+
+func (s *Session) advanceReplaySequenceLocked(e Event) {
+	if e.Seq >= s.nextSeq {
+		s.nextSeq = e.Seq + 1
+		return
+	}
+	if e.Seq == 0 && s.nextSeq <= int64(len(s.events)) {
+		s.nextSeq = int64(len(s.events) + 1)
+	}
 }
 
 func (s *Session) validateWritableSequenceLocked(e *Event) error {

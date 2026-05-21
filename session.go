@@ -8,7 +8,6 @@ import (
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
-	"github.com/oklog/ulid/v2"
 )
 
 // Session is a host-facing handle for one durable conversation in a Harness.
@@ -153,7 +152,7 @@ func (s *Session) PromptStream(
 	}
 
 	out := make(chan RunEvent)
-	turnID := ulid.Make().String()
+	ctx, turnID := session.EnsureTurnID(ctx)
 	emitter := newRunEventEmitter(ctx, out, s.id, turnID)
 	detach, err := s.harness.Runner.ObserveEvents(
 		ctx,

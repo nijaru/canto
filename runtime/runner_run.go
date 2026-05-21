@@ -89,6 +89,7 @@ func (r *Runner) run(
 	chunkFn func(*llm.Chunk),
 	mutate sessionMutation,
 ) (agent.StepResult, error) {
+	ctx, _ = session.EnsureTurnID(ctx)
 	if r.coordinator != nil {
 		return r.executeWithCoordinator(ctx, sess, chunkFn, mutate)
 	}

@@ -12,7 +12,7 @@ import (
 func (s *SQLiteStore) Load(ctx context.Context, sessionID string) (*Session, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		"SELECT id, session_id, type, timestamp, data, metadata, cost FROM events WHERE session_id = ? ORDER BY rowid ASC",
+		"SELECT id, session_id, COALESCE(turn_id, ''), seq, type, timestamp, data, metadata, cost FROM events WHERE session_id = ? ORDER BY rowid ASC",
 		sessionID,
 	)
 	if err != nil {
@@ -42,14 +42,14 @@ func (s *SQLiteStore) LoadUntil(
 	case err == nil:
 		rows, err = s.db.QueryContext(
 			ctx,
-			"SELECT id, session_id, type, timestamp, data, metadata, cost FROM events WHERE session_id = ? AND rowid <= ? ORDER BY rowid ASC",
+			"SELECT id, session_id, COALESCE(turn_id, ''), seq, type, timestamp, data, metadata, cost FROM events WHERE session_id = ? AND rowid <= ? ORDER BY rowid ASC",
 			sessionID,
 			targetRowID,
 		)
 	case errors.Is(err, sql.ErrNoRows):
 		rows, err = s.db.QueryContext(
 			ctx,
-			"SELECT id, session_id, type, timestamp, data, metadata, cost FROM events WHERE session_id = ? AND id <= ? ORDER BY rowid ASC",
+			"SELECT id, session_id, COALESCE(turn_id, ''), seq, type, timestamp, data, metadata, cost FROM events WHERE session_id = ? AND id <= ? ORDER BY rowid ASC",
 			sessionID,
 			eventID.String(),
 		)
@@ -68,15 +68,36 @@ func loadSessionRows(sessionID string, store *SQLiteStore, rows *sql.Rows) (*Ses
 	replayer := NewReplayer()
 	sess := replayer.NewSession(sessionID).WithWriter(store)
 	for rows.Next() {
-		var idStr, typeStr, timeStr string
+		var idStr, turnID, typeStr, timeStr string
 		var loadedSessionID string
+		var seq int64
 		var data, metadata []byte
 		var cost float64
-		if err := rows.Scan(&idStr, &loadedSessionID, &typeStr, &timeStr, &data, &metadata, &cost); err != nil {
+		if err := rows.Scan(
+			&idStr,
+			&loadedSessionID,
+			&turnID,
+			&seq,
+			&typeStr,
+			&timeStr,
+			&data,
+			&metadata,
+			&cost,
+		); err != nil {
 			return nil, err
 		}
 
-		e, err := decodeEventRow(idStr, loadedSessionID, typeStr, timeStr, data, metadata, cost)
+		e, err := decodeEventRow(
+			idStr,
+			loadedSessionID,
+			turnID,
+			typeStr,
+			timeStr,
+			seq,
+			data,
+			metadata,
+			cost,
+		)
 		if err != nil {
 			return nil, err
 		}

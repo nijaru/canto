@@ -14,6 +14,8 @@ import (
 type eventEnvelope struct {
 	ID        ulid.ULID      `json:"id"`
 	SessionID string         `json:"session_id"`
+	TurnID    string         `json:"turn_id,omitzero"`
+	Seq       int64          `json:"seq,omitzero"`
 	Type      EventType      `json:"type"`
 	Timestamp time.Time      `json:"timestamp"`
 	Data      jsontext.Value `json:"data"`
@@ -29,6 +31,8 @@ func envelopeFromEvent(e Event) (eventEnvelope, error) {
 	return eventEnvelope{
 		ID:        e.ID,
 		SessionID: e.SessionID,
+		TurnID:    e.TurnID,
+		Seq:       e.Seq,
 		Type:      e.Type,
 		Timestamp: e.Timestamp,
 		Data:      e.Data,
@@ -41,6 +45,8 @@ func eventFromEnvelope(env eventEnvelope) Event {
 	return Event{
 		ID:          env.ID,
 		SessionID:   env.SessionID,
+		TurnID:      env.TurnID,
+		Seq:         env.Seq,
 		Type:        env.Type,
 		Timestamp:   env.Timestamp,
 		Data:        env.Data,
@@ -80,7 +86,8 @@ func UnmarshalEventJSON(data []byte) (Event, error) {
 }
 
 func decodeEventRow(
-	idStr, sessionID, typeStr, timeStr string,
+	idStr, sessionID, turnID, typeStr, timeStr string,
+	seq int64,
 	data, metadata []byte,
 	cost float64,
 ) (Event, error) {
@@ -98,6 +105,8 @@ func decodeEventRow(
 	return Event{
 		ID:          id,
 		SessionID:   sessionID,
+		TurnID:      turnID,
+		Seq:         seq,
 		Type:        EventType(typeStr),
 		Timestamp:   ts,
 		Data:        jsontext.Value(data),

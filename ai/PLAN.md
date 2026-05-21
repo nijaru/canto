@@ -52,6 +52,7 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 
 | Gate | Task | Intent |
 | :--- | :--- | :--- |
+| 0 active | `canto-d6kl` durable turn transaction identity and sequence | Move turn identity/session sequence from host-only `RunEvent` metadata into durable session events/logs, aligned with AX `seq`/`exec_id` and Pi session-owned prompt lifecycle |
 | 0 done | `canto-uduq` optimal-core contract tests | Added stream metadata and tests for ordered run events, usage-before-result, yielding hook settlement, and overflow-recovery stream identity |
 | 1 done | `canto-dvtd` optimal-core turn transaction | Replaced `PromptStream` snapshot/watch/callback repair with an ordered session observer stream |
 | 2 done | `canto-xz1w` optimal-core lifecycle events | Added typed RunEvent lifecycle/usage metadata plus compaction-start and overflow-retry events |

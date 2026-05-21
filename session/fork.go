@@ -74,9 +74,13 @@ func (s *Session) forkWithOrigin(newID string) (*Session, string) {
 	res := &Session{
 		id:      newID,
 		events:  events,
+		nextSeq: s.nextSeq,
 		state:   make(map[string]any, len(s.state)),
 		writer:  s.writer,
 		reducer: s.reducer,
+	}
+	if res.nextSeq == 0 {
+		res.nextSeq = int64(len(events) + 1)
 	}
 	for k, v := range s.state {
 		res.state[k] = v

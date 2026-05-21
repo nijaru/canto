@@ -56,6 +56,7 @@ func (r *Replayer) Apply(sess *Session, e Event) error {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
 	sess.events = append(sess.events, e)
+	sess.advanceReplaySequenceLocked(e)
 	if sess.reducer != nil {
 		sess.state = sess.reducer(sess.state, e)
 	}

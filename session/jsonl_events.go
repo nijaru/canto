@@ -16,11 +16,21 @@ func (s *JSONLStore) Save(ctx context.Context, e Event) error {
 	if err := validateWritableEvent(&e); err != nil {
 		return err
 	}
+	if e.Seq < 0 {
+		return errInvalidEventSequence
+	}
 
 	mu := s.getSessionMu(e.SessionID)
 	mu.Lock()
 	defer mu.Unlock()
 
+	if e.Seq == 0 {
+		seq, err := s.nextSequenceLocked(e.SessionID)
+		if err != nil {
+			return err
+		}
+		e.Seq = seq
+	}
 	if err := s.saveLocked(e); err != nil {
 		return err
 	}
@@ -29,6 +39,46 @@ func (s *JSONLStore) Save(ctx context.Context, e Event) error {
 	defer s.ancestryMu.Unlock()
 	_, err := s.ensureRootAncestryLocked(e.SessionID, e.Timestamp)
 	return err
+}
+
+func (s *JSONLStore) nextSequenceLocked(sessionID string) (int64, error) {
+	path := fmt.Sprintf("%s.jsonl", sessionID)
+	f, err := s.root.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 1, nil
+		}
+		return 0, err
+	}
+	defer f.Close()
+
+	reader := bufio.NewReader(f)
+	var maxSeq int64
+	var count int64
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if readErr != nil && readErr != io.EOF {
+			return 0, readErr
+		}
+		line = bytes.TrimSpace(line)
+		if len(line) > 0 {
+			e, err := decodeEventJSON(line)
+			if err != nil {
+				return 0, err
+			}
+			count++
+			if e.Seq > maxSeq {
+				maxSeq = e.Seq
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+	}
+	if maxSeq > 0 {
+		return maxSeq + 1, nil
+	}
+	return count + 1, nil
 }
 
 func (s *JSONLStore) saveLocked(e Event) error {
