@@ -136,7 +136,7 @@ func (p *Offloader) compact(
 
 	for i, entry := range candidates {
 		m := entry.Message
-		if m.Role == llm.RoleTool && len(m.Content) > largeToolThreshold {
+		if m.Role == llm.RoleTool && len(m.TextContent()) > largeToolThreshold {
 			id := offloadCandidateID(sess.ID(), cutoffEventID, entry, i)
 			desc, err := session.StoreArtifact(ctx, sess, store, session.ArtifactRecordedData{
 				SessionID: sess.ID(),

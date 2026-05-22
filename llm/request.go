@@ -94,6 +94,9 @@ func cloneMessages(messages []Message) []Message {
 }
 
 func cloneMessage(msg Message) Message {
+	if len(msg.Parts) > 0 {
+		msg.Parts = append([]ContentPart(nil), msg.Parts...)
+	}
 	if len(msg.ThinkingBlocks) > 0 {
 		msg.ThinkingBlocks = append([]ThinkingBlock(nil), msg.ThinkingBlocks...)
 	}

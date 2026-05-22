@@ -56,7 +56,7 @@ func TestMain(t *testing.T) {
 	)
 	sessionID := "sess_" + ulid.Make().String()
 	r := runtime.NewRunner(store, a)
-	result, err := r.Send(context.Background(), sessionID, "List files")
+	result, err := r.Send(context.Background(), sessionID, llm.TextPrompt("List files"))
 	if err != nil {
 		t.Fatal(err)
 	}

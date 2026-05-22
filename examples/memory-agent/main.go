@@ -135,7 +135,7 @@ When the user shares an important fact, use remember_memory to store it.`
 	}
 
 	// 7. Append input and run through the runner's canonical host API
-	result, err := runner.Send(ctx, sessionID, input)
+	result, err := runner.SendText(ctx, sessionID, input)
 	if err != nil {
 		log.Fatalf("run failed: %v", err)
 	}

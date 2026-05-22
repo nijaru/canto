@@ -18,7 +18,7 @@ h, err := canto.NewHarness("assistant").
 	Tools(tools...).
 	Build()
 
-turn, err := h.Session("session-1").Submit(ctx, "Say hello.")
+turn, err := h.Session("session-1").Submit(ctx, canto.TextPrompt("Say hello."))
 if err != nil {
 	return err
 }
@@ -38,14 +38,32 @@ if err != nil {
 }
 ```
 
-`Submit` accepts one durable turn transaction. The returned `Turn` owns the
-stable turn ID, cancellation handle, one ordered `RunEvent` stream, and final
-settlement through `Turn.Result`.
+`Submit` accepts one durable typed turn transaction. The returned `Turn` owns
+the stable turn ID, cancellation handle, one ordered `RunEvent` stream, and
+final settlement through `Turn.Result`.
 
-`Prompt` is the blocking convenience wrapper for hosts that do not need turn
-events. `PromptStream` is a stream convenience wrapper for older/simple hosts
-that do not need a `Turn` handle. New live hosts should prefer `Submit` over
-wiring `runtime.Runner.SendStream` and `runtime.Runner.Watch` separately.
+`Prompt` is the blocking text convenience wrapper for hosts that do not need
+turn events. `PromptStream` is a stream convenience wrapper for older/simple
+hosts that do not need a `Turn` handle. New live hosts should prefer typed
+`Submit` over wiring `runtime.Runner.SendStream` and `runtime.Runner.Watch`
+separately.
+
+Text helpers call through typed prompts:
+
+```go
+result, err := h.Session("session-1").Prompt(ctx, "Say hello.")
+result, err = runner.SendText(ctx, "session-1", "Say hello.")
+```
+
+Typed prompts are the framework data model:
+
+```go
+prompt := llm.NewPrompt(llm.Message{
+    Role: llm.RoleUser,
+    Parts: []llm.ContentPart{llm.TextPart("Say hello.")},
+})
+turn, err := h.Session("session-1").Submit(ctx, prompt)
+```
 
 `Environment(...)` groups optional capabilities such as workspace, executor,
 sandbox, secrets, and bootstrap context. It does not register tools or make

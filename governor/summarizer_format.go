@@ -17,8 +17,8 @@ func formatMessages(messages []llm.Message) string {
 		}
 		sb.WriteString(fmt.Sprintf("%s: ", role))
 
-		if m.Content != "" {
-			sb.WriteString(m.Content)
+		if text := m.TextContent(); text != "" {
+			sb.WriteString(text)
 		}
 
 		if len(m.Calls) > 0 {

@@ -1,5 +1,7 @@
 package llm
 
+import "strings"
+
 // Role defines the role of a message in the conversation.
 type Role string
 
@@ -26,16 +28,94 @@ type ThinkingBlock struct {
 	Signature string `json:"signature,omitzero"`
 }
 
+// ContentPartType identifies one typed part of a model-visible message.
+type ContentPartType string
+
+const (
+	ContentPartText ContentPartType = "text"
+)
+
+// ContentPart represents structured model-visible message content.
+type ContentPart struct {
+	Type ContentPartType `json:"type"`
+	Text string          `json:"text,omitzero"`
+}
+
+// TextPart creates a text content part.
+func TextPart(text string) ContentPart {
+	return ContentPart{Type: ContentPartText, Text: text}
+}
+
 // Message represents a single message in the LLM conversation.
 type Message struct {
 	Role           Role            `json:"role"`
 	Content        string          `json:"content"`
+	Parts          []ContentPart   `json:"parts,omitzero"`
 	Reasoning      string          `json:"reasoning,omitzero"`
 	ThinkingBlocks []ThinkingBlock `json:"thinking_blocks,omitzero"`
 	Name           string          `json:"name,omitzero"` // For tool output or identifying the assistant
 	ToolID         string          `json:"tool_id,omitzero"`
 	Calls          []Call          `json:"tool_calls,omitzero"`
 	CacheControl   *CacheControl   `json:"cache_control,omitzero"`
+}
+
+// TextMessage creates a message whose text is also represented as a structured
+// content part.
+func TextMessage(role Role, text string) Message {
+	return Message{
+		Role:    role,
+		Content: text,
+		Parts:   []ContentPart{TextPart(text)},
+	}
+}
+
+// TextContent returns provider-visible text for adapters that do not yet expose
+// native content-part support.
+func (m Message) TextContent() string {
+	if m.Content != "" {
+		return m.Content
+	}
+	var sb strings.Builder
+	for _, part := range m.Parts {
+		if part.Type == "" || part.Type == ContentPartText {
+			sb.WriteString(part.Text)
+		}
+	}
+	return sb.String()
+}
+
+// HasTextContent reports whether the message has non-empty visible text.
+func (m Message) HasTextContent() bool {
+	return strings.TrimSpace(m.TextContent()) != ""
+}
+
+// HasAssistantPayload reports whether an assistant message carries useful
+// model-visible payload.
+func (m Message) HasAssistantPayload() bool {
+	return m.HasTextContent() ||
+		strings.TrimSpace(m.Reasoning) != "" ||
+		len(m.ThinkingBlocks) > 0 ||
+		len(m.Calls) > 0
+}
+
+// Prompt is typed host input for one model turn.
+type Prompt struct {
+	Messages []Message `json:"messages"`
+}
+
+// TextPrompt creates a one-message user prompt.
+func TextPrompt(text string) Prompt {
+	return Prompt{Messages: []Message{TextMessage(RoleUser, text)}}
+}
+
+// NewPrompt creates typed turn input from one or more messages.
+func NewPrompt(messages ...Message) Prompt {
+	return Prompt{Messages: cloneMessages(messages)}
+}
+
+// Clone returns a deep copy of the prompt.
+func (p Prompt) Clone() Prompt {
+	return Prompt{Messages: cloneMessages(p.Messages)}
 }
 
 // Call represents a request from the LLM to call a tool.

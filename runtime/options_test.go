@@ -56,7 +56,7 @@ func TestNewRunnerKeepsNoopHooksWhenOptionIsNil(t *testing.T) {
 	if runner.hooks == nil {
 		t.Fatal("expected nil hooks option to keep a no-op hook runner")
 	}
-	if _, err := runner.Send(t.Context(), "nil-hooks", "hello"); err != nil {
+	if _, err := runner.SendText(t.Context(), "nil-hooks", "hello"); err != nil {
 		t.Fatalf("send with nil hooks option: %v", err)
 	}
 }

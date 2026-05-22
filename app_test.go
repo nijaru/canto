@@ -96,7 +96,7 @@ func TestHarnessSessionSubmitTurn(t *testing.T) {
 	}
 	defer h.Close()
 
-	turn, err := h.Session("submit-session").Submit(t.Context(), "hi")
+	turn, err := h.Session("submit-session").Submit(t.Context(), TextPrompt("hi"))
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestHarnessSessionSubmitTurnCancel(t *testing.T) {
 	}
 	defer h.Close()
 
-	turn, err := h.Session("submit-cancel-session").Submit(t.Context(), "go")
+	turn, err := h.Session("submit-cancel-session").Submit(t.Context(), TextPrompt("go"))
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}

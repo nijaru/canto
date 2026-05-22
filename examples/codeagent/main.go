@@ -180,7 +180,7 @@ func submitPrompt(
 	sessionHandle *canto.Session,
 	message string,
 ) (agent.StepResult, error) {
-	turn, err := sessionHandle.Submit(ctx, message)
+	turn, err := sessionHandle.Submit(ctx, canto.TextPrompt(message))
 	if err != nil {
 		return agent.StepResult{}, err
 	}

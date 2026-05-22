@@ -121,7 +121,7 @@ func main() {
 
 		// Let the agent act (it will modify target.go)
 		fmt.Println("Agent is thinking and modifying code...")
-		if _, err := runner.Send(ctx, sessionID, feedback); err != nil {
+		if _, err := runner.SendText(ctx, sessionID, feedback); err != nil {
 			log.Printf("Agent run failed: %v", err)
 		}
 

@@ -94,7 +94,7 @@ func TestRunner_Watch_ReceivesEvents(t *testing.T) {
 	}
 	defer sub.Close()
 
-	result, err := runner.Send(ctx, sessionID, "ping")
+	result, err := runner.SendText(ctx, sessionID, "ping")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,6 +147,51 @@ collect:
 	}
 	if !sawAssistant {
 		t.Error("Watch did not receive the assistant MessageAdded event")
+	}
+}
+
+func TestRunnerSendAcceptsTypedPromptParts(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	provider := llm.NewFauxProvider("typed", llm.FauxStep{Content: "ok"})
+	runner := NewRunner(store, agent.New("typed", "", "typed", provider, nil))
+	defer runner.Close()
+
+	prompt := llm.NewPrompt(llm.Message{
+		Role:  llm.RoleUser,
+		Parts: []llm.ContentPart{llm.TextPart("hello from parts")},
+	})
+	if _, err := runner.Send(t.Context(), "typed-prompt", prompt); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	calls := provider.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("provider calls = %d, want 1", len(calls))
+	}
+	messages := calls[0].Messages
+	if len(messages) == 0 {
+		t.Fatal("provider received no messages")
+	}
+	last := messages[len(messages)-1]
+	if got := last.TextContent(); got != "hello from parts" {
+		t.Fatalf("provider text = %q, want typed prompt text", got)
+	}
+	if len(last.Parts) != 1 || last.Parts[0].Text != "hello from parts" {
+		t.Fatalf("provider parts = %+v, want structured text part", last.Parts)
+	}
+
+	sess, err := store.Load(t.Context(), "typed-prompt")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	stored := sess.Messages()
+	if len(stored) == 0 || len(stored[0].Parts) != 1 {
+		t.Fatalf("stored messages = %+v, want structured prompt", stored)
 	}
 }
 
@@ -205,7 +250,7 @@ func TestRunnerOverflowRecoveryCompactsAndRebuildsOnce(t *testing.T) {
 		),
 	)
 
-	result, err := runner.Send(t.Context(), "overflow-recovery", "please recover")
+	result, err := runner.SendText(t.Context(), "overflow-recovery", "please recover")
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -271,7 +316,7 @@ func TestRunnerOverflowRecoveryRebuildsBaseAgentRequest(t *testing.T) {
 		),
 	)
 
-	result, err := runner.Send(t.Context(), "overflow-base", "please recover")
+	result, err := runner.SendText(t.Context(), "overflow-base", "please recover")
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -357,7 +402,7 @@ func TestRunner_Evict_DoesNotDropActiveLane(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, _ = runner.Send(ctx, sessionID, "ping")
+		_, _ = runner.SendText(ctx, sessionID, "ping")
 	}()
 
 	deadline := time.Now().Add(time.Second)
@@ -544,7 +589,7 @@ func TestRunnerSendAppendsUserInsideSerializedLane(t *testing.T) {
 
 			firstErr := make(chan error, 1)
 			go func() {
-				_, err := runner.Send(t.Context(), "serialized-send-"+tt.name, "first")
+				_, err := runner.SendText(t.Context(), "serialized-send-"+tt.name, "first")
 				firstErr <- err
 			}()
 
@@ -558,7 +603,7 @@ func TestRunnerSendAppendsUserInsideSerializedLane(t *testing.T) {
 
 			secondErr := make(chan error, 1)
 			go func() {
-				_, err := runner.Send(t.Context(), "serialized-send-"+tt.name, "second")
+				_, err := runner.SendText(t.Context(), "serialized-send-"+tt.name, "second")
 				secondErr <- err
 			}()
 
@@ -676,7 +721,7 @@ func TestRunnerLocalQueueWaitTimeoutDoesNotCancelActiveTurn(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := runner.SendStream(
+		_, err := runner.SendTextStream(
 			t.Context(),
 			"active-wait-timeout",
 			"first",
@@ -727,7 +772,7 @@ func TestRunnerQueuedTurnWaitTimeoutRecordsTerminalEvent(t *testing.T) {
 
 	firstErr := make(chan error, 1)
 	go func() {
-		_, err := runner.SendStream(
+		_, err := runner.SendTextStream(
 			t.Context(),
 			"queued-wait-timeout",
 			"first",
@@ -744,7 +789,12 @@ func TestRunnerQueuedTurnWaitTimeoutRecordsTerminalEvent(t *testing.T) {
 		t.Fatal("timed out waiting for first turn to start")
 	}
 
-	_, err = runner.SendStream(t.Context(), "queued-wait-timeout", "second", func(*llm.Chunk) {})
+	_, err = runner.SendTextStream(
+		t.Context(),
+		"queued-wait-timeout",
+		"second",
+		func(*llm.Chunk) {},
+	)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("queued SendStream error = %v, want context deadline exceeded", err)
 	}

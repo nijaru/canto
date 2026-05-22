@@ -105,7 +105,7 @@ func (p *FauxProvider) Models(_ context.Context) ([]Model, error) {
 func (p *FauxProvider) CountTokens(_ context.Context, _ string, messages []Message) (int, error) {
 	total := 0
 	for _, msg := range messages {
-		total += len(msg.Content)
+		total += len(msg.TextContent())
 	}
 	return total, nil
 }

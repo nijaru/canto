@@ -14,7 +14,7 @@ func (b *Base) ConvertRequest(req *llm.Request) openai.ChatCompletionRequest {
 	for i, m := range req.Messages {
 		msg := openai.ChatCompletionMessage{
 			Role:    string(m.Role),
-			Content: m.Content,
+			Content: m.TextContent(),
 			Name:    m.Name,
 		}
 		if len(m.Calls) > 0 {

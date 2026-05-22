@@ -89,7 +89,7 @@ func (s *Session) ID() string {
 // It is a blocking convenience wrapper around Submit. Hosts that need
 // streaming events, cancellation, or stable turn identity should call Submit.
 func (s *Session) Prompt(ctx context.Context, message string) (agent.StepResult, error) {
-	turn, err := s.Submit(ctx, message)
+	turn, err := s.Submit(ctx, llm.TextPrompt(message))
 	if err != nil {
 		return agent.StepResult{}, err
 	}
@@ -209,8 +209,8 @@ func (e *runEventEmitter) emit(
 	}
 }
 
-// Submit accepts a user message as one turn transaction and starts execution.
-func (s *Session) Submit(ctx context.Context, message string) (*Turn, error) {
+// Submit accepts typed prompt input as one turn transaction and starts execution.
+func (s *Session) Submit(ctx context.Context, prompt Prompt) (*Turn, error) {
 	if s == nil || s.harness == nil || s.harness.Runner == nil {
 		return nil, fmt.Errorf("canto harness: nil runner")
 	}
@@ -248,7 +248,7 @@ func (s *Session) Submit(ctx context.Context, message string) (*Turn, error) {
 		runCtx := llm.WithRetryObserver(ctx, func(event llm.RetryEvent) {
 			emitter.emitLive(RunEvent{Type: RunEventRetry, Retry: event})
 		})
-		result, err := s.harness.Runner.SendStream(runCtx, s.id, message, func(chunk *llm.Chunk) {
+		result, err := s.harness.Runner.SendStream(runCtx, s.id, prompt, func(chunk *llm.Chunk) {
 			if chunk == nil {
 				return
 			}
@@ -279,7 +279,7 @@ func (s *Session) PromptStream(
 	ctx context.Context,
 	message string,
 ) (<-chan RunEvent, error) {
-	turn, err := s.Submit(ctx, message)
+	turn, err := s.Submit(ctx, llm.TextPrompt(message))
 	if err != nil {
 		return nil, err
 	}

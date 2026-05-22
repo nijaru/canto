@@ -168,7 +168,7 @@ func (p *Provider) CountTokens(_ context.Context, _ string, messages []llm.Messa
 	total := 3 // reply priming
 	for _, m := range messages {
 		total += 4 // per-message overhead
-		total += (len(m.Content) + 3) / 4
+		total += (len(m.TextContent()) + 3) / 4
 		for _, call := range m.Calls {
 			total += (len(call.Function.Name) + 3) / 4
 			total += (len(call.Function.Arguments) + 3) / 4

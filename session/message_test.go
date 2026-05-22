@@ -25,6 +25,12 @@ func TestMessageHelpers(t *testing.T) {
 			if tt.msg.Content == "" {
 				t.Fatal("content is empty")
 			}
+			if tt.msg.TextContent() == "" {
+				t.Fatal("text content is empty")
+			}
+			if len(tt.msg.Parts) != 1 || tt.msg.Parts[0].Text == "" {
+				t.Fatalf("parts = %+v, want one text part", tt.msg.Parts)
+			}
 		})
 	}
 }

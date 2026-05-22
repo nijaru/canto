@@ -99,8 +99,8 @@ func (p *Provider) convertContentBlocks(m llm.Message) []sdk.ContentBlockParamUn
 			blocks = append(blocks, sdk.NewRedactedThinkingBlock(tb.Signature))
 		}
 	}
-	if m.Content != "" {
-		block := sdk.NewTextBlock(m.Content)
+	if text := m.TextContent(); text != "" {
+		block := sdk.NewTextBlock(text)
 		if m.CacheControl != nil {
 			block.OfText.CacheControl = sdk.NewCacheControlEphemeralParam()
 		}

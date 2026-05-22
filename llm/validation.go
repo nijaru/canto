@@ -1,9 +1,6 @@
 package llm
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 // ValidateRequest checks provider-facing invariants for unified LLM requests.
 func ValidateRequest(req *Request) error {
@@ -67,8 +64,5 @@ func isPrivilegedRole(role Role) bool {
 }
 
 func assistantHasPayload(msg Message) bool {
-	return strings.TrimSpace(msg.Content) != "" ||
-		strings.TrimSpace(msg.Reasoning) != "" ||
-		len(msg.ThinkingBlocks) > 0 ||
-		len(msg.Calls) > 0
+	return msg.HasAssistantPayload()
 }

@@ -87,10 +87,7 @@ func validModelMessage(msg llm.Message) bool {
 }
 
 func assistantMessageHasPayload(msg llm.Message) bool {
-	return strings.TrimSpace(msg.Content) != "" ||
-		strings.TrimSpace(msg.Reasoning) != "" ||
-		len(msg.ThinkingBlocks) > 0 ||
-		len(msg.Calls) > 0
+	return msg.HasAssistantPayload()
 }
 
 func inferLegacyContextMarkers(entry *HistoryEntry) {

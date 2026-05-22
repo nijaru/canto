@@ -29,7 +29,7 @@ func run(ctx context.Context, w io.Writer) error {
 	}
 	defer h.Close()
 
-	turn, err := h.Session("hello-session").Submit(ctx, "Say hello.")
+	turn, err := h.Session("hello-session").Submit(ctx, canto.TextPrompt("Say hello."))
 	if err != nil {
 		return err
 	}

@@ -11,24 +11,46 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-// Send appends a user message to the session and runs the agent.
+// SendText appends a plain user message to the session and runs the agent.
+func (r *Runner) SendText(
+	ctx context.Context,
+	sessionID, message string,
+) (agent.StepResult, error) {
+	return r.Send(ctx, sessionID, llm.TextPrompt(message))
+}
+
+// Send appends typed prompt input to the session and runs the agent.
 // It returns the final StepResult so callers can read the assistant reply
 // without a separate store load.
-func (r *Runner) Send(ctx context.Context, sessionID, message string) (agent.StepResult, error) {
+func (r *Runner) Send(
+	ctx context.Context,
+	sessionID string,
+	prompt llm.Prompt,
+) (agent.StepResult, error) {
 	sess, err := r.getOrLoad(ctx, sessionID)
 	if err != nil {
 		return agent.StepResult{}, err
 	}
 
-	return r.run(ctx, sess, nil, appendUserMessage(message))
+	return r.run(ctx, sess, nil, appendPrompt(prompt))
 }
 
-// SendStream appends a user message and runs the agent with streaming.
+// SendTextStream appends a plain user message and runs the agent with streaming.
+func (r *Runner) SendTextStream(
+	ctx context.Context,
+	sessionID, message string,
+	chunkFn func(*llm.Chunk),
+) (agent.StepResult, error) {
+	return r.SendStream(ctx, sessionID, llm.TextPrompt(message), chunkFn)
+}
+
+// SendStream appends typed prompt input and runs the agent with streaming.
 // If the agent implements agent.Streamer, chunkFn receives tokens as they
 // arrive; otherwise the call falls back to non-streaming Turn.
 func (r *Runner) SendStream(
 	ctx context.Context,
-	sessionID, message string,
+	sessionID string,
+	prompt llm.Prompt,
 	chunkFn func(*llm.Chunk),
 ) (agent.StepResult, error) {
 	sess, err := r.getOrLoad(ctx, sessionID)
@@ -36,7 +58,7 @@ func (r *Runner) SendStream(
 		return agent.StepResult{}, err
 	}
 
-	return r.run(ctx, sess, chunkFn, appendUserMessage(message))
+	return r.run(ctx, sess, chunkFn, appendPrompt(prompt))
 }
 
 // Run executes the agent on an existing session without appending a new user
@@ -74,12 +96,12 @@ func (r *Runner) RunStream(
 // It applies per-session coordination and delegates to execute.
 type sessionMutation func(context.Context, *session.Session) error
 
-func appendUserMessage(message string) sessionMutation {
+func appendPrompt(prompt llm.Prompt) sessionMutation {
 	return func(ctx context.Context, sess *session.Session) error {
-		return sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
-			Role:    llm.RoleUser,
-			Content: message,
-		}))
+		if len(prompt.Messages) == 0 {
+			return fmt.Errorf("runtime send: prompt must contain at least one message")
+		}
+		return sess.AppendPrompt(ctx, prompt)
 	}
 }
 
