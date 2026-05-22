@@ -10,7 +10,8 @@ func (b *Builder) PrependRequestProcessors(processors ...RequestProcessor) {
 	}
 	b.requestProcessors = append(
 		append([]RequestProcessor(nil), processors...),
-		b.requestProcessors...)
+		b.requestProcessors...,
+	)
 }
 
 // AppendRequestProcessors adds preview-safe request processors after the

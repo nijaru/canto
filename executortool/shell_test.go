@@ -1,4 +1,4 @@
-package coding
+package executortool
 
 import (
 	"context"
@@ -142,7 +142,8 @@ func TestShellTool_ExecuteStreamingStopsCommandWhenConsumerStops(t *testing.T) {
 	marker := filepath.Join(dir, "survived")
 	b := &ShellTool{Dir: dir}
 
-	for delta, err := range b.ExecuteStreaming(t.Context(),
+	for delta, err := range b.ExecuteStreaming(
+		t.Context(),
 		`{"command": "printf 'start\n'; sleep 1; touch survived"}`,
 	) {
 		if err != nil {

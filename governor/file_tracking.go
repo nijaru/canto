@@ -21,7 +21,6 @@ var toolFileActions = map[string]string{
 	"write":      "write",
 	"write_file": "write",
 	"edit":       "edit",
-	"multi_edit": "edit",
 }
 
 // extractFilePaths scans tool calls and tool results in the given messages to

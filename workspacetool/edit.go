@@ -1,4 +1,4 @@
-package coding
+package workspacetool
 
 import (
 	"context"
@@ -24,29 +24,44 @@ func NewEditTool(root workspace.WorkspaceFS) *EditTool {
 func (t *EditTool) Spec() llm.Spec {
 	return llm.Spec{
 		Name:        "edit",
-		Description: "Replace an exact text snippet in a file within the workspace root.",
+		Description: "Apply one or more exact text replacements to a single file within the workspace root.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"path":   map[string]any{"type": "string"},
-				"before": map[string]any{"type": "string"},
-				"after":  map[string]any{"type": "string"},
+				"path": map[string]any{"type": "string"},
+				"edits": map[string]any{
+					"type":        "array",
+					"description": "One or more exact replacements. Each before value is matched against the original file, not against another edit's output.",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"before": map[string]any{
+								"type":        "string",
+								"description": "Exact text to replace. Must match one unique, non-overlapping region of the original file.",
+							},
+							"after": map[string]any{
+								"type":        "string",
+								"description": "Replacement text.",
+							},
+						},
+						"required": []string{"before", "after"},
+					},
+				},
 			},
-			"required": []string{"path", "before", "after"},
+			"required": []string{"path", "edits"},
 		},
 	}
 }
 
 func (t *EditTool) Execute(_ context.Context, args string) (string, error) {
 	var input struct {
-		Path   string `json:"path"`
-		Before string `json:"before"`
-		After  string `json:"after"`
+		Path  string            `json:"path"`
+		Edits []editReplacement `json:"edits"`
 	}
 	if err := json.Unmarshal([]byte(args), &input); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
 	}
-	updated, replacements, err := applyEdit(t.root, input.Path, input.Before, input.After)
+	updated, replacements, err := applyEdit(t.root, input.Path, input.Edits)
 	if err != nil {
 		return "", err
 	}
@@ -54,7 +69,7 @@ func (t *EditTool) Execute(_ context.Context, args string) (string, error) {
 		"path":         input.Path,
 		"replacements": replacements,
 		"changed":      true,
-		"preview":      previewChange(input.Before, input.After),
+		"preview":      previewEdits(input.Edits),
 	}
 	if err := t.root.WriteFile(input.Path, []byte(updated), 0o644); err != nil {
 		return "", err

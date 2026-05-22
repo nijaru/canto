@@ -25,7 +25,8 @@ var scoreRegex = regexp.MustCompile(`(?i)Score:\s*([0-9.]+)/1\.0`)
 
 // ScoreTurn executes an LLM call to evaluate the turn.
 func (j *Judge) ScoreTurn(ctx context.Context, turn session.RunTurn) (float64, error) {
-	prompt := fmt.Sprintf(`Evaluate the following agent turn according to these criteria:
+	prompt := fmt.Sprintf(
+		`Evaluate the following agent turn according to these criteria:
 %s
 
 ### Agent Turn

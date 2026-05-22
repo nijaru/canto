@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/coding"
+	"github.com/nijaru/canto/executor"
 	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
@@ -209,14 +209,14 @@ func TestHarnessBuilderStoresEnvironment(t *testing.T) {
 	}
 	defer root.Close()
 
-	executor := coding.NewExecutor(time.Second, 1024)
+	exec := executor.NewExecutor(time.Second, 1024)
 	secrets := safety.StaticSecretInjector{"TOKEN": "secret"}
 	h, err := NewHarness("env").
 		Model("faux").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
 		Environment(Environment{
 			Workspace: root,
-			Executor:  executor,
+			Executor:  exec,
 			Secrets:   secrets,
 			Bootstrap: []session.ContextEntry{{
 				Kind:    session.ContextKindHarness,
@@ -233,7 +233,7 @@ func TestHarnessBuilderStoresEnvironment(t *testing.T) {
 	if h.Environment.Workspace != root {
 		t.Fatal("workspace capability was not retained")
 	}
-	if h.Environment.Executor != executor {
+	if h.Environment.Executor != exec {
 		t.Fatal("executor capability was not retained")
 	}
 	if h.Environment.Secrets == nil {

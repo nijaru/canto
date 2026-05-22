@@ -15,14 +15,13 @@ func TestExtractFilePathsTracksCommonCodingToolNames(t *testing.T) {
 			toolCall("grep", `{"path":"session","pattern":"Effective"}`),
 			toolCall("write", `{"file_path":"tmp/out.txt"}`),
 			toolCall("edit", `{"file_path":"internal/app.go"}`),
-			toolCall("multi_edit", `{"file_path":"internal/model.go"}`),
 		}},
 	}
 
 	read, modified := extractFilePaths(messages)
 
 	wantRead := []string{"README.md", "governor", "session"}
-	wantModified := []string{"internal/app.go", "internal/model.go", "tmp/out.txt"}
+	wantModified := []string{"internal/app.go", "tmp/out.txt"}
 	if !slices.Equal(read, wantRead) {
 		t.Fatalf("read paths = %#v, want %#v", read, wantRead)
 	}

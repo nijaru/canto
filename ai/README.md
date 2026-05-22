@@ -45,11 +45,12 @@ All six sprints are complete. See [PLAN.md](PLAN.md) for full history.
 - [design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) — post-Ion phase-1 roadmap: M1 readiness first, SOTA tracks later
 - [design/api-surface-review-canto-3p5m.md](design/api-surface-review-canto-3p5m.md) — API surface DX findings and friction points (Phase 5)
 - [design/ion-friction-intake.md](design/ion-friction-intake.md) — historical intake pattern for turning consumer findings into concrete Canto issues
+- [design/ion-sota-framework-gap-2026-05-22.md](design/ion-sota-framework-gap-2026-05-22.md) — active framework-owned gap list from Ion's reopened Pi/SOTA architecture roadmap
 - [design/model-context-contract-2026-04.md](design/model-context-contract-2026-04.md) — canonical neutral context/provider-prep contract and audit gates
 - [review/canto-ion-roadmap-2026-04.md](review/canto-ion-roadmap-2026-04.md) — Canto/Ion boundary review and M1 stabilization sequence
 - [review/test-quality-and-rewrite-gap-2026-04.md](review/test-quality-and-rewrite-gap-2026-04.md) — qualitative test assessment and from-scratch design gap review before Ion
 - [review/load-bearing-coverage-audit-2026-04.md](review/load-bearing-coverage-audit-2026-04.md) — M1 coverage audit for agent, session, workspace, tools, prompt, governor, approval, runtime
-- [review/tool-surface-audit-2026-04.md](review/tool-surface-audit-2026-04.md) — Canto tool primitives, no presets, no built-in glob/grep, configurable shell
+- [review/tool-surface-audit-2026-04.md](review/tool-surface-audit-2026-04.md) — Canto capability tools, no presets, no built-in glob/grep, configurable shell
 - [review/framework-readiness-2026-04-20.md](review/framework-readiness-2026-04-20.md) — M1 readiness audit: DX, `x/` boundary, examples, and alpha blockers
 - [design/identity-first-workspace-and-projections-2026-04.md](design/identity-first-workspace-and-projections-2026-04.md) — Phase 4 architecture correction (complete)
 - [design/memory-direction-2026.md](design/memory-direction-2026.md) — current memory direction and transition map

@@ -136,7 +136,7 @@ All of these share the pattern "attach at the boundary, stay cycle-free, opt-in"
 | **L2**  | `agent/`                                               | Turn loop, turn-stop semantics, step aggregation, and tool orchestration                     |
 | **L3**  | `session/`                                             | Append-only event log, replay, projections, branching, SQLite/JSONL stores                   |
 | **L3**  | `prompt/`                                              | Request shaping, budget checks, compaction, observation masking                              |
-| **L3**  | `tool/`, `skill/`, `coding/`                           | Tool registry/execution metadata, stable coding-agent tools, MCP integration, skill routing  |
+| **L3**  | `tool/`, `skill/`, `executor/`, `workspacetool/`, `executortool/` | Tool registry/execution metadata, host execution, optional capability tools, MCP integration, skill routing |
 | **L3**  | `workspace/`                                           | Rooted filesystem boundary, validation, `WorkspaceFS`, `ContentRef`, indexing substrate      |
 | **L3**  | `runtime/`                                             | Orchestration, child lifecycle, scheduling, bootstrap sequencing                             |
 | **L3**  | `memory/`                                              | Repository/index/retrieval layers and vector-backed recall                                   |
@@ -173,7 +173,7 @@ The current load-bearing corrections have been implemented:
 
 - **Core (retain):** `agent/`, `llm/`, `session/`, `prompt/`, `tool/`, `skill/`, `workspace/`, `runtime/`, `memory/`, `approval/`, `safety/`, `hook/`, `audit/`, `governor/`, `tracing/`.
 - **Extension (retain in `x/`):** `x/graph/` (DAG topologies), `x/eval/` (benchmarks/scorers).
-- **Stable coding surface:** `coding/` holds individual coding-agent primitives: workspace read/write/list, exact edit/multiedit, configurable shell execution, Python code execution, executor/output boundaries, and search-tool aliasing. It does not ship tool presets or built-in glob/grep tools.
+- **Stable capability tools:** `executor/` owns bounded host command execution, `workspacetool/` owns rooted workspace read/write/list/exact-edit tools, and `executortool/` owns shell/code-execution tool adapters. Canto does not expose a product-shaped coding package, tool presets, model-visible `multi_edit`, or built-in glob/grep tools.
 - **Extension (under review):** `x/tools/` now only holds memory/task/WASM helpers. These remain extension-scoped until Ion/reference-agent usage proves they belong in a stable package.
 
 ## 7. Phase 5 Frontier

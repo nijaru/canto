@@ -66,7 +66,8 @@ func AttachWriteThrough(ctx context.Context, sess *Session, store Store) func() 
 					return
 				}
 				if err := store.Save(context.Background(), e); err != nil {
-					slog.Warn("write-through save failed",
+					slog.Warn(
+						"write-through save failed",
 						"session_id", e.SessionID,
 						"event_id", e.ID,
 						"error", err,

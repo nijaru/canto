@@ -1,6 +1,7 @@
-// Package tools contains extension tools that are not part of Canto's stable
-// coding-agent surface.
+// Package tools contains extension-level agent tools.
 //
-// Use github.com/nijaru/canto/coding for canonical workspace, edit, shell,
-// code-execution, and executor primitives.
+// Use github.com/nijaru/canto/workspacetool for workspace tools and
+// github.com/nijaru/canto/executortool for shell and code-execution tools. This
+// package holds optional helpers that are not part of the stable Canto core
+// surface.
 package tools

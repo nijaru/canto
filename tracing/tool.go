@@ -52,7 +52,8 @@ func (w *wrappedTool) ApprovalRequirement(args string) (approval.Requirement, bo
 
 func (w *wrappedTool) Execute(ctx context.Context, args string) (string, error) {
 	name := w.inner.Spec().Name
-	ctx, span := Tracer().Start(ctx, "canto.tool."+name,
+	ctx, span := Tracer().Start(
+		ctx, "canto.tool."+name,
 		trace.WithAttributes(attribute.String("canto.tool.name", name)),
 	)
 	defer span.End()
@@ -79,7 +80,8 @@ func (w *wrappedStreamingTool) ExecuteStreaming(
 	name := w.inner.Spec().Name
 
 	return func(yield func(string, error) bool) {
-		ctx, span := Tracer().Start(ctx, "canto.tool."+name,
+		ctx, span := Tracer().Start(
+			ctx, "canto.tool."+name,
 			trace.WithAttributes(
 				attribute.String("canto.tool.name", name),
 				attribute.Bool("canto.tool.streaming", true),

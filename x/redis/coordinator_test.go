@@ -59,7 +59,8 @@ func newTestCoord(t *testing.T) *RedisCoordinator {
 		}
 	})
 
-	coord := NewRedisCoordinator(client,
+	coord := NewRedisCoordinator(
+		client,
 		WithKeyPrefix(prefix),
 		WithLeaseTTL(100*time.Millisecond),
 		WithPollInterval(5*time.Millisecond),

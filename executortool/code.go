@@ -1,4 +1,4 @@
-package coding
+package executortool
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/approval"
+	"github.com/nijaru/canto/executor"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/safety"
 )
@@ -17,14 +18,14 @@ import (
 // Currently supports Python.
 type CodeExecutionTool struct {
 	Language string
-	Executor *Executor
+	Executor *executor.Executor
 }
 
 // NewCodeExecutionTool creates a new tool for code execution.
 func NewCodeExecutionTool(language string) *CodeExecutionTool {
 	return &CodeExecutionTool{
 		Language: language,
-		Executor: DefaultExecutor,
+		Executor: executor.DefaultExecutor,
 	}
 }
 
@@ -76,7 +77,11 @@ func (c *CodeExecutionTool) Execute(ctx context.Context, args string) (string, e
 
 	// 2. Execute the code using the executor
 	// We use `python3` specifically to avoid potential Python 2 issues.
-	result, err := c.Executor.Run(ctx, Command{
+	exec := c.Executor
+	if exec == nil {
+		exec = executor.DefaultExecutor
+	}
+	result, err := exec.Run(ctx, executor.Command{
 		Name: "python3",
 		Args: []string{tmpFile},
 	})

@@ -10,7 +10,8 @@ import (
 )
 
 func TestFauxProvider_ConsumeSteps(t *testing.T) {
-	faux := NewFauxProvider("test",
+	faux := NewFauxProvider(
+		"test",
 		Step{Content: "step 1"},
 		Step{Content: "step 2"},
 	)

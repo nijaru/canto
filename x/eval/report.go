@@ -38,7 +38,8 @@ func MarkdownReport(results []EvalResult) string {
 	sb.WriteString("\n")
 
 	for _, res := range results {
-		sb.WriteString(fmt.Sprintf("| `%s` | %s | %d | $%.4f |",
+		sb.WriteString(fmt.Sprintf(
+			"| `%s` | %s | %d | $%.4f |",
 			res.RunID, res.AgentID, res.TurnCount, res.TotalCost,
 		))
 		for _, k := range keys {

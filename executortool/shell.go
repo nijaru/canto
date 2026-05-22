@@ -1,4 +1,4 @@
-package coding
+package executortool
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"github.com/go-json-experiment/json"
 
 	"github.com/nijaru/canto/approval"
+	"github.com/nijaru/canto/executor"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/safety"
 	"github.com/nijaru/canto/tool"
@@ -14,7 +15,7 @@ import (
 
 // ShellTool executes shell commands.
 type ShellTool struct {
-	Executor    *Executor
+	Executor    *executor.Executor
 	Dir         string
 	Shell       string
 	CommandFlag string
@@ -51,11 +52,11 @@ func (b *ShellTool) Execute(ctx context.Context, args string) (string, error) {
 		return "", err
 	}
 
-	executor := b.Executor
-	if executor == nil {
-		executor = DefaultExecutor
+	exec := b.Executor
+	if exec == nil {
+		exec = executor.DefaultExecutor
 	}
-	result, err := executor.Run(ctx, Command{
+	result, err := exec.Run(ctx, executor.Command{
 		Name: b.shell(),
 		Args: []string{b.commandFlag(), input.Command},
 		Dir:  b.Dir,
@@ -79,9 +80,9 @@ func (b *ShellTool) ExecuteStreaming(ctx context.Context, args string) iter.Seq2
 			return
 		}
 
-		executor := b.Executor
-		if executor == nil {
-			executor = DefaultExecutor
+		exec := b.Executor
+		if exec == nil {
+			exec = executor.DefaultExecutor
 		}
 
 		type item struct {
@@ -89,11 +90,11 @@ func (b *ShellTool) ExecuteStreaming(ctx context.Context, args string) iter.Seq2
 			err  error
 		}
 		ch := make(chan item, 10)
-		cmd := Command{
+		cmd := executor.Command{
 			Name: b.shell(),
 			Args: []string{b.commandFlag(), input.Command},
 			Dir:  b.Dir,
-			OnOutput: func(c OutputChunk) {
+			OnOutput: func(c executor.OutputChunk) {
 				select {
 				case ch <- item{text: c.Text}:
 				case <-streamCtx.Done():
@@ -102,7 +103,7 @@ func (b *ShellTool) ExecuteStreaming(ctx context.Context, args string) iter.Seq2
 		}
 
 		go func() {
-			_, err := executor.Run(streamCtx, cmd)
+			_, err := exec.Run(streamCtx, cmd)
 			if err != nil {
 				select {
 				case ch <- item{err: err}:

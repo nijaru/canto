@@ -196,7 +196,8 @@ func (b *HarnessBuilder) Build() (*Harness, error) {
 			_, err := governor.CompactSession(ctx, provider, b.model, sess, opts)
 			return err
 		}
-		runtimeOptions = append(runtimeOptions,
+		runtimeOptions = append(
+			runtimeOptions,
 			runtime.WithBeforeRun(compact),
 			runtime.WithOverflowRecovery(provider.IsContextOverflow, compact, 1),
 		)

@@ -1,6 +1,6 @@
 //go:build unix
 
-package coding
+package executor
 
 import (
 	"os/exec"

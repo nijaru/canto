@@ -233,7 +233,14 @@ h, err := canto.NewHarness("code").
         Workspace: root,
         Executor: executor,
     }).
-    Tools(coding.Tools(root), service.Tools(...)).
+    Tools(
+        workspacetool.NewReadFileTool(root),
+        workspacetool.NewWriteFileTool(root),
+        workspacetool.NewListDirTool(root),
+        workspacetool.NewEditTool(root),
+        &executortool.ShellTool{Executor: exec, Dir: workspaceDir},
+        serviceTool,
+    ).
     Approvals(approvalManager).
     Memory(memoryManager).
     Build()
@@ -266,36 +273,22 @@ The harness should expose:
 Use `h.Session(id).Prompt` for simple turns. Advanced users still call
 `agent.New`, `session.New`, `runtime.Runner`, and `Turn` directly.
 
-### 3. Stable Tool Bundles
+### 3. Stable Capability Tools
 
-Canonical coding tools should not remain in an experimental namespace. `canto-l2iy` should classify:
+Canonical workspace/execution tools should not remain in an experimental namespace or a product-shaped coding namespace. Current package classification:
 
-| Tool group | Proposed home | Notes |
+| Tool group | Home | Notes |
 | --- | --- | --- |
-| file read/list/write | core stable package | Basic rooted workspace access |
-| edit/multiedit/apply patch | core stable package | Required for coding agents |
-| shell/command executor | core stable package | Must be shell-configurable and keep approval/sandbox/secret boundaries explicit |
+| file read/list/write | `workspacetool` | Basic rooted workspace access |
+| exact file edit | `workspacetool` | `edit` accepts `edits[]` for one or more replacements in one file |
+| host command executor | `executor` | Bounded execution and secret/env handling |
+| shell/code tool adapters | `executortool` | Shell-configurable and approval/sandbox/secret boundaries explicit |
 | task/memory helpers | decide case-by-case | Stable if generic, otherwise extension |
 | experimental swarm/pool/redis | keep `x/` or cut | Not needed for M1 authoring |
 
-The user-facing shape should be bundle-oriented:
-
-```go
-reg := tool.NewRegistry()
-coding.Register(reg, coding.Config{
-    Workspace: root,
-    Executor: executor,
-    Approvals: approvals,
-})
-```
-
-or:
-
-```go
-tools := coding.Tools(root, coding.WithExecutor(executor))
-```
-
-The bundle must not make policy decisions silently. Dangerous tools expose `ApprovalRequirement`, sandbox options, audit metadata, and secret names.
+The user-facing shape stays explicit. Canto should not expose a `coding.Tools`
+bundle that implies one blessed coding-agent tool set. Dangerous tools expose
+`ApprovalRequirement`, sandbox options, audit metadata, and secret names.
 
 ### 4. Service/API Tool Helpers
 
@@ -400,8 +393,8 @@ Status 2026-04-22:
 
 - `examples/codeagent` is now buildable and no-credential.
 - The reference uses `canto.NewHarness`, explicit `SessionStore`, `llm.FauxProvider`, `runtime.Runner.Watch`, durable SQLite sessions, workspace read/edit tools, workspace-scoped shell, Python code execution, typed `service.New` web-search fixture, approval manager with safety policy, hooks, and same-session resume.
-- `coding.ShellTool` now accepts `Dir` and shell configuration so execution can be pinned to the workspace without assuming bash.
-- Canonical coding tools moved from `x/tools` to stable `coding/`; `examples/codeagent` now imports the stable package.
+- `executortool.ShellTool` accepts `Dir` and shell configuration so execution can be pinned to the workspace without assuming bash.
+- Canonical workspace/execution tools are now capability packages: `executor/`, `workspacetool/`, and `executortool/`; `examples/codeagent` imports those packages directly.
 - Remaining M1 reference gaps: MCP wrapping in the reference path, docs/README anchor, and Ion consumption pass.
 
 ### `canto-p73h` / `canto-m4nb`: Ion Validation

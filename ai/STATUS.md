@@ -222,6 +222,7 @@ lane is selected.
 - Runtime coordinator queued-timeout fix landed in `24f2ed9` and has been imported into Ion: `LocalCoordinator.Await` removes a queued ticket when its wait context is canceled or deadlined before lease grant, preventing an abandoned turn from staying at the lane head and blocking later turns.
 - Session rebuilder recovery landed in `83c4d30` and has been imported into Ion: `EffectiveEntries` can synthesize a missing provider-visible tool result from durable `ToolCompleted` lifecycle data, and dangling assistant tool calls with no matching or recoverable result are dropped so replay cannot poison a follow-up provider turn.
 - Canto/Ion tool replay boundary — `09140f7 feat(session): expose tool lifecycle metadata` added `HistoryEntry.Tool` projection metadata for host replay; Ion imported it in `ec5a548 refactor(storage): use canto tool projection`, removing Ion's raw Canto event scan for tool titles/errors.
+- Current C1 toolkit split — Canto no longer exposes the product-shaped `coding/` package. Executor mechanics now live in `executor/`, workspace tools in `workspacetool/`, shell/code tools in `executortool/`, and the old model-visible `multi_edit` surface is folded into `edit` with `edits[]`.
 - Ion feedback tracking cleanup — stale Ion issue notes were consolidated into `ai/review/ion-feedback-tracker-2026-04-28.md`; that file remains the concrete Ion-feedback intake while `core-api-contract-audit-2026-04-30.md` tracks the broader Canto core review.
 - `canto-h9vq` — Ion compaction reliability feedback fixed: working-set extraction now recognizes common coding-agent tool names (`read`, `list`, `grep`, `write`) and `file_path` arguments, so durable compaction snapshots preserve files from real Ion sessions. Focused governor tests and `go test ./... -count=1` pass.
 - current Ion feedback slice — agent write-side assistant payload validation now matches effective-history projection: whitespace-only assistant content/reasoning is not durably appended, reasoning-only payloads are preserved, and provider errors leave durable `TurnCompleted` error data. `go test ./...` passes.
@@ -238,7 +239,7 @@ lane is selected.
 - `canto-gymf` — root `canto.NewHarness` authoring seam, message helpers, and public `llm.FauxProvider`
 - `canto-43vh` — buildable Claude Code/Codex/Cursor-class reference coding/service agent
 - `canto-umuc` — typed service/API tool helper plus reference-agent validation
-- `canto-l2iy` — canonical coding-agent tools promoted from `x/tools` to stable `coding/`
+- `canto-l2iy` — superseded by C1 capability packages: `executor/`, `workspacetool/`, and `executortool/`
 - `canto-u99s` — runtime-level overflow recovery and proactive compaction path
 - `canto-20vn` — iterative compaction coverage plus split-turn summary preservation
 - `canto-i0h0` — absorbed into `canto-gymf`; hello example/FauxProvider path is landed

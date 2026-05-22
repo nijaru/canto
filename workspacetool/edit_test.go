@@ -1,4 +1,4 @@
-package coding
+package workspacetool
 
 import (
 	"context"
@@ -28,7 +28,7 @@ func TestEditTool_Success(t *testing.T) {
 	tool := NewEditTool(root)
 	out, err := tool.Execute(
 		context.Background(),
-		`{"path":"a.txt","before":"world","after":"team"}`,
+		`{"path":"a.txt","edits":[{"before":"world","after":"team"}]}`,
 	)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -51,7 +51,7 @@ func TestEditTool_FailsOnAmbiguousMatch(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	tool := NewEditTool(root)
-	if _, err := tool.Execute(context.Background(), `{"path":"a.txt","before":"x","after":"y"}`); err == nil {
+	if _, err := tool.Execute(context.Background(), `{"path":"a.txt","edits":[{"before":"x","after":"y"}]}`); err == nil {
 		t.Fatal("expected ambiguous match error")
 	}
 	data, _ := root.ReadFile("a.txt")
@@ -60,39 +60,16 @@ func TestEditTool_FailsOnAmbiguousMatch(t *testing.T) {
 	}
 }
 
-func TestMultiEditTool_AllOrNothing(t *testing.T) {
-	root := openEditRoot(t)
-	if err := root.WriteFile("a.txt", []byte("alpha"), 0o644); err != nil {
-		t.Fatalf("WriteFile a: %v", err)
-	}
-	if err := root.WriteFile("b.txt", []byte("beta"), 0o644); err != nil {
-		t.Fatalf("WriteFile b: %v", err)
-	}
-	tool := NewMultiEditTool(root)
-	_, err := tool.Execute(
-		context.Background(),
-		`{"edits":[{"path":"a.txt","before":"alpha","after":"A"},{"path":"b.txt","before":"missing","after":"B"}]}`,
-	)
-	if err == nil {
-		t.Fatal("expected multi_edit to fail")
-	}
-	aData, _ := root.ReadFile("a.txt")
-	bData, _ := root.ReadFile("b.txt")
-	if string(aData) != "alpha" || string(bData) != "beta" {
-		t.Fatalf("files changed on failed multi_edit: %q %q", string(aData), string(bData))
-	}
-}
-
-func TestMultiEditTool_AppliesSameFileEditsSequentially(t *testing.T) {
+func TestEditTool_AppliesMultipleSameFileEditsAgainstOriginalContent(t *testing.T) {
 	root := openEditRoot(t)
 	if err := root.WriteFile("a.txt", []byte("alpha beta gamma"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	tool := NewMultiEditTool(root)
+	tool := NewEditTool(root)
 	_, err := tool.Execute(
 		context.Background(),
-		`{"edits":[{"path":"a.txt","before":"alpha","after":"A"},{"path":"a.txt","before":"beta","after":"B"}]}`,
+		`{"path":"a.txt","edits":[{"before":"alpha","after":"A"},{"before":"beta","after":"B"}]}`,
 	)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -106,33 +83,56 @@ func TestMultiEditTool_AppliesSameFileEditsSequentially(t *testing.T) {
 	}
 }
 
-func TestMultiEditTool_SameFileValidationBeforeWrite(t *testing.T) {
+func TestEditTool_ValidatesAllEditsBeforeWrite(t *testing.T) {
 	root := openEditRoot(t)
 	if err := root.WriteFile("a.txt", []byte("alpha beta"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	tool := NewMultiEditTool(root)
+	tool := NewEditTool(root)
 	_, err := tool.Execute(
 		context.Background(),
-		`{"edits":[{"path":"a.txt","before":"alpha","after":"A"},{"path":"a.txt","before":"missing","after":"B"}]}`,
+		`{"path":"a.txt","edits":[{"before":"alpha","after":"A"},{"before":"missing","after":"B"}]}`,
 	)
 	if err == nil {
-		t.Fatal("expected multi_edit to fail")
+		t.Fatal("expected edit to fail")
 	}
 	data, err := root.ReadFile("a.txt")
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
 	if string(data) != "alpha beta" {
-		t.Fatalf("file changed on failed multi_edit: %q", string(data))
+		t.Fatalf("file changed on failed edit: %q", string(data))
 	}
 }
 
-func TestMultiEditTool_ApprovalRequirementIsWrite(t *testing.T) {
+func TestEditTool_RejectsOverlappingEdits(t *testing.T) {
 	root := openEditRoot(t)
-	req, ok, err := NewMultiEditTool(root).ApprovalRequirement(
-		`{"edits":[{"path":"a.txt"},{"path":"b.txt"}]}`,
+	if err := root.WriteFile("a.txt", []byte("alpha beta"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	tool := NewEditTool(root)
+	_, err := tool.Execute(
+		context.Background(),
+		`{"path":"a.txt","edits":[{"before":"alpha","after":"A"},{"before":"alpha beta","after":"AB"}]}`,
+	)
+	if err == nil {
+		t.Fatal("expected overlapping edit error")
+	}
+	data, err := root.ReadFile("a.txt")
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(data) != "alpha beta" {
+		t.Fatalf("file changed on failed edit: %q", string(data))
+	}
+}
+
+func TestEditTool_ApprovalRequirementIsWrite(t *testing.T) {
+	root := openEditRoot(t)
+	req, ok, err := NewEditTool(root).ApprovalRequirement(
+		`{"path":"a.txt","edits":[{"before":"alpha","after":"A"}]}`,
 	)
 	if err != nil {
 		t.Fatalf("ApprovalRequirement: %v", err)
@@ -143,7 +143,7 @@ func TestMultiEditTool_ApprovalRequirementIsWrite(t *testing.T) {
 	if req.Category != string(safety.CategoryWrite) {
 		t.Fatalf("category = %q, want %q", req.Category, safety.CategoryWrite)
 	}
-	if req.Resource != "a.txt,b.txt" {
-		t.Fatalf("resource = %q, want a.txt,b.txt", req.Resource)
+	if req.Resource != "a.txt" {
+		t.Fatalf("resource = %q, want a.txt", req.Resource)
 	}
 }

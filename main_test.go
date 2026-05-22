@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/coding"
+	"github.com/nijaru/canto/executortool"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
@@ -24,9 +24,10 @@ func TestMain(t *testing.T) {
 	}
 
 	registry := tool.NewRegistry()
-	registry.Register(&coding.ShellTool{})
+	registry.Register(&executortool.ShellTool{})
 
-	provider := cantotest.NewFauxProvider("main",
+	provider := cantotest.NewFauxProvider(
+		"main",
 		cantotest.Step{
 			Content: "I will check the current directory.",
 			Calls: []llm.Call{

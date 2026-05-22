@@ -108,7 +108,8 @@ func (s *SQLiteCheckpointStore) Save(ctx context.Context, checkpoint Checkpoint)
 		completed = 1
 	}
 
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.db.ExecContext(
+		ctx, `
 		INSERT INTO graph_checkpoints (
 			graph_id, session_id, next_node, steps, last_event_id, usage_json, result_json, completed
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)

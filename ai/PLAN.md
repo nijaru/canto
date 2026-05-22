@@ -108,7 +108,7 @@ Framework is usable by one real consumer (Ion) end-to-end. No formal API-stabili
 - **Test coverage:** Load-bearing paths (agent loop, session replay, projection rebuild, workspace ops, tool execution, context mutation) covered by unit or integration tests.
 - **Provider matrix:** Named providers explicitly supported; others explicitly deferred.
 - **Release note:** `canto-2if9` ships a one-page "what this alpha is and isn't" note — no hard API-stability contract required.
-- **Boundary hygiene:** Core vs `x/` placement is intentional; canonical coding-agent tools are not stranded behind an experimental namespace. The `coding/` promotion is landed.
+- **Boundary hygiene:** Core vs `x/` placement is intentional; optional workspace and executor tools are stable capability packages, not a product-shaped coding package. The `coding/` promotion has been superseded by `executor/`, `workspacetool/`, and `executortool/`.
 
 ### M2: Stable (v1.0) — compatibility commitment
 

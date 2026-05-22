@@ -2,7 +2,7 @@ package canto
 
 import (
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/coding"
+	"github.com/nijaru/canto/executor"
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/safety"
 	"github.com/nijaru/canto/session"
@@ -15,7 +15,7 @@ import (
 // does not encode product policy.
 type Environment struct {
 	Workspace workspace.WorkspaceFS
-	Executor  *coding.Executor
+	Executor  *executor.Executor
 	Sandbox   safety.Sandbox
 	Secrets   safety.SecretInjector
 	Bootstrap []session.ContextEntry

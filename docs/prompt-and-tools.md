@@ -142,13 +142,12 @@ Available tool modules:
 
 | Module | Tools |
 | :--- | :--- |
-| `coding.NewReadFileTool(root)` | `read_file`. |
-| `coding.NewWriteFileTool(root)` | `write_file`. |
-| `coding.NewListDirTool(root)` | `list_dir`. |
-| `coding.NewEditTool(root)` | `edit`. |
-| `coding.NewMultiEditTool(root)` | `multi_edit`. |
-| `coding.ShellTool` | `shell`, using `coding.Executor`; defaults to `sh -c` and can be configured for another shell or wrapper. |
-| `coding.NewCodeExecutionTool(language)` | `execute_code` for a configured language. |
+| `workspacetool.NewReadFileTool(root)` | `read_file`. |
+| `workspacetool.NewWriteFileTool(root)` | `write_file`. |
+| `workspacetool.NewListDirTool(root)` | `list_dir`. |
+| `workspacetool.NewEditTool(root)` | `edit` with one or more exact replacements in one file. |
+| `executortool.ShellTool` | `shell`, using `executor.Executor`; defaults to `sh -c` and can be configured for another shell or wrapper. |
+| `executortool.NewCodeExecutionTool(language)` | `execute_code` for a configured language. |
 | `service.New` | Typed service/API tools from Go handlers. |
 | `agent.HandoffTool(target)` | Transfer to another agent. |
 | `runtime.NewInputGate().Tool(sess)` | `request_human_input`. |

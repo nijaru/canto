@@ -42,7 +42,8 @@ func TestStepEmitsContextChatAndToolSpans(t *testing.T) {
 		},
 	}
 	reg := tool.NewRegistry()
-	reg.Register(tool.Func("echo", "echoes", nil,
+	reg.Register(tool.Func(
+		"echo", "echoes", nil,
 		func(_ context.Context, _ string) (string, error) { return "ok", nil },
 	))
 	a := New("a", "sys", "m", p, reg)

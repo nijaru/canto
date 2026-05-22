@@ -15,7 +15,8 @@ import (
 	"github.com/nijaru/canto"
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/approval"
-	"github.com/nijaru/canto/coding"
+	"github.com/nijaru/canto/executor"
+	"github.com/nijaru/canto/executortool"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
@@ -24,6 +25,7 @@ import (
 	"github.com/nijaru/canto/session"
 	cantotool "github.com/nijaru/canto/tool"
 	"github.com/nijaru/canto/workspace"
+	"github.com/nijaru/canto/workspacetool"
 )
 
 const sessionID = "codeagent-reference"
@@ -72,8 +74,8 @@ func run(ctx context.Context, w io.Writer) error {
 	defer store.Close()
 
 	auditLog := &strings.Builder{}
-	executor := coding.NewExecutor(5*time.Second, 64*1024)
-	executor.SecretInjector = safety.StaticSecretInjector{
+	exec := executor.NewExecutor(5*time.Second, 64*1024)
+	exec.SecretInjector = safety.StaticSecretInjector{
 		"EXAMPLE_TOKEN": "redacted",
 	}
 
@@ -118,7 +120,7 @@ func run(ctx context.Context, w io.Writer) error {
 		Model("faux").
 		Provider(scriptedProvider()).
 		SessionStore(store).
-		Tools(referenceTools(root, rootDir, executor, webSearch)...).
+		Tools(referenceTools(root, rootDir, exec, webSearch)...).
 		Approvals(approval.NewGate(safety.NewConfig(safety.ModeAuto))).
 		Hooks(hooks).
 		AgentOptions(agent.WithMaxSteps(8)).
@@ -190,19 +192,18 @@ func submitPrompt(
 func referenceTools(
 	root workspace.WorkspaceFS,
 	dir string,
-	executor *coding.Executor,
+	exec *executor.Executor,
 	webSearch cantotool.Tool,
 ) []cantotool.Tool {
-	shell := &coding.ShellTool{Executor: executor, Dir: dir}
-	code := coding.NewCodeExecutionTool("python")
-	code.Executor = executor
+	shell := &executortool.ShellTool{Executor: exec, Dir: dir}
+	code := executortool.NewCodeExecutionTool("python")
+	code.Executor = exec
 
 	return []cantotool.Tool{
-		coding.NewReadFileTool(root),
-		coding.NewWriteFileTool(root),
-		coding.NewListDirTool(root),
-		coding.NewEditTool(root),
-		coding.NewMultiEditTool(root),
+		workspacetool.NewReadFileTool(root),
+		workspacetool.NewWriteFileTool(root),
+		workspacetool.NewListDirTool(root),
+		workspacetool.NewEditTool(root),
 		shell,
 		code,
 		webSearch,
@@ -224,7 +225,7 @@ func scriptedProvider() llm.Provider {
 				toolCall(
 					"edit",
 					"edit",
-					`{"path":"README.md","before":"status: draft","after":"status: verified"}`,
+					`{"path":"README.md","edits":[{"before":"status: draft","after":"status: verified"}]}`,
 				),
 				toolCall("shell", "shell", `{"command":"test -f README.md"}`),
 				toolCall("code", "execute_code", `{"code":"print('unit smoke ok')"}`),

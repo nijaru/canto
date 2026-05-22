@@ -181,7 +181,8 @@ func (s *CoreStore) LoadEpisodes(
 	ctx context.Context,
 	sessionID string,
 ) ([]*session.Episode, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.db.QueryContext(
+		ctx,
 		"SELECT data FROM episodes WHERE session_id = ? ORDER BY rowid ASC",
 		sessionID,
 	)

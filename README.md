@@ -13,7 +13,7 @@ Canto is a Go framework for durable agents. It provides primitives for append-on
 - **Append-only log**: Every interaction, tool call, and compaction is recorded as a permanent fact.
 - **Durable Sessions**: JSONL or SQLite (FTS5) stores for session persistence and search.
 - **Phased Context**: Separate request building (preview) from state mutation (commit).
-- **Coding Tools**: Stable workspace, edit, shell, and code-execution tools in `coding/`.
+- **Capability Tools**: Optional workspace, edit, shell, and code-execution tools split by capability.
 - **Service Tools**: Typed service/API helpers with schemas, approval requirements, metadata, and retries.
 - **Subagent Primitives**: Spawn, monitor, and export child agent runs with linked history.
 - **MCP Support**: Integration with the Model Context Protocol for tool discovery.
@@ -80,7 +80,9 @@ settlement stay attached to one transaction.
 | `session` | Append-only event log and storage | Semi-stable |
 | `agent` | Core turn-based loops | Active |
 | `runtime` | Coordinator and runner execution | Active |
-| `coding` | Stable workspace, edit, shell, and code execution tools | Active |
+| `executor` | Bounded host command execution | Active |
+| `workspacetool` | Workspace read/write/list/edit tools | Active |
+| `executortool` | Shell and code execution tools | Active |
 | `service` | Typed service/API tool helpers | Active |
 | `governor` | Context offloading and guards | New |
 | `safety` | Execution modes and tool gating | New |

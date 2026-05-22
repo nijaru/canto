@@ -1,4 +1,4 @@
-package coding
+package workspacetool
 
 import (
 	"context"

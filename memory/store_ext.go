@@ -18,7 +18,8 @@ func (s *CoreStore) UpsertMemory(ctx context.Context, memory Memory) error {
 	if updatedAt.IsZero() {
 		updatedAt = time.Now().UTC()
 	}
-	_, err = s.db.ExecContext(ctx, `
+	_, err = s.db.ExecContext(
+		ctx, `
 		INSERT INTO memories (
 			id, scope, scope_id, role, memory_key, content, metadata,
 			observed_at, valid_from, valid_to, supersedes, superseded_by, forgotten_at,

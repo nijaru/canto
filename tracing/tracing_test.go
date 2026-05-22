@@ -138,7 +138,8 @@ func TestWrapProvider_RecordsGenAIChatSpan(t *testing.T) {
 func TestWrapTool_RecordsToolSpan(t *testing.T) {
 	rec := setupTracer(t)
 
-	inner := tool.Func("my_tool", "desc", nil,
+	inner := tool.Func(
+		"my_tool", "desc", nil,
 		func(ctx context.Context, args string) (string, error) { return "ok", nil },
 	)
 	wrapped := tracing.WrapTool(inner)
@@ -198,7 +199,8 @@ func TestWrapProviderIdempotent(t *testing.T) {
 func TestWrapToolIdempotent(t *testing.T) {
 	rec := setupTracer(t)
 
-	inner := tool.Func("my_tool", "desc", nil,
+	inner := tool.Func(
+		"my_tool", "desc", nil,
 		func(ctx context.Context, args string) (string, error) { return "ok", nil },
 	)
 	wrapped := tracing.WrapTool(tracing.WrapTool(inner))

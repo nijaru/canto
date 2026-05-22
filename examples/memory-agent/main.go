@@ -109,7 +109,8 @@ When the user shares an important fact, use remember_memory to store it.`
 
 	// 5. Initialize the Agent
 	provider := providers.Anthropic()
-	a := agent.New("memory-agent", instructions, model, provider, reg,
+	a := agent.New(
+		"memory-agent", instructions, model, provider, reg,
 		agent.WithBuilder(builder),
 		agent.WithMaxSteps(20),
 	)

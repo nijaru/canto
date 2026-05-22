@@ -25,7 +25,8 @@ func TestSecurityHooks_ScopeRegistryFromAllowedTools(t *testing.T) {
 	reg.Register(&securityTool{name: "grep"})
 	reg.Register(&securityTool{name: "edit_file"})
 
-	scoped, err := DefaultSecurityHooks().ScopeRegistry(reg,
+	scoped, err := DefaultSecurityHooks().ScopeRegistry(
+		reg,
 		&agentskills.Skill{
 			Name:         "debug",
 			Description:  "debug",

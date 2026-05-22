@@ -32,7 +32,8 @@ func newRecoveryProvider(
 }
 
 func TestRecoveryProvider_PassThrough(t *testing.T) {
-	mock := xtesting.NewFauxProvider("test",
+	mock := xtesting.NewFauxProvider(
+		"test",
 		xtesting.Step{Content: "ok"},
 	)
 
@@ -121,7 +122,8 @@ func TestRecoveryProvider_CompactFailure(t *testing.T) {
 }
 
 func TestRecoveryProvider_NonOverflowError(t *testing.T) {
-	mock := xtesting.NewFauxProvider("test",
+	mock := xtesting.NewFauxProvider(
+		"test",
 		xtesting.Step{Err: errors.New("rate limited")},
 	)
 
