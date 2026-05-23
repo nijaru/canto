@@ -48,6 +48,7 @@ func (s *Session) forkWithOrigin(newID string) (*Session, string) {
 	if n := len(s.events); n > 0 {
 		forkPointEventID = s.events[n-1].ID.String()
 	}
+	activeLeafID := s.activeLeafID
 	events := make([]Event, len(s.events))
 	entropy := ulid.Monotonic(rand.Reader, 0)
 	idMap := make(map[string]string, len(s.events))
@@ -68,16 +69,23 @@ func (s *Session) forkWithOrigin(newID string) (*Session, string) {
 		events[i] = e
 	}
 	for i, e := range events {
+		if e.ParentID != "" {
+			e.ParentID = idMap[e.ParentID]
+		}
 		events[i] = remapForkedEventData(e, idMap)
+	}
+	if activeLeafID != "" {
+		activeLeafID = idMap[activeLeafID]
 	}
 
 	res := &Session{
-		id:      newID,
-		events:  events,
-		nextSeq: s.nextSeq,
-		state:   make(map[string]any, len(s.state)),
-		writer:  s.writer,
-		reducer: s.reducer,
+		id:           newID,
+		events:       events,
+		activeLeafID: activeLeafID,
+		nextSeq:      s.nextSeq,
+		state:        make(map[string]any, len(s.state)),
+		writer:       s.writer,
+		reducer:      s.reducer,
 	}
 	if res.nextSeq == 0 {
 		res.nextSeq = int64(len(events) + 1)
@@ -101,6 +109,17 @@ func cloneMetadata(src map[string]any) map[string]any {
 }
 
 func remapForkedEventData(e Event, idMap map[string]string) Event {
+	leaf, ok, err := e.LeafMovedData()
+	if err == nil && ok {
+		if newID, ok := idMap[leaf.TargetEventID]; ok {
+			leaf.TargetEventID = newID
+			if rewritten, marshalErr := json.Marshal(leaf); marshalErr == nil {
+				e.Data = rewritten
+			}
+		}
+		return e
+	}
+
 	snapshot, ok, err := e.ProjectionSnapshot()
 	if err == nil && ok {
 		rewritten, marshalErr := json.Marshal(remapCompactionSnapshot(snapshot, idMap))

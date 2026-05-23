@@ -16,16 +16,17 @@ type Reducer func(state map[string]any, e Event) map[string]any
 // Session is a durable container for a conversation.
 // All state is derived from an append-only event log.
 type Session struct {
-	mu          sync.RWMutex
-	id          string
-	events      []Event
-	nextSeq     int64
-	state       map[string]any
-	subscribers []*subscriber
-	observers   []*eventObserver
-	writer      Writer
-	writerCh    *writerChannel
-	reducer     Reducer
+	mu           sync.RWMutex
+	id           string
+	events       []Event
+	activeLeafID string
+	nextSeq      int64
+	state        map[string]any
+	subscribers  []*subscriber
+	observers    []*eventObserver
+	writer       Writer
+	writerCh     *writerChannel
+	reducer      Reducer
 }
 
 // New creates a new session.

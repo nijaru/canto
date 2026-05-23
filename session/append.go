@@ -53,6 +53,10 @@ func (s *Session) Append(ctx context.Context, e Event) error {
 		s.mu.Unlock()
 		return err
 	}
+	if err := s.validateTreeEventLocked(&e); err != nil {
+		s.mu.Unlock()
+		return err
+	}
 	writer := s.writer
 	writerCh := s.writerCh
 
@@ -73,6 +77,10 @@ func (s *Session) Append(ctx context.Context, e Event) error {
 	s.events = append(s.events, e)
 	if s.reducer != nil {
 		s.state = s.reducer(s.state, e)
+	}
+	if err := s.advanceActiveLeafLocked(e); err != nil {
+		s.mu.Unlock()
+		return err
 	}
 	subs := append([]*subscriber(nil), s.subscribers...)
 	observerErr := s.notifyObserversLocked(ctx, e)
@@ -102,6 +110,9 @@ func (s *Session) assignEventIdentityLocked(ctx context.Context, e *Event) error
 	if e.TurnID == "" {
 		e.TurnID = TurnIDFromContext(ctx)
 	}
+	if e.ParentID == "" && s.activeLeafID != "" {
+		e.ParentID = s.activeLeafID
+	}
 	return nil
 }
 
@@ -129,7 +140,11 @@ func (s *Session) validateWritableSequenceLocked(e *Event) error {
 	if msg.ToolID == "" {
 		return errUnmatchedToolMessage
 	}
-	pending, err := pendingToolCalls(s.events)
+	activeEvents, err := s.activeEventsLocked()
+	if err != nil {
+		return err
+	}
+	pending, err := pendingToolCalls(activeEvents)
 	if err != nil {
 		return err
 	}

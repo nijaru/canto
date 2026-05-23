@@ -55,10 +55,19 @@ func (r *Replayer) Apply(sess *Session, e Event) error {
 
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
+	if e.ParentID == "" && sess.activeLeafID != "" {
+		e.ParentID = sess.activeLeafID
+	}
+	if err := sess.validateTreeEventLocked(&e); err != nil {
+		return err
+	}
 	sess.events = append(sess.events, e)
 	sess.advanceReplaySequenceLocked(e)
 	if sess.reducer != nil {
 		sess.state = sess.reducer(sess.state, e)
+	}
+	if err := sess.advanceActiveLeafLocked(e); err != nil {
+		return err
 	}
 	return nil
 }

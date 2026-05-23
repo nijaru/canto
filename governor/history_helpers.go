@@ -8,14 +8,17 @@ import (
 )
 
 func lastMessageEventID(sess *session.Session) string {
-	var id string
-	for e := range sess.Backward() {
+	events, err := sess.ActiveEvents()
+	if err != nil {
+		return ""
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		e := events[i]
 		if e.Type == session.MessageAdded {
-			id = e.ID.String()
-			break
+			return e.ID.String()
 		}
 	}
-	return id
+	return ""
 }
 
 func cloneHistoryEntries(entries []session.HistoryEntry) []session.HistoryEntry {

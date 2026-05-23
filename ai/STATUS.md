@@ -107,8 +107,13 @@ lane is selected.
   provider boundaries, with Pi-like one-at-a-time and all-at-once queue modes.
   `QueuedInput` and `ClearQueuedInput` now expose the Pi-style read/restore
   primitive Ion needs before moving editable busy follow-up queues into Canto.
-  Remaining work is importing the exact Canto revision into Ion and then adding
-  Pi-style session tree/leaf primitives.
+  Session events now also carry durable parentage plus `LeafMoved` entries;
+  replay repairs legacy linear logs in memory, `EffectiveMessages` /
+  `EffectiveEntries` rebuild from the active branch, fork remaps parent/leaf
+  ids, SQLite persists `parent_id`, and the root session facade exposes
+  `LeafID`, `MoveLeaf`, `ActiveEvents`, and `BranchEvents`. Remaining work is
+  importing the exact Canto revision into Ion and adding Pi-style
+  model/thinking entries plus branch-summary navigation policy.
 - `canto-vhjg` is closed in Canto `5f313f6`: `RunEvent` now carries envelope
   metadata plus one typed payload, and Ion imported that exact revision in
   `9ff72a4`.

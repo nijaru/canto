@@ -53,6 +53,44 @@ func (s *Session) EventsAfter(ctx context.Context, afterSeq int64) ([]session.Ev
 	return out, nil
 }
 
+// LeafID returns the event id at the tip of this session's active branch.
+func (s *Session) LeafID(ctx context.Context) (string, error) {
+	replayed, err := s.Replay(ctx)
+	if err != nil {
+		return "", err
+	}
+	return replayed.LeafID(), nil
+}
+
+// ActiveEvents returns the durable events on this session's active branch.
+func (s *Session) ActiveEvents(ctx context.Context) ([]session.Event, error) {
+	replayed, err := s.Replay(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return replayed.ActiveEvents()
+}
+
+// BranchEvents returns durable events on the branch ending at eventID. An empty
+// eventID returns an empty root branch.
+func (s *Session) BranchEvents(ctx context.Context, eventID string) ([]session.Event, error) {
+	replayed, err := s.Replay(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return replayed.BranchEvents(eventID)
+}
+
+// MoveLeaf records a durable active-branch movement for this session. An empty
+// eventID moves the active branch to the session root.
+func (s *Session) MoveLeaf(ctx context.Context, eventID string) error {
+	replayed, err := s.Replay(ctx)
+	if err != nil {
+		return err
+	}
+	return replayed.MoveLeaf(ctx, eventID)
+}
+
 // Compact runs durable manual compaction for this session using the harness
 // provider and model.
 func (s *Session) Compact(

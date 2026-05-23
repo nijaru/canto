@@ -43,22 +43,26 @@ func (r *Rebuilder) RebuildMessages(sess *Session) ([]llm.Message, error) {
 }
 
 func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) {
-	snapshot, ok, err := sess.latestDurableSnapshotLocked()
+	activeEvents, err := sess.activeEventsLocked()
+	if err != nil {
+		return nil, err
+	}
+	snapshot, ok, err := latestDurableSnapshotFromEvents(activeEvents)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
-		entries, err := sess.rawEntriesLocked()
+		entries, err := rawEntriesFromEvents(activeEvents)
 		if err != nil {
 			return nil, err
 		}
-		entries, err = recoverCompletedToolResults(entries, sess.events)
+		entries, err = recoverCompletedToolResults(entries, activeEvents)
 		if err != nil {
 			return nil, err
 		}
 		return withToolHistory(
 			arrangePromptEntries(normalizeEffectiveEntries(entries)),
-			sess.events,
+			activeEvents,
 		)
 	}
 
@@ -68,8 +72,8 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 	}
 
 	cutoffSeen := false
-	for i := range sess.events {
-		e := &sess.events[i]
+	for i := range activeEvents {
+		e := &activeEvents[i]
 		if !cutoffSeen {
 			if e.ID.String() == snapshot.CutoffEventID {
 				cutoffSeen = true
@@ -93,9 +97,9 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 			snapshot.CutoffEventID,
 		)
 	}
-	entries, err = recoverCompletedToolResults(entries, sess.events)
+	entries, err = recoverCompletedToolResults(entries, activeEvents)
 	if err != nil {
 		return nil, err
 	}
-	return withToolHistory(arrangePromptEntries(normalizeEffectiveEntries(entries)), sess.events)
+	return withToolHistory(arrangePromptEntries(normalizeEffectiveEntries(entries)), activeEvents)
 }

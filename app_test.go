@@ -911,6 +911,49 @@ func TestHarnessSessionMaintenanceFacade(t *testing.T) {
 	}
 }
 
+func TestHarnessSessionTreeFacade(t *testing.T) {
+	h, err := NewHarness("tree-facade").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	sess := session.New("tree-facade-session").WithWriter(h.Store)
+	if err := sess.AppendUser(t.Context(), "root"); err != nil {
+		t.Fatalf("append root: %v", err)
+	}
+	root, ok := sess.LastEvent()
+	if !ok {
+		t.Fatal("missing root event")
+	}
+	if err := sess.AppendUser(t.Context(), "main"); err != nil {
+		t.Fatalf("append main: %v", err)
+	}
+
+	facade := h.Session(sess.ID())
+	if err := facade.MoveLeaf(t.Context(), root.ID.String()); err != nil {
+		t.Fatalf("MoveLeaf: %v", err)
+	}
+	leafID, err := facade.LeafID(t.Context())
+	if err != nil {
+		t.Fatalf("LeafID: %v", err)
+	}
+	if leafID != root.ID.String() {
+		t.Fatalf("leaf id = %q, want %q", leafID, root.ID)
+	}
+	events, err := facade.ActiveEvents(t.Context())
+	if err != nil {
+		t.Fatalf("ActiveEvents: %v", err)
+	}
+	if len(events) != 1 || events[0].ID != root.ID {
+		t.Fatalf("active events = %#v, want root only", events)
+	}
+}
+
 func TestHarnessBuilderEnvironmentToolsRequireCapabilities(t *testing.T) {
 	_, err := NewHarness("missing-env").
 		Model("faux").

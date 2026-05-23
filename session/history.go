@@ -147,9 +147,13 @@ func (s *Session) EffectiveMessages() ([]llm.Message, error) {
 }
 
 func (s *Session) rawMessagesLocked() ([]llm.Message, error) {
-	res := make([]llm.Message, 0, len(s.events)/2+1)
-	for i := range s.events {
-		e := &s.events[i]
+	events, err := s.activeEventsLocked()
+	if err != nil {
+		return nil, err
+	}
+	res := make([]llm.Message, 0, len(events)/2+1)
+	for i := range events {
+		e := &events[i]
 		if e.Type != MessageAdded {
 			continue
 		}
@@ -171,14 +175,22 @@ func (s *Session) EffectiveEntries() ([]HistoryEntry, error) {
 }
 
 func (s *Session) rawEntriesLocked() ([]HistoryEntry, error) {
-	res := make([]HistoryEntry, 0, len(s.events)/2+1)
-	for i := range s.events {
-		e := &s.events[i]
+	events, err := s.activeEventsLocked()
+	if err != nil {
+		return nil, err
+	}
+	return rawEntriesFromEvents(events)
+}
+
+func rawEntriesFromEvents(events []Event) ([]HistoryEntry, error) {
+	res := make([]HistoryEntry, 0, len(events)/2+1)
+	for i := range events {
+		e := &events[i]
 		if e.Type != MessageAdded && e.Type != ContextAdded {
 			continue
 		}
 
-		entry, err := s.historyEntryFromEvent(e)
+		entry, err := historyEntryFromEvent(e)
 		if err != nil {
 			return nil, fmt.Errorf("effective history: decode raw message %s: %w", e.ID, err)
 		}
@@ -188,6 +200,10 @@ func (s *Session) rawEntriesLocked() ([]HistoryEntry, error) {
 }
 
 func (s *Session) historyEntryFromEvent(e *Event) (HistoryEntry, error) {
+	return historyEntryFromEvent(e)
+}
+
+func historyEntryFromEvent(e *Event) (HistoryEntry, error) {
 	if e.Type == ContextAdded {
 		entry, err := e.ensureContextEntry()
 		if err != nil {
@@ -220,8 +236,16 @@ func (s *Session) latestDurableSnapshot() (CompactionSnapshot, bool, error) {
 }
 
 func (s *Session) latestDurableSnapshotLocked() (CompactionSnapshot, bool, error) {
-	for i := len(s.events) - 1; i >= 0; i-- {
-		snapshot, ok, err := s.events[i].ProjectionSnapshot()
+	activeEvents, err := s.activeEventsLocked()
+	if err != nil {
+		return CompactionSnapshot{}, false, err
+	}
+	return latestDurableSnapshotFromEvents(activeEvents)
+}
+
+func latestDurableSnapshotFromEvents(events []Event) (CompactionSnapshot, bool, error) {
+	for i := len(events) - 1; i >= 0; i-- {
+		snapshot, ok, err := events[i].ProjectionSnapshot()
 		if err != nil {
 			return CompactionSnapshot{}, false, err
 		}
@@ -233,7 +257,7 @@ func (s *Session) latestDurableSnapshotLocked() (CompactionSnapshot, bool, error
 			return snapshot, true, nil
 		}
 
-		snapshot, ok, err = s.events[i].CompactionSnapshot()
+		snapshot, ok, err = events[i].CompactionSnapshot()
 		if err != nil {
 			return CompactionSnapshot{}, false, err
 		}

@@ -12,7 +12,7 @@ import (
 func (s *SQLiteStore) Load(ctx context.Context, sessionID string) (*Session, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		"SELECT id, session_id, COALESCE(turn_id, ''), seq, type, timestamp, data, metadata, cost FROM events WHERE session_id = ? ORDER BY rowid ASC",
+		"SELECT id, session_id, COALESCE(turn_id, ''), seq, COALESCE(parent_id, ''), type, timestamp, data, metadata, cost FROM events WHERE session_id = ? ORDER BY rowid ASC",
 		sessionID,
 	)
 	if err != nil {
@@ -31,7 +31,7 @@ func (s *SQLiteStore) EventsAfter(
 ) ([]Event, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, session_id, COALESCE(turn_id, ''), seq, type, timestamp, data, metadata, cost
+		`SELECT id, session_id, COALESCE(turn_id, ''), seq, COALESCE(parent_id, ''), type, timestamp, data, metadata, cost
 		   FROM events
 		  WHERE session_id = ? AND seq > ?
 		  ORDER BY seq ASC, rowid ASC`,
@@ -64,14 +64,14 @@ func (s *SQLiteStore) LoadUntil(
 	case err == nil:
 		rows, err = s.db.QueryContext(
 			ctx,
-			"SELECT id, session_id, COALESCE(turn_id, ''), seq, type, timestamp, data, metadata, cost FROM events WHERE session_id = ? AND rowid <= ? ORDER BY rowid ASC",
+			"SELECT id, session_id, COALESCE(turn_id, ''), seq, COALESCE(parent_id, ''), type, timestamp, data, metadata, cost FROM events WHERE session_id = ? AND rowid <= ? ORDER BY rowid ASC",
 			sessionID,
 			targetRowID,
 		)
 	case errors.Is(err, sql.ErrNoRows):
 		rows, err = s.db.QueryContext(
 			ctx,
-			"SELECT id, session_id, COALESCE(turn_id, ''), seq, type, timestamp, data, metadata, cost FROM events WHERE session_id = ? AND id <= ? ORDER BY rowid ASC",
+			"SELECT id, session_id, COALESCE(turn_id, ''), seq, COALESCE(parent_id, ''), type, timestamp, data, metadata, cost FROM events WHERE session_id = ? AND id <= ? ORDER BY rowid ASC",
 			sessionID,
 			eventID.String(),
 		)
@@ -102,7 +102,7 @@ func scanEventRows(rows *sql.Rows) ([]Event, error) {
 }
 
 func scanEventRow(rows *sql.Rows) (Event, error) {
-	var idStr, turnID, typeStr, timeStr string
+	var idStr, turnID, parentID, typeStr, timeStr string
 	var loadedSessionID string
 	var seq int64
 	var data, metadata []byte
@@ -112,6 +112,7 @@ func scanEventRow(rows *sql.Rows) (Event, error) {
 		&loadedSessionID,
 		&turnID,
 		&seq,
+		&parentID,
 		&typeStr,
 		&timeStr,
 		&data,
@@ -124,6 +125,7 @@ func scanEventRow(rows *sql.Rows) (Event, error) {
 		idStr,
 		loadedSessionID,
 		turnID,
+		parentID,
 		typeStr,
 		timeStr,
 		seq,

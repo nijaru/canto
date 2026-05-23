@@ -108,8 +108,8 @@ func (s *ProjectionSnapshotter) buildSnapshot(
 	}
 
 	cutoffEventID := ""
-	if len(sess.events) > 0 {
-		cutoffEventID = sess.events[len(sess.events)-1].ID.String()
+	if sess.activeLeafID != "" {
+		cutoffEventID = sess.activeLeafID
 	}
 
 	snapshot := ProjectionSnapshot{

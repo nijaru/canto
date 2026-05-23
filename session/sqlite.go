@@ -58,6 +58,7 @@ func (s *SQLiteStore) init() error {
 			session_id TEXT,
 			turn_id TEXT,
 			seq INTEGER NOT NULL DEFAULT 0,
+			parent_id TEXT,
 			type TEXT,
 			timestamp TEXT,
 			data BLOB,
@@ -105,6 +106,9 @@ func (s *SQLiteStore) init() error {
 		return err
 	}
 	if err := s.ensureEventsColumn("seq", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.ensureEventsColumn("parent_id", "TEXT"); err != nil {
 		return err
 	}
 	return nil
@@ -179,11 +183,12 @@ func (s *SQLiteStore) saveTx(ctx context.Context, exec interface {
 
 	_, err = exec.ExecContext(
 		ctx,
-		"INSERT INTO events (id, session_id, turn_id, seq, type, timestamp, data, metadata, cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"INSERT INTO events (id, session_id, turn_id, seq, parent_id, type, timestamp, data, metadata, cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		e.ID.String(),
 		e.SessionID,
 		e.TurnID,
 		e.Seq,
+		e.ParentID,
 		string(e.Type),
 		e.Timestamp.Format(time.RFC3339Nano),
 		e.Data,

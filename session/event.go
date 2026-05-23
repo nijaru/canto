@@ -18,6 +18,7 @@ const (
 	ContextAdded  EventType = "context_added"
 	Handoff       EventType = "handoff"
 	ExternalInput EventType = "external_input"
+	LeafMoved     EventType = "leaf_moved"
 
 	// Observability / Lifecycle
 	TurnStarted           EventType = "turn_started"
@@ -55,6 +56,7 @@ type Event struct {
 	SessionID string         `json:"session_id"`
 	TurnID    string         `json:"turn_id,omitzero"`
 	Seq       int64          `json:"seq,omitzero"`
+	ParentID  string         `json:"parent_id,omitzero"`
 	Type      EventType      `json:"type"`
 	Timestamp time.Time      `json:"timestamp"`
 	Data      jsontext.Value `json:"data"`
