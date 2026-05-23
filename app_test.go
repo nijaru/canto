@@ -255,6 +255,54 @@ func TestHarnessBuilderStoresEnvironment(t *testing.T) {
 	}
 }
 
+func TestHarnessBuilderRegistersWorkspaceToolsFromEnvironment(t *testing.T) {
+	root, err := workspace.Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open workspace: %v", err)
+	}
+	defer root.Close()
+	if err := root.WriteFile("hello.txt", []byte("hello"), 0o644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	h, err := NewHarness("env-tools").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
+		Environment(Environment{Workspace: root}).
+		ToolsFromEnvironment(EnvironmentToolConfig{Workspace: true}).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	for _, name := range []string{"read_file", "write_file", "list_dir", "edit"} {
+		if _, ok := h.Tools.Get(name); !ok {
+			t.Fatalf("missing environment workspace tool %q", name)
+		}
+	}
+	out, err := h.Tools.Execute(t.Context(), "read_file", `{"path":"hello.txt"}`)
+	if err != nil {
+		t.Fatalf("read_file: %v", err)
+	}
+	if out != "hello" {
+		t.Fatalf("read_file output = %q, want hello", out)
+	}
+}
+
+func TestHarnessBuilderEnvironmentToolsRequireCapabilities(t *testing.T) {
+	_, err := NewHarness("missing-env").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
+		ToolsFromEnvironment(EnvironmentToolConfig{Workspace: true}).
+		Ephemeral().
+		Build()
+	if err == nil || !strings.Contains(err.Error(), "workspace is required") {
+		t.Fatalf("Build error = %v, want workspace requirement", err)
+	}
+}
+
 func TestHarnessBuilderRequiresModel(t *testing.T) {
 	_, err := NewHarness("missing-model").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).

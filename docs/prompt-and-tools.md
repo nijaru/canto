@@ -67,7 +67,9 @@ turn, err := h.Session("session-1").Submit(ctx, prompt)
 
 `Environment(...)` groups optional capabilities such as workspace, executor,
 sandbox, secrets, and bootstrap context. It does not register tools or make
-approval decisions by itself.
+approval decisions by itself. `ToolsFromEnvironment(...)` is the opt-in bridge
+for capability toolkits when a host wants Canto to construct workspace or
+executor-backed tools from the environment.
 
 Use `agent.New` when you need the lower-level `agent.Agent` without the root
 harness assembling a `runtime.Runner`, `tool.Registry`, and `session.Store`.
@@ -160,13 +162,14 @@ Available tool modules:
 
 | Module | Tools |
 | :--- | :--- |
+| `tool.NewTyped` / `tool.MustTyped` | First-class typed Go tool authoring. JSON stays at the tool boundary. |
 | `workspacetool.NewReadFileTool(root)` | `read_file`. |
 | `workspacetool.NewWriteFileTool(root)` | `write_file`. |
 | `workspacetool.NewListDirTool(root)` | `list_dir`. |
 | `workspacetool.NewEditTool(root)` | `edit` with one or more exact replacements in one file. |
 | `executortool.ShellTool` | `shell`, using `executor.Executor`; defaults to `sh -c` and can be configured for another shell or wrapper. |
 | `executortool.NewCodeExecutionTool(language)` | `execute_code` for a configured language. |
-| `service.New` | Typed service/API tools from Go handlers. |
+| `service.New` | Typed service/API tools from Go handlers with service retry helpers. |
 | `agent.HandoffTool(target)` | Transfer to another agent. |
 | `runtime.NewInputGate().Tool(sess)` | `request_human_input`. |
 | `governor.NewCompactTool` | Manual compaction tool. |
@@ -177,6 +180,17 @@ Available tool modules:
 Canto does not provide coding-agent tool presets. Hosts assemble the exact tool
 set they want. Search and glob behavior should usually come from the configured
 shell, a host-owned code index, or MCP tools rather than a Canto default.
+For capability-oriented defaults, use `ToolsFromEnvironment` explicitly:
+
+```go
+h, err := canto.NewHarness("assistant").
+	Model("gpt-5.4").
+	Provider(provider).
+	Environment(canto.Environment{Workspace: root, Executor: exec}).
+	ToolsFromEnvironment(canto.EnvironmentToolConfig{Workspace: true, Executor: true}).
+	SessionStore(store).
+	Build()
+```
 
 ## Convention
 
