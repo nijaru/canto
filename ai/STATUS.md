@@ -105,8 +105,11 @@ lane is selected.
   lives in `tool.NewTyped` / `tool.MustTyped`, and
   `HarnessBuilder.ToolsFromEnvironment` wires workspace/executor capability
   tools from `Environment` on explicit request.
-- Remaining P1 framework seam is `canto-re2x` facade replay/snapshot/fork
-  methods.
+- `canto-re2x` is closed in Canto `1be9c57`: root `canto.Session` now exposes
+  replay, sequence-bounded events, compaction, projection snapshots, and fork
+  methods for normal host maintenance.
+- No known P1 framework seam from the reopened Ion roadmap remains pending in
+  Canto. Next action is importing this exact revision into Ion.
 
 **Ion pre-v0 design-closure support:**
 
