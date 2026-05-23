@@ -115,9 +115,10 @@ func (a *BaseAgent) StreamTurn(
 	s *session.Session,
 	chunkFn func(*llm.Chunk),
 ) (res StepResult, err error) {
-	ctx, sessionSpan := tracing.StartSession(ctx, a.ID(), s.ID(), a.model)
+	model := a.Model()
+	ctx, sessionSpan := tracing.StartSession(ctx, a.ID(), s.ID(), model)
 	defer func() { tracing.EndSession(sessionSpan, err) }()
-	ctx, turnSpan := tracing.StartTurn(ctx, a.ID(), s.ID(), a.model)
+	ctx, turnSpan := tracing.StartTurn(ctx, a.ID(), s.ID(), model)
 	defer func() { tracing.EndTurn(turnSpan, err) }()
 
 	state := turnState{}

@@ -14,11 +14,13 @@ import (
 type EventType string
 
 const (
-	MessageAdded  EventType = "message_added"
-	ContextAdded  EventType = "context_added"
-	Handoff       EventType = "handoff"
-	ExternalInput EventType = "external_input"
-	LeafMoved     EventType = "leaf_moved"
+	MessageAdded    EventType = "message_added"
+	ContextAdded    EventType = "context_added"
+	Handoff         EventType = "handoff"
+	ExternalInput   EventType = "external_input"
+	LeafMoved       EventType = "leaf_moved"
+	ModelChanged    EventType = "model_changed"
+	ThinkingChanged EventType = "thinking_changed"
 
 	// Observability / Lifecycle
 	TurnStarted           EventType = "turn_started"

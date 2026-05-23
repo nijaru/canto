@@ -91,6 +91,79 @@ func (s *Session) MoveLeaf(ctx context.Context, eventID string) error {
 	return replayed.MoveLeaf(ctx, eventID)
 }
 
+// EffectiveSettings returns model/thinking selections recovered from this
+// session's active branch.
+func (s *Session) EffectiveSettings(ctx context.Context) (session.EffectiveSettings, error) {
+	replayed, err := s.Replay(ctx)
+	if err != nil {
+		return session.EffectiveSettings{}, err
+	}
+	return replayed.EffectiveSettings()
+}
+
+// SetModel records a durable model selection for this session and updates the
+// harness agent for future turns. The provider stays the harness provider.
+func (s *Session) SetModel(ctx context.Context, model string) error {
+	if err := s.validateMaintenanceHandle(); err != nil {
+		return err
+	}
+	providerID := ""
+	if s.harness.Provider != nil {
+		providerID = s.harness.Provider.ID()
+	}
+	replayed, err := s.Replay(ctx)
+	if err != nil {
+		return err
+	}
+	previous, err := replayed.EffectiveSettings()
+	if err != nil {
+		return err
+	}
+	selection := session.ModelSelection{ProviderID: providerID, Model: model}
+	if err := replayed.AppendModelSelection(ctx, selection); err != nil {
+		return err
+	}
+	s.harness.setModel(model)
+	s.publishRuntimeEvent(ModelSelectedPayload{
+		Model:         selection,
+		PreviousModel: previous.Model,
+		HadPrevious:   previous.HasModel,
+	})
+	return nil
+}
+
+// SetThinkingLevel records a durable thinking/reasoning selection for this
+// session. Hosts map the stored level to provider-specific request controls.
+func (s *Session) SetThinkingLevel(ctx context.Context, level string) error {
+	replayed, err := s.Replay(ctx)
+	if err != nil {
+		return err
+	}
+	previous, err := replayed.EffectiveSettings()
+	if err != nil {
+		return err
+	}
+	selection := session.ThinkingSelection{Level: level}
+	if err := replayed.AppendThinkingSelection(ctx, selection); err != nil {
+		return err
+	}
+	s.publishRuntimeEvent(ThinkingSelectedPayload{
+		Level:         level,
+		PreviousLevel: previous.ThinkingLevel,
+	})
+	return nil
+}
+
+func (s *Session) publishRuntimeEvent(payload HarnessEventPayload) {
+	if s == nil || s.state == nil || payload == nil {
+		return
+	}
+	s.state.mu.Lock()
+	event := s.state.newEventLocked("", payload)
+	s.state.publishLocked(event)
+	s.state.mu.Unlock()
+}
+
 // Compact runs durable manual compaction for this session using the harness
 // provider and model.
 func (s *Session) Compact(

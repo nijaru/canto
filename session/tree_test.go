@@ -137,6 +137,51 @@ func TestSessionLegacyEventsReplayAsLinearBranch(t *testing.T) {
 	}
 }
 
+func TestSessionEffectiveSettingsFollowActiveBranch(t *testing.T) {
+	sess := New("settings-branch")
+	if err := sess.AppendModelSelection(t.Context(), ModelSelection{
+		ProviderID: "faux",
+		Model:      "model-a",
+	}); err != nil {
+		t.Fatalf("append model-a: %v", err)
+	}
+	root, ok := sess.LastEvent()
+	if !ok {
+		t.Fatal("missing root model event")
+	}
+	if err := sess.AppendThinkingSelection(t.Context(), ThinkingSelection{Level: "low"}); err != nil {
+		t.Fatalf("append low thinking: %v", err)
+	}
+	if err := sess.AppendModelSelection(t.Context(), ModelSelection{
+		ProviderID: "faux",
+		Model:      "main-model",
+	}); err != nil {
+		t.Fatalf("append main model: %v", err)
+	}
+
+	if err := sess.MoveLeaf(t.Context(), root.ID.String()); err != nil {
+		t.Fatalf("move leaf: %v", err)
+	}
+	if err := sess.AppendThinkingSelection(t.Context(), ThinkingSelection{Level: "high"}); err != nil {
+		t.Fatalf("append branch thinking: %v", err)
+	}
+	if err := sess.AppendModelSelection(t.Context(), ModelSelection{
+		ProviderID: "faux",
+		Model:      "branch-model",
+	}); err != nil {
+		t.Fatalf("append branch model: %v", err)
+	}
+
+	settings, err := sess.EffectiveSettings()
+	if err != nil {
+		t.Fatalf("EffectiveSettings: %v", err)
+	}
+	if !settings.HasModel || settings.Model.Model != "branch-model" ||
+		settings.ThinkingLevel != "high" {
+		t.Fatalf("settings = %#v, want branch-model/high", settings)
+	}
+}
+
 func messageContents(messages []llm.Message) []string {
 	out := make([]string, 0, len(messages))
 	for _, msg := range messages {

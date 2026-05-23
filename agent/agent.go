@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"sync"
 
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/governor"
@@ -45,6 +46,7 @@ type TurnInputQueues interface {
 type BaseAgent struct {
 	agentID          string
 	instructions     string
+	modelMu          sync.RWMutex
 	model            string
 	maxSteps         int // Maximum tool-calling steps per turn
 	maxEscalations   int // Maximum recoverable retries per turn
@@ -61,14 +63,38 @@ type BaseAgent struct {
 func (a *BaseAgent) ID() string { return a.agentID }
 
 // Model returns the configured model used for LLM calls.
-func (a *BaseAgent) Model() string { return a.model }
+func (a *BaseAgent) Model() string {
+	a.modelMu.RLock()
+	defer a.modelMu.RUnlock()
+	return a.model
+}
+
+// SetModel changes the configured model used for future LLM calls.
+func (a *BaseAgent) SetModel(model string) {
+	a.modelMu.Lock()
+	defer a.modelMu.Unlock()
+	a.model = model
+}
 
 // ConfigureRuntime returns a shallow runtime-scoped copy of the agent.
 func (a *BaseAgent) ConfigureRuntime(cfg RuntimeConfig) Agent {
 	if a == nil {
 		return nil
 	}
-	clone := *a
+	clone := &BaseAgent{
+		agentID:          a.agentID,
+		instructions:     a.instructions,
+		model:            a.Model(),
+		maxSteps:         a.maxSteps,
+		maxEscalations:   a.maxEscalations,
+		maxParallelTools: a.maxParallelTools,
+		provider:         a.provider,
+		tools:            a.tools,
+		builder:          a.builder,
+		hooks:            a.hooks,
+		approvals:        a.approvals,
+		inputQueues:      a.inputQueues,
+	}
 	if cfg.Tools != nil {
 		clone.tools = cfg.Tools
 		clone.builder = a.builder.Clone()
@@ -80,7 +106,7 @@ func (a *BaseAgent) ConfigureRuntime(cfg RuntimeConfig) Agent {
 		}
 		clone.builder.InsertRequestProcessorsBeforeCache(cfg.RequestProcessors...)
 	}
-	return &clone
+	return clone
 }
 
 // Instructions returns the assembled system instructions for the agent.
@@ -153,7 +179,7 @@ func WithBudgetGuard(limit float64) Option {
 }
 
 // WithModel overrides the model used for LLM calls.
-func WithModel(m string) Option { return func(a *BaseAgent) { a.model = m } }
+func WithModel(m string) Option { return func(a *BaseAgent) { a.SetModel(m) } }
 
 // WithInputQueues installs deterministic steering/follow-up queue drain points
 // for a session-scoped host facade.

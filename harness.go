@@ -63,6 +63,20 @@ func (h *Harness) Close() error {
 	return nil
 }
 
+func (h *Harness) setModel(model string) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	h.Model = model
+	agent := h.Agent
+	h.mu.Unlock()
+
+	if setter, ok := agent.(interface{ SetModel(string) }); ok {
+		setter.SetModel(model)
+	}
+}
+
 func (h *Harness) sessionState(id string) *harnessSessionState {
 	if h == nil {
 		return nil

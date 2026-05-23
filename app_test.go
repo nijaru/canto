@@ -954,6 +954,66 @@ func TestHarnessSessionTreeFacade(t *testing.T) {
 	}
 }
 
+func TestHarnessSessionModelAndThinkingSelection(t *testing.T) {
+	provider := llm.NewFauxProvider(
+		"faux",
+		llm.FauxStep{Content: "first"},
+	)
+	h, err := NewHarness("settings").
+		Model("model-a").
+		Provider(provider).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	sess := h.Session("settings-session")
+	runtimeEvents, err := sess.RuntimeEvents(t.Context())
+	if err != nil {
+		t.Fatalf("RuntimeEvents: %v", err)
+	}
+	if err := sess.SetModel(t.Context(), "model-b"); err != nil {
+		t.Fatalf("SetModel: %v", err)
+	}
+	if err := sess.SetThinkingLevel(t.Context(), "high"); err != nil {
+		t.Fatalf("SetThinkingLevel: %v", err)
+	}
+	settings, err := sess.EffectiveSettings(t.Context())
+	if err != nil {
+		t.Fatalf("EffectiveSettings: %v", err)
+	}
+	if !settings.HasModel || settings.Model.ProviderID != "faux" ||
+		settings.Model.Model != "model-b" || settings.ThinkingLevel != "high" {
+		t.Fatalf("settings = %#v, want model-b/high", settings)
+	}
+
+	if _, err := sess.Prompt(t.Context(), "hi"); err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	calls := provider.Calls()
+	if len(calls) != 1 || calls[0].Model != "model-b" {
+		t.Fatalf("provider calls = %#v, want model-b request", calls)
+	}
+
+	kinds := harnessEventKinds(drainHarnessEvents(runtimeEvents))
+	want := []HarnessEventKind{
+		HarnessEventModelSelected,
+		HarnessEventThinkingSelected,
+		HarnessEventSavePoint,
+		HarnessEventSettled,
+	}
+	if len(kinds) != len(want) {
+		t.Fatalf("runtime event kinds = %v, want %v", kinds, want)
+	}
+	for i, kind := range want {
+		if kinds[i] != kind {
+			t.Fatalf("runtime event kinds = %v, want %v", kinds, want)
+		}
+	}
+}
+
 func TestHarnessBuilderEnvironmentToolsRequireCapabilities(t *testing.T) {
 	_, err := NewHarness("missing-env").
 		Model("faux").

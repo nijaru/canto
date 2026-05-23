@@ -112,8 +112,12 @@ lane is selected.
   `EffectiveEntries` rebuild from the active branch, fork remaps parent/leaf
   ids, SQLite persists `parent_id`, and the root session facade exposes
   `LeafID`, `MoveLeaf`, `ActiveEvents`, and `BranchEvents`. Remaining work is
-  importing the exact Canto revision into Ion and adding Pi-style
-  model/thinking entries plus branch-summary navigation policy.
+  importing the exact Canto revision into Ion and adding branch-summary
+  navigation policy. Durable model/thinking entries are now in place:
+  `ModelChanged` and `ThinkingChanged` events feed active-branch
+  `EffectiveSettings`, the root facade exposes `EffectiveSettings`, `SetModel`,
+  and `SetThinkingLevel`, and `SetModel` updates the harness agent through a
+  locked model setter for future turns.
 - `canto-vhjg` is closed in Canto `5f313f6`: `RunEvent` now carries envelope
   metadata plus one typed payload, and Ion imported that exact revision in
   `9ff72a4`.

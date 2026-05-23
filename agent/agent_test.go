@@ -1893,8 +1893,8 @@ func TestWithMaxSteps(t *testing.T) {
 
 func TestWithModel(t *testing.T) {
 	a := New("a", "", "base", &mockProvider{}, nil, WithModel("gpt-4o"))
-	if a.model != "gpt-4o" {
-		t.Fatalf("model = %q, want gpt-4o", a.model)
+	if a.Model() != "gpt-4o" {
+		t.Fatalf("model = %q, want gpt-4o", a.Model())
 	}
 }
 

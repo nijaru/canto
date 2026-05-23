@@ -40,10 +40,12 @@ const (
 type HarnessEventKind string
 
 const (
-	HarnessEventQueueUpdated HarnessEventKind = "queue_update"
-	HarnessEventSavePoint    HarnessEventKind = "save_point"
-	HarnessEventSettled      HarnessEventKind = "settled"
-	HarnessEventAbort        HarnessEventKind = "abort"
+	HarnessEventQueueUpdated     HarnessEventKind = "queue_update"
+	HarnessEventSavePoint        HarnessEventKind = "save_point"
+	HarnessEventSettled          HarnessEventKind = "settled"
+	HarnessEventAbort            HarnessEventKind = "abort"
+	HarnessEventModelSelected    HarnessEventKind = "model_select"
+	HarnessEventThinkingSelected HarnessEventKind = "thinking_select"
 )
 
 // HarnessEventPayload is the typed payload carried by a HarnessEvent.
@@ -117,6 +119,30 @@ type AbortPayload struct {
 func (AbortPayload) harnessEventPayload() {}
 func (AbortPayload) Kind() HarnessEventKind {
 	return HarnessEventAbort
+}
+
+// ModelSelectedPayload reports a model selection recorded for the session.
+type ModelSelectedPayload struct {
+	Model         session.ModelSelection
+	PreviousModel session.ModelSelection
+	HadPrevious   bool
+}
+
+func (ModelSelectedPayload) harnessEventPayload() {}
+func (ModelSelectedPayload) Kind() HarnessEventKind {
+	return HarnessEventModelSelected
+}
+
+// ThinkingSelectedPayload reports a thinking/reasoning selection recorded for
+// the session.
+type ThinkingSelectedPayload struct {
+	Level         string
+	PreviousLevel string
+}
+
+func (ThinkingSelectedPayload) harnessEventPayload() {}
+func (ThinkingSelectedPayload) Kind() HarnessEventKind {
+	return HarnessEventThinkingSelected
 }
 
 type harnessSessionState struct {

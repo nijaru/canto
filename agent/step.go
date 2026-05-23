@@ -23,7 +23,7 @@ type preparedStep struct {
 func (a *BaseAgent) stepConfig() stepConfig {
 	return stepConfig{
 		ID:               a.agentID,
-		Model:            a.model,
+		Model:            a.Model(),
 		Provider:         a.provider,
 		Builder:          a.builder,
 		Tools:            a.tools,
