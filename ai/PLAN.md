@@ -35,10 +35,10 @@ dependencies.
 
 ### Canto Stabilization Roadmap
 
-The Ion-driven optimal-core redesign lane is complete, but Ion is now in
-pre-v0 design-closure review before live validation. Add Canto implementation
-work only when that review, another consumer, or an explicitly selected release
-lane exposes a concrete framework seam.
+The earlier Ion-driven optimal-core closure is superseded by Ion's Pi-first P1
+migration. Add Canto implementation work when it closes a concrete gap between
+the current Canto/Ion split and Pi's proven session-scoped harness/session
+shape.
 
 Design source:
 [`design/optimal-core-redesign-2026-05.md`](design/optimal-core-redesign-2026-05.md).
@@ -51,6 +51,7 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 
 | Gate | Task | Intent |
 | :--- | :--- | :--- |
+| 0 active | `canto-98el` Pi-like session facade state | Make `Harness.Session(id)` own phase, active run, queue updates, save-point, settled, abort, wait-for-idle, and queued prompt state before Ion migrates off local turn ownership |
 | 0 done | `canto-01ge` native Turn/Submit facade | Promoted the accepted turn transaction to the primary host API before Ion deleted adapter fallbacks |
 | 0 done | `canto-sqtc` sequence-bounded event reads | Expose framework-owned `EventsAfter` so hosts can maintain typed projections without reaching into store internals |
 | 0 done | `canto-d6kl` durable turn transaction identity and sequence | Moved turn identity/session sequence from host-only `RunEvent` metadata into durable session events/logs, aligned with AX `seq`/`exec_id` and Pi session-owned prompt lifecycle |

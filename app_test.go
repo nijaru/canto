@@ -188,6 +188,186 @@ func TestHarnessSessionSubmitTurnCancel(t *testing.T) {
 	}
 }
 
+func TestHarnessSessionRuntimeFacadeOwnsPhaseQueuesAndSettlement(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatalf("new sqlite store: %v", err)
+	}
+	a := cancelAfterTurnStartedAgent{}
+	h := &Harness{
+		Agent:     a,
+		Runner:    runtime.NewRunner(store, a),
+		Store:     store,
+		ownsStore: true,
+	}
+	defer h.Close()
+
+	sess := h.Session("runtime-facade-session")
+	again := h.Session("runtime-facade-session")
+	runtimeEvents, err := sess.RuntimeEvents(t.Context())
+	if err != nil {
+		t.Fatalf("RuntimeEvents: %v", err)
+	}
+
+	turn, err := sess.Submit(t.Context(), TextPrompt("go"))
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	turnStarted := make(chan struct{})
+	turnEventsDone := make(chan struct{})
+	go func() {
+		defer close(turnEventsDone)
+		closed := false
+		for event := range turn.Events() {
+			if sessionEvent, ok := event.SessionEvent(); ok &&
+				sessionEvent.Type == session.TurnStarted && !closed {
+				close(turnStarted)
+				closed = true
+			}
+		}
+	}()
+
+	select {
+	case <-turnStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for turn start")
+	}
+	if sess.Phase() != HarnessPhaseTurn || again.Phase() != HarnessPhaseTurn {
+		t.Fatalf("phase = %q/%q, want turn", sess.Phase(), again.Phase())
+	}
+	if _, err := again.Submit(t.Context(), TextPrompt("overlap")); !errors.Is(err, ErrSessionBusy) {
+		t.Fatalf("overlap Submit error = %v, want ErrSessionBusy", err)
+	}
+	if err := again.SteerText(t.Context(), "steer while active"); err != nil {
+		t.Fatalf("SteerText: %v", err)
+	}
+	if err := again.FollowUpText(t.Context(), "follow up while active"); err != nil {
+		t.Fatalf("FollowUpText: %v", err)
+	}
+	if err := again.Abort(t.Context()); err != nil {
+		t.Fatalf("Abort: %v", err)
+	}
+	select {
+	case <-turnEventsDone:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for turn events to close")
+	}
+	if _, err := turn.Result(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Result error = %v, want context canceled", err)
+	}
+	if sess.Phase() != HarnessPhaseIdle || again.Phase() != HarnessPhaseIdle {
+		t.Fatalf("phase = %q/%q, want idle", sess.Phase(), again.Phase())
+	}
+	if err := sess.WaitForIdle(t.Context()); err != nil {
+		t.Fatalf("WaitForIdle: %v", err)
+	}
+
+	events := drainHarnessEvents(runtimeEvents)
+	kinds := harnessEventKinds(events)
+	want := []HarnessEventKind{
+		HarnessEventQueueUpdated,
+		HarnessEventQueueUpdated,
+		HarnessEventQueueUpdated,
+		HarnessEventAbort,
+		HarnessEventSavePoint,
+		HarnessEventSettled,
+	}
+	if len(kinds) != len(want) {
+		t.Fatalf("runtime event kinds = %v, want %v", kinds, want)
+	}
+	for i, kind := range want {
+		if kinds[i] != kind {
+			t.Fatalf("runtime event kinds = %v, want %v", kinds, want)
+		}
+	}
+	queue, ok := events[0].Payload.(QueueUpdatedPayload)
+	if !ok || len(queue.Queue.Steer) != 1 {
+		t.Fatalf("first runtime event = %#v, want one queued steer", events[0])
+	}
+	abort, ok := events[3].Payload.(AbortPayload)
+	if !ok || len(abort.ClearedSteer) != 1 || len(abort.ClearedFollowUp) != 1 {
+		t.Fatalf("abort event = %#v, want cleared steer and follow-up", events[3])
+	}
+	settled, ok := events[5].Payload.(SettledPayload)
+	if !ok || settled.NextTurnCount != 0 {
+		t.Fatalf("settled event = %#v, want no queued next turn", events[5])
+	}
+}
+
+func TestHarnessSessionNextTurnPrependsQueuedPrompt(t *testing.T) {
+	provider := llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})
+	h, err := NewHarness("next-turn").
+		Model("faux").
+		Provider(provider).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	sess := h.Session("next-turn-session")
+	runtimeEvents, err := sess.RuntimeEvents(t.Context())
+	if err != nil {
+		t.Fatalf("RuntimeEvents: %v", err)
+	}
+	if err := sess.NextTurnText(t.Context(), "queued first"); err != nil {
+		t.Fatalf("NextTurnText: %v", err)
+	}
+	if _, err := sess.Prompt(t.Context(), "current"); err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	calls := provider.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("provider calls = %d, want 1", len(calls))
+	}
+	messages := calls[0].Messages
+	if len(messages) < 2 ||
+		messages[len(messages)-2].TextContent() != "queued first" ||
+		messages[len(messages)-1].TextContent() != "current" {
+		t.Fatalf("provider messages = %#v, want queued prompt before current prompt", messages)
+	}
+
+	kinds := harnessEventKinds(drainHarnessEvents(runtimeEvents))
+	wantPrefix := []HarnessEventKind{
+		HarnessEventQueueUpdated,
+		HarnessEventQueueUpdated,
+		HarnessEventSavePoint,
+		HarnessEventSettled,
+	}
+	if len(kinds) != len(wantPrefix) {
+		t.Fatalf("runtime event kinds = %v, want %v", kinds, wantPrefix)
+	}
+	for i, want := range wantPrefix {
+		if kinds[i] != want {
+			t.Fatalf("runtime event kinds = %v, want %v", kinds, wantPrefix)
+		}
+	}
+}
+
+func drainHarnessEvents(events <-chan HarnessEvent) []HarnessEvent {
+	out := make([]HarnessEvent, 0)
+	for {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				return out
+			}
+			out = append(out, event)
+		default:
+			return out
+		}
+	}
+}
+
+func harnessEventKinds(events []HarnessEvent) []HarnessEventKind {
+	kinds := make([]HarnessEventKind, len(events))
+	for i, event := range events {
+		kinds[i] = event.Kind()
+	}
+	return kinds
+}
+
 func TestHarnessBuilderRegistersTools(t *testing.T) {
 	testTool := tool.Func(
 		"echo",

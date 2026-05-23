@@ -14,6 +14,7 @@ import (
 type Session struct {
 	harness *Harness
 	id      string
+	state   *harnessSessionState
 }
 
 // Turn is one accepted host-facing execution transaction.
@@ -352,6 +353,9 @@ func (s *Session) Submit(ctx context.Context, prompt Prompt) (*Turn, error) {
 	if s == nil || s.harness == nil || s.harness.Runner == nil {
 		return nil, fmt.Errorf("canto harness: nil runner")
 	}
+	if s.state == nil {
+		return nil, fmt.Errorf("canto harness: nil session state")
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	out := make(chan RunEvent)
@@ -377,16 +381,25 @@ func (s *Session) Submit(ctx context.Context, prompt Prompt) (*Turn, error) {
 		cancel()
 		return nil, err
 	}
+	if err := s.state.beginTurn(turnID, cancel); err != nil {
+		cancel()
+		detach()
+		return nil, err
+	}
 
 	resultCh := make(chan turnOutcome, 1)
 	go func() {
 		defer close(out)
 		defer detach()
+		finish := func() {
+			s.state.finishTurn(turnID, false)
+		}
 
 		runCtx := llm.WithRetryObserver(ctx, func(event llm.RetryEvent) {
 			emitter.emitLive(RunEvent{Payload: RunRetryPayload{Retry: event}})
 		})
-		result, err := s.harness.Runner.SendStream(runCtx, s.id, prompt, func(chunk *llm.Chunk) {
+		runPrompt := s.state.consumeNextTurn(prompt)
+		result, err := s.harness.Runner.SendStream(runCtx, s.id, runPrompt, func(chunk *llm.Chunk) {
 			if chunk == nil {
 				return
 			}
@@ -394,10 +407,12 @@ func (s *Session) Submit(ctx context.Context, prompt Prompt) (*Turn, error) {
 		})
 		if err != nil {
 			emitter.emitFinal(RunEvent{Payload: RunErrorPayload{Err: err}})
+			finish()
 			resultCh <- turnOutcome{err: err}
 			return
 		}
 		emitter.emitFinal(RunEvent{Payload: RunResultPayload{Result: result}})
+		finish()
 		resultCh <- turnOutcome{result: result}
 	}()
 	return &Turn{

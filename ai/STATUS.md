@@ -1,10 +1,10 @@
 # Status
 
-**Phase:** Ion pre-v0 design-closure support
-**Focus:** Implement concrete framework seams from Ion's clean-sheet Pi/SOTA
-architecture review before live validation.
+**Phase:** Ion Pi-first P1 migration support
+**Focus:** Move Canto's normal host path closer to Pi's proven
+session-scoped harness design before Ion promotes any Pi+ work.
 **Blockers:** None.
-**Updated:** 2026-05-22
+**Updated:** 2026-05-23
 
 ## Context
 
@@ -22,10 +22,10 @@ work:
   Canto task only when separate Ion work identifies a concrete framework issue.
 - **Canto API audit:** active core-contract review lives in `ai/review/core-api-contract-audit-2026-04-30.md`; use it to track which core packages have actually been reviewed.
 - **Ion feedback tracker:** confirmed Ion-derived framework issues live in `ai/review/ion-feedback-tracker-2026-04-28.md`.
-- **Ion as framework pressure:** Ion's ideal-core implementation lane is the
-  baseline, not final proof. Keep public framework expansion and SOTA
-  primitives behind explicit selection, but fix concrete framework seams found
-  during the pre-v0 design-closure review.
+- **Ion as framework pressure:** Ion's prior ideal-core lane is no longer final
+  proof. Pi is the P1 design control, and Canto should close framework-owned
+  gaps where Pi has one session-scoped harness owner instead of split
+  Canto/Ion ownership.
 - **Next-phase roadmap:** [ai/design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) remains the sequencing source, amended by `canto-2vxb`: make the harness facade clear before polishing M1 docs/release language.
 
 SOTA/DX research is part of the Canto pre-Ion gate when it can change stable API or primitives. New research remains delta-based and must name the Canto primitive it would change.
@@ -98,6 +98,14 @@ lane is selected.
 - Performance is part of this Canto lane: reduce host-side stream assembly,
   avoid unnecessary polling/flush loops, keep replay/resume bounded, and give
   Ion a low-latency stream it can render without reconstruction.
+- `canto-98el` is active: the first Pi-like facade slice makes
+  `Harness.Session(id)` share session-scoped state across handles, rejects
+  overlapping `Submit` calls with `ErrSessionBusy`, exposes `RuntimeEvents`,
+  and emits `queue_update`, `save_point`, `settled`, and `abort` events.
+  `Steer`, `FollowUp`, and `NextTurn` queues are now Canto-owned; `NextTurn`
+  drains into the next accepted prompt. Remaining work is wiring steering and
+  follow-up drain points into the agent loop, then adding Pi-style session
+  tree/leaf primitives.
 - `canto-vhjg` is closed in Canto `5f313f6`: `RunEvent` now carries envelope
   metadata plus one typed payload, and Ion imported that exact revision in
   `9ff72a4`.
@@ -108,8 +116,10 @@ lane is selected.
 - `canto-re2x` is closed in Canto `1be9c57`: root `canto.Session` now exposes
   replay, sequence-bounded events, compaction, projection snapshots, and fork
   methods for normal host maintenance.
-- No known P1 framework seam from the reopened Ion roadmap remains pending in
-  Canto. Next action is importing this exact revision into Ion.
+- The old "no known P1 framework seam remains" status is superseded by the
+  Pi-first migration: Canto still needs Pi-like steering/follow-up drain
+  semantics and session tree/leaf primitives before Ion should treat P1 as
+  closed.
 
 **Ion pre-v0 design-closure support:**
 

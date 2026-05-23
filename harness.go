@@ -1,6 +1,8 @@
 package canto
 
 import (
+	"sync"
+
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/executor"
 	"github.com/nijaru/canto/llm"
@@ -34,11 +36,13 @@ type Harness struct {
 	Store       session.Store
 	Environment Environment
 	ownsStore   bool
+	mu          sync.Mutex
+	sessions    map[string]*harnessSessionState
 }
 
 // Session returns a handle for one durable conversation.
 func (h *Harness) Session(id string) *Session {
-	return &Session{harness: h, id: id}
+	return &Session{harness: h, id: id, state: h.sessionState(id)}
 }
 
 // Close releases resources owned by the harness.
@@ -57,4 +61,21 @@ func (h *Harness) Close() error {
 		return closer.Close()
 	}
 	return nil
+}
+
+func (h *Harness) sessionState(id string) *harnessSessionState {
+	if h == nil {
+		return nil
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.sessions == nil {
+		h.sessions = make(map[string]*harnessSessionState)
+	}
+	state := h.sessions[id]
+	if state == nil {
+		state = newHarnessSessionState(id)
+		h.sessions[id] = state
+	}
+	return state
 }
