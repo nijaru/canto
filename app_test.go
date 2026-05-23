@@ -60,15 +60,20 @@ func TestHarnessSessionPromptStream(t *testing.T) {
 	var chunks, sessionEvents int
 	var result agent.StepResult
 	for event := range events {
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventChunk:
 			chunks++
 		case RunEventSession:
 			sessionEvents++
 		case RunEventResult:
-			result = event.Result
+			var ok bool
+			result, ok = event.Result()
+			if !ok {
+				t.Fatal("result event missing result payload")
+			}
 		case RunEventError:
-			t.Fatalf("stream error: %v", event.Err)
+			err, _ := event.Err()
+			t.Fatalf("stream error: %v", err)
 		}
 	}
 
@@ -109,14 +114,15 @@ func TestHarnessSessionSubmitTurn(t *testing.T) {
 		if event.TurnID != turn.ID() {
 			t.Fatalf("event turn id = %q, want %q", event.TurnID, turn.ID())
 		}
-		if event.Type == RunEventSession && event.Event.TurnID != turn.ID() {
-			t.Fatalf("durable event turn id = %q, want %q", event.Event.TurnID, turn.ID())
+		if sessionEvent, ok := event.SessionEvent(); ok && sessionEvent.TurnID != turn.ID() {
+			t.Fatalf("durable event turn id = %q, want %q", sessionEvent.TurnID, turn.ID())
 		}
-		if event.Type == RunEventResult {
+		if event.Kind() == RunEventResult {
 			sawResult = true
 		}
-		if event.Type == RunEventError {
-			t.Fatalf("stream error: %v", event.Err)
+		if event.Kind() == RunEventError {
+			err, _ := event.Err()
+			t.Fatalf("stream error: %v", err)
 		}
 	}
 	if !sawResult {
@@ -153,16 +159,21 @@ func TestHarnessSessionSubmitTurnCancel(t *testing.T) {
 
 	var sawCancel bool
 	for event := range turn.Events() {
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventSession:
-			if event.Event.Type == session.TurnStarted {
+			sessionEvent, ok := event.SessionEvent()
+			if !ok {
+				t.Fatal("session event missing session payload")
+			}
+			if sessionEvent.Type == session.TurnStarted {
 				if err := turn.Cancel(t.Context()); err != nil {
 					t.Fatalf("Cancel: %v", err)
 				}
 			}
 		case RunEventError:
-			if !errors.Is(event.Err, context.Canceled) {
-				t.Fatalf("stream error = %v, want context canceled", event.Err)
+			err, _ := event.Err()
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("stream error = %v, want context canceled", err)
 			}
 			sawCancel = true
 		case RunEventResult:

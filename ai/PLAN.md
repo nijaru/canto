@@ -55,6 +55,7 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 | 0 done | `canto-sqtc` sequence-bounded event reads | Expose framework-owned `EventsAfter` so hosts can maintain typed projections without reaching into store internals |
 | 0 done | `canto-d6kl` durable turn transaction identity and sequence | Moved turn identity/session sequence from host-only `RunEvent` metadata into durable session events/logs, aligned with AX `seq`/`exec_id` and Pi session-owned prompt lifecycle |
 | 0 active | `canto-wuev` Submit/Turn public surface alignment | Make README, prompt docs, examples, and godoc teach native `Submit` / `Turn` as the common host path; `Prompt` and `PromptStream` are convenience wrappers |
+| 0 active | `canto-vhjg` unified run-event envelope | Replace `RunEvent.Type` and payload side fields with one typed payload under envelope metadata, then import into Ion |
 | 0 done | `canto-uduq` optimal-core contract tests | Added stream metadata and tests for ordered run events, usage-before-result, yielding hook settlement, and overflow-recovery stream identity |
 | 1 done | `canto-dvtd` optimal-core turn transaction | Replaced `PromptStream` snapshot/watch/callback repair with an ordered session observer stream |
 | 2 done | `canto-xz1w` optimal-core lifecycle events | Added typed RunEvent lifecycle/usage metadata plus compaction-start and overflow-retry events |
@@ -110,6 +111,10 @@ Framework is usable by one real consumer (Ion) end-to-end. No formal API-stabili
 - **Release note:** `canto-2if9` ships a one-page "what this alpha is and isn't" note — no hard API-stability contract required.
 - **Boundary hygiene:** Core vs `x/` placement is intentional; optional workspace and executor tools are stable capability packages, not a product-shaped coding package. The `coding/` promotion has been superseded by `executor/`, `workspacetool/`, and `executortool/`.
 - **Typed turn input:** Root `Session.Submit` and `runtime.Runner.Send` use `llm.Prompt`; `Prompt`, `PromptStream`, `SendText`, and `SendTextStream` remain ergonomic text helpers.
+- **Unified run-event envelope:** `RunEvent` carries session/turn/sequence,
+  durability, usage, and lifecycle envelope metadata plus one typed payload
+  (`RunChunkPayload`, `RunSessionPayload`, `RunRetryPayload`,
+  `RunResultPayload`, or `RunErrorPayload`).
 
 ### M2: Stable (v1.0) — compatibility commitment
 

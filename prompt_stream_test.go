@@ -21,6 +21,33 @@ type burstEventAgent struct {
 
 var errPromptStreamTransient = errors.New("transient provider failure")
 
+func runEventSession(t *testing.T, event RunEvent) session.Event {
+	t.Helper()
+	sessionEvent, ok := event.SessionEvent()
+	if !ok {
+		t.Fatalf("event %s missing session payload", event.Kind())
+	}
+	return sessionEvent
+}
+
+func runEventResult(t *testing.T, event RunEvent) agent.StepResult {
+	t.Helper()
+	result, ok := event.Result()
+	if !ok {
+		t.Fatalf("event %s missing result payload", event.Kind())
+	}
+	return result
+}
+
+func runEventErr(t *testing.T, event RunEvent) error {
+	t.Helper()
+	err, ok := event.Err()
+	if !ok {
+		t.Fatalf("event %s missing error payload", event.Kind())
+	}
+	return err
+}
+
 type promptStreamRetryProvider struct {
 	attempts int
 }
@@ -127,22 +154,22 @@ func TestPromptStreamDeliversBurstSessionEventsWithoutDrops(t *testing.T) {
 	seen := make(map[int]struct{}, burstEvents)
 	var gotResult bool
 	for event := range events {
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventSession:
-			if event.Event.Type != session.Handoff {
+			if runEventSession(t, event).Type != session.Handoff {
 				continue
 			}
 			var data struct {
 				Index int `json:"index"`
 			}
-			if err := event.Event.UnmarshalData(&data); err != nil {
+			if err := runEventSession(t, event).UnmarshalData(&data); err != nil {
 				t.Fatalf("decode burst event: %v", err)
 			}
 			seen[data.Index] = struct{}{}
 		case RunEventResult:
 			gotResult = true
 		case RunEventError:
-			t.Fatalf("stream error: %v", event.Err)
+			t.Fatalf("stream error: %v", runEventErr(t, event))
 		}
 	}
 
@@ -177,7 +204,7 @@ func TestPromptStreamEmitsProviderRetryLifecycle(t *testing.T) {
 	var sawRetry bool
 	var sawChunk bool
 	for event := range events {
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventRetry:
 			sawRetry = true
 			if event.Durability != RunEventLiveOnly {
@@ -209,7 +236,7 @@ func TestPromptStreamEmitsProviderRetryLifecycle(t *testing.T) {
 			}
 			sawChunk = true
 		case RunEventError:
-			t.Fatalf("stream error after retry: %v", event.Err)
+			t.Fatalf("stream error after retry: %v", runEventErr(t, event))
 		}
 	}
 	if !sawRetry {
@@ -319,15 +346,15 @@ func TestPromptStreamBackpressuresSlowConsumersAndPreservesEventOrder(t *testing
 				if !ok {
 					t.Fatal("stream closed before expected handoff event")
 				}
-				switch event.Type {
+				switch event.Kind() {
 				case RunEventSession:
-					index, ok := handoffIndex(t, event.Event)
+					index, ok := handoffIndex(t, runEventSession(t, event))
 					if ok {
 						indexes = append(indexes, index)
 						return
 					}
 				case RunEventError:
-					t.Fatalf("stream error: %v", event.Err)
+					t.Fatalf("stream error: %v", runEventErr(t, event))
 				}
 			case <-ctx.Done():
 				t.Fatalf("timed out waiting for handoff event: %v", ctx.Err())
@@ -351,16 +378,16 @@ func TestPromptStreamBackpressuresSlowConsumersAndPreservesEventOrder(t *testing
 
 	var gotResult bool
 	for event := range events {
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventSession:
-			index, ok := handoffIndex(t, event.Event)
+			index, ok := handoffIndex(t, runEventSession(t, event))
 			if ok {
 				indexes = append(indexes, index)
 			}
 		case RunEventResult:
 			gotResult = true
 		case RunEventError:
-			t.Fatalf("stream error: %v", event.Err)
+			t.Fatalf("stream error: %v", runEventErr(t, event))
 		}
 	}
 
@@ -451,9 +478,9 @@ func TestPromptStreamEmitsTurnStartedBeforeImmediateChunk(t *testing.T) {
 
 	var sawTurnStarted bool
 	for event := range events {
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventSession:
-			if event.Event.Type == session.TurnStarted {
+			if runEventSession(t, event).Type == session.TurnStarted {
 				sawTurnStarted = true
 			}
 		case RunEventChunk:
@@ -461,7 +488,7 @@ func TestPromptStreamEmitsTurnStartedBeforeImmediateChunk(t *testing.T) {
 				t.Fatal("received model chunk before turn_started session event")
 			}
 		case RunEventError:
-			t.Fatalf("stream error: %v", event.Err)
+			t.Fatalf("stream error: %v", runEventErr(t, event))
 		}
 	}
 	if !sawTurnStarted {
@@ -494,12 +521,12 @@ func TestPromptStreamEmitsUserMessageBeforeTurnAndChunks(t *testing.T) {
 		sawChunk       bool
 	)
 	for event := range events {
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventSession:
-			switch event.Event.Type {
+			switch runEventSession(t, event).Type {
 			case session.MessageAdded:
 				var msg llm.Message
-				if err := event.Event.UnmarshalData(&msg); err != nil {
+				if err := runEventSession(t, event).UnmarshalData(&msg); err != nil {
 					t.Fatalf("decode message event: %v", err)
 				}
 				if msg.Role == llm.RoleUser && msg.Content == "go" {
@@ -520,7 +547,7 @@ func TestPromptStreamEmitsUserMessageBeforeTurnAndChunks(t *testing.T) {
 			}
 			sawChunk = true
 		case RunEventError:
-			t.Fatalf("stream error: %v", event.Err)
+			t.Fatalf("stream error: %v", runEventErr(t, event))
 		}
 	}
 	if !sawUser {
@@ -631,9 +658,9 @@ func TestPromptStreamFlushesToolLifecycleBeforeResult(t *testing.T) {
 
 	var order []string
 	for event := range events {
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventSession:
-			switch event.Event.Type {
+			switch runEventSession(t, event).Type {
 			case session.ToolStarted:
 				order = append(order, "tool_started")
 			case session.ToolOutputDelta:
@@ -642,7 +669,7 @@ func TestPromptStreamFlushesToolLifecycleBeforeResult(t *testing.T) {
 				order = append(order, "tool_completed")
 			case session.MessageAdded:
 				var msg llm.Message
-				if err := event.Event.UnmarshalData(&msg); err != nil {
+				if err := runEventSession(t, event).UnmarshalData(&msg); err != nil {
 					t.Fatalf("decode message event: %v", err)
 				}
 				if msg.Role == llm.RoleTool && msg.ToolID == "tool-1" {
@@ -652,7 +679,7 @@ func TestPromptStreamFlushesToolLifecycleBeforeResult(t *testing.T) {
 		case RunEventResult:
 			order = append(order, "result")
 		case RunEventError:
-			t.Fatalf("stream error: %v", event.Err)
+			t.Fatalf("stream error: %v", runEventErr(t, event))
 		}
 	}
 
@@ -735,9 +762,9 @@ func TestPromptStreamFlushesTerminalSessionErrorBeforeRunError(t *testing.T) {
 
 	var order []string
 	for event := range events {
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventSession:
-			data, ok, err := event.Event.TurnCompletedData()
+			data, ok, err := runEventSession(t, event).TurnCompletedData()
 			if err != nil {
 				t.Fatalf("decode turn completed: %v", err)
 			}
@@ -745,8 +772,9 @@ func TestPromptStreamFlushesTerminalSessionErrorBeforeRunError(t *testing.T) {
 				order = append(order, "turn_error")
 			}
 		case RunEventError:
-			if event.Err == nil || event.Err.Error() != "provider exploded" {
-				t.Fatalf("run error = %v, want provider exploded", event.Err)
+			if runEventErr(t, event) == nil ||
+				runEventErr(t, event).Error() != "provider exploded" {
+				t.Fatalf("run error = %v, want provider exploded", runEventErr(t, event))
 			}
 			order = append(order, "run_error")
 		case RunEventResult:
@@ -828,14 +856,14 @@ func TestPromptStreamFlushesCanceledTurnBeforeRunError(t *testing.T) {
 
 	var order []string
 	for event := range events {
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventSession:
-			if event.Event.Type == session.TurnStarted {
+			if runEventSession(t, event).Type == session.TurnStarted {
 				cancel()
 				order = append(order, "turn_started")
 				continue
 			}
-			data, ok, err := event.Event.TurnCompletedData()
+			data, ok, err := runEventSession(t, event).TurnCompletedData()
 			if err != nil {
 				t.Fatalf("decode turn completed: %v", err)
 			}
@@ -843,8 +871,8 @@ func TestPromptStreamFlushesCanceledTurnBeforeRunError(t *testing.T) {
 				order = append(order, "turn_canceled")
 			}
 		case RunEventError:
-			if !errors.Is(event.Err, context.Canceled) {
-				t.Fatalf("run error = %v, want context canceled", event.Err)
+			if !errors.Is(runEventErr(t, event), context.Canceled) {
+				t.Fatalf("run error = %v, want context canceled", runEventErr(t, event))
 			}
 			order = append(order, "run_error")
 		case RunEventResult:
@@ -894,7 +922,7 @@ func TestPromptStreamAnnotatesOrderedRunEvents(t *testing.T) {
 	for event := range events {
 		seq++
 		if event.Seq != seq {
-			t.Fatalf("event seq = %d, want %d for %#v", event.Seq, seq, event.Type)
+			t.Fatalf("event seq = %d, want %d for %#v", event.Seq, seq, event.Kind())
 		}
 		if event.SessionID != sessionID {
 			t.Fatalf("event session id = %q, want %q", event.SessionID, sessionID)
@@ -909,7 +937,7 @@ func TestPromptStreamAnnotatesOrderedRunEvents(t *testing.T) {
 			t.Fatalf("event turn id = %q, want stable %q", event.TurnID, turnID)
 		}
 
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventChunk:
 			sawChunk = true
 			if event.Durability != RunEventLiveOnly {
@@ -921,13 +949,17 @@ func TestPromptStreamAnnotatesOrderedRunEvents(t *testing.T) {
 				t.Fatalf("session durability = %q, want %q", event.Durability, RunEventDurable)
 			}
 			durableSeq++
-			if event.Event.Seq != durableSeq {
-				t.Fatalf("durable event seq = %d, want %d", event.Event.Seq, durableSeq)
+			if runEventSession(t, event).Seq != durableSeq {
+				t.Fatalf(
+					"durable event seq = %d, want %d",
+					runEventSession(t, event).Seq,
+					durableSeq,
+				)
 			}
-			if event.Event.TurnID != event.TurnID {
+			if runEventSession(t, event).TurnID != event.TurnID {
 				t.Fatalf(
 					"durable event turn id = %q, want stream turn id %q",
-					event.Event.TurnID,
+					runEventSession(t, event).TurnID,
 					event.TurnID,
 				)
 			}
@@ -937,7 +969,7 @@ func TestPromptStreamAnnotatesOrderedRunEvents(t *testing.T) {
 				t.Fatalf("result durability = %q, want %q", event.Durability, RunEventTerminal)
 			}
 		case RunEventError:
-			t.Fatalf("stream error: %v", event.Err)
+			t.Fatalf("stream error: %v", runEventErr(t, event))
 		}
 		if event.Durability != "" {
 			sawDurability = true
@@ -1184,9 +1216,9 @@ func TestPromptStreamFlushesTurnUsageBeforeResult(t *testing.T) {
 
 	var order []string
 	for event := range events {
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventSession:
-			data, ok, err := event.Event.TurnCompletedData()
+			data, ok, err := runEventSession(t, event).TurnCompletedData()
 			if err != nil {
 				t.Fatalf("decode turn completed: %v", err)
 			}
@@ -1199,12 +1231,12 @@ func TestPromptStreamFlushesTurnUsageBeforeResult(t *testing.T) {
 				order = append(order, "turn_usage")
 			}
 		case RunEventResult:
-			if event.Result.Usage.TotalTokens != usage.TotalTokens {
-				t.Fatalf("result usage = %#v, want %#v", event.Result.Usage, usage)
+			if runEventResult(t, event).Usage.TotalTokens != usage.TotalTokens {
+				t.Fatalf("result usage = %#v, want %#v", runEventResult(t, event).Usage, usage)
 			}
 			order = append(order, "result")
 		case RunEventError:
-			t.Fatalf("stream error: %v", event.Err)
+			t.Fatalf("stream error: %v", runEventErr(t, event))
 		}
 	}
 
@@ -1279,14 +1311,14 @@ func TestPromptStreamWaitsForYieldingPostToolHookBeforeResult(t *testing.T) {
 	)
 	record := func(event RunEvent) {
 		t.Helper()
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventSession:
-			switch event.Event.Type {
+			switch runEventSession(t, event).Type {
 			case session.ToolStarted:
 				sawToolStart = true
 				order = append(order, "tool_started")
 			case session.ToolCompleted:
-				data, ok, err := event.Event.ToolCompletedData()
+				data, ok, err := runEventSession(t, event).ToolCompletedData()
 				if err != nil {
 					t.Fatalf("decode tool completed: %v", err)
 				}
@@ -1309,7 +1341,7 @@ func TestPromptStreamWaitsForYieldingPostToolHookBeforeResult(t *testing.T) {
 			}
 			order = append(order, "result")
 		case RunEventError:
-			t.Fatalf("stream error: %v", event.Err)
+			t.Fatalf("stream error: %v", runEventErr(t, event))
 		}
 	}
 
@@ -1392,14 +1424,14 @@ func TestPromptStreamKeepsStableTurnIDAcrossOverflowRecovery(t *testing.T) {
 			event.Lifecycle.Retry.Scope == "overflow_recovery" {
 			sawRecovery = true
 		}
-		switch event.Type {
+		switch event.Kind() {
 		case RunEventResult:
 			resultCount++
-			if event.Result.Content != "recovered" {
-				t.Fatalf("result content = %q, want recovered", event.Result.Content)
+			if runEventResult(t, event).Content != "recovered" {
+				t.Fatalf("result content = %q, want recovered", runEventResult(t, event).Content)
 			}
 		case RunEventError:
-			t.Fatalf("stream error after overflow recovery: %v", event.Err)
+			t.Fatalf("stream error after overflow recovery: %v", runEventErr(t, event))
 		}
 	}
 	if resultCount != 1 {

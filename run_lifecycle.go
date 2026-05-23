@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
@@ -150,22 +151,37 @@ type runLifecycleState struct {
 }
 
 func (s *runLifecycleState) annotate(event *RunEvent) {
-	switch event.Type {
+	switch event.Kind() {
 	case RunEventChunk:
-		s.annotateChunk(event)
+		chunk, ok := event.Chunk()
+		if ok {
+			s.annotateChunk(event, chunk)
+		}
 	case RunEventRetry:
-		s.annotateRetry(event)
+		retry, ok := event.Retry()
+		if ok {
+			s.annotateRetry(event, retry)
+		}
 	case RunEventSession:
-		s.annotateSession(event)
+		sessionEvent, ok := event.SessionEvent()
+		if ok {
+			s.annotateSession(event, sessionEvent)
+		}
 	case RunEventResult:
-		s.annotateResult(event)
+		result, ok := event.Result()
+		if ok {
+			s.annotateResult(event, result)
+		}
 	case RunEventError:
-		s.annotateError(event)
+		err, ok := event.Err()
+		if ok {
+			s.annotateError(event, err)
+		}
 	}
 }
 
-func (s *runLifecycleState) annotateChunk(event *RunEvent) {
-	usage, ok := s.providerUsage.delta(event.Chunk.Usage)
+func (s *runLifecycleState) annotateChunk(event *RunEvent, chunk llm.Chunk) {
+	usage, ok := s.providerUsage.delta(chunk.Usage)
 	if !ok {
 		return
 	}
@@ -178,10 +194,10 @@ func (s *runLifecycleState) annotateChunk(event *RunEvent) {
 	}
 }
 
-func (s *runLifecycleState) annotateRetry(event *RunEvent) {
+func (s *runLifecycleState) annotateRetry(event *RunEvent, retry llm.RetryEvent) {
 	errText := ""
-	if event.Retry.Err != nil {
-		errText = event.Retry.Err.Error()
+	if retry.Err != nil {
+		errText = retry.Err.Error()
 	}
 	event.Lifecycle = &RunLifecycle{
 		Type:   RunLifecycleRetry,
@@ -189,17 +205,17 @@ func (s *runLifecycleState) annotateRetry(event *RunEvent) {
 		Retry: &RunRetryLifecycle{
 			Scope:       "provider",
 			Target:      "provider",
-			Attempt:     event.Retry.Attempt,
-			DelayMillis: event.Retry.Delay.Milliseconds(),
+			Attempt:     retry.Attempt,
+			DelayMillis: retry.Delay.Milliseconds(),
 			Error:       errText,
 		},
 	}
 }
 
-func (s *runLifecycleState) annotateSession(event *RunEvent) {
-	switch event.Event.Type {
+func (s *runLifecycleState) annotateSession(event *RunEvent, sessionEvent session.Event) {
+	switch sessionEvent.Type {
 	case session.TurnStarted:
-		data, ok, err := event.Event.TurnStartedData()
+		data, ok, err := sessionEvent.TurnStartedData()
 		if err != nil || !ok {
 			return
 		}
@@ -209,7 +225,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			AgentID: data.AgentID,
 		}
 	case session.TurnCompleted:
-		data, ok, err := event.Event.TurnCompletedData()
+		data, ok, err := sessionEvent.TurnCompletedData()
 		if err != nil || !ok {
 			return
 		}
@@ -227,7 +243,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			Usage:      usage,
 		}
 	case session.StepStarted:
-		data, ok, err := event.Event.StepStartedData()
+		data, ok, err := sessionEvent.StepStartedData()
 		if err != nil || !ok {
 			return
 		}
@@ -237,7 +253,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			AgentID: data.AgentID,
 		}
 	case session.StepCompleted:
-		data, ok, err := event.Event.StepCompletedData()
+		data, ok, err := sessionEvent.StepCompletedData()
 		if err != nil || !ok {
 			return
 		}
@@ -253,7 +269,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			Usage:    usage,
 		}
 	case session.ToolStarted:
-		data, ok, err := event.Event.ToolStartedData()
+		data, ok, err := sessionEvent.ToolStartedData()
 		if err != nil || !ok {
 			return
 		}
@@ -271,7 +287,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			ActiveTools: s.activeToolSnapshot(),
 		}
 	case session.ToolOutputDelta:
-		tool, ok := toolDeltaLifecycle(event.Event)
+		tool, ok := toolDeltaLifecycle(sessionEvent)
 		if !ok {
 			return
 		}
@@ -282,7 +298,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			ActiveTools: s.activeToolSnapshot(),
 		}
 	case session.ToolCompleted:
-		data, ok, err := event.Event.ToolCompletedData()
+		data, ok, err := sessionEvent.ToolCompletedData()
 		if err != nil || !ok {
 			return
 		}
@@ -303,7 +319,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			Error:       data.Error,
 		}
 	case session.ChildRequested:
-		data, ok, err := event.Event.ChildRequestedData()
+		data, ok, err := sessionEvent.ChildRequestedData()
 		if err != nil || !ok {
 			return
 		}
@@ -321,7 +337,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			},
 		}
 	case session.ChildStarted:
-		data, ok, err := event.Event.ChildStartedData()
+		data, ok, err := sessionEvent.ChildStartedData()
 		if err != nil || !ok {
 			return
 		}
@@ -336,7 +352,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			},
 		}
 	case session.ChildProgressed:
-		data, ok, err := event.Event.ChildProgressedData()
+		data, ok, err := sessionEvent.ChildProgressedData()
 		if err != nil || !ok {
 			return
 		}
@@ -351,7 +367,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			},
 		}
 	case session.ChildBlocked:
-		data, ok, err := event.Event.ChildBlockedData()
+		data, ok, err := sessionEvent.ChildBlockedData()
 		if err != nil || !ok {
 			return
 		}
@@ -365,7 +381,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			},
 		}
 	case session.ChildCompleted:
-		data, ok, err := event.Event.ChildCompletedData()
+		data, ok, err := sessionEvent.ChildCompletedData()
 		if err != nil || !ok {
 			return
 		}
@@ -383,7 +399,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			},
 		}
 	case session.ChildFailed:
-		data, ok, err := event.Event.ChildFailedData()
+		data, ok, err := sessionEvent.ChildFailedData()
 		if err != nil || !ok {
 			return
 		}
@@ -399,7 +415,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			},
 		}
 	case session.ChildCanceled:
-		data, ok, err := event.Event.ChildCanceledData()
+		data, ok, err := sessionEvent.ChildCanceledData()
 		if err != nil || !ok {
 			return
 		}
@@ -415,7 +431,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			},
 		}
 	case session.ChildMerged:
-		data, ok, err := event.Event.ChildMergedData()
+		data, ok, err := sessionEvent.ChildMergedData()
 		if err != nil || !ok {
 			return
 		}
@@ -429,7 +445,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			},
 		}
 	case session.WaitStarted:
-		data, ok, err := event.Event.WaitData()
+		data, ok, err := sessionEvent.WaitData()
 		if err != nil || !ok {
 			return
 		}
@@ -442,7 +458,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			},
 		}
 	case session.WaitResolved:
-		data, ok, err := event.Event.WaitData()
+		data, ok, err := sessionEvent.WaitData()
 		if err != nil || !ok {
 			return
 		}
@@ -456,7 +472,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 		}
 	case session.ApprovalRequested:
 		var data approval.Request
-		if err := event.Event.UnmarshalData(&data); err != nil {
+		if err := sessionEvent.UnmarshalData(&data); err != nil {
 			return
 		}
 		event.Lifecycle = &RunLifecycle{
@@ -476,7 +492,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			Decision approval.Decision `json:"decision"`
 			Reason   string            `json:"reason"`
 		}
-		if err := event.Event.UnmarshalData(&data); err != nil {
+		if err := sessionEvent.UnmarshalData(&data); err != nil {
 			return
 		}
 		event.Lifecycle = &RunLifecycle{
@@ -494,7 +510,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			Tool   string `json:"tool"`
 			Reason string `json:"reason"`
 		}
-		if err := event.Event.UnmarshalData(&data); err != nil {
+		if err := sessionEvent.UnmarshalData(&data); err != nil {
 			return
 		}
 		event.Lifecycle = &RunLifecycle{
@@ -508,7 +524,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			},
 		}
 	case session.CompactionStarted:
-		data, ok, err := event.Event.CompactionStartedData()
+		data, ok, err := sessionEvent.CompactionStartedData()
 		if err != nil || !ok {
 			return
 		}
@@ -523,7 +539,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			},
 		}
 	case session.CompactionTriggered:
-		snapshot, ok, err := event.Event.CompactionSnapshot()
+		snapshot, ok, err := sessionEvent.CompactionSnapshot()
 		if err != nil || !ok {
 			return
 		}
@@ -539,7 +555,7 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 			},
 		}
 	case session.EscalationRetried:
-		data, ok, err := event.Event.EscalationRetriedData()
+		data, ok, err := sessionEvent.EscalationRetriedData()
 		if err != nil || !ok {
 			return
 		}
@@ -558,13 +574,13 @@ func (s *runLifecycleState) annotateSession(event *RunEvent) {
 	}
 }
 
-func (s *runLifecycleState) annotateResult(event *RunEvent) {
-	usage := s.terminalUsage(RunUsageTurn, event.Result.Usage)
+func (s *runLifecycleState) annotateResult(event *RunEvent, result agent.StepResult) {
+	usage := s.terminalUsage(RunUsageTurn, result.Usage)
 	event.Usage = usage
 	event.Lifecycle = &RunLifecycle{
 		Type:       RunLifecycleRun,
 		Status:     RunLifecycleCompleted,
-		StopReason: string(event.Result.TurnStopReason),
+		StopReason: string(result.TurnStopReason),
 		Terminal:   true,
 		Usage:      usage,
 	}
@@ -595,10 +611,10 @@ func (s *runLifecycleState) terminalUsage(kind RunUsageKind, cumulative llm.Usag
 	return usage
 }
 
-func (s *runLifecycleState) annotateError(event *RunEvent) {
+func (s *runLifecycleState) annotateError(event *RunEvent, err error) {
 	errText := ""
-	if event.Err != nil {
-		errText = event.Err.Error()
+	if err != nil {
+		errText = err.Error()
 	}
 	status, canceled := statusFromError(errText)
 	event.Lifecycle = &RunLifecycle{

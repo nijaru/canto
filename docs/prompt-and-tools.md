@@ -23,13 +23,13 @@ if err != nil {
 	return err
 }
 for event := range turn.Events() {
-	switch event.Type {
-	case canto.RunEventChunk:
-		renderChunk(event.Chunk)
-	case canto.RunEventSession:
-		updateProjection(event.Event)
-	case canto.RunEventError:
-		renderError(event.Err)
+	switch payload := event.Payload.(type) {
+	case canto.RunChunkPayload:
+		renderChunk(payload.Chunk)
+	case canto.RunSessionPayload:
+		updateProjection(payload.Event)
+	case canto.RunErrorPayload:
+		renderError(payload.Err)
 	}
 }
 result, err := turn.Result()
@@ -39,8 +39,8 @@ if err != nil {
 ```
 
 `Submit` accepts one durable typed turn transaction. The returned `Turn` owns
-the stable turn ID, cancellation handle, one ordered `RunEvent` stream, and
-final settlement through `Turn.Result`.
+the stable turn ID, cancellation handle, one ordered `RunEvent` stream with
+typed payloads, and final settlement through `Turn.Result`.
 
 `Prompt` is the blocking text convenience wrapper for hosts that do not need
 turn events. `PromptStream` is a stream convenience wrapper for older/simple

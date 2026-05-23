@@ -45,7 +45,7 @@ All six sprints are complete. See [PLAN.md](PLAN.md) for full history.
 - [design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) — post-Ion phase-1 roadmap: M1 readiness first, SOTA tracks later
 - [design/api-surface-review-canto-3p5m.md](design/api-surface-review-canto-3p5m.md) — API surface DX findings and friction points (Phase 5)
 - [design/ion-friction-intake.md](design/ion-friction-intake.md) — historical intake pattern for turning consumer findings into concrete Canto issues
-- [design/ion-sota-framework-gap-2026-05-22.md](design/ion-sota-framework-gap-2026-05-22.md) — active framework-owned gap list from Ion's reopened Pi/SOTA architecture roadmap, C1-C2 implementation notes
+- [design/ion-sota-framework-gap-2026-05-22.md](design/ion-sota-framework-gap-2026-05-22.md) — active framework-owned gap list from Ion's reopened Pi/SOTA architecture roadmap, C1-C3 implementation notes
 - [design/model-context-contract-2026-04.md](design/model-context-contract-2026-04.md) — canonical neutral context/provider-prep contract and audit gates
 - [review/canto-ion-roadmap-2026-04.md](review/canto-ion-roadmap-2026-04.md) — Canto/Ion boundary review and M1 stabilization sequence
 - [review/test-quality-and-rewrite-gap-2026-04.md](review/test-quality-and-rewrite-gap-2026-04.md) — qualitative test assessment and from-scratch design gap review before Ion

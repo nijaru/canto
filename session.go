@@ -98,15 +98,17 @@ func (s *Session) Prompt(ctx context.Context, message string) (agent.StepResult,
 	return turn.Result()
 }
 
-// RunEventType identifies the source and meaning of a streamed harness event.
-type RunEventType string
+// RunEventKind identifies the concrete payload carried by a streamed harness
+// event. It is derived from RunEvent.Payload instead of stored as a second
+// semantic channel.
+type RunEventKind string
 
 const (
-	RunEventChunk   RunEventType = "chunk"
-	RunEventSession RunEventType = "session"
-	RunEventRetry   RunEventType = "retry"
-	RunEventResult  RunEventType = "result"
-	RunEventError   RunEventType = "error"
+	RunEventChunk   RunEventKind = "chunk"
+	RunEventSession RunEventKind = "session"
+	RunEventRetry   RunEventKind = "retry"
+	RunEventResult  RunEventKind = "result"
+	RunEventError   RunEventKind = "error"
 )
 
 // RunEventDurability identifies whether a streamed event is backed by the
@@ -119,20 +121,156 @@ const (
 	RunEventTerminal RunEventDurability = "terminal"
 )
 
+// RunEventPayload is the typed content of one host-facing streamed event.
+// Hosts should switch on this payload, then use the envelope metadata for
+// ordering, durability, usage, and lifecycle projection.
+type RunEventPayload interface {
+	runEventPayload()
+	Kind() RunEventKind
+}
+
+// RunChunkPayload carries live provider stream output.
+type RunChunkPayload struct {
+	Chunk llm.Chunk
+}
+
+func (RunChunkPayload) runEventPayload() {}
+func (RunChunkPayload) Kind() RunEventKind {
+	return RunEventChunk
+}
+
+// RunSessionPayload carries a durable session-log event.
+type RunSessionPayload struct {
+	Event session.Event
+}
+
+func (RunSessionPayload) runEventPayload() {}
+func (RunSessionPayload) Kind() RunEventKind {
+	return RunEventSession
+}
+
+// RunRetryPayload carries live provider retry metadata.
+type RunRetryPayload struct {
+	Retry llm.RetryEvent
+}
+
+func (RunRetryPayload) runEventPayload() {}
+func (RunRetryPayload) Kind() RunEventKind {
+	return RunEventRetry
+}
+
+// RunResultPayload carries terminal successful turn settlement.
+type RunResultPayload struct {
+	Result agent.StepResult
+}
+
+func (RunResultPayload) runEventPayload() {}
+func (RunResultPayload) Kind() RunEventKind {
+	return RunEventResult
+}
+
+// RunErrorPayload carries terminal failed turn settlement.
+type RunErrorPayload struct {
+	Err error
+}
+
+func (RunErrorPayload) runEventPayload() {}
+func (RunErrorPayload) Kind() RunEventKind {
+	return RunEventError
+}
+
 // RunEvent is one item in a host-facing streamed turn.
 type RunEvent struct {
-	Type       RunEventType
 	SessionID  string
 	TurnID     string
 	Seq        int64
 	Durability RunEventDurability
 	Usage      *RunUsage
 	Lifecycle  *RunLifecycle
-	Chunk      llm.Chunk
-	Retry      llm.RetryEvent
-	Event      session.Event
-	Result     agent.StepResult
-	Err        error
+	Payload    RunEventPayload
+}
+
+// Kind returns the concrete payload kind.
+func (e RunEvent) Kind() RunEventKind {
+	if e.Payload == nil {
+		return ""
+	}
+	return e.Payload.Kind()
+}
+
+// Chunk returns the provider chunk payload when this is a chunk event.
+func (e RunEvent) Chunk() (llm.Chunk, bool) {
+	switch payload := e.Payload.(type) {
+	case RunChunkPayload:
+		return payload.Chunk, true
+	case *RunChunkPayload:
+		if payload != nil {
+			return payload.Chunk, true
+		}
+	default:
+		return llm.Chunk{}, false
+	}
+	return llm.Chunk{}, false
+}
+
+// SessionEvent returns the durable session event payload when present.
+func (e RunEvent) SessionEvent() (session.Event, bool) {
+	switch payload := e.Payload.(type) {
+	case RunSessionPayload:
+		return payload.Event, true
+	case *RunSessionPayload:
+		if payload != nil {
+			return payload.Event, true
+		}
+	default:
+		return session.Event{}, false
+	}
+	return session.Event{}, false
+}
+
+// Retry returns the retry payload when this is a retry event.
+func (e RunEvent) Retry() (llm.RetryEvent, bool) {
+	switch payload := e.Payload.(type) {
+	case RunRetryPayload:
+		return payload.Retry, true
+	case *RunRetryPayload:
+		if payload != nil {
+			return payload.Retry, true
+		}
+	default:
+		return llm.RetryEvent{}, false
+	}
+	return llm.RetryEvent{}, false
+}
+
+// Result returns the terminal result payload when this is a result event.
+func (e RunEvent) Result() (agent.StepResult, bool) {
+	switch payload := e.Payload.(type) {
+	case RunResultPayload:
+		return payload.Result, true
+	case *RunResultPayload:
+		if payload != nil {
+			return payload.Result, true
+		}
+	default:
+		return agent.StepResult{}, false
+	}
+	return agent.StepResult{}, false
+}
+
+// Err returns the terminal error payload when this is an error event.
+func (e RunEvent) Err() (error, bool) {
+	switch payload := e.Payload.(type) {
+	case RunErrorPayload:
+		return payload.Err, true
+	case *RunErrorPayload:
+		if payload != nil {
+			return payload.Err, true
+		}
+	default:
+		return nil, false
+	}
+	return nil, false
 }
 
 type runEventEmitter struct {
@@ -166,7 +304,7 @@ func (e *runEventEmitter) emitLive(event RunEvent) bool {
 func (e *runEventEmitter) emitSession(ctx context.Context, event session.Event) bool {
 	return e.emit(
 		ctx,
-		RunEvent{Type: RunEventSession, Event: event},
+		RunEvent{Payload: RunSessionPayload{Event: event}},
 		RunEventDurable,
 		true,
 	)
@@ -246,20 +384,20 @@ func (s *Session) Submit(ctx context.Context, prompt Prompt) (*Turn, error) {
 		defer detach()
 
 		runCtx := llm.WithRetryObserver(ctx, func(event llm.RetryEvent) {
-			emitter.emitLive(RunEvent{Type: RunEventRetry, Retry: event})
+			emitter.emitLive(RunEvent{Payload: RunRetryPayload{Retry: event}})
 		})
 		result, err := s.harness.Runner.SendStream(runCtx, s.id, prompt, func(chunk *llm.Chunk) {
 			if chunk == nil {
 				return
 			}
-			emitter.emitLive(RunEvent{Type: RunEventChunk, Chunk: *chunk})
+			emitter.emitLive(RunEvent{Payload: RunChunkPayload{Chunk: *chunk}})
 		})
 		if err != nil {
-			emitter.emitFinal(RunEvent{Type: RunEventError, Err: err})
+			emitter.emitFinal(RunEvent{Payload: RunErrorPayload{Err: err}})
 			resultCh <- turnOutcome{err: err}
 			return
 		}
-		emitter.emitFinal(RunEvent{Type: RunEventResult, Result: result})
+		emitter.emitFinal(RunEvent{Payload: RunResultPayload{Result: result}})
 		resultCh <- turnOutcome{result: result}
 	}()
 	return &Turn{

@@ -64,10 +64,10 @@ Target shape:
 - `Harness.Session(id)` returns the common host-facing durable conversation
   handle. Normal hosts prompt through that handle; direct `runtime.Runner` and
   `agent.Turn` use remains the advanced escape hatch.
-- `Session.PromptStream` exposes one ordered run-event stream for model chunks,
-  durable lifecycle events, tool starts/results, approval/input waits, terminal
-  state, and final result. Hosts should not merge a chunk callback and watcher
-  channel to reconstruct one turn.
+- `Session.PromptStream` and `Turn.Events` expose one ordered run-event stream
+  whose envelope carries session/turn/sequence/durability metadata and whose
+  payload is a typed chunk/session/retry/result/error value. Hosts should not
+  merge a chunk callback and watcher channel to reconstruct one turn.
 - `RunEvent.Lifecycle` and `RunEvent.Usage` project generic framework state
   directly: usage deltas/cumulative usage, tool status and active tool
   snapshots, compaction start/completion, retry, cancellation, and terminal

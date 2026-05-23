@@ -12,17 +12,32 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
+func runSessionEvent(event session.Event) RunEvent {
+	return RunEvent{Payload: RunSessionPayload{Event: event}}
+}
+
+func runChunkEvent(chunk llm.Chunk) RunEvent {
+	return RunEvent{Payload: RunChunkPayload{Chunk: chunk}}
+}
+
+func runResultEvent(result agent.StepResult) RunEvent {
+	return RunEvent{Payload: RunResultPayload{Result: result}}
+}
+
+func runErrorEvent(err error) RunEvent {
+	return RunEvent{Payload: RunErrorPayload{Err: err}}
+}
+
 func TestRunLifecycleAnnotatesCompactionRetryAndCancellation(t *testing.T) {
 	var state runLifecycleState
 
-	started := RunEvent{
-		Type: RunEventSession,
-		Event: session.NewCompactionStartedEvent("sess", session.CompactionStartedData{
+	started := runSessionEvent(
+		session.NewCompactionStartedEvent("sess", session.CompactionStartedData{
 			Strategy:      "summarize",
 			MaxTokens:     1000,
 			CurrentTokens: 1500,
 		}),
-	}
+	)
 	state.annotate(&started)
 	if started.Lifecycle == nil ||
 		started.Lifecycle.Type != RunLifecycleCompaction ||
@@ -32,15 +47,14 @@ func TestRunLifecycleAnnotatesCompactionRetryAndCancellation(t *testing.T) {
 		t.Fatalf("compaction started lifecycle = %#v", started.Lifecycle)
 	}
 
-	compaction := RunEvent{
-		Type: RunEventSession,
-		Event: session.NewCompactionEvent("sess", session.CompactionSnapshot{
+	compaction := runSessionEvent(
+		session.NewCompactionEvent("sess", session.CompactionSnapshot{
 			Strategy:      "summarize",
 			MaxTokens:     1000,
 			CurrentTokens: 1500,
 			CutoffEventID: "event-1",
 		}),
-	}
+	)
 	state.annotate(&compaction)
 	if compaction.Lifecycle == nil ||
 		compaction.Lifecycle.Type != RunLifecycleCompaction ||
@@ -50,16 +64,15 @@ func TestRunLifecycleAnnotatesCompactionRetryAndCancellation(t *testing.T) {
 		t.Fatalf("compaction lifecycle = %#v", compaction.Lifecycle)
 	}
 
-	retry := RunEvent{
-		Type: RunEventSession,
-		Event: session.NewEscalationRetriedEvent("sess", session.EscalationRetriedData{
+	retry := runSessionEvent(
+		session.NewEscalationRetriedEvent("sess", session.EscalationRetriedData{
 			AgentID: "agent",
 			Scope:   "tool",
 			Target:  "call-1",
 			Attempt: 2,
 			Error:   "transient",
 		}),
-	}
+	)
 	state.annotate(&retry)
 	if retry.Lifecycle == nil ||
 		retry.Lifecycle.Type != RunLifecycleRetry ||
@@ -69,13 +82,12 @@ func TestRunLifecycleAnnotatesCompactionRetryAndCancellation(t *testing.T) {
 		t.Fatalf("retry lifecycle = %#v", retry.Lifecycle)
 	}
 
-	canceledTurn := RunEvent{
-		Type: RunEventSession,
-		Event: session.NewTurnCompletedEvent("sess", session.TurnCompletedData{
+	canceledTurn := runSessionEvent(
+		session.NewTurnCompletedEvent("sess", session.TurnCompletedData{
 			AgentID: "agent",
 			Error:   context.Canceled.Error(),
 		}),
-	}
+	)
 	state.annotate(&canceledTurn)
 	if canceledTurn.Lifecycle == nil ||
 		canceledTurn.Lifecycle.Type != RunLifecycleTurn ||
@@ -85,7 +97,7 @@ func TestRunLifecycleAnnotatesCompactionRetryAndCancellation(t *testing.T) {
 		t.Fatalf("canceled turn lifecycle = %#v", canceledTurn.Lifecycle)
 	}
 
-	runErr := RunEvent{Type: RunEventError, Err: context.Canceled}
+	runErr := runErrorEvent(context.Canceled)
 	state.annotate(&runErr)
 	if runErr.Lifecycle == nil ||
 		runErr.Lifecycle.Type != RunLifecycleRun ||
@@ -98,7 +110,7 @@ func TestRunLifecycleAnnotatesCompactionRetryAndCancellation(t *testing.T) {
 
 func TestRunLifecycleAnnotatesFailedRunError(t *testing.T) {
 	var state runLifecycleState
-	event := RunEvent{Type: RunEventError, Err: errors.New("provider failed")}
+	event := runErrorEvent(errors.New("provider failed"))
 	state.annotate(&event)
 	if event.Lifecycle == nil ||
 		event.Lifecycle.Type != RunLifecycleRun ||
@@ -203,7 +215,7 @@ func TestRunLifecycleAnnotatesChildEvents(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var state runLifecycleState
-			event := RunEvent{Type: RunEventSession, Event: tt.event}
+			event := runSessionEvent(tt.event)
 			state.annotate(&event)
 			if event.Lifecycle == nil ||
 				event.Lifecycle.Type != RunLifecycleChild ||
@@ -253,7 +265,7 @@ func TestRunLifecycleAnnotatesWaitEvents(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var state runLifecycleState
-			event := RunEvent{Type: RunEventSession, Event: tt.event}
+			event := runSessionEvent(tt.event)
 			state.annotate(&event)
 			if event.Lifecycle == nil ||
 				event.Lifecycle.Type != RunLifecycleWait ||
@@ -309,7 +321,7 @@ func TestRunLifecycleAnnotatesApprovalEvents(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var state runLifecycleState
-			event := RunEvent{Type: RunEventSession, Event: tt.event}
+			event := runSessionEvent(tt.event)
 			state.annotate(&event)
 			if event.Lifecycle == nil ||
 				event.Lifecycle.Type != RunLifecycleApproval ||
@@ -326,12 +338,11 @@ func TestRunLifecycleAnnotatesApprovalEvents(t *testing.T) {
 func TestRunLifecycleTerminalUsageEmitsUnreportedDeltaOnce(t *testing.T) {
 	var state runLifecycleState
 
-	chunk := RunEvent{
-		Type: RunEventChunk,
-		Chunk: llm.Chunk{
+	chunk := runChunkEvent(
+		llm.Chunk{
 			Usage: &llm.Usage{InputTokens: 10, TotalTokens: 10, Cost: 0.01},
 		},
-	}
+	)
 	state.annotate(&chunk)
 	if chunk.Usage == nil ||
 		chunk.Usage.Delta.TotalTokens != 10 ||
@@ -339,9 +350,8 @@ func TestRunLifecycleTerminalUsageEmitsUnreportedDeltaOnce(t *testing.T) {
 		t.Fatalf("chunk usage = %#v", chunk.Usage)
 	}
 
-	turn := RunEvent{
-		Type: RunEventSession,
-		Event: session.NewTurnCompletedEvent("sess", session.TurnCompletedData{
+	turn := runSessionEvent(
+		session.NewTurnCompletedEvent("sess", session.TurnCompletedData{
 			Usage: llm.Usage{
 				InputTokens:  12,
 				OutputTokens: 5,
@@ -349,7 +359,7 @@ func TestRunLifecycleTerminalUsageEmitsUnreportedDeltaOnce(t *testing.T) {
 				Cost:         0.017,
 			},
 		}),
-	}
+	)
 	state.annotate(&turn)
 	if turn.Usage == nil ||
 		turn.Usage.Kind != RunUsageTurn ||
@@ -361,15 +371,14 @@ func TestRunLifecycleTerminalUsageEmitsUnreportedDeltaOnce(t *testing.T) {
 		t.Fatalf("turn terminal usage = %#v", turn.Usage)
 	}
 
-	result := RunEvent{
-		Type: RunEventResult,
-		Result: agent.StepResult{Usage: llm.Usage{
+	result := runResultEvent(
+		agent.StepResult{Usage: llm.Usage{
 			InputTokens:  12,
 			OutputTokens: 5,
 			TotalTokens:  17,
 			Cost:         0.017,
 		}},
-	}
+	)
 	state.annotate(&result)
 	if result.Usage == nil ||
 		result.Usage.Cumulative.TotalTokens != 17 ||
