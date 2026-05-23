@@ -1,8 +1,8 @@
 # Status
 
 **Phase:** Ion pre-v0 design-closure support
-**Focus:** Implementing concrete framework seams from Ion's clean-sheet
-Pi/SOTA architecture review before live validation.
+**Focus:** Implement concrete framework seams from Ion's clean-sheet Pi/SOTA
+architecture review before live validation.
 **Blockers:** None.
 **Updated:** 2026-05-22
 
@@ -98,9 +98,12 @@ lane is selected.
 - Performance is part of this Canto lane: reduce host-side stream assembly,
   avoid unnecessary polling/flush loops, keep replay/resume bounded, and give
   Ion a low-latency stream it can render without reconstruction.
-- `canto-vhjg` is the current implementation slice: `RunEvent` is being
-  collapsed to envelope metadata plus one typed payload so Ion can translate
-  framework events without a `Type` plus side-field reconstruction channel.
+- `canto-vhjg` is closed in Canto `5f313f6`: `RunEvent` now carries envelope
+  metadata plus one typed payload, and Ion imported that exact revision in
+  `9ff72a4`.
+- Remaining P1 framework seams from the reopened roadmap are `canto-33aq`
+  typed tool authoring/toolkit wiring and `canto-re2x` facade replay/snapshot/
+  fork methods.
 
 **Ion pre-v0 design-closure support:**
 
