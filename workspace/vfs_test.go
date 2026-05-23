@@ -546,6 +546,13 @@ func TestMultiFSGlobIncludesMountedFilesystem(t *testing.T) {
 	if !slices.Equal(matches, []string{"memory/mount.txt"}) {
 		t.Fatalf("mounted glob = %#v, want memory/mount.txt", matches)
 	}
+
+	if _, err := multi.Glob(t.Context(), "../*.txt"); !errors.Is(err, ErrPathTraversal) {
+		t.Fatalf("traversal glob error = %v, want ErrPathTraversal", err)
+	}
+	if _, err := multi.Glob(t.Context(), "/tmp/*.txt"); !errors.Is(err, ErrAbsolutePath) {
+		t.Fatalf("absolute glob error = %v, want ErrAbsolutePath", err)
+	}
 }
 
 func entryNames(entries []fs.DirEntry) []string {

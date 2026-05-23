@@ -115,7 +115,10 @@ func (m *MultiFS) Stat(name string) (fs.FileInfo, error) {
 }
 
 func (m *MultiFS) Glob(ctx context.Context, pattern string) ([]string, error) {
-	pattern = strings.TrimPrefix(path.Clean(pattern), "/")
+	pattern, err := cleanGlobPattern(pattern)
+	if err != nil {
+		return nil, err
+	}
 	baseMatches, err := m.base.Glob(ctx, pattern)
 	if err != nil {
 		return nil, err

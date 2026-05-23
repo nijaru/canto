@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/bmatcuk/doublestar/v4"
 )
 
 // Root provides symlink-safe rooted filesystem access for one workspace.
@@ -173,9 +175,13 @@ func (r *Root) Glob(ctx context.Context, pattern string) ([]string, error) {
 	if r == nil || r.root == nil {
 		return nil, fmt.Errorf("workspace is not open")
 	}
+	pattern, err := cleanGlobPattern(pattern)
+	if err != nil {
+		return nil, err
+	}
 
 	var matches []string
-	err := fs.WalkDir(r.root.FS(), ".", func(path string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(r.root.FS(), ".", func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -185,7 +191,7 @@ func (r *Root) Glob(ctx context.Context, pattern string) ([]string, error) {
 		if d.IsDir() {
 			return nil
 		}
-		ok, matchErr := filepath.Match(pattern, path)
+		ok, matchErr := doublestar.Match(pattern, filepath.ToSlash(path))
 		if matchErr != nil {
 			return fmt.Errorf("glob: invalid pattern %q: %w", pattern, matchErr)
 		}

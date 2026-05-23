@@ -43,6 +43,7 @@ All six sprints are complete. See [PLAN.md](PLAN.md) for full history.
 - [design/authoring-surface.md](design/authoring-surface.md) — Phase 5 authoring design plus current harness/session facade refactor target
 - [design/optimal-core-redesign-2026-05.md](design/optimal-core-redesign-2026-05.md) — proactive Canto session/turn transaction rewrite plan for Ion's optimal core
 - [design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) — post-Ion phase-1 roadmap: M1 readiness first, SOTA tracks later
+- [design/ion-p1-stabilization-support-2026-05-23.md](design/ion-p1-stabilization-support-2026-05-23.md) — Ion-first kernel strategy and Canto P1 support plan
 - [design/api-surface-review-canto-3p5m.md](design/api-surface-review-canto-3p5m.md) — API surface DX findings and friction points (Phase 5)
 - [design/ion-friction-intake.md](design/ion-friction-intake.md) — historical intake pattern for turning consumer findings into concrete Canto issues
 - [design/ion-sota-framework-gap-2026-05-22.md](design/ion-sota-framework-gap-2026-05-22.md) — active framework-owned gap list from Ion's reopened Pi/SOTA architecture roadmap, C1-C5 implementation notes

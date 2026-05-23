@@ -21,9 +21,8 @@ type options struct {
 
 func defaultOptions() options {
 	return options{
-		waitTimeout:      defaultWaitTimeout,
-		executionTimeout: defaultExecutionTimeout,
-		hooks:            hook.NewRunner(),
+		waitTimeout: defaultWaitTimeout,
+		hooks:       hook.NewRunner(),
 	}
 }
 
@@ -45,6 +44,9 @@ func WithWaitTimeout(d time.Duration) Option {
 	}
 }
 
+// WithExecutionTimeout bounds active agent execution. The default is 0, which
+// leaves turns bounded by caller/provider cancellation and narrower operation
+// timeouts instead of a hidden whole-turn wall clock.
 func WithExecutionTimeout(d time.Duration) Option {
 	return func(opts *options) {
 		opts.executionTimeout = d

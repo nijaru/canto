@@ -21,6 +21,15 @@ The Canto/Ion split is:
 - **Ion:** policy and product. Terminal UX, command palette, planner/task behavior, approval copy and delivery, default shell classifier heuristics, memory aggressiveness, model choice defaults, and user workflow.
 - **Shared boundary:** if every serious host would need to reimplement state-machine or durability plumbing, it belongs in Canto. If the choice expresses taste, UX, environment assumptions, or Ion's workflow, it belongs in Ion and plugs into a Canto seam.
 
+Current correction: Ion's reopened P1 dogfood failures make Ion the acceptance
+owner. Canto should keep the long-term framework split, but it is a pre-M1
+kernel until Ion's Pi-level scenario matrix is green. Do not make Ion fully
+standalone by default; that would duplicate runtime/session/tool lifecycle and
+make later extraction risky. Also do not optimize for Canto public-framework
+purity while Ion's basic loop is failing. If a Canto surface blocks Ion P1,
+Ion may carry a clean local path and Canto should track whether the primitive
+is re-extracted, simplified, or deleted after Ion proves the behavior.
+
 The next-phase roadmap lives in [design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md). Use it to keep work ordered: C0 Ion product validation, C1 M1 docs/examples/API readiness, C2 API/DX simplification, C3 workspace/sandbox, C4 eval/optimizer artifacts, C5 multi-agent/extensibility. Do not let C3-C5 research jump ahead of C0-C1.
 
 Existing research already covers LangGraph, PydanticAI, AutoGen, Vercel AI SDK, provider SDKs, HITL, durability, graph workflows, tool orchestration, context engineering, memory, and security. The framework reference map should remain broader and current: OpenAI Agents SDK, Anthropic/Claude Agent SDK, MCP, A2A, Google ADK, Microsoft Agent Framework, Semantic Kernel, AutoGen, LangGraph/LangChain, Pydantic AI, LlamaIndex, CrewAI, Agno, Mastra, Vercel AI SDK, BeeAI, Letta, Flue, DSPy/GEPA, and Temporal/DBOS/Inngest-style durable execution systems are all valid inputs. Do not restart a broad framework survey unless a concrete gap appears. Current framework references are examples for Canto primitives, not blueprints; mixed reviews are expected. Ion is tracking a deferred recent-paper delta scan as `tk-k4y8`; it is no longer blocked by phase-1 stabilization, but it should wait until a phase-2 research lane is selected. DSPy and GEPA remain inputs for the optimization surface (signatures/modules/compilers vs. reflective prompt evolution), not the center of the design.
@@ -52,6 +61,9 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 | Gate | Task | Intent |
 | :--- | :--- | :--- |
 | 0 active | `canto-98el` Pi-like session facade state | Make `Harness.Session(id)` own phase, active run, queue updates, save-point, settled, abort, wait-for-idle, and queued prompt state; current slice adds Pi-like steering/follow-up drain modes before Ion migrates off local turn ownership |
+| 0 active | `canto-iusu` Ion-proven P1 kernel reduction | Audit Ion-used Canto surfaces and reduce, rewrite, delete, or re-extract primitives based on Ion's Pi-level acceptance evidence before M1 posture resumes |
+| 0 done | `canto-x8d0` runtime cancellation and timeout semantics | Runtime execution timeout is now opt-in; normal root/child runner turns no longer inherit a hidden whole-turn wall-clock deadline |
+| 0 done | `canto-y88u` workspace/path contracts | Workspace glob patterns now reject absolute/traversal/malformed inputs like normal rooted paths and support recursive `**` matching |
 | 0 done | `canto-01ge` native Turn/Submit facade | Promoted the accepted turn transaction to the primary host API before Ion deleted adapter fallbacks |
 | 0 done | `canto-sqtc` sequence-bounded event reads | Expose framework-owned `EventsAfter` so hosts can maintain typed projections without reaching into store internals |
 | 0 done | `canto-d6kl` durable turn transaction identity and sequence | Moved turn identity/session sequence from host-only `RunEvent` metadata into durable session events/logs, aligned with AX `seq`/`exec_id` and Pi session-owned prompt lifecycle |

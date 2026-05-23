@@ -9,10 +9,7 @@ import (
 	"github.com/nijaru/canto/session"
 )
 
-const (
-	defaultWaitTimeout      = 30 * time.Second
-	defaultExecutionTimeout = 2 * time.Minute
-)
+const defaultWaitTimeout = 30 * time.Second
 
 // Runner orchestrates the execution of an agent within a session.
 // By default it uses built-in local coordination to serialize execution within

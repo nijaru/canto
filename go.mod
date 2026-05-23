@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.27.1
+	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/coder/hnsw v0.6.1
 	github.com/go-json-experiment/json v0.0.0-20260214004413-d219187c3433
 	github.com/google/jsonschema-go v0.4.2

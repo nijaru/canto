@@ -3,7 +3,7 @@
 **Phase:** Ion Pi-first P1 migration support
 **Focus:** Move Canto's normal host path closer to Pi's proven
 session-scoped harness design before Ion promotes any Pi+ work.
-**Blockers:** None.
+**Blockers:** Ion's reopened P1 acceptance harness is not green.
 **Updated:** 2026-05-23
 
 ## Context
@@ -26,6 +26,11 @@ work:
   proof. Pi is the P1 design control, and Canto should close framework-owned
   gaps where Pi has one session-scoped harness owner instead of split
   Canto/Ion ownership.
+- **Ion-first kernel rule:** Until Ion passes its Pi-level scenario matrix,
+  Canto is a pre-M1 kernel, not a stable upstream dependency. Keep reusable
+  primitives in Canto only when Ion needs and proves them. If a Canto boundary
+  slows Ion P1, Ion may carry a clean local path while Canto tracks whether to
+  re-extract, simplify, or delete the primitive after acceptance.
 - **Next-phase roadmap:** [ai/design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) remains the sequencing source, amended by `canto-2vxb`: make the harness facade clear before polishing M1 docs/release language.
 
 SOTA/DX research is part of the Canto pre-Ion gate when it can change stable API or primitives. New research remains delta-based and must name the Canto primitive it would change.
@@ -118,6 +123,14 @@ lane is selected.
   `EffectiveSettings`, the root facade exposes `EffectiveSettings`, `SetModel`,
   and `SetThinkingLevel`, and `SetModel` updates the harness agent through a
   locked model setter for future turns.
+- `canto-x8d0` is closed: `runtime.Runner` and the shared child runner now
+  default to no whole-turn execution timeout. `WithExecutionTimeout` remains
+  opt-in for hosts that intentionally want a cap; normal host turns are bounded
+  by caller/provider cancellation and narrower operation timeouts.
+- `canto-y88u` is closed: workspace glob patterns now use the same
+  absolute/traversal/malformed path error classes as normal rooted file paths,
+  and `Root.Glob` supports recursive `**` matching for host tool authors that
+  need Pi-like workspace search behavior.
 - `canto-vhjg` is closed in Canto `5f313f6`: `RunEvent` now carries envelope
   metadata plus one typed payload, and Ion imported that exact revision in
   `9ff72a4`.

@@ -10,6 +10,13 @@ Canto is the general-purpose framework underneath it. Ion is the primary real
 consumer pressure for Canto's native agent-loop contracts, but it is not merely
 a test harness and it does not define the whole framework scope.
 
+During Ion Phase 1, optimize for Ion reliability before public framework
+purity. Canto is a pre-M1 kernel, not a stable upstream dependency. It is
+acceptable to break, reduce, or rewrite Canto APIs when Ion's Pi-level
+acceptance matrix proves the current surface is wrong. If Ion must temporarily
+move a behavior local to unblock P1, record the framework gap here and
+re-extract only after the behavior is proven.
+
 Canto work should stay focused on framework-owned defects exposed by Ion,
 explicitly selected optimal-core redesign work, or explicitly selected M1
 framework-readiness work:
@@ -31,9 +38,10 @@ Do not expand Canto's public-framework surface or SOTA primitives just because
 Ion's current phase-1 bar is green. When Ion's long-term foundation requires a
 stronger core, proactively rewrite or replace flawed Canto session/turn
 surfaces instead of waiting for each flaw to appear as dogfood failure. Keep
-Canto as the source of truth for framework-owned mechanisms, make those fixes
-prove themselves through Ion, and resume docs/release posture only when the M1
-lane is explicitly selected. Prefer targeted rewrites of load-bearing flawed
+Canto as the source of truth for framework-owned mechanisms only when those
+mechanisms are small, proven, and useful to Ion. Make fixes prove themselves
+through Ion's acceptance harness, and resume docs/release posture only when the
+M1 lane is explicitly selected. Prefer targeted rewrites of load-bearing flawed
 modules over isolated symptom patches or whole-repo rewrites.
 
 ## Project Structure
@@ -160,7 +168,11 @@ During Ion stabilization:
 - Check Ion's active core-loop audit docs before broad new Canto planning.
 - Add Canto tasks for concrete framework issues and for explicitly selected
   optimal-core redesign slices, not Ion product work.
-- After a Canto fix, run the focused package test and `go test ./...`; then import the commit into Ion and verify Ion.
+- After a Canto fix, run the focused package test and `go test ./...`; then
+  import the commit into Ion and verify Ion.
+- If Canto's current abstraction slows Ion P1, prefer a clean break over
+  compatibility shims. Ion's P1 acceptance result decides whether the primitive
+  stays in Canto, moves to Ion, or is deleted.
 
 ## Current Focus
 

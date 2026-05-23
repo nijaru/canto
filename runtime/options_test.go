@@ -43,6 +43,30 @@ func TestNewRunnerAppliesOptions(t *testing.T) {
 	}
 }
 
+func TestNewRunnerDefaultsToNoExecutionTimeout(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	runner := NewRunner(store, &echoAgent{})
+	defer runner.Close()
+
+	if runner.executionTimeout != 0 {
+		t.Fatalf("execution timeout = %v, want disabled default", runner.executionTimeout)
+	}
+	if runner.childRunner == nil {
+		t.Fatal("expected shared child runner")
+	}
+	if runner.childRunner.executionTimeout != 0 {
+		t.Fatalf(
+			"shared child execution timeout = %v, want disabled default",
+			runner.childRunner.executionTimeout,
+		)
+	}
+}
+
 func TestNewRunnerKeepsNoopHooksWhenOptionIsNil(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {

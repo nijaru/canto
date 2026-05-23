@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -148,4 +149,29 @@ func depth(path string) int {
 		return 0
 	}
 	return len(strings.Split(path, string(filepath.Separator)))
+}
+
+func cleanGlobPattern(pattern string) (string, error) {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return "", fmt.Errorf("%w: glob pattern is required", ErrInvalidPath)
+	}
+	if strings.ContainsRune(pattern, '\x00') {
+		return "", fmt.Errorf("%w: NUL byte in glob pattern %q", ErrInvalidPath, pattern)
+	}
+	if filepath.IsAbs(pattern) || filepath.VolumeName(pattern) != "" {
+		return "", fmt.Errorf("%w: %q", ErrAbsolutePath, pattern)
+	}
+
+	cleaned := path.Clean(filepath.ToSlash(pattern))
+	if cleaned == "." {
+		return "", fmt.Errorf("%w: root glob pattern %q", ErrInvalidPath, pattern)
+	}
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", fmt.Errorf("%w: %q", ErrPathTraversal, pattern)
+	}
+	if depth(filepath.FromSlash(cleaned)) > DefaultMaxDepth {
+		return "", fmt.Errorf("%w: %q", ErrPathTooDeep, pattern)
+	}
+	return cleaned, nil
 }

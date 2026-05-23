@@ -20,6 +20,9 @@ func TestRootReadWriteListAndGlob(t *testing.T) {
 	if err := root.WriteFile("nested/hello.txt", []byte("hi"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
+	if err := root.WriteFile("nested/deep/child.txt", []byte("hi"), 0o644); err != nil {
+		t.Fatalf("WriteFile deep: %v", err)
+	}
 
 	data, err := root.ReadFile("nested/hello.txt")
 	if err != nil {
@@ -33,7 +36,9 @@ func TestRootReadWriteListAndGlob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)
 	}
-	if len(entries) != 1 || entries[0].Name() != "hello.txt" {
+	if len(entries) != 2 ||
+		entries[0].Name() != "deep" ||
+		entries[1].Name() != "hello.txt" {
 		t.Fatalf("unexpected entries: %#v", entries)
 	}
 
@@ -44,6 +49,19 @@ func TestRootReadWriteListAndGlob(t *testing.T) {
 	slices.Sort(matches)
 	if !slices.Equal(matches, []string{"nested/hello.txt"}) {
 		t.Fatalf("Glob = %#v, want %#v", matches, []string{"nested/hello.txt"})
+	}
+
+	matches, err = root.Glob(t.Context(), "nested/**/*.txt")
+	if err != nil {
+		t.Fatalf("Glob recursive: %v", err)
+	}
+	slices.Sort(matches)
+	if !slices.Equal(matches, []string{"nested/deep/child.txt", "nested/hello.txt"}) {
+		t.Fatalf(
+			"recursive Glob = %#v, want %#v",
+			matches,
+			[]string{"nested/deep/child.txt", "nested/hello.txt"},
+		)
 	}
 }
 
@@ -138,6 +156,12 @@ func TestRootRejectsAbsoluteAndTraversalPaths(t *testing.T) {
 	}
 	if _, err := root.ReadFile(filepath.Join(dir, "abs.txt")); err == nil {
 		t.Fatal("expected absolute read to fail")
+	}
+	if _, err := root.Glob(t.Context(), filepath.Join(dir, "*.txt")); err == nil {
+		t.Fatal("expected absolute glob to fail")
+	}
+	if _, err := root.Glob(t.Context(), "../*.txt"); err == nil {
+		t.Fatal("expected traversal glob to fail")
 	}
 }
 
