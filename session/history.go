@@ -186,7 +186,7 @@ func rawEntriesFromEvents(events []Event) ([]HistoryEntry, error) {
 	res := make([]HistoryEntry, 0, len(events)/2+1)
 	for i := range events {
 		e := &events[i]
-		if e.Type != MessageAdded && e.Type != ContextAdded {
+		if e.Type != MessageAdded && e.Type != ContextAdded && e.Type != BranchSummary {
 			continue
 		}
 
@@ -215,6 +215,20 @@ func historyEntryFromEvent(e *Event) (HistoryEntry, error) {
 			ContextKind:      entry.Kind,
 			ContextPlacement: entry.Placement,
 			Message:          contextEntryMessage(*entry),
+		}, nil
+	}
+	if e.Type == BranchSummary {
+		summary, ok, err := e.BranchSummaryData()
+		if err != nil {
+			return HistoryEntry{}, err
+		}
+		if !ok {
+			return HistoryEntry{}, nil
+		}
+		return HistoryEntry{
+			EventID:   e.ID.String(),
+			EventType: BranchSummary,
+			Message:   branchSummaryMessage(summary),
 		}, nil
 	}
 

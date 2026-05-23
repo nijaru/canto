@@ -155,6 +155,15 @@ func (s *Session) validateWritableSequenceLocked(e *Event) error {
 }
 
 func validateWritableEvent(e *Event) error {
+	if e.Type == BranchSummary {
+		summary, ok, err := e.BranchSummaryData()
+		if err != nil {
+			return err
+		}
+		if ok {
+			return validateBranchSummary(summary)
+		}
+	}
 	if e.Type != MessageAdded {
 		return nil
 	}

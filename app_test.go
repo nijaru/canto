@@ -962,6 +962,31 @@ func TestHarnessSessionTreeFacade(t *testing.T) {
 	if len(events) != 1 || events[0].ID != root.ID {
 		t.Fatalf("active events = %#v, want root only", events)
 	}
+
+	if err := facade.MoveLeafWithSummary(t.Context(), root.ID.String(), session.BranchSummaryData{
+		Summary: "summarized abandoned branch",
+	}); err != nil {
+		t.Fatalf("MoveLeafWithSummary: %v", err)
+	}
+	events, err = facade.ActiveEvents(t.Context())
+	if err != nil {
+		t.Fatalf("ActiveEvents after summary: %v", err)
+	}
+	if len(events) != 2 || events[0].ID != root.ID || events[1].Type != session.BranchSummary {
+		t.Fatalf("active events after summary = %#v, want root plus branch summary", events)
+	}
+	messages, err := facade.Replay(t.Context())
+	if err != nil {
+		t.Fatalf("Replay after summary: %v", err)
+	}
+	effective, err := messages.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages after summary: %v", err)
+	}
+	if len(effective) != 2 || effective[0].Content != "root" ||
+		!strings.Contains(effective[1].Content, "summarized abandoned branch") {
+		t.Fatalf("effective messages after summary = %#v", effective)
+	}
 }
 
 func TestHarnessSessionModelAndThinkingSelection(t *testing.T) {

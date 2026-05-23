@@ -80,7 +80,7 @@ func (r *Rebuilder) rebuildEntriesLocked(sess *Session) ([]HistoryEntry, error) 
 			}
 			continue
 		}
-		if e.Type != MessageAdded && e.Type != ContextAdded {
+		if e.Type != MessageAdded && e.Type != ContextAdded && e.Type != BranchSummary {
 			continue
 		}
 

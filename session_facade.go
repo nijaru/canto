@@ -91,6 +91,20 @@ func (s *Session) MoveLeaf(ctx context.Context, eventID string) error {
 	return replayed.MoveLeaf(ctx, eventID)
 }
 
+// MoveLeafWithSummary records a durable active-branch movement and appends a
+// model-visible branch summary at the new branch tip.
+func (s *Session) MoveLeafWithSummary(
+	ctx context.Context,
+	eventID string,
+	summary session.BranchSummaryData,
+) error {
+	replayed, err := s.Replay(ctx)
+	if err != nil {
+		return err
+	}
+	return replayed.MoveLeafWithSummary(ctx, eventID, summary)
+}
+
 // EffectiveSettings returns model/thinking selections recovered from this
 // session's active branch.
 func (s *Session) EffectiveSettings(ctx context.Context) (session.EffectiveSettings, error) {

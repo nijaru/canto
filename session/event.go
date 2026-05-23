@@ -19,6 +19,7 @@ const (
 	Handoff         EventType = "handoff"
 	ExternalInput   EventType = "external_input"
 	LeafMoved       EventType = "leaf_moved"
+	BranchSummary   EventType = "branch_summary"
 	ModelChanged    EventType = "model_changed"
 	ThinkingChanged EventType = "thinking_changed"
 	ToolsChanged    EventType = "tools_changed"

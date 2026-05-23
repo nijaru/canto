@@ -2,6 +2,7 @@ package session
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nijaru/canto/llm"
@@ -100,6 +101,68 @@ func TestSessionLeafMovementPersistsAndReplays(t *testing.T) {
 	}
 }
 
+func TestSessionMoveLeafWithSummaryAppendsBranchSummary(t *testing.T) {
+	store, err := NewJSONLStore(filepath.Join(t.TempDir(), "sessions"))
+	if err != nil {
+		t.Fatalf("NewJSONLStore: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Fatalf("close store: %v", err)
+		}
+	})
+
+	sess := New("tree-summary").WithWriter(store)
+	if err := sess.AppendUser(t.Context(), "root"); err != nil {
+		t.Fatalf("append root: %v", err)
+	}
+	root, ok := sess.LastEvent()
+	if !ok {
+		t.Fatal("missing root event")
+	}
+	if err := sess.AppendUser(t.Context(), "main"); err != nil {
+		t.Fatalf("append main: %v", err)
+	}
+	if err := sess.MoveLeafWithSummary(t.Context(), root.ID.String(), BranchSummaryData{
+		Summary: "explored main and came back",
+		Details: map[string]any{
+			"read_files": []string{"main.go"},
+		},
+	}); err != nil {
+		t.Fatalf("MoveLeafWithSummary: %v", err)
+	}
+
+	active, err := sess.ActiveEvents()
+	if err != nil {
+		t.Fatalf("ActiveEvents: %v", err)
+	}
+	if len(active) != 2 || active[0].ID != root.ID || active[1].Type != BranchSummary {
+		t.Fatalf("active events = %#v, want root plus branch summary", active)
+	}
+	summary, ok, err := active[1].BranchSummaryData()
+	if err != nil || !ok {
+		t.Fatalf("BranchSummaryData ok=%v err=%v", ok, err)
+	}
+	if summary.FromEventID != root.ID.String() ||
+		summary.Summary != "explored main and came back" {
+		t.Fatalf("branch summary = %#v, want root source and summary", summary)
+	}
+
+	reloaded, err := store.Load(t.Context(), sess.ID())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	messages, err := reloaded.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	if got := messageContents(messages); len(got) != 2 ||
+		got[0] != "root" ||
+		!strings.Contains(got[1], "explored main and came back") {
+		t.Fatalf("effective messages = %#v, want root and branch summary", got)
+	}
+}
+
 func TestSessionMoveLeafRejectsMissingTarget(t *testing.T) {
 	sess := New("tree-missing")
 	if err := sess.AppendUser(t.Context(), "root"); err != nil {
@@ -107,6 +170,16 @@ func TestSessionMoveLeafRejectsMissingTarget(t *testing.T) {
 	}
 	if err := sess.MoveLeaf(t.Context(), "missing"); err == nil {
 		t.Fatal("MoveLeaf missing target succeeded")
+	}
+}
+
+func TestSessionRejectsEmptyBranchSummary(t *testing.T) {
+	sess := New("tree-empty-summary")
+	if err := sess.AppendBranchSummary(t.Context(), BranchSummaryData{}); err == nil {
+		t.Fatal("AppendBranchSummary empty summary succeeded")
+	}
+	if err := sess.Append(t.Context(), NewBranchSummaryEvent(sess.ID(), BranchSummaryData{})); err == nil {
+		t.Fatal("Append raw empty branch summary succeeded")
 	}
 }
 
