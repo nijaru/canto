@@ -211,6 +211,23 @@ func (s *Session) NextTurnText(ctx context.Context, text string) error {
 	return s.NextTurn(ctx, TextPrompt(text))
 }
 
+// QueuedInput returns the current session-scoped input queue snapshot.
+func (s *Session) QueuedInput() QueueSnapshot {
+	if s == nil || s.state == nil {
+		return QueueSnapshot{}
+	}
+	return s.state.queuedInput()
+}
+
+// ClearQueuedInput clears queued steer, follow-up, and next-turn prompts and
+// returns the prompts that were removed.
+func (s *Session) ClearQueuedInput(ctx context.Context) (QueueSnapshot, error) {
+	if s == nil || s.state == nil {
+		return QueueSnapshot{}, fmt.Errorf("canto harness: nil session state")
+	}
+	return s.state.clearQueuedInput(ctx)
+}
+
 // SteeringMode returns how queued steering prompts drain.
 func (s *Session) SteeringMode() QueueMode {
 	if s == nil || s.state == nil {
@@ -484,6 +501,36 @@ func (s *harnessSessionState) consumeNextTurn(prompt Prompt) Prompt {
 	return llm.NewPrompt(messages...)
 }
 
+func (s *harnessSessionState) queuedInput() QueueSnapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.queueSnapshotLocked()
+}
+
+func (s *harnessSessionState) clearQueuedInput(ctx context.Context) (QueueSnapshot, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return QueueSnapshot{}, err
+		}
+	}
+
+	s.mu.Lock()
+	cleared := s.queueSnapshotLocked()
+	if queueSnapshotEmpty(cleared) {
+		s.mu.Unlock()
+		return cleared, nil
+	}
+	s.steerQueue = nil
+	s.followUpQueue = nil
+	s.nextTurnQueue = nil
+	event := s.newEventLocked(s.activeTurnID, QueueUpdatedPayload{
+		Queue: s.queueSnapshotLocked(),
+	})
+	s.publishLocked(event)
+	s.mu.Unlock()
+	return cleared, nil
+}
+
 func (s *harnessSessionState) abort(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -588,6 +635,12 @@ func (s *harnessSessionState) queueSnapshotLocked() QueueSnapshot {
 		FollowUp: clonePrompts(s.followUpQueue),
 		NextTurn: clonePrompts(s.nextTurnQueue),
 	}
+}
+
+func queueSnapshotEmpty(snapshot QueueSnapshot) bool {
+	return len(snapshot.Steer) == 0 &&
+		len(snapshot.FollowUp) == 0 &&
+		len(snapshot.NextTurn) == 0
 }
 
 func clonePrompts(prompts []Prompt) []Prompt {

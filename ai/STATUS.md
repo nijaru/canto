@@ -105,6 +105,8 @@ lane is selected.
   `NextTurn` queues are Canto-owned; `NextTurn` drains into the next accepted
   prompt. The agent loop now drains steering before follow-up at deterministic
   provider boundaries, with Pi-like one-at-a-time and all-at-once queue modes.
+  `QueuedInput` and `ClearQueuedInput` now expose the Pi-style read/restore
+  primitive Ion needs before moving editable busy follow-up queues into Canto.
   Remaining work is importing the exact Canto revision into Ion and then adding
   Pi-style session tree/leaf primitives.
 - `canto-vhjg` is closed in Canto `5f313f6`: `RunEvent` now carries envelope

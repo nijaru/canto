@@ -570,6 +570,131 @@ func TestHarnessSessionQueueAllModeDrainsBatches(t *testing.T) {
 	}
 }
 
+func TestHarnessSessionClearQueuedInput(t *testing.T) {
+	call := llm.Call{ID: "tool-1", Type: "function"}
+	call.Function.Name = "wait"
+	call.Function.Arguments = `{}`
+	provider := llm.NewFauxProvider(
+		"faux",
+		llm.FauxStep{Calls: []llm.Call{call}},
+		llm.FauxStep{Content: "after clear"},
+		llm.FauxStep{Content: "next turn"},
+	)
+	toolStarted := make(chan struct{})
+	releaseTool := make(chan struct{})
+	waitTool := tool.Func(
+		"wait", "waits until released", nil,
+		func(ctx context.Context, _ string) (string, error) {
+			close(toolStarted)
+			select {
+			case <-releaseTool:
+				return "tool done", nil
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		},
+	)
+	h, err := NewHarness("clear-queued-input").
+		Model("faux").
+		Provider(provider).
+		Tools(waitTool).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	sess := h.Session("clear-queued-input-session")
+	runtimeEvents, err := sess.RuntimeEvents(t.Context())
+	if err != nil {
+		t.Fatalf("RuntimeEvents: %v", err)
+	}
+	turn, err := sess.Submit(t.Context(), TextPrompt("start"))
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	turnEventsDone := make(chan struct{})
+	go func() {
+		defer close(turnEventsDone)
+		for range turn.Events() {
+		}
+	}()
+
+	select {
+	case <-toolStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for tool start")
+	}
+	if err := sess.SteerText(t.Context(), "queued steer"); err != nil {
+		t.Fatalf("SteerText: %v", err)
+	}
+	if err := sess.FollowUpText(t.Context(), "queued follow-up"); err != nil {
+		t.Fatalf("FollowUpText: %v", err)
+	}
+	if err := sess.NextTurnText(t.Context(), "queued next-turn"); err != nil {
+		t.Fatalf("NextTurnText: %v", err)
+	}
+
+	snapshot := sess.QueuedInput()
+	if len(snapshot.Steer) != 1 || len(snapshot.FollowUp) != 1 || len(snapshot.NextTurn) != 1 {
+		t.Fatalf("QueuedInput = %#v, want one item in each queue", snapshot)
+	}
+	cleared, err := sess.ClearQueuedInput(t.Context())
+	if err != nil {
+		t.Fatalf("ClearQueuedInput: %v", err)
+	}
+	if len(cleared.Steer) != 1 || len(cleared.FollowUp) != 1 || len(cleared.NextTurn) != 1 {
+		t.Fatalf("cleared queues = %#v, want one item in each queue", cleared)
+	}
+	if after := sess.QueuedInput(); !queueSnapshotEmpty(after) {
+		t.Fatalf("QueuedInput after clear = %#v, want empty", after)
+	}
+	close(releaseTool)
+
+	select {
+	case <-turnEventsDone:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for turn events to close")
+	}
+	if _, err := turn.Result(); err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+	if _, err := sess.Prompt(t.Context(), "plain next"); err != nil {
+		t.Fatalf("Prompt after clear: %v", err)
+	}
+
+	calls := provider.Calls()
+	if len(calls) != 3 {
+		t.Fatalf("provider calls = %d, want 3", len(calls))
+	}
+	for i, call := range calls[1:] {
+		for _, text := range []string{"queued steer", "queued follow-up", "queued next-turn"} {
+			if requestHasText(call, text) {
+				t.Fatalf(
+					"provider call %d leaked cleared queue text %q: %#v",
+					i+2,
+					text,
+					call.Messages,
+				)
+			}
+		}
+	}
+
+	events := drainHarnessEvents(runtimeEvents)
+	var sawEmptyQueueUpdate bool
+	for _, event := range events {
+		queue, ok := event.Payload.(QueueUpdatedPayload)
+		if ok && queueSnapshotEmpty(queue.Queue) {
+			sawEmptyQueueUpdate = true
+			break
+		}
+	}
+	if !sawEmptyQueueUpdate {
+		t.Fatalf("runtime events = %#v, want empty queue_update after clear", events)
+	}
+}
+
 func requestHasText(req *llm.Request, text string) bool {
 	if req == nil {
 		return false
