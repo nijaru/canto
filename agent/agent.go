@@ -33,6 +33,13 @@ type RuntimeConfigurable interface {
 	ConfigureRuntime(RuntimeConfig) Agent
 }
 
+// TurnInputQueues lets a host-owned session facade inject queued user input at
+// deterministic agent-loop boundaries.
+type TurnInputQueues interface {
+	DrainSteering(ctx context.Context, sess *session.Session) (llm.Prompt, bool, error)
+	DrainFollowUp(ctx context.Context, sess *session.Session) (llm.Prompt, bool, error)
+}
+
 // BaseAgent is the default Agent implementation. It runs an LLM with a
 // context pipeline, tool registry, and lifecycle hooks.
 type BaseAgent struct {
@@ -47,6 +54,7 @@ type BaseAgent struct {
 	builder          *prompt.Builder
 	hooks            *hook.Runner
 	approvals        *approval.Gate
+	inputQueues      TurnInputQueues
 }
 
 // ID returns the agent's unique identifier.
@@ -146,6 +154,14 @@ func WithBudgetGuard(limit float64) Option {
 
 // WithModel overrides the model used for LLM calls.
 func WithModel(m string) Option { return func(a *BaseAgent) { a.model = m } }
+
+// WithInputQueues installs deterministic steering/follow-up queue drain points
+// for a session-scoped host facade.
+func WithInputQueues(queues TurnInputQueues) Option {
+	return func(a *BaseAgent) {
+		a.inputQueues = queues
+	}
+}
 
 // New creates a BaseAgent with a default prompt builder chain.
 // Optional opts are applied after defaults are set.

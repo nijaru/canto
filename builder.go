@@ -226,24 +226,27 @@ func (b *HarnessBuilder) Build() (*Harness, error) {
 		)
 	}
 
-	a := agent.New(
-		b.id,
-		b.instructions,
-		b.model,
-		provider,
-		registry,
-		b.agentOptions...,
-	)
-	return &Harness{
-		Agent:       a,
-		Runner:      runtime.NewRunner(store, a, runtimeOptions...),
+	h := &Harness{
 		Provider:    provider,
 		Model:       b.model,
 		Tools:       registry,
 		Store:       store,
 		Environment: env,
 		ownsStore:   ownsStore,
-	}, nil
+	}
+	agentOptions := append([]agent.Option(nil), b.agentOptions...)
+	agentOptions = append(agentOptions, agent.WithInputQueues(harnessInputQueues{h: h}))
+	a := agent.New(
+		b.id,
+		b.instructions,
+		b.model,
+		provider,
+		registry,
+		agentOptions...,
+	)
+	h.Agent = a
+	h.Runner = runtime.NewRunner(store, a, runtimeOptions...)
+	return h, nil
 }
 
 func cloneEnvironment(env Environment) Environment {

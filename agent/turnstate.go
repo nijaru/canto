@@ -52,6 +52,45 @@ func (ts *turnState) handleStepResult(
 	}
 }
 
+func (ts *turnState) drainQueuedInput(
+	ctx context.Context,
+	s *session.Session,
+	queues TurnInputQueues,
+	outcome stepOutcome,
+) (bool, error) {
+	if queues == nil {
+		return false, nil
+	}
+	if outcome.stop && ts.stopReason != TurnStopCompleted {
+		return false, nil
+	}
+
+	prompt, ok, err := queues.DrainSteering(ctx, s)
+	if err != nil {
+		return false, err
+	}
+	if ok {
+		if err := s.AppendPrompt(ctx, prompt); err != nil {
+			return false, err
+		}
+		ts.stopReason = ""
+		return true, nil
+	}
+
+	if outcome.stop && ts.stopReason == TurnStopCompleted {
+		prompt, ok, err := queues.DrainFollowUp(ctx, s)
+		if err != nil || !ok {
+			return false, err
+		}
+		if err := s.AppendPrompt(ctx, prompt); err != nil {
+			return false, err
+		}
+		ts.stopReason = ""
+		return true, nil
+	}
+	return false, nil
+}
+
 func (ts *turnState) handleStepError(
 	ctx context.Context,
 	s *session.Session,

@@ -121,6 +121,7 @@ func (a *BaseAgent) StreamTurn(
 	defer func() { tracing.EndTurn(turnSpan, err) }()
 
 	state := turnState{}
+	queues := a.InputQueues()
 	defer func() {
 		data := session.TurnCompletedData{
 			AgentID:        a.ID(),
@@ -173,6 +174,12 @@ func (a *BaseAgent) StreamTurn(
 			}
 			outcome := state.handleStepResult(s, res, a.maxSteps)
 			res = outcome.result
+			if _, err = state.drainQueuedInput(ctx, s, queues, outcome); err != nil {
+				return
+			}
+			if outcome.stop && state.stopReason == "" {
+				continue
+			}
 			if outcome.stop {
 				break
 			}

@@ -28,11 +28,29 @@ type modeler interface {
 	Model() string
 }
 
+type inputQueuer interface {
+	InputQueues() TurnInputQueues
+}
+
 func agentModel(a Agent) string {
 	if m, ok := a.(modeler); ok {
 		return m.Model()
 	}
 	return ""
+}
+
+func agentInputQueues(a Agent) TurnInputQueues {
+	if q, ok := a.(inputQueuer); ok {
+		return q.InputQueues()
+	}
+	return nil
+}
+
+func (a *BaseAgent) InputQueues() TurnInputQueues {
+	if a == nil {
+		return nil
+	}
+	return a.inputQueues
 }
 
 // Step executes a single turn of the agentic loop and returns its result.
@@ -113,6 +131,7 @@ func Run(
 ) iter.Seq2[StepResult, error] {
 	return func(yield func(StepResult, error) bool) {
 		model := agentModel(a)
+		queues := agentInputQueues(a)
 		var runErr error
 		ctx, sessionSpan := tracing.StartSession(ctx, a.ID(), s.ID(), model)
 		defer func() { tracing.EndSession(sessionSpan, runErr) }()
@@ -176,8 +195,20 @@ func Run(
 				return
 			}
 			outcome := state.handleStepResult(s, res, maxSteps)
+			drainedQueuedInput, err := state.drainQueuedInput(ctx, s, queues, outcome)
+			if err != nil {
+				runErr = err
+				yield(StepResult{}, err)
+				return
+			}
+			if drainedQueuedInput && outcome.stop && state.stopReason == "" {
+				outcome.yieldResult.TurnStopReason = ""
+			}
 			if !yield(outcome.yieldResult, nil) {
 				return
+			}
+			if outcome.stop && state.stopReason == "" {
+				continue
 			}
 			if outcome.stop {
 				return

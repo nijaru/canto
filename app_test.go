@@ -268,9 +268,9 @@ func TestHarnessSessionRuntimeFacadeOwnsPhaseQueuesAndSettlement(t *testing.T) {
 		HarnessEventQueueUpdated,
 		HarnessEventQueueUpdated,
 		HarnessEventQueueUpdated,
-		HarnessEventAbort,
 		HarnessEventSavePoint,
 		HarnessEventSettled,
+		HarnessEventAbort,
 	}
 	if len(kinds) != len(want) {
 		t.Fatalf("runtime event kinds = %v, want %v", kinds, want)
@@ -284,13 +284,13 @@ func TestHarnessSessionRuntimeFacadeOwnsPhaseQueuesAndSettlement(t *testing.T) {
 	if !ok || len(queue.Queue.Steer) != 1 {
 		t.Fatalf("first runtime event = %#v, want one queued steer", events[0])
 	}
-	abort, ok := events[3].Payload.(AbortPayload)
+	abort, ok := events[5].Payload.(AbortPayload)
 	if !ok || len(abort.ClearedSteer) != 1 || len(abort.ClearedFollowUp) != 1 {
-		t.Fatalf("abort event = %#v, want cleared steer and follow-up", events[3])
+		t.Fatalf("abort event = %#v, want cleared steer and follow-up", events[5])
 	}
-	settled, ok := events[5].Payload.(SettledPayload)
+	settled, ok := events[4].Payload.(SettledPayload)
 	if !ok || settled.NextTurnCount != 0 {
-		t.Fatalf("settled event = %#v, want no queued next turn", events[5])
+		t.Fatalf("settled event = %#v, want no queued next turn", events[4])
 	}
 }
 
@@ -343,6 +343,243 @@ func TestHarnessSessionNextTurnPrependsQueuedPrompt(t *testing.T) {
 			t.Fatalf("runtime event kinds = %v, want %v", kinds, wantPrefix)
 		}
 	}
+}
+
+func TestHarnessSessionDrainsSteeringAndFollowUpAtAgentBoundaries(t *testing.T) {
+	call := llm.Call{ID: "tool-1", Type: "function"}
+	call.Function.Name = "wait"
+	call.Function.Arguments = `{}`
+	provider := llm.NewFauxProvider(
+		"faux",
+		llm.FauxStep{Calls: []llm.Call{call}},
+		llm.FauxStep{Content: "after first steering"},
+		llm.FauxStep{Content: "after second steering"},
+		llm.FauxStep{Content: "after first follow-up"},
+		llm.FauxStep{Content: "after second follow-up"},
+	)
+	toolStarted := make(chan struct{})
+	releaseTool := make(chan struct{})
+	waitTool := tool.Func(
+		"wait", "waits until released", nil,
+		func(ctx context.Context, _ string) (string, error) {
+			close(toolStarted)
+			select {
+			case <-releaseTool:
+				return "tool done", nil
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		},
+	)
+	h, err := NewHarness("queued-input").
+		Model("faux").
+		Provider(provider).
+		Tools(waitTool).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	sess := h.Session("queued-input-session")
+	turn, err := sess.Submit(t.Context(), TextPrompt("start"))
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	turnEventsDone := make(chan struct{})
+	go func() {
+		defer close(turnEventsDone)
+		for range turn.Events() {
+		}
+	}()
+
+	select {
+	case <-toolStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for tool start")
+	}
+	if err := sess.SteerText(t.Context(), "steer before next provider call"); err != nil {
+		t.Fatalf("SteerText: %v", err)
+	}
+	if err := sess.SteerText(t.Context(), "second steer before follow-up"); err != nil {
+		t.Fatalf("second SteerText: %v", err)
+	}
+	if err := sess.FollowUpText(t.Context(), "follow up after completion"); err != nil {
+		t.Fatalf("FollowUpText: %v", err)
+	}
+	if err := sess.FollowUpText(t.Context(), "second follow up after completion"); err != nil {
+		t.Fatalf("second FollowUpText: %v", err)
+	}
+	close(releaseTool)
+
+	select {
+	case <-turnEventsDone:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for turn events to close")
+	}
+	result, err := turn.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+	if result.Content != "after second follow-up" {
+		t.Fatalf("result content = %q, want final follow-up response", result.Content)
+	}
+
+	calls := provider.Calls()
+	if len(calls) != 5 {
+		t.Fatalf("provider calls = %d, want 5", len(calls))
+	}
+	if !requestHasText(calls[1], "steer before next provider call") {
+		t.Fatalf("second provider request missing steering: %#v", calls[1].Messages)
+	}
+	if requestHasText(calls[1], "follow up after completion") {
+		t.Fatalf("second provider request consumed follow-up too early: %#v", calls[1].Messages)
+	}
+	if requestHasText(calls[1], "second steer before follow-up") {
+		t.Fatalf(
+			"second provider request consumed multiple steering prompts: %#v",
+			calls[1].Messages,
+		)
+	}
+	if !requestHasText(calls[2], "second steer before follow-up") {
+		t.Fatalf("third provider request missing second steering: %#v", calls[2].Messages)
+	}
+	if requestHasText(calls[2], "follow up after completion") {
+		t.Fatalf(
+			"third provider request consumed follow-up before steering queue drained: %#v",
+			calls[2].Messages,
+		)
+	}
+	if !requestHasText(calls[3], "follow up after completion") {
+		t.Fatalf("fourth provider request missing first follow-up: %#v", calls[3].Messages)
+	}
+	if requestHasText(calls[3], "second follow up after completion") {
+		t.Fatalf("fourth provider request consumed multiple follow-ups: %#v", calls[3].Messages)
+	}
+	if !requestHasText(calls[4], "second follow up after completion") {
+		t.Fatalf("fifth provider request missing second follow-up: %#v", calls[4].Messages)
+	}
+}
+
+func TestHarnessSessionQueueAllModeDrainsBatches(t *testing.T) {
+	call := llm.Call{ID: "tool-1", Type: "function"}
+	call.Function.Name = "wait"
+	call.Function.Arguments = `{}`
+	provider := llm.NewFauxProvider(
+		"faux",
+		llm.FauxStep{Calls: []llm.Call{call}},
+		llm.FauxStep{Content: "after steering batch"},
+		llm.FauxStep{Content: "after follow-up batch"},
+	)
+	toolStarted := make(chan struct{})
+	releaseTool := make(chan struct{})
+	waitTool := tool.Func(
+		"wait", "waits until released", nil,
+		func(ctx context.Context, _ string) (string, error) {
+			close(toolStarted)
+			select {
+			case <-releaseTool:
+				return "tool done", nil
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		},
+	)
+	h, err := NewHarness("queue-all").
+		Model("faux").
+		Provider(provider).
+		Tools(waitTool).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	sess := h.Session("queue-all-session")
+	if got := sess.SteeringMode(); got != QueueOneAtATime {
+		t.Fatalf("default steering mode = %q, want %q", got, QueueOneAtATime)
+	}
+	if err := sess.SetSteeringMode(QueueAll); err != nil {
+		t.Fatalf("SetSteeringMode: %v", err)
+	}
+	if err := sess.SetFollowUpMode(QueueAll); err != nil {
+		t.Fatalf("SetFollowUpMode: %v", err)
+	}
+	if got := h.Session("queue-all-session").FollowUpMode(); got != QueueAll {
+		t.Fatalf("shared follow-up mode = %q, want %q", got, QueueAll)
+	}
+
+	turn, err := sess.Submit(t.Context(), TextPrompt("start"))
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	turnEventsDone := make(chan struct{})
+	go func() {
+		defer close(turnEventsDone)
+		for range turn.Events() {
+		}
+	}()
+
+	select {
+	case <-toolStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for tool start")
+	}
+	for _, text := range []string{"steer one", "steer two"} {
+		if err := sess.SteerText(t.Context(), text); err != nil {
+			t.Fatalf("SteerText(%q): %v", text, err)
+		}
+	}
+	for _, text := range []string{"follow one", "follow two"} {
+		if err := sess.FollowUpText(t.Context(), text); err != nil {
+			t.Fatalf("FollowUpText(%q): %v", text, err)
+		}
+	}
+	close(releaseTool)
+
+	select {
+	case <-turnEventsDone:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for turn events to close")
+	}
+	result, err := turn.Result()
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+	if result.Content != "after follow-up batch" {
+		t.Fatalf("result content = %q, want final follow-up batch response", result.Content)
+	}
+
+	calls := provider.Calls()
+	if len(calls) != 3 {
+		t.Fatalf("provider calls = %d, want 3", len(calls))
+	}
+	if !requestHasText(calls[1], "steer one") || !requestHasText(calls[1], "steer two") {
+		t.Fatalf("second provider request missing steering batch: %#v", calls[1].Messages)
+	}
+	if requestHasText(calls[1], "follow one") || requestHasText(calls[1], "follow two") {
+		t.Fatalf(
+			"second provider request consumed follow-up batch too early: %#v",
+			calls[1].Messages,
+		)
+	}
+	if !requestHasText(calls[2], "follow one") || !requestHasText(calls[2], "follow two") {
+		t.Fatalf("third provider request missing follow-up batch: %#v", calls[2].Messages)
+	}
+}
+
+func requestHasText(req *llm.Request, text string) bool {
+	if req == nil {
+		return false
+	}
+	for _, msg := range req.Messages {
+		if msg.TextContent() == text {
+			return true
+		}
+	}
+	return false
 }
 
 func drainHarnessEvents(events <-chan HarnessEvent) []HarnessEvent {

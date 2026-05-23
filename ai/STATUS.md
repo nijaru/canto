@@ -98,14 +98,15 @@ lane is selected.
 - Performance is part of this Canto lane: reduce host-side stream assembly,
   avoid unnecessary polling/flush loops, keep replay/resume bounded, and give
   Ion a low-latency stream it can render without reconstruction.
-- `canto-98el` is active: the first Pi-like facade slice makes
-  `Harness.Session(id)` share session-scoped state across handles, rejects
-  overlapping `Submit` calls with `ErrSessionBusy`, exposes `RuntimeEvents`,
-  and emits `queue_update`, `save_point`, `settled`, and `abort` events.
-  `Steer`, `FollowUp`, and `NextTurn` queues are now Canto-owned; `NextTurn`
-  drains into the next accepted prompt. Remaining work is wiring steering and
-  follow-up drain points into the agent loop, then adding Pi-style session
-  tree/leaf primitives.
+- `canto-98el` is active: `Harness.Session(id)` now shares session-scoped
+  state across handles, rejects overlapping `Submit` calls with
+  `ErrSessionBusy`, exposes `RuntimeEvents`, and emits `queue_update`,
+  `save_point`, `settled`, and `abort` events. `Steer`, `FollowUp`, and
+  `NextTurn` queues are Canto-owned; `NextTurn` drains into the next accepted
+  prompt. The agent loop now drains steering before follow-up at deterministic
+  provider boundaries, with Pi-like one-at-a-time and all-at-once queue modes.
+  Remaining work is importing the exact Canto revision into Ion and then adding
+  Pi-style session tree/leaf primitives.
 - `canto-vhjg` is closed in Canto `5f313f6`: `RunEvent` now carries envelope
   metadata plus one typed payload, and Ion imported that exact revision in
   `9ff72a4`.

@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/session"
 )
 
 // ErrSessionBusy reports that the session-scoped harness facade already owns an
@@ -23,6 +24,15 @@ const (
 	HarnessPhaseCompaction    HarnessPhase = "compaction"
 	HarnessPhaseBranchSummary HarnessPhase = "branch_summary"
 	HarnessPhaseRetry         HarnessPhase = "retry"
+)
+
+// QueueMode controls how many queued prompts drain at each provider
+// boundary.
+type QueueMode string
+
+const (
+	QueueOneAtATime QueueMode = "one-at-a-time"
+	QueueAll        QueueMode = "all"
 )
 
 // HarnessEventKind identifies session-scoped facade events that are not
@@ -123,12 +133,16 @@ type harnessSessionState struct {
 	steerQueue     []Prompt
 	followUpQueue  []Prompt
 	nextTurnQueue  []Prompt
+	steerMode      QueueMode
+	followUpMode   QueueMode
 }
 
 func newHarnessSessionState(sessionID string) *harnessSessionState {
 	return &harnessSessionState{
-		sessionID: sessionID,
-		phase:     HarnessPhaseIdle,
+		sessionID:    sessionID,
+		phase:        HarnessPhaseIdle,
+		steerMode:    QueueOneAtATime,
+		followUpMode: QueueOneAtATime,
 	}
 }
 
@@ -156,9 +170,8 @@ func (s *Session) WaitForIdle(ctx context.Context) error {
 	return s.state.waitForIdle(ctx)
 }
 
-// Steer queues prompt input for in-flight steering. A later facade slice will
-// define the exact provider-boundary drain point; this method establishes the
-// session-owned queue and event contract.
+// Steer queues prompt input for in-flight steering. Steering drains after the
+// current assistant/tool step and before the next provider request.
 func (s *Session) Steer(ctx context.Context, prompt Prompt) error {
 	if s == nil || s.state == nil {
 		return fmt.Errorf("canto harness: nil session state")
@@ -172,7 +185,7 @@ func (s *Session) SteerText(ctx context.Context, text string) error {
 }
 
 // FollowUp queues prompt input for when the active agent turn would otherwise
-// stop. A later facade slice will wire this into the agent loop drain point.
+// stop.
 func (s *Session) FollowUp(ctx context.Context, prompt Prompt) error {
 	if s == nil || s.state == nil {
 		return fmt.Errorf("canto harness: nil session state")
@@ -196,6 +209,38 @@ func (s *Session) NextTurn(ctx context.Context, prompt Prompt) error {
 // NextTurnText queues a text prompt for the next accepted prompt.
 func (s *Session) NextTurnText(ctx context.Context, text string) error {
 	return s.NextTurn(ctx, TextPrompt(text))
+}
+
+// SteeringMode returns how queued steering prompts drain.
+func (s *Session) SteeringMode() QueueMode {
+	if s == nil || s.state == nil {
+		return QueueOneAtATime
+	}
+	return s.state.queueMode(queueKindSteer)
+}
+
+// SetSteeringMode configures how queued steering prompts drain.
+func (s *Session) SetSteeringMode(mode QueueMode) error {
+	if s == nil || s.state == nil {
+		return fmt.Errorf("canto harness: nil session state")
+	}
+	return s.state.setQueueMode(queueKindSteer, mode)
+}
+
+// FollowUpMode returns how queued follow-up prompts drain.
+func (s *Session) FollowUpMode() QueueMode {
+	if s == nil || s.state == nil {
+		return QueueOneAtATime
+	}
+	return s.state.queueMode(queueKindFollowUp)
+}
+
+// SetFollowUpMode configures how queued follow-up prompts drain.
+func (s *Session) SetFollowUpMode(mode QueueMode) error {
+	if s == nil || s.state == nil {
+		return fmt.Errorf("canto harness: nil session state")
+	}
+	return s.state.setQueueMode(queueKindFollowUp, mode)
 }
 
 // Abort cancels the active turn, clears steering/follow-up queues, and waits
@@ -290,6 +335,70 @@ const (
 	queueKindNextTurn
 )
 
+type harnessInputQueues struct {
+	h *Harness
+}
+
+func (q harnessInputQueues) DrainSteering(
+	ctx context.Context,
+	sess *session.Session,
+) (Prompt, bool, error) {
+	return q.drain(ctx, sess, queueKindSteer)
+}
+
+func (q harnessInputQueues) DrainFollowUp(
+	ctx context.Context,
+	sess *session.Session,
+) (Prompt, bool, error) {
+	return q.drain(ctx, sess, queueKindFollowUp)
+}
+
+func (q harnessInputQueues) drain(
+	ctx context.Context,
+	sess *session.Session,
+	kind queueKind,
+) (Prompt, bool, error) {
+	if q.h == nil || sess == nil {
+		return Prompt{}, false, nil
+	}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return Prompt{}, false, err
+		}
+	}
+	return q.h.sessionState(sess.ID()).drainQueuedPrompt(kind)
+}
+
+func (s *harnessSessionState) queueMode(kind queueKind) QueueMode {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch kind {
+	case queueKindSteer:
+		return s.steerMode
+	case queueKindFollowUp:
+		return s.followUpMode
+	default:
+		return QueueOneAtATime
+	}
+}
+
+func (s *harnessSessionState) setQueueMode(kind queueKind, mode QueueMode) error {
+	if mode != QueueOneAtATime && mode != QueueAll {
+		return fmt.Errorf("canto session queue: unsupported mode %q", mode)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch kind {
+	case queueKindSteer:
+		s.steerMode = mode
+	case queueKindFollowUp:
+		s.followUpMode = mode
+	default:
+		return fmt.Errorf("canto session queue: unsupported mode queue kind %d", kind)
+	}
+	return nil
+}
+
 func (s *harnessSessionState) enqueue(
 	ctx context.Context,
 	kind queueKind,
@@ -329,6 +438,30 @@ func (s *harnessSessionState) enqueue(
 	return nil
 }
 
+func (s *harnessSessionState) drainQueuedPrompt(kind queueKind) (Prompt, bool, error) {
+	s.mu.Lock()
+	var prompts []Prompt
+	switch kind {
+	case queueKindSteer:
+		prompts = drainPromptQueue(&s.steerQueue, s.steerMode)
+	case queueKindFollowUp:
+		prompts = drainPromptQueue(&s.followUpQueue, s.followUpMode)
+	default:
+		s.mu.Unlock()
+		return Prompt{}, false, fmt.Errorf("canto session queue: unsupported drain kind %d", kind)
+	}
+	if len(prompts) == 0 {
+		s.mu.Unlock()
+		return Prompt{}, false, nil
+	}
+	event := s.newEventLocked(s.activeTurnID, QueueUpdatedPayload{
+		Queue: s.queueSnapshotLocked(),
+	})
+	s.publishLocked(event)
+	s.mu.Unlock()
+	return combinePrompts(prompts), true, nil
+}
+
 func (s *harnessSessionState) consumeNextTurn(prompt Prompt) Prompt {
 	s.mu.Lock()
 	queued := clonePrompts(s.nextTurnQueue)
@@ -364,12 +497,14 @@ func (s *harnessSessionState) abort(ctx context.Context) error {
 	var (
 		cancel          context.CancelFunc
 		done            chan struct{}
+		turnID          string
 		clearedSteer    []Prompt
 		clearedFollowUp []Prompt
 	)
 	s.mu.Lock()
 	cancel = s.activeCancel
 	done = s.activeDone
+	turnID = s.activeTurnID
 	clearedSteer = clonePrompts(s.steerQueue)
 	clearedFollowUp = clonePrompts(s.followUpQueue)
 	if len(s.steerQueue) > 0 || len(s.followUpQueue) > 0 {
@@ -380,25 +515,26 @@ func (s *harnessSessionState) abort(ctx context.Context) error {
 		})
 		s.publishLocked(queueEvent)
 	}
-	abortEvent := s.newEventLocked(s.activeTurnID, AbortPayload{
-		ClearedSteer:    clearedSteer,
-		ClearedFollowUp: clearedFollowUp,
-	})
-	s.publishLocked(abortEvent)
 	s.mu.Unlock()
 
 	if cancel != nil {
 		cancel()
 	}
-	if done == nil {
-		return nil
+	if done != nil {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
-	select {
-	case <-done:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	s.mu.Lock()
+	abortEvent := s.newEventLocked(turnID, AbortPayload{
+		ClearedSteer:    clearedSteer,
+		ClearedFollowUp: clearedFollowUp,
+	})
+	s.publishLocked(abortEvent)
+	s.mu.Unlock()
+	return nil
 }
 
 func (s *harnessSessionState) subscribe(ctx context.Context) <-chan HarnessEvent {
@@ -463,6 +599,34 @@ func clonePrompts(prompts []Prompt) []Prompt {
 		cloned[i] = prompt.Clone()
 	}
 	return cloned
+}
+
+func drainPromptQueue(queue *[]Prompt, mode QueueMode) []Prompt {
+	if len(*queue) == 0 {
+		return nil
+	}
+	count := 1
+	if mode == QueueAll {
+		count = len(*queue)
+	}
+	drained := clonePrompts((*queue)[:count])
+	remaining := append([]Prompt(nil), (*queue)[count:]...)
+	*queue = remaining
+	return drained
+}
+
+func combinePrompts(prompts []Prompt) Prompt {
+	if len(prompts) == 0 {
+		return Prompt{}
+	}
+	if len(prompts) == 1 {
+		return prompts[0].Clone()
+	}
+	messages := make([]llm.Message, 0, queuedMessageCount(prompts))
+	for _, prompt := range prompts {
+		messages = append(messages, prompt.Clone().Messages...)
+	}
+	return llm.NewPrompt(messages...)
 }
 
 func queuedMessageCount(prompts []Prompt) int {
