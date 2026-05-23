@@ -730,6 +730,16 @@ func harnessEventKinds(events []HarnessEvent) []HarnessEventKind {
 	return kinds
 }
 
+func specNames(specs []*llm.Spec) []string {
+	names := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		if spec != nil {
+			names = append(names, spec.Name)
+		}
+	}
+	return names
+}
+
 func TestHarnessBuilderRegistersTools(t *testing.T) {
 	testTool := tool.Func(
 		"echo",
@@ -1011,6 +1021,86 @@ func TestHarnessSessionModelAndThinkingSelection(t *testing.T) {
 		if kinds[i] != kind {
 			t.Fatalf("runtime event kinds = %v, want %v", kinds, want)
 		}
+	}
+}
+
+func TestHarnessSessionActiveToolsScopesProviderRequest(t *testing.T) {
+	provider := llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})
+	readTool := tool.Func(
+		"read",
+		"Read.",
+		map[string]any{"type": "object"},
+		func(_ context.Context, _ string) (string, error) { return "read", nil },
+	)
+	writeTool := tool.Func(
+		"write",
+		"Write.",
+		map[string]any{"type": "object"},
+		func(_ context.Context, _ string) (string, error) { return "write", nil },
+	)
+	h, err := NewHarness("active-tools").
+		Model("model-a").
+		Provider(provider).
+		Tools(writeTool, readTool).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	sess := h.Session("active-tools-session")
+	runtimeEvents, err := sess.RuntimeEvents(t.Context())
+	if err != nil {
+		t.Fatalf("RuntimeEvents: %v", err)
+	}
+	if err := sess.SetActiveTools(t.Context(), "write", "write", " "); err != nil {
+		t.Fatalf("SetActiveTools: %v", err)
+	}
+	active, err := sess.ActiveToolNames(t.Context())
+	if err != nil {
+		t.Fatalf("ActiveToolNames: %v", err)
+	}
+	if strings.Join(active, ",") != "write" {
+		t.Fatalf("active tools = %#v, want write", active)
+	}
+
+	if _, err := sess.Prompt(t.Context(), "hi"); err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	calls := provider.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("provider calls = %d, want 1", len(calls))
+	}
+	if got := strings.Join(specNames(calls[0].Tools), ","); got != "write" {
+		t.Fatalf("provider tools = %q, want write", got)
+	}
+	settings, err := sess.EffectiveSettings(t.Context())
+	if err != nil {
+		t.Fatalf("EffectiveSettings: %v", err)
+	}
+	if !settings.HasTools || strings.Join(settings.ActiveTools, ",") != "write" {
+		t.Fatalf("effective active tools = %#v, want write", settings)
+	}
+
+	kinds := harnessEventKinds(drainHarnessEvents(runtimeEvents))
+	want := []HarnessEventKind{
+		HarnessEventToolsSelected,
+		HarnessEventSavePoint,
+		HarnessEventSettled,
+	}
+	if len(kinds) != len(want) {
+		t.Fatalf("runtime event kinds = %v, want %v", kinds, want)
+	}
+	for i, kind := range want {
+		if kinds[i] != kind {
+			t.Fatalf("runtime event kinds = %v, want %v", kinds, want)
+		}
+	}
+
+	if err := sess.SetActiveTools(t.Context(), "missing"); err == nil ||
+		!strings.Contains(err.Error(), `unknown tool "missing"`) {
+		t.Fatalf("unknown tool error = %v, want unknown tool", err)
 	}
 }
 

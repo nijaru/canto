@@ -32,7 +32,7 @@ func (r *Runner) Send(
 		return agent.StepResult{}, err
 	}
 
-	return r.run(ctx, sess, nil, appendPrompt(prompt))
+	return r.run(ctx, sess, nil, appendPrompt(prompt), nil)
 }
 
 // SendTextStream appends a plain user message and runs the agent with streaming.
@@ -53,12 +53,24 @@ func (r *Runner) SendStream(
 	prompt llm.Prompt,
 	chunkFn func(*llm.Chunk),
 ) (agent.StepResult, error) {
+	return r.SendStreamWithRuntime(ctx, sessionID, prompt, chunkFn, agent.RuntimeConfig{})
+}
+
+// SendStreamWithRuntime appends typed prompt input and runs the agent with a
+// per-turn runtime configuration. The base Runner agent is not mutated.
+func (r *Runner) SendStreamWithRuntime(
+	ctx context.Context,
+	sessionID string,
+	prompt llm.Prompt,
+	chunkFn func(*llm.Chunk),
+	cfg agent.RuntimeConfig,
+) (agent.StepResult, error) {
 	sess, err := r.getOrLoad(ctx, sessionID)
 	if err != nil {
 		return agent.StepResult{}, err
 	}
 
-	return r.run(ctx, sess, chunkFn, appendPrompt(prompt))
+	return r.run(ctx, sess, chunkFn, appendPrompt(prompt), &cfg)
 }
 
 // Run executes the agent on an existing session without appending a new user
@@ -72,7 +84,7 @@ func (r *Runner) Run(ctx context.Context, sessionID string) (agent.StepResult, e
 	if err != nil {
 		return agent.StepResult{}, err
 	}
-	return r.run(ctx, sess, nil, nil)
+	return r.run(ctx, sess, nil, nil, nil)
 }
 
 // RunStream executes the agent with streaming on an existing session without
@@ -89,7 +101,7 @@ func (r *Runner) RunStream(
 	if err != nil {
 		return agent.StepResult{}, err
 	}
-	return r.run(ctx, sess, chunkFn, nil)
+	return r.run(ctx, sess, chunkFn, nil, nil)
 }
 
 // run is the shared entry point for Run/RunStream/Send/SendStream.
@@ -110,13 +122,14 @@ func (r *Runner) run(
 	sess *session.Session,
 	chunkFn func(*llm.Chunk),
 	mutate sessionMutation,
+	cfg *agent.RuntimeConfig,
 ) (agent.StepResult, error) {
 	ctx, _ = session.EnsureTurnID(ctx)
 	if r.coordinator != nil {
-		return r.executeWithCoordinator(ctx, sess, chunkFn, mutate)
+		return r.executeWithCoordinator(ctx, sess, chunkFn, mutate, cfg)
 	}
 	if r.queue == nil {
-		return r.execute(ctx, sess, chunkFn, mutate)
+		return r.execute(ctx, sess, chunkFn, mutate, cfg)
 	}
 
 	waitCtx := ctx
@@ -138,7 +151,7 @@ func (r *Runner) run(
 		}
 
 		var err error
-		result, err = r.execute(execCtx, sess, chunkFn, mutate)
+		result, err = r.execute(execCtx, sess, chunkFn, mutate, cfg)
 		return err
 	})
 	err := <-errCh
@@ -153,9 +166,10 @@ func (r *Runner) executeWithCoordinator(
 	sess *session.Session,
 	chunkFn func(*llm.Chunk),
 	mutate sessionMutation,
+	cfg *agent.RuntimeConfig,
 ) (agent.StepResult, error) {
 	if r.coordinator == nil {
-		return r.execute(ctx, sess, chunkFn, mutate)
+		return r.execute(ctx, sess, chunkFn, mutate, cfg)
 	}
 
 	waitCtx := ctx
@@ -183,7 +197,7 @@ func (r *Runner) executeWithCoordinator(
 		defer cancel()
 	}
 
-	result, execErr := r.executeUnderLease(execCtx, sess, chunkFn, lease, mutate)
+	result, execErr := r.executeUnderLease(execCtx, sess, chunkFn, lease, mutate, cfg)
 	return result, execErr
 }
 
@@ -204,7 +218,12 @@ func (r *Runner) execute(
 	sess *session.Session,
 	chunkFn func(*llm.Chunk),
 	mutate sessionMutation,
+	cfg *agent.RuntimeConfig,
 ) (agent.StepResult, error) {
+	runAgent, cfgErr := configuredAgent(r.agent, cfg)
+	if cfgErr != nil {
+		return agent.StepResult{}, cfgErr
+	}
 	if mutate != nil {
 		if err := r.runBeforeRun(ctx, sess); err != nil {
 			return agent.StepResult{}, err
@@ -236,13 +255,13 @@ func (r *Runner) execute(
 		}
 
 		if chunkFn != nil {
-			if s, ok := r.agent.(agent.Streamer); ok {
+			if s, ok := runAgent.(agent.Streamer); ok {
 				result, err = s.StreamTurn(ctx, sess, chunkFn)
 			} else {
-				result, err = r.agent.Turn(ctx, sess)
+				result, err = runAgent.Turn(ctx, sess)
 			}
 		} else {
-			result, err = r.agent.Turn(ctx, sess)
+			result, err = runAgent.Turn(ctx, sess)
 		}
 
 		if err == nil {
@@ -262,6 +281,21 @@ func (r *Runner) execute(
 			)
 		}
 	}
+}
+
+func configuredAgent(base agent.Agent, cfg *agent.RuntimeConfig) (agent.Agent, error) {
+	if cfg == nil || (cfg.Tools == nil && len(cfg.RequestProcessors) == 0) {
+		return base, nil
+	}
+	configurable, ok := base.(agent.RuntimeConfigurable)
+	if !ok {
+		return nil, fmt.Errorf("runtime agent config: agent %q is not configurable", base.ID())
+	}
+	configured := configurable.ConfigureRuntime(*cfg)
+	if configured == nil {
+		return nil, fmt.Errorf("runtime agent config: agent %q returned nil", base.ID())
+	}
+	return configured, nil
 }
 
 func (r *Runner) runBeforeRun(ctx context.Context, sess *session.Session) error {

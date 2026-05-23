@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
+	"github.com/nijaru/canto/tool"
 )
 
 // ErrSessionBusy reports that the session-scoped harness facade already owns an
@@ -46,6 +49,7 @@ const (
 	HarnessEventAbort            HarnessEventKind = "abort"
 	HarnessEventModelSelected    HarnessEventKind = "model_select"
 	HarnessEventThinkingSelected HarnessEventKind = "thinking_select"
+	HarnessEventToolsSelected    HarnessEventKind = "tools_select"
 )
 
 // HarnessEventPayload is the typed payload carried by a HarnessEvent.
@@ -145,6 +149,19 @@ func (ThinkingSelectedPayload) Kind() HarnessEventKind {
 	return HarnessEventThinkingSelected
 }
 
+// ToolsSelectedPayload reports an active-tool selection recorded for the
+// session.
+type ToolsSelectedPayload struct {
+	Names         []string
+	PreviousNames []string
+	HadPrevious   bool
+}
+
+func (ToolsSelectedPayload) harnessEventPayload() {}
+func (ToolsSelectedPayload) Kind() HarnessEventKind {
+	return HarnessEventToolsSelected
+}
+
 type harnessSessionState struct {
 	sessionID string
 
@@ -161,6 +178,8 @@ type harnessSessionState struct {
 	nextTurnQueue  []Prompt
 	steerMode      QueueMode
 	followUpMode   QueueMode
+	activeTools    []string
+	hasActiveTools bool
 }
 
 func newHarnessSessionState(sessionID string) *harnessSessionState {
@@ -286,6 +305,57 @@ func (s *Session) SetFollowUpMode(mode QueueMode) error {
 	return s.state.setQueueMode(queueKindFollowUp, mode)
 }
 
+// ActiveToolNames returns the tool names active for the next turn. Without an
+// explicit session selection, all registered harness tools are active.
+func (s *Session) ActiveToolNames(ctx context.Context) ([]string, error) {
+	if s == nil || s.state == nil {
+		return nil, fmt.Errorf("canto harness: nil session state")
+	}
+	if names, ok := s.state.activeToolNames(); ok {
+		return names, nil
+	}
+	settings, err := s.EffectiveSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if settings.HasTools {
+		s.state.setActiveToolNames(settings.ActiveTools)
+		return append([]string(nil), settings.ActiveTools...), nil
+	}
+	return s.defaultToolNames(), nil
+}
+
+// SetActiveTools records the active tool names for future turns. Names must
+// exist in the harness registry; pass no names to run without tools.
+func (s *Session) SetActiveTools(ctx context.Context, names ...string) error {
+	if err := s.validateMaintenanceHandle(); err != nil {
+		return err
+	}
+	names = normalizeToolNames(names)
+	if err := s.validateToolNames(names); err != nil {
+		return err
+	}
+	replayed, err := s.Replay(ctx)
+	if err != nil {
+		return err
+	}
+	previous, err := replayed.EffectiveSettings()
+	if err != nil {
+		return err
+	}
+	selection := session.ToolSelection{Names: append([]string(nil), names...)}
+	if err := replayed.AppendToolSelection(ctx, selection); err != nil {
+		return err
+	}
+	s.state.setActiveToolNames(names)
+	s.publishRuntimeEvent(ToolsSelectedPayload{
+		Names:         append([]string(nil), names...),
+		PreviousNames: append([]string(nil), previous.ActiveTools...),
+		HadPrevious:   previous.HasTools,
+	})
+	return nil
+}
+
 // Abort cancels the active turn, clears steering/follow-up queues, and waits
 // until the session facade reaches idle.
 func (s *Session) Abort(ctx context.Context) error {
@@ -293,6 +363,46 @@ func (s *Session) Abort(ctx context.Context) error {
 		return fmt.Errorf("canto harness: nil session state")
 	}
 	return s.state.abort(ctx)
+}
+
+func (s *Session) activeToolRegistry(ctx context.Context) (*tool.Registry, error) {
+	if s == nil || s.harness == nil {
+		return nil, fmt.Errorf("canto harness: nil session")
+	}
+	all := s.harness.Tools
+	if all == nil {
+		return nil, nil
+	}
+	names, err := s.ActiveToolNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if slices.Equal(names, all.Names()) {
+		return all, nil
+	}
+	return all.Subset(names...)
+}
+
+func (s *Session) defaultToolNames() []string {
+	if s == nil || s.harness == nil || s.harness.Tools == nil {
+		return nil
+	}
+	return s.harness.Tools.Names()
+}
+
+func (s *Session) validateToolNames(names []string) error {
+	if s == nil || s.harness == nil || s.harness.Tools == nil {
+		if len(names) > 0 {
+			return fmt.Errorf("canto session tools: no registry")
+		}
+		return nil
+	}
+	for _, name := range names {
+		if _, ok := s.harness.Tools.Get(name); !ok {
+			return fmt.Errorf("canto session tools: unknown tool %q", name)
+		}
+	}
+	return nil
 }
 
 func (s *harnessSessionState) currentPhase() HarnessPhase {
@@ -368,6 +478,22 @@ func (s *harnessSessionState) waitForIdle(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+}
+
+func (s *harnessSessionState) activeToolNames() ([]string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.hasActiveTools {
+		return nil, false
+	}
+	return append([]string(nil), s.activeTools...), true
+}
+
+func (s *harnessSessionState) setActiveToolNames(names []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.activeTools = append([]string(nil), names...)
+	s.hasActiveTools = true
 }
 
 type queueKind int
@@ -714,4 +840,24 @@ func queuedMessageCount(prompts []Prompt) int {
 		total += len(prompt.Messages)
 	}
 	return total
+}
+
+func normalizeToolNames(names []string) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
 }

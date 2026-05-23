@@ -399,12 +399,25 @@ func (s *Session) Submit(ctx context.Context, prompt Prompt) (*Turn, error) {
 			emitter.emitLive(RunEvent{Payload: RunRetryPayload{Retry: event}})
 		})
 		runPrompt := s.state.consumeNextTurn(prompt)
-		result, err := s.harness.Runner.SendStream(runCtx, s.id, runPrompt, func(chunk *llm.Chunk) {
-			if chunk == nil {
-				return
-			}
-			emitter.emitLive(RunEvent{Payload: RunChunkPayload{Chunk: *chunk}})
-		})
+		activeTools, cfgErr := s.activeToolRegistry(runCtx)
+		if cfgErr != nil {
+			emitter.emitFinal(RunEvent{Payload: RunErrorPayload{Err: cfgErr}})
+			finish()
+			resultCh <- turnOutcome{err: cfgErr}
+			return
+		}
+		result, err := s.harness.Runner.SendStreamWithRuntime(
+			runCtx,
+			s.id,
+			runPrompt,
+			func(chunk *llm.Chunk) {
+				if chunk == nil {
+					return
+				}
+				emitter.emitLive(RunEvent{Payload: RunChunkPayload{Chunk: *chunk}})
+			},
+			agent.RuntimeConfig{Tools: activeTools},
+		)
 		if err != nil {
 			emitter.emitFinal(RunEvent{Payload: RunErrorPayload{Err: err}})
 			finish()

@@ -21,6 +21,7 @@ const (
 	LeafMoved       EventType = "leaf_moved"
 	ModelChanged    EventType = "model_changed"
 	ThinkingChanged EventType = "thinking_changed"
+	ToolsChanged    EventType = "tools_changed"
 
 	// Observability / Lifecycle
 	TurnStarted           EventType = "turn_started"

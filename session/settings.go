@@ -17,12 +17,19 @@ type ThinkingSelection struct {
 	Level string `json:"level"`
 }
 
-// EffectiveSettings is the model/thinking state recovered from the active
-// branch.
+// ToolSelection records the active tool names selected for a session branch.
+type ToolSelection struct {
+	Names []string `json:"names"`
+}
+
+// EffectiveSettings is the model, thinking, and active-tool state recovered
+// from the active branch.
 type EffectiveSettings struct {
 	Model         ModelSelection `json:"model,omitzero"`
 	HasModel      bool           `json:"has_model,omitzero"`
 	ThinkingLevel string         `json:"thinking_level"`
+	ActiveTools   []string       `json:"active_tools,omitzero"`
+	HasTools      bool           `json:"has_tools,omitzero"`
 }
 
 // NewModelChangedEvent records a durable model selection.
@@ -35,6 +42,11 @@ func NewThinkingChangedEvent(sessionID string, selection ThinkingSelection) Even
 	return NewEvent(sessionID, ThinkingChanged, selection)
 }
 
+// NewToolsChangedEvent records a durable active-tool selection.
+func NewToolsChangedEvent(sessionID string, selection ToolSelection) Event {
+	return NewEvent(sessionID, ToolsChanged, selection)
+}
+
 // ModelSelection decodes the payload of a model-changed event.
 func (e Event) ModelSelection() (ModelSelection, bool, error) {
 	return decodeEventData[ModelSelection](e, ModelChanged, "model changed")
@@ -43,6 +55,11 @@ func (e Event) ModelSelection() (ModelSelection, bool, error) {
 // ThinkingSelection decodes the payload of a thinking-changed event.
 func (e Event) ThinkingSelection() (ThinkingSelection, bool, error) {
 	return decodeEventData[ThinkingSelection](e, ThinkingChanged, "thinking changed")
+}
+
+// ToolSelection decodes the payload of a tools-changed event.
+func (e Event) ToolSelection() (ToolSelection, bool, error) {
+	return decodeEventData[ToolSelection](e, ToolsChanged, "tools changed")
 }
 
 // AppendModelSelection appends a durable model selection to the active branch.
@@ -58,7 +75,14 @@ func (s *Session) AppendThinkingSelection(ctx context.Context, selection Thinkin
 	return s.Append(ctx, NewThinkingChangedEvent(s.ID(), selection))
 }
 
-// EffectiveSettings returns the model/thinking state at the active branch tip.
+// AppendToolSelection appends a durable active-tool selection to the active branch.
+func (s *Session) AppendToolSelection(ctx context.Context, selection ToolSelection) error {
+	selection.Names = append([]string(nil), selection.Names...)
+	return s.Append(ctx, NewToolsChangedEvent(s.ID(), selection))
+}
+
+// EffectiveSettings returns model, thinking, and active-tool state at the
+// active branch tip.
 func (s *Session) EffectiveSettings() (EffectiveSettings, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -92,6 +116,15 @@ func effectiveSettingsFromEvents(events []Event) (EffectiveSettings, error) {
 				if settings.ThinkingLevel == "" {
 					settings.ThinkingLevel = "off"
 				}
+			}
+		case ToolsChanged:
+			selection, ok, err := event.ToolSelection()
+			if err != nil {
+				return EffectiveSettings{}, err
+			}
+			if ok {
+				settings.ActiveTools = append([]string(nil), selection.Names...)
+				settings.HasTools = true
 			}
 		}
 	}

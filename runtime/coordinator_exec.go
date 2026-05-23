@@ -17,9 +17,10 @@ func (r *Runner) executeUnderLease(
 	chunkFn func(*llm.Chunk),
 	lease Lease,
 	mutate sessionMutation,
+	cfg *agent.RuntimeConfig,
 ) (agent.StepResult, error) {
 	if r.coordinator == nil {
-		return r.execute(ctx, sess, chunkFn, mutate)
+		return r.execute(ctx, sess, chunkFn, mutate, cfg)
 	}
 
 	execCtx, cancel := context.WithCancel(ctx)
@@ -87,7 +88,7 @@ func (r *Runner) executeUnderLease(
 		}
 	}()
 
-	result, execErr := r.execute(execCtx, sess, chunkFn, mutate)
+	result, execErr := r.execute(execCtx, sess, chunkFn, mutate, cfg)
 	close(stopRenew)
 
 	leaseMu.Lock()
