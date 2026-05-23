@@ -237,6 +237,8 @@ func (b *HarnessBuilder) Build() (*Harness, error) {
 	return &Harness{
 		Agent:       a,
 		Runner:      runtime.NewRunner(store, a, runtimeOptions...),
+		Provider:    provider,
+		Model:       b.model,
 		Tools:       registry,
 		Store:       store,
 		Environment: env,

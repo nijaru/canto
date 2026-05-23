@@ -48,6 +48,19 @@ hosts that do not need a `Turn` handle. New live hosts should prefer typed
 `Submit` over wiring `runtime.Runner.SendStream` and `runtime.Runner.Watch`
 separately.
 
+The session facade also exposes normal maintenance operations so hosts do not
+need to reach through the harness store for routine replay, compaction,
+snapshots, or branching:
+
+```go
+sess := h.Session("session-1")
+events, err := sess.EventsAfter(ctx, lastSeq)
+replayed, err := sess.Replay(ctx)
+compactResult, err := sess.Compact(ctx, governor.CompactOptions{MaxTokens: 20_000, OffloadDir: ".canto/offload"})
+snapshotted, err := sess.SnapshotIfNeeded(ctx, canto.SnapshotOptions{MaxEvents: 100})
+branch, err := sess.Fork(ctx, "session-1-review", session.ForkOptions{BranchLabel: "review"})
+```
+
 Text helpers call through typed prompts:
 
 ```go

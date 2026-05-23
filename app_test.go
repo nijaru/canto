@@ -291,6 +291,84 @@ func TestHarnessBuilderRegistersWorkspaceToolsFromEnvironment(t *testing.T) {
 	}
 }
 
+func TestHarnessSessionMaintenanceFacade(t *testing.T) {
+	h, err := NewHarness("maintenance").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	parent := session.New("maintenance-parent").WithWriter(h.Store)
+	appendCompactionHistory(t, parent)
+
+	facade := h.Session(parent.ID())
+	replayed, err := facade.Replay(t.Context())
+	if err != nil {
+		t.Fatalf("Replay: %v", err)
+	}
+	if got := len(replayed.Events()); got != 4 {
+		t.Fatalf("Replay events = %d, want 4", got)
+	}
+
+	events, err := facade.EventsAfter(t.Context(), 2)
+	if err != nil {
+		t.Fatalf("EventsAfter: %v", err)
+	}
+	if len(events) != 2 || events[0].Seq != 3 || events[1].Seq != 4 {
+		t.Fatalf("EventsAfter = %#v, want seq 3 and 4", events)
+	}
+
+	ok, err := facade.SnapshotIfNeeded(t.Context(), SnapshotOptions{MaxEvents: 1})
+	if err != nil {
+		t.Fatalf("SnapshotIfNeeded: %v", err)
+	}
+	if !ok {
+		t.Fatal("SnapshotIfNeeded did not append a projection snapshot")
+	}
+	ok, err = facade.Snapshot(t.Context(), SnapshotOptions{})
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if !ok {
+		t.Fatal("Snapshot did not append a projection snapshot")
+	}
+
+	replayed, err = facade.Replay(t.Context())
+	if err != nil {
+		t.Fatalf("Replay after snapshot: %v", err)
+	}
+	last, ok := replayed.LastEvent()
+	if !ok || last.Type != session.ProjectionSnapshotted {
+		t.Fatalf("last event = %#v, want projection snapshot", last)
+	}
+
+	child, err := facade.Fork(t.Context(), "maintenance-child", session.ForkOptions{
+		BranchLabel: "review",
+		ForkReason:  "compare",
+	})
+	if err != nil {
+		t.Fatalf("Fork: %v", err)
+	}
+	if child.ID() != "maintenance-child" {
+		t.Fatalf("child id = %q, want maintenance-child", child.ID())
+	}
+	childReplay, err := child.Replay(t.Context())
+	if err != nil {
+		t.Fatalf("child Replay: %v", err)
+	}
+	childEvents := childReplay.Events()
+	if len(childEvents) != len(replayed.Events()) {
+		t.Fatalf("child events = %d, want %d", len(childEvents), len(replayed.Events()))
+	}
+	if _, ok, err := childEvents[0].ForkOrigin(); err != nil || !ok {
+		t.Fatalf("child first event fork origin ok=%v err=%v", ok, err)
+	}
+}
+
 func TestHarnessBuilderEnvironmentToolsRequireCapabilities(t *testing.T) {
 	_, err := NewHarness("missing-env").
 		Model("faux").
@@ -300,6 +378,42 @@ func TestHarnessBuilderEnvironmentToolsRequireCapabilities(t *testing.T) {
 		Build()
 	if err == nil || !strings.Contains(err.Error(), "workspace is required") {
 		t.Fatalf("Build error = %v, want workspace requirement", err)
+	}
+}
+
+func TestHarnessSessionCompactFacade(t *testing.T) {
+	h, err := NewHarness("compact-facade").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "summary"})).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	sess := session.New("compact-facade-session").WithWriter(h.Store)
+	appendCompactionHistory(t, sess)
+
+	result, err := h.Session(sess.ID()).Compact(t.Context(), governor.CompactOptions{
+		MaxTokens:    20,
+		ThresholdPct: 0.10,
+		MinKeepTurns: 2,
+		OffloadDir:   t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Compact: %v", err)
+	}
+	if !result.Compacted {
+		t.Fatal("Compact result = false, want compaction")
+	}
+
+	loaded, err := h.Store.Load(t.Context(), sess.ID())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if countCompactions(loaded) == 0 {
+		t.Fatal("expected durable compaction event")
 	}
 }
 

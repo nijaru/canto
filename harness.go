@@ -3,6 +3,7 @@ package canto
 import (
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/executor"
+	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/safety"
 	"github.com/nijaru/canto/session"
@@ -27,6 +28,8 @@ type Environment struct {
 type Harness struct {
 	Agent       agent.Agent
 	Runner      *runtime.Runner
+	Provider    llm.Provider
+	Model       string
 	Tools       *tool.Registry
 	Store       session.Store
 	Environment Environment
