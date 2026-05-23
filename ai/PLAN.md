@@ -56,6 +56,7 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 | 0 done | `canto-d6kl` durable turn transaction identity and sequence | Moved turn identity/session sequence from host-only `RunEvent` metadata into durable session events/logs, aligned with AX `seq`/`exec_id` and Pi session-owned prompt lifecycle |
 | 0 active | `canto-wuev` Submit/Turn public surface alignment | Make README, prompt docs, examples, and godoc teach native `Submit` / `Turn` as the common host path; `Prompt` and `PromptStream` are convenience wrappers |
 | 0 done | `canto-vhjg` unified run-event envelope | Replaced `RunEvent.Type` and payload side fields with one typed payload under envelope metadata; Ion imported the exact revision |
+| 0 done | `canto-33aq` typed tool authoring and environment toolkits | Promoted typed Go tool authoring and opt-in workspace/executor tools constructed from `Environment` |
 | 0 done | `canto-uduq` optimal-core contract tests | Added stream metadata and tests for ordered run events, usage-before-result, yielding hook settlement, and overflow-recovery stream identity |
 | 1 done | `canto-dvtd` optimal-core turn transaction | Replaced `PromptStream` snapshot/watch/callback repair with an ordered session observer stream |
 | 2 done | `canto-xz1w` optimal-core lifecycle events | Added typed RunEvent lifecycle/usage metadata plus compaction-start and overflow-retry events |
@@ -115,6 +116,12 @@ Framework is usable by one real consumer (Ion) end-to-end. No formal API-stabili
   durability, usage, and lifecycle envelope metadata plus one typed payload
   (`RunChunkPayload`, `RunSessionPayload`, `RunRetryPayload`,
   `RunResultPayload`, or `RunErrorPayload`). Ion imports this in `9ff72a4`.
+- **Typed tool authoring:** `tool.NewTyped` / `tool.MustTyped` adapt typed Go
+  handlers to the provider-facing JSON boundary; `service.New` remains the
+  service/API retry layer.
+- **Environment toolkit wiring:** `ToolsFromEnvironment` is the opt-in bridge
+  from `Environment` workspace/executor capabilities to Canto workspace and
+  executor tool modules.
 
 ### M2: Stable (v1.0) — compatibility commitment
 

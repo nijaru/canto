@@ -101,9 +101,12 @@ lane is selected.
 - `canto-vhjg` is closed in Canto `5f313f6`: `RunEvent` now carries envelope
   metadata plus one typed payload, and Ion imported that exact revision in
   `9ff72a4`.
-- Remaining P1 framework seams from the reopened roadmap are `canto-33aq`
-  typed tool authoring/toolkit wiring and `canto-re2x` facade replay/snapshot/
-  fork methods.
+- `canto-33aq` is closed in Canto `0962930`: typed Go tool authoring now
+  lives in `tool.NewTyped` / `tool.MustTyped`, and
+  `HarnessBuilder.ToolsFromEnvironment` wires workspace/executor capability
+  tools from `Environment` on explicit request.
+- Remaining P1 framework seam is `canto-re2x` facade replay/snapshot/fork
+  methods.
 
 **Ion pre-v0 design-closure support:**
 
