@@ -91,7 +91,9 @@ func Instructions(instructions string) RequestProcessor {
 	)
 }
 
-func injectContextBlock(req *llm.Request, blockRegex *regexp.Regexp, block string) {
+// InjectContextBlock inserts a request-specific context block after the stable
+// cache prefix, replacing any existing block matched by blockRegex.
+func InjectContextBlock(req *llm.Request, blockRegex *regexp.Regexp, block string) {
 	for i, m := range req.Messages {
 		if m.Role == llm.RoleSystem || m.Role == llm.RoleDeveloper {
 			if loc := blockRegex.FindStringIndex(m.Content); loc != nil {

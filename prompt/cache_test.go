@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"context"
+	"regexp"
 	"testing"
 
 	"github.com/nijaru/canto/llm"
@@ -152,7 +153,8 @@ func TestInjectContextBlockRespectsCachePrefixBoundary(t *testing.T) {
 		CachePrefixMessages: 2,
 	}
 
-	injectContextBlock(req, memoryPromptRegex, "<memory_context>\ncurrent\n</memory_context>")
+	blockRegex := regexp.MustCompile(`(?s)<memory_context>.*?</memory_context>\n*`)
+	InjectContextBlock(req, blockRegex, "<memory_context>\ncurrent\n</memory_context>")
 
 	if req.CachePrefixMessages != 2 {
 		t.Fatalf("expected cache prefix boundary to remain stable, got %d", req.CachePrefixMessages)

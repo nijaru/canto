@@ -60,8 +60,8 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 
 | Gate | Task | Intent |
 | :--- | :--- | :--- |
-| 0 active | `canto-98el` Pi-like session facade state | Make `Harness.Session(id)` own phase, active run, queue updates, save-point, settled, abort, wait-for-idle, and queued prompt state; current slice adds Pi-like steering/follow-up drain modes before Ion migrates off local turn ownership |
 | 0 active | `canto-iusu` Ion-proven P1 kernel reduction | Audit Ion-used Canto surfaces and reduce, rewrite, delete, or re-extract primitives based on Ion's Pi-level acceptance evidence before M1 posture resumes |
+| 0 done | `canto-98el` Pi-like session facade state | `Harness.Session(id)` owns phase, active run, queue updates, save-point, settled, abort, wait-for-idle, queued prompt state, Pi-like steering/follow-up drain modes, and Ion-imported P1 facade primitives |
 | 0 done | `canto-x8d0` runtime cancellation and timeout semantics | Runtime execution timeout is now opt-in; normal root/child runner turns no longer inherit a hidden whole-turn wall-clock deadline |
 | 0 done | `canto-y88u` workspace/path contracts | Workspace glob patterns now reject absolute/traversal/malformed inputs like normal rooted paths and support recursive `**` matching |
 | 0 done | `canto-9p8k` image content parts for Ion read parity | `llm.ContentPart` supports image data/URL, `tool.ContentTool` preserves structured tool results, and OpenAI/Anthropic converters emit image content |
@@ -90,6 +90,13 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 | 2 done | `canto-q56s` Coding tool-surface audit | Removed preset helpers and glob/search aliases; kept shell configurable |
 | 3 | `canto-khhl` Docs completeness pass | Fill only the docs needed for a new user to build a non-trivial agent and understand supported providers |
 | 3 | `canto-2if9` First-alpha package contract | Publish the one-page alpha scope once blockers are named and validation is acceptable |
+
+`canto-iusu` first implemented reduction: memory prompt retrieval is now
+`memory/memoryprompt.New`, not `prompt.MemoryPrompt`, so the core `prompt`
+package no longer imports the optional memory subsystem. Continue this audit
+with the remaining optional dependencies embedded in otherwise-core packages:
+`tool` -> `approval`, `runtime` -> `skill`, and session/governor artifact
+surfaces.
 
 ### Deferred Or Conditional
 

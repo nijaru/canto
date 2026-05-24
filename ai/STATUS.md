@@ -1,10 +1,10 @@
 # Status
 
 **Phase:** Ion Pi-first P1 migration support
-**Focus:** Move Canto's normal host path closer to Pi's proven
-session-scoped harness design before Ion promotes any Pi+ work.
-**Blockers:** Ion P1 remains open; deterministic acceptance is green, but live
-and full exit gates are still explicit opt-ins.
+**Focus:** reduce Canto to the Ion-proven P1 kernel before M1 docs/release
+posture resumes.
+**Blockers:** Ion P1 remains open; Canto should only keep or add P1 work when
+Ion acceptance evidence identifies a framework-owned gap.
 **Updated:** 2026-05-24
 
 ## Context
@@ -76,13 +76,21 @@ lane is selected.
   `/Users/nick/github/nijaru/ion/ai/sprints/02-ideal-core-completion.md`.
   The refreshed Pi/AX comparison drove durable turn identity and session
   sequence; that P1 architecture blocker is closed.
-- Active task graph: `canto-wuev` is the current design-closure support slice:
-  align public harness docs/examples around native `Submit` / `Turn`.
-  `canto-sqtc` added the
-  sequence-bounded event-read API required by Ion's typed display projection.
-  `canto-01ge` landed the native `Turn`/`Submit` facade; `canto-d6kl` landed
-  durable event `TurnID`/`Seq`; `canto-iq8h`, `canto-uduq`, `canto-dvtd`, and
-  `canto-xz1w` are complete.
+- Active task graph: `canto-iusu` is the current Canto P1 task: audit Ion-used
+  surfaces and reduce, rewrite, delete, or explicitly defer framework
+  primitives based on Ion P1 acceptance evidence. `canto-wuev` remains the
+  public-surface docs/examples slice when docs posture is selected. The prior
+  `canto-98el` facade slice is now closed. `canto-sqtc` added the
+  sequence-bounded event-read API required by Ion's typed display projection,
+  `canto-01ge` landed the native `Turn`/`Submit` facade, `canto-d6kl` landed
+  durable event `TurnID`/`Seq`, and `canto-iq8h`, `canto-uduq`, `canto-dvtd`,
+  and `canto-xz1w` are complete.
+- Current `canto-iusu` slice: memory-backed prompt retrieval moved out of the
+  core `prompt` package into `memory/memoryprompt`; `prompt` no longer imports
+  `memory/`, while hosts that opt into memory still compose the same request
+  processor explicitly.
+- `canto-wuev` found a real public-surface mismatch: public harness docs and
+  examples should teach native `Submit` / `Turn` as the common path.
 - `canto-uduq` landed the first executable contract slice: `RunEvent` now
   carries session id, stable external turn id, monotonic sequence, and
   durability classification. PromptStream tests now cover ordered metadata,
@@ -104,28 +112,16 @@ lane is selected.
 - Performance is part of this Canto lane: reduce host-side stream assembly,
   avoid unnecessary polling/flush loops, keep replay/resume bounded, and give
   Ion a low-latency stream it can render without reconstruction.
-- `canto-98el` is active: `Harness.Session(id)` now shares session-scoped
+- `canto-98el` is closed: `Harness.Session(id)` now shares session-scoped
   state across handles, rejects overlapping `Submit` calls with
-  `ErrSessionBusy`, exposes `RuntimeEvents`, and emits `queue_update`,
-  `save_point`, `settled`, and `abort` events. `Steer`, `FollowUp`, and
-  `NextTurn` queues are Canto-owned; `NextTurn` drains into the next accepted
-  prompt. The agent loop now drains steering before follow-up at deterministic
-  provider boundaries, with Pi-like one-at-a-time and all-at-once queue modes.
-  `QueuedInput` and `ClearQueuedInput` now expose the Pi-style read/restore
-  primitive Ion needs before moving editable busy follow-up queues into Canto.
-  Session events now also carry durable parentage plus `LeafMoved` entries;
-  replay repairs legacy linear logs in memory, `EffectiveMessages` /
-  `EffectiveEntries` rebuild from the active branch, fork remaps parent/leaf
-  ids, SQLite persists `parent_id`, and the root session facade exposes
-  `LeafID`, `MoveLeaf`, `ActiveEvents`, and `BranchEvents`. Remaining work is
-  importing the exact Canto revision into Ion and adding branch-summary
-  navigation policy. Durable model/thinking entries are now in place:
-  `ModelChanged` and `ThinkingChanged` events feed active-branch
-  `EffectiveSettings`, the root facade exposes `EffectiveSettings`, `SetModel`,
-  and `SetThinkingLevel`, and `SetModel` updates the harness agent through a
-  locked model setter for future turns. Ion has now imported the Canto P1
-  runtime/workspace checkpoint `88e9892` as
-  `github.com/nijaru/canto v0.0.0-20260523224205-88e98929ed0f`.
+  `ErrSessionBusy`, exposes `RuntimeEvents`, emits `queue_update`,
+  `save_point`, `settled`, and `abort` events, owns `Steer`, `FollowUp`, and
+  `NextTurn` queues, exposes `QueuedInput` / `ClearQueuedInput`, and includes
+  durable active-branch/model/thinking primitives. Ion has imported the latest
+  required Canto P1 revision
+  `github.com/nijaru/canto v0.0.0-20260524082550-c4897262a011`. Branch/tree
+  navigation policy is not an Ion P1 blocker under current Ion rules; branch
+  views stay parked unless explicitly promoted.
 - `canto-x8d0` is closed: `runtime.Runner` and the shared child runner now
   default to no whole-turn execution timeout. `WithExecutionTimeout` remains
   opt-in for hosts that intentionally want a cap; normal host turns are bounded
@@ -154,9 +150,10 @@ lane is selected.
   replay, sequence-bounded events, compaction, projection snapshots, and fork
   methods for normal host maintenance.
 - The old "no known P1 framework seam remains" status is superseded by the
-  Pi-first migration: Canto still needs Pi-like steering/follow-up drain
-  semantics and session tree/leaf primitives before Ion should treat P1 as
-  closed.
+  Pi-first migration. The concrete Pi-like steering/follow-up and session
+  facade primitives are landed; the remaining Canto P1 work is kernel
+  reduction against Ion-proven usage. Branch/tree product policy stays parked
+  unless Ion explicitly promotes it.
 
 **Ion pre-v0 design-closure support:**
 
@@ -202,6 +199,14 @@ lane is selected.
 
 ## Recently landed
 
+- `canto-iusu` first kernel-reduction slice — moved `prompt.MemoryPrompt` to
+  `memory/memoryprompt.New` as a clean pre-M1 API break, exported
+  `prompt.InjectContextBlock` as the generic cache-safe insertion helper, and
+  updated the memory example/docs. `go test ./prompt ./memory/memoryprompt
+  -count=1 -timeout 120s`, `go test ./... -count=1 -timeout 300s`,
+  `go vet ./...`, and `git diff --check` pass. `go list -deps
+  github.com/nijaru/canto/prompt` no longer includes `memory` or
+  `memory/memoryprompt`.
 - `canto-sqtc` — framework-owned bounded event reads: `EventQueryStore.EventsAfter`
   is implemented for SQLite and JSONL stores so hosts can update typed
   projections after a durable sequence cutoff without querying store internals.

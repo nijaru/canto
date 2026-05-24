@@ -1,4 +1,4 @@
-package prompt
+package memoryprompt
 
 import (
 	"context"
@@ -9,10 +9,11 @@ import (
 
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/memory"
+	"github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 )
 
-type MemoryPromptOptions struct {
+type Options struct {
 	Namespaces        []memory.Namespace
 	Roles             []memory.Role
 	Limit             int
@@ -26,8 +27,8 @@ type MemoryPromptOptions struct {
 	IncludeSuperseded bool
 }
 
-func MemoryPrompt(retriever memory.Retriever, opts MemoryPromptOptions) RequestProcessor {
-	return RequestProcessorFunc(func(
+func New(retriever memory.Retriever, opts Options) prompt.RequestProcessor {
+	return prompt.RequestProcessorFunc(func(
 		ctx context.Context,
 		p llm.Provider,
 		model string,
@@ -85,9 +86,9 @@ func MemoryPrompt(retriever memory.Retriever, opts MemoryPromptOptions) RequestP
 			)
 		}
 		sb.WriteString("</memory_context>")
-		injectContextBlock(req, memoryPromptRegex, sb.String())
+		prompt.InjectContextBlock(req, memoryContextRegex, sb.String())
 		return nil
 	})
 }
 
-var memoryPromptRegex = regexp.MustCompile(`(?s)<memory_context>.*?</memory_context>\n*`)
+var memoryContextRegex = regexp.MustCompile(`(?s)<memory_context>.*?</memory_context>\n*`)

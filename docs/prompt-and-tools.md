@@ -161,7 +161,7 @@ corresponding feature is enabled or triggered.
 | `Instructions(...)` | Host supplies instructions | Host-provided system text. |
 | `prompt.NewLazyTools` | Registry has more than 20 tools, or tools marked `Deferred` | Short hint that additional tools are available through `search_tools`. |
 | `runtime.Bootstrap` | Host calls `Runner.Bootstrap` | `# Workspace Snapshot` with cwd, root files, and tool names. |
-| `prompt.MemoryPrompt` | Host adds the memory request processor | `<memory_context>...</memory_context>`. |
+| `memoryprompt.New` | Host adds the memory request processor | `<memory_context>...</memory_context>`. |
 | `skill.PreloadPrompt` | Host preloads skills | `Preloaded Skills:` plus selected skill instructions. |
 | `governor.CircuitBreakerGuard` | Approval circuit breaker is tripped and host installed the guard | Notice that automated approvals are disabled. |
 | `governor.Summarizer` | Host enables summarization compaction | Internal summarizer prompt; result is stored as non-privileged stable context. |

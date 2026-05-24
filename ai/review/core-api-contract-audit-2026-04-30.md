@@ -137,7 +137,7 @@ go test ./... -count=1
 - Remaining reviewed boundaries so far:
   - `runtime.Bootstrap` depends on `workspace/` for explicit workspace snapshots; that is a core mechanism.
   - `runtime.ChildRunner` depends on `skill/` only when child specs carry skills; child execution is table-stakes framework machinery but not active in Ion's current native baseline.
-  - `prompt.MemoryPrompt` depends on `memory/` only when hosts add that request processor; Ion keeps memory processors/tools outside the current native baseline.
+  - `prompt.MemoryPrompt` was moved to `memory/memoryprompt.New`; core `prompt` no longer imports `memory/`, and hosts opt into memory-backed retrieval through the explicit adapter package.
   - `tool/mcp` depends on `safety/`/`workspace/`, but MCP registration remains deferred in Ion and is not part of the native minimal loop.
 - Verification:
 

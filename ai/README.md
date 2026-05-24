@@ -2,10 +2,10 @@
 
 ## Root
 
-- [STATUS.md](STATUS.md) — Ion pre-v0 design-closure pressure, current evidence, backlog, and blockers
+- [STATUS.md](STATUS.md) — Ion P1 kernel-reduction focus, current evidence, backlog, and blockers
 - [DESIGN.md](DESIGN.md) — canonical architecture, Ion boundary, run-event lifecycle contract, and package boundaries
 - [DECISIONS.md](DECISIONS.md) — stable principles plus recent architecture and planning decisions
-- [PLAN.md](PLAN.md) — sprint history, Ion/Canto framing, M1 readiness gate, and completed optimal-core sequence
+- [PLAN.md](PLAN.md) — sprint history, Ion/Canto framing, P1 kernel gate, and M1 readiness path
 
 ## Completed Sprints
 
@@ -38,7 +38,7 @@ All six sprints are complete. See [PLAN.md](PLAN.md) for full history.
 
 ## Supporting Design And Review (active)
 
-- [review/core-api-contract-audit-2026-04-30.md](review/core-api-contract-audit-2026-04-30.md) — active Canto core API contract audit under Ion validation
+- [review/core-api-contract-audit-2026-04-30.md](review/core-api-contract-audit-2026-04-30.md) — active core API audit and Ion-driven kernel-reduction findings
 - [review/ion-feedback-tracker-2026-04-28.md](review/ion-feedback-tracker-2026-04-28.md) — single active tracker for confirmed Ion-derived Canto framework issues
 - [design/authoring-surface.md](design/authoring-surface.md) — Phase 5 authoring design plus current harness/session facade refactor target
 - [design/optimal-core-redesign-2026-05.md](design/optimal-core-redesign-2026-05.md) — proactive Canto session/turn transaction rewrite plan for Ion's optimal core

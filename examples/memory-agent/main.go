@@ -3,7 +3,7 @@
 // memory-agent demonstrates Canto's multi-layer memory system:
 //
 //   - memory.Manager with scoped core + semantic memory
-//   - MemoryPrompt request processor for manager-driven retrieval
+//   - memoryprompt request processor for manager-driven retrieval
 //   - remember_memory / recall_memory tools for explicit durable memory I/O
 //
 // Usage: ANTHROPIC_API_KEY=... go run examples/memory-agent/main.go [message]
@@ -20,7 +20,8 @@ import (
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm/providers"
 	"github.com/nijaru/canto/memory"
-	prompt "github.com/nijaru/canto/prompt"
+	"github.com/nijaru/canto/memory/memoryprompt"
+	"github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/runtime"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
@@ -90,11 +91,11 @@ Directives: Always search memory before answering. Memorize important new facts.
 
 	// 4. Build the Context Pipeline
 	// Pipeline ordering is critical:
-	//  1. MemoryPrompt       — manager-driven retrieval (core + long-term memory)
+	//  1. memoryprompt.New   — manager-driven retrieval (core + long-term memory)
 	//  2. History            — model-visible conversation transcript
 	//  3. Tools              — tool specs
 	builder := prompt.NewBuilder(
-		prompt.MemoryPrompt(manager, prompt.MemoryPromptOptions{
+		memoryprompt.New(manager, memoryprompt.Options{
 			Namespaces: []memory.Namespace{namespace},
 			Roles:      []memory.Role{memory.RoleCore, memory.RoleSemantic, memory.RoleEpisodic},
 			Limit:      5,

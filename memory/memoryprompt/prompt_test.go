@@ -1,4 +1,4 @@
-package prompt
+package memoryprompt
 
 import (
 	"context"
@@ -55,7 +55,7 @@ func TestMemoryPrompt_InjectsRetrievedMemory(t *testing.T) {
 		t.Fatalf("Append: %v", err)
 	}
 	req := &llm.Request{}
-	proc := MemoryPrompt(manager, MemoryPromptOptions{
+	proc := New(manager, Options{
 		Namespaces: []memory.Namespace{namespace},
 		Roles:      []memory.Role{memory.RoleCore, memory.RoleSemantic},
 		Limit:      5,
@@ -93,7 +93,7 @@ func TestMemoryPrompt_ReplacesExistingBlock(t *testing.T) {
 			},
 		},
 	}
-	proc := MemoryPrompt(manager, MemoryPromptOptions{
+	proc := New(manager, Options{
 		Namespaces: []memory.Namespace{namespace},
 		Roles:      []memory.Role{memory.RoleCore},
 		Limit:      5,
@@ -130,7 +130,7 @@ func TestMemoryPrompt_UsesEffectiveMessagesAfterCompaction(t *testing.T) {
 		t.Fatalf("Write: %v", err)
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	sess := session.New("km-compacted")
 	if err := sess.Append(ctx, session.NewMessage(sess.ID(), llm.Message{
 		Role:    llm.RoleUser,
@@ -152,7 +152,7 @@ func TestMemoryPrompt_UsesEffectiveMessagesAfterCompaction(t *testing.T) {
 	}
 
 	req := &llm.Request{}
-	proc := MemoryPrompt(manager, MemoryPromptOptions{
+	proc := New(manager, Options{
 		Namespaces: []memory.Namespace{namespace},
 		Roles:      []memory.Role{memory.RoleSemantic},
 		Limit:      5,
@@ -170,7 +170,7 @@ func TestMemoryPrompt_UsesEffectiveMessagesAfterCompaction(t *testing.T) {
 func TestMemoryPrompt_NilManager(t *testing.T) {
 	sess := session.New("thread-nil")
 	req := &llm.Request{}
-	proc := MemoryPrompt(nil, MemoryPromptOptions{})
+	proc := New(nil, Options{})
 	if err := proc.ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
 		t.Fatalf("ApplyRequest: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestMemoryPrompt_NilManager(t *testing.T) {
 func TestMemoryPrompt_NilSessionNoops(t *testing.T) {
 	retriever := &stubRetriever{}
 	req := &llm.Request{}
-	proc := MemoryPrompt(retriever, MemoryPromptOptions{})
+	proc := New(retriever, Options{})
 	if err := proc.ApplyRequest(t.Context(), nil, "", nil, req); err != nil {
 		t.Fatalf("ApplyRequest: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestMemoryPrompt_NilSessionNoops(t *testing.T) {
 func TestMemoryPrompt_UsesRetrieverInterface(t *testing.T) {
 	sess := session.New("thread-stub")
 	req := &llm.Request{}
-	proc := MemoryPrompt(&stubRetriever{
+	proc := New(&stubRetriever{
 		results: []memory.Memory{
 			{
 				ID:        "m1",
@@ -207,7 +207,7 @@ func TestMemoryPrompt_UsesRetrieverInterface(t *testing.T) {
 				Content:   "Stubbed memory",
 			},
 		},
-	}, MemoryPromptOptions{Limit: 5})
+	}, Options{Limit: 5})
 	if err := proc.ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
 		t.Fatalf("ApplyRequest: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestMemoryPrompt_PassesLifecycleOptions(t *testing.T) {
 			},
 		},
 	}
-	proc := MemoryPrompt(retriever, MemoryPromptOptions{
+	proc := New(retriever, Options{
 		Limit:             5,
 		Query:             "tea",
 		IncludeRecent:     true,
@@ -279,7 +279,7 @@ func TestMemoryPrompt_RespectsRoleSelection(t *testing.T) {
 	}
 
 	req := &llm.Request{}
-	proc := MemoryPrompt(manager, MemoryPromptOptions{
+	proc := New(manager, Options{
 		Namespaces: []memory.Namespace{namespace},
 		Roles:      []memory.Role{memory.RoleSemantic},
 		Limit:      5,
