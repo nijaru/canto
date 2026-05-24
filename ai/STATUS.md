@@ -3,7 +3,8 @@
 **Phase:** Ion Pi-first P1 migration support
 **Focus:** Move Canto's normal host path closer to Pi's proven
 session-scoped harness design before Ion promotes any Pi+ work.
-**Blockers:** Ion's reopened P1 acceptance harness is not green.
+**Blockers:** Ion P1 remains open; deterministic acceptance is green, but live
+and full exit gates are still explicit opt-ins.
 **Updated:** 2026-05-23
 
 ## Context
@@ -122,7 +123,9 @@ lane is selected.
   `ModelChanged` and `ThinkingChanged` events feed active-branch
   `EffectiveSettings`, the root facade exposes `EffectiveSettings`, `SetModel`,
   and `SetThinkingLevel`, and `SetModel` updates the harness agent through a
-  locked model setter for future turns.
+  locked model setter for future turns. Ion has now imported the Canto P1
+  runtime/workspace checkpoint `88e9892` as
+  `github.com/nijaru/canto v0.0.0-20260523224205-88e98929ed0f`.
 - `canto-x8d0` is closed: `runtime.Runner` and the shared child runner now
   default to no whole-turn execution timeout. `WithExecutionTimeout` remains
   opt-in for hosts that intentionally want a cap; normal host turns are bounded
