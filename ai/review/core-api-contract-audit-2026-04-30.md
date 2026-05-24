@@ -142,6 +142,11 @@ go test ./... -count=1
     longer depend on the artifact store package.
   - `governor` owns token/budget/compaction prompt machinery; approval
     circuit-breaker prompt injection moved to `approval.CircuitBreakerGuard`.
+    Artifact-backed offload remains in `governor` because it is part of the
+    Pi-like context governance path Ion uses for manual compaction, proactive
+    compaction, and overflow recovery. `MinKeepTurns` now keeps complete
+    recent user turns for offload and summarize instead of keeping a raw
+    message suffix.
   - `prompt.MemoryPrompt` was moved to `memory/memoryprompt.New`; core `prompt` no longer imports `memory/`, and hosts opt into memory-backed retrieval through the explicit adapter package.
   - `tool.NewTyped` / `tool.MustTyped` were moved to `tool/typedtool`, and approval-capable tools now implement `approval.RequirementProvider`; core `tool` no longer imports approval state.
   - `tool/mcp` depends on `safety/`/`workspace/`, but MCP registration remains deferred in Ion and is not part of the native minimal loop.
@@ -214,8 +219,10 @@ Recent concrete fixes from the follow-up pass:
 Latest checkpoint:
 
 ```sh
+go test ./governor -count=1 -timeout 180s
 go vet ./...
-go test -race ./agent ./session ./runtime ./prompt ./tool ./workspace ./llm ./governor ./memory ./coding ./service ./tracing ./hook ./approval ./artifact ./audit ./safety ./tool/mcp -count=1 -timeout 300s
+go test ./... -count=1 -timeout 300s
+git diff --check
 ```
 
 Remaining non-code follow-up:

@@ -215,10 +215,14 @@ lane is selected.
   approval declaration interface to `approval.RequirementProvider`. The latest
   slice moved child skill validation/scoping/preload out of `runtime` and into
   `skill.RuntimeConfig`, artifact storage helpers out of `session`, and
-  approval circuit-breaker prompt injection out of `governor`. Focused package
-  tests pass for `prompt`, `memory/memoryprompt`, `tool`, `tool/typedtool`,
-  `agent`, `tracing`, `service`, `executortool`, `tool/mcp`, `runtime`,
-  `skill`, `session`, `artifact`, `governor`, and `approval`.
+  approval circuit-breaker prompt injection out of `governor`. The follow-up
+  compaction pass kept `governor` as the Pi-like context governance owner and
+  fixed `MinKeepTurns` to retain whole user-turn groups for offload and
+  summarize, not raw message counts. Focused package tests pass for `prompt`,
+  `memory/memoryprompt`, `tool`, `tool/typedtool`, `agent`, `tracing`,
+  `service`, `executortool`, `tool/mcp`, `runtime`, `skill`, `session`,
+  `artifact`, `governor`, and `approval`; full `go test ./...`, `go vet
+  ./...`, and `git diff --check` pass after the compaction fix.
 - `canto-sqtc` — framework-owned bounded event reads: `EventQueryStore.EventsAfter`
   is implemented for SQLite and JSONL stores so hosts can update typed
   projections after a durable sequence cutoff without querying store internals.

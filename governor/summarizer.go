@@ -88,14 +88,13 @@ func (p *Summarizer) summarize(
 	}
 
 	// 3. Identify candidates
-	numMessages := len(entries)
-	if numMessages <= p.MinKeepTurns {
+	recentStart := recentStartIndex(entries, p.MinKeepTurns)
+	if recentStart <= 0 {
 		return nil
 	}
 	if p.OnPreCompact != nil {
 		p.OnPreCompact(ctx, sess)
 	}
-	recentStart := recentStartIndex(entries, p.MinKeepTurns)
 
 	// Strategy: Keep durable context entries and the last N turns.
 	// Summarize the rest.
@@ -201,18 +200,4 @@ func (p *Summarizer) summarize(
 		return err
 	}
 	return nil
-}
-
-func recentStartIndex(entries []session.HistoryEntry, keepMessages int) int {
-	if keepMessages <= 0 {
-		keepMessages = 1
-	}
-	start := len(entries) - keepMessages
-	if start < 0 {
-		return 0
-	}
-	for start > 0 && entries[start].Message.Role == llm.RoleTool {
-		start--
-	}
-	return start
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
 
@@ -33,6 +34,23 @@ func cloneHistoryEntries(entries []session.HistoryEntry) []session.HistoryEntry 
 		})
 	}
 	return res
+}
+
+func recentStartIndex(entries []session.HistoryEntry, keepTurns int) int {
+	if keepTurns <= 0 {
+		keepTurns = 1
+	}
+	turns := 0
+	for i := len(entries) - 1; i >= 0; i-- {
+		if entries[i].Message.Role != llm.RoleUser {
+			continue
+		}
+		turns++
+		if turns >= keepTurns {
+			return i
+		}
+	}
+	return 0
 }
 
 func offloadCandidateID(

@@ -103,9 +103,12 @@ Artifact descriptors are now session-owned event references while artifact body
 storage lives behind `artifact.StoreSessionArtifact`, so `session` no longer
 imports `artifact`. Approval circuit-breaker prompt injection now lives in
 `approval.CircuitBreakerGuard`, so budget/compaction-oriented `governor` no
-longer imports approval. Continue this audit with remaining optional
-dependencies embedded in otherwise-core packages, especially whether
-governor's artifact-backed offload path should stay in core.
+longer imports approval. The governor review kept artifact-backed offload in
+core because Ion uses `governor.CompactSession` for `/compact`, proactive
+compaction, and overflow recovery, matching Pi's P1 context-governance class.
+That review also fixed `MinKeepTurns` so offload and summarize retain complete
+recent user turns rather than a raw message suffix. Continue this audit with
+remaining optional dependencies embedded in otherwise-core packages.
 
 ### Deferred Or Conditional
 

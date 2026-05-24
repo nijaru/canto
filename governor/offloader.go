@@ -102,9 +102,9 @@ func (p *Offloader) compact(
 		return nil
 	}
 
-	// Identify candidates
-	numMessages := len(entries)
-	if numMessages <= p.MinKeepTurns {
+	// Identify candidates.
+	recentStart := recentStartIndex(entries, p.MinKeepTurns)
+	if recentStart <= 0 {
 		return nil
 	}
 	if p.OnPreCompact != nil {
@@ -130,9 +130,9 @@ func (p *Offloader) compact(
 		defer closeStore()
 	}
 
-	// Simple implementation: Offload Tool results that are not in the last N messages
-	candidates := entries[:numMessages-p.MinKeepTurns]
-	newEntries := make([]session.HistoryEntry, 0, numMessages)
+	candidates := entries[:recentStart]
+	recentEntries := entries[recentStart:]
+	newEntries := make([]session.HistoryEntry, 0, len(entries))
 
 	for i, entry := range candidates {
 		m := entry.Message
@@ -170,8 +170,8 @@ func (p *Offloader) compact(
 		newEntries = append(newEntries, entry)
 	}
 
-	// Add remaining messages (non-candidates)
-	newEntries = append(newEntries, cloneHistoryEntries(entries[numMessages-p.MinKeepTurns:])...)
+	// Add remaining messages (non-candidates).
+	newEntries = append(newEntries, cloneHistoryEntries(recentEntries)...)
 
 	event := session.NewCompactionEvent(sess.ID(), session.CompactionSnapshot{
 		Strategy:      "offload",

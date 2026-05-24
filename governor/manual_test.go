@@ -261,7 +261,7 @@ func TestCompactSessionOffloadsBeforeSummarize(t *testing.T) {
 
 	result, err := CompactSession(t.Context(), provider, "mock-model", sess, CompactOptions{
 		MaxTokens:    200,
-		MinKeepTurns: 2,
+		MinKeepTurns: 1,
 		OffloadDir:   t.TempDir(),
 	})
 	if err != nil {

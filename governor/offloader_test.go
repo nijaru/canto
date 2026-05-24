@@ -45,7 +45,7 @@ func TestOffloadProcessor(t *testing.T) {
 	// Threshold is 60%, MaxTokens = 1000.
 	// largeContent is ~3000 tokens (chars/4 heuristic).
 	offloader := governor.NewOffloader(1000, tempDir)
-	offloader.MinKeepTurns = 2 // Keep last 2 messages
+	offloader.MinKeepTurns = 1
 
 	if err := offloader.Mutate(context.Background(), nil, "", sess); err != nil {
 		t.Fatalf("offload failed: %v", err)
@@ -58,7 +58,7 @@ func TestOffloadProcessor(t *testing.T) {
 		t.Fatalf("history rebuild failed: %v", err)
 	}
 
-	// Message 3 (RoleTool) should be offloaded because it's older than last 2.
+	// Message 3 (RoleTool) should be offloaded because it's older than last turn.
 	if len(req.Messages[3].Content) > 1000 {
 		t.Errorf(
 			"expected message to be offloaded, but still have %d chars",
@@ -129,7 +129,7 @@ func TestOffloadProcessor_DuplicateToolOutputsGetDistinctArtifacts(t *testing.T)
 	}
 
 	offloader := governor.NewOffloader(1000, tempDir)
-	offloader.MinKeepTurns = 2
+	offloader.MinKeepTurns = 1
 	if err := offloader.Mutate(context.Background(), nil, "", sess); err != nil {
 		t.Fatalf("offload failed: %v", err)
 	}
@@ -153,5 +153,52 @@ func TestOffloadProcessor_DuplicateToolOutputsGetDistinctArtifacts(t *testing.T)
 			"expected distinct placeholders for duplicate outputs, got %q",
 			req.Messages[2].Content,
 		)
+	}
+}
+
+func TestOffloadProcessorMinKeepTurnsRetainsWholeRecentTurn(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "canto-offload-recent-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	sess := session.New("recent-turn")
+	oldLargeContent := strings.Repeat("old large content ", 200)
+	recentLargeContent := strings.Repeat("recent large content ", 200)
+	oldCall := llm.Call{ID: "old-tool", Type: "function"}
+	oldCall.Function.Name = "read"
+	recentCall := llm.Call{ID: "recent-tool", Type: "function"}
+	recentCall.Function.Name = "read"
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: "old request"},
+		{Role: llm.RoleAssistant, Calls: []llm.Call{oldCall}},
+		{Role: llm.RoleTool, Content: oldLargeContent, ToolID: "old-tool"},
+		{Role: llm.RoleAssistant, Content: "old answer"},
+		{Role: llm.RoleUser, Content: "recent request"},
+		{Role: llm.RoleAssistant, Calls: []llm.Call{recentCall}},
+		{Role: llm.RoleTool, Content: recentLargeContent, ToolID: "recent-tool"},
+		{Role: llm.RoleAssistant, Content: "recent answer"},
+	} {
+		if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append history: %v", err)
+		}
+	}
+
+	offloader := governor.NewOffloader(1000, tempDir)
+	offloader.MinKeepTurns = 1
+	if err := offloader.Mutate(context.Background(), nil, "", sess); err != nil {
+		t.Fatalf("offload failed: %v", err)
+	}
+
+	messages, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	if strings.Contains(messages[2].Content, oldLargeContent[:64]) {
+		t.Fatalf("expected old tool result to be offloaded")
+	}
+	if !strings.Contains(messages[6].Content, recentLargeContent[:64]) {
+		t.Fatalf("expected recent tool result to remain raw within kept turn")
 	}
 }

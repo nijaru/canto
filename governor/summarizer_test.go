@@ -95,8 +95,8 @@ func TestSummarizer(t *testing.T) {
 		t.Fatalf("history rebuild failed: %v", err)
 	}
 
-	if len(req.Messages) != 4 { // 1 summary + 3 recent
-		t.Fatalf("expected 4 messages, got %d", len(req.Messages))
+	if len(req.Messages) != 6 { // 1 summary + 3 recent user turns
+		t.Fatalf("expected 6 messages, got %d", len(req.Messages))
 	}
 
 	if req.Messages[0].Role != llm.RoleUser {
@@ -115,19 +115,81 @@ func TestSummarizer(t *testing.T) {
 		)
 	}
 
-	if req.Messages[3].Content != "Hello 4"+longStr {
-		t.Errorf("expected last message to be 'Hello 4...', got '%s'", req.Messages[3].Content)
+	if req.Messages[1].Content != "Hello 2"+longStr {
+		t.Errorf(
+			"expected first retained turn to start with 'Hello 2...', got '%s'",
+			req.Messages[1].Content,
+		)
+	}
+
+	if req.Messages[5].Content != "Hello 4"+longStr {
+		t.Errorf("expected last message to be 'Hello 4...', got '%s'", req.Messages[5].Content)
 	}
 
 	historyReq := &llm.Request{}
 	if err := prompt.History().ApplyRequest(context.Background(), nil, "", sess, historyReq); err != nil {
 		t.Fatalf("history rebuild failed: %v", err)
 	}
-	if len(historyReq.Messages) != 4 {
-		t.Fatalf("expected 4 rebuilt history messages, got %d", len(historyReq.Messages))
+	if len(historyReq.Messages) != 6 {
+		t.Fatalf("expected 6 rebuilt history messages, got %d", len(historyReq.Messages))
 	}
 	if historyReq.Messages[0].Content != expectedSummary {
 		t.Fatalf("expected persisted summary, got %q", historyReq.Messages[0].Content)
+	}
+}
+
+func TestSummarizerMinKeepTurnsRetainsWholeRecentTurns(t *testing.T) {
+	sess := session.New("turn-aware-summary")
+	for _, msg := range []llm.Message{
+		{Role: llm.RoleUser, Content: strings.Repeat("old user ", 30)},
+		{Role: llm.RoleAssistant, Content: strings.Repeat("old assistant ", 30)},
+		{Role: llm.RoleUser, Content: strings.Repeat("recent user one ", 20)},
+		{Role: llm.RoleAssistant, Content: strings.Repeat("recent assistant one ", 20)},
+		{Role: llm.RoleUser, Content: strings.Repeat("recent user two ", 20)},
+		{Role: llm.RoleAssistant, Content: strings.Repeat("recent assistant two ", 20)},
+	} {
+		if err := sess.Append(context.Background(), session.NewMessage(sess.ID(), msg)); err != nil {
+			t.Fatalf("append history: %v", err)
+		}
+	}
+
+	provider := &mockProvider{
+		id: "mock",
+		genFn: func(ctx context.Context, req *llm.Request) (*llm.Response, error) {
+			return &llm.Response{Content: "Old turn summary"}, nil
+		},
+	}
+
+	processor := NewSummarizer(100, provider, "mock-model")
+	processor.ThresholdPct = 0.10
+	processor.MinKeepTurns = 2
+	if err := processor.Mutate(context.Background(), nil, "", sess); err != nil {
+		t.Fatalf("processor failed: %v", err)
+	}
+
+	messages, err := sess.EffectiveMessages()
+	if err != nil {
+		t.Fatalf("EffectiveMessages: %v", err)
+	}
+	if len(messages) != 5 {
+		t.Fatalf("expected summary plus 2 complete recent turns, got %d", len(messages))
+	}
+	for _, want := range []string{
+		"recent user one",
+		"recent assistant one",
+		"recent user two",
+		"recent assistant two",
+	} {
+		if !containsMessageContent(messages, want) {
+			t.Fatalf("expected compacted history to retain %q: %#v", want, messages)
+		}
+	}
+	for _, older := range []string{"old user", "old assistant"} {
+		for _, msg := range messages[1:] {
+			if strings.Contains(msg.Content, older) {
+				t.Fatalf("expected %q to be summarized, got raw message %#v", older, msg)
+			}
+		}
 	}
 }
 
@@ -219,7 +281,7 @@ func TestSummarizerUsesPreviousSummaryUpdatePrompt(t *testing.T) {
 	}
 }
 
-func TestSummarizerSplitTurnSummarizesActivePrefix(t *testing.T) {
+func TestSummarizerMinKeepTurnsKeepsActiveToolTurn(t *testing.T) {
 	sess := session.New("split-turn")
 	call := llm.Call{ID: "call-1", Type: "function"}
 	call.Function.Name = "read_file"
@@ -257,8 +319,8 @@ func TestSummarizerSplitTurnSummarizesActivePrefix(t *testing.T) {
 	if err := processor.Mutate(context.Background(), nil, "", sess); err != nil {
 		t.Fatalf("processor failed: %v", err)
 	}
-	if len(requests) != 2 {
-		t.Fatalf("summary requests = %d, want 2", len(requests))
+	if len(requests) != 1 {
+		t.Fatalf("summary requests = %d, want 1", len(requests))
 	}
 
 	entries, err := sess.EffectiveEntries()
@@ -269,14 +331,12 @@ func TestSummarizerSplitTurnSummarizesActivePrefix(t *testing.T) {
 		t.Fatalf("expected compacted entries, got %d", len(entries))
 	}
 	summary := entries[0].Message.Content
-	for _, want := range []string{
-		"Stable history summary",
-		"## Active Turn Prefix",
-		"Active tool call prefix summary",
-	} {
-		if !strings.Contains(summary, want) {
-			t.Fatalf("summary missing %q: %s", want, summary)
-		}
+	if !strings.Contains(summary, "Stable history summary") {
+		t.Fatalf("summary missing stable history: %s", summary)
+	}
+	if strings.Contains(summary, "Active tool call prefix summary") ||
+		strings.Contains(summary, "## Active Turn Prefix") {
+		t.Fatalf("summary should not consume the retained active turn: %s", summary)
 	}
 }
 
@@ -337,4 +397,13 @@ func TestSummarizerSplitTurnKeepsToolResultWithAssistantCall(t *testing.T) {
 			messages,
 		)
 	}
+}
+
+func containsMessageContent(messages []llm.Message, want string) bool {
+	for _, msg := range messages {
+		if strings.Contains(msg.Content, want) {
+			return true
+		}
+	}
+	return false
 }

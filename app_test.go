@@ -1158,7 +1158,7 @@ func TestHarnessSessionCompactFacade(t *testing.T) {
 	result, err := h.Session(sess.ID()).Compact(t.Context(), governor.CompactOptions{
 		MaxTokens:    20,
 		ThresholdPct: 0.10,
-		MinKeepTurns: 2,
+		MinKeepTurns: 1,
 		OffloadDir:   t.TempDir(),
 	})
 	if err != nil {
@@ -1279,7 +1279,7 @@ func TestHarnessBuilderCompactionRunsBeforePrompt(t *testing.T) {
 		Compaction(governor.CompactOptions{
 			MaxTokens:    20,
 			ThresholdPct: 0.10,
-			MinKeepTurns: 2,
+			MinKeepTurns: 1,
 			OffloadDir:   t.TempDir(),
 		}).
 		Build()
@@ -1329,7 +1329,7 @@ func TestHarnessBuilderCompactionFailureDoesNotAppendPrompt(t *testing.T) {
 		Compaction(governor.CompactOptions{
 			MaxTokens:    20,
 			ThresholdPct: 0.10,
-			MinKeepTurns: 2,
+			MinKeepTurns: 1,
 			OffloadDir:   t.TempDir(),
 		}).
 		Build()
