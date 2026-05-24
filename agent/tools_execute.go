@@ -138,23 +138,44 @@ func executeTool(
 	}
 
 	var output strings.Builder
-	output.WriteString(pf.output) // hook context from preflight
+	outputPrefix := pf.output // hook context from preflight
+	output.WriteString(outputPrefix)
 	var execErr error
 	var parts []llm.ContentPart
-	if st, ok := t.(tool.StreamingTool); ok {
+	if st, ok := t.(tool.StreamingUpdateTool); ok {
+		for update, err := range st.ExecuteStreamingUpdates(ctx, call.Function.Arguments) {
+			if err != nil {
+				execErr = err
+				break
+			}
+			if update.Snapshot {
+				output.Reset()
+				output.WriteString(outputPrefix)
+			}
+			output.WriteString(update.Text)
+			if err := appendToolOutputDelta(
+				ctx,
+				s,
+				call,
+				update.Text,
+				update.Snapshot,
+			); err != nil {
+				return toolResult{call: call, output: output.String(), err: err}
+			}
+		}
+	} else if st, ok := t.(tool.StreamingTool); ok {
 		for delta, err := range st.ExecuteStreaming(ctx, call.Function.Arguments) {
 			if err != nil {
 				execErr = err
 				break
 			}
 			output.WriteString(delta)
-			if err := s.Append(
+			if err := appendToolOutputDelta(
 				ctx,
-				session.NewEvent(s.ID(), session.ToolOutputDelta, map[string]any{
-					"tool":  call.Function.Name,
-					"id":    call.ID,
-					"delta": delta,
-				}),
+				s,
+				call,
+				delta,
+				false,
 			); err != nil {
 				return toolResult{call: call, output: output.String(), err: err}
 			}
@@ -234,6 +255,24 @@ func executeTool(
 		res.err = err
 	}
 	return res
+}
+
+func appendToolOutputDelta(
+	ctx context.Context,
+	s *session.Session,
+	call llm.Call,
+	text string,
+	snapshot bool,
+) error {
+	data := map[string]any{
+		"tool":  call.Function.Name,
+		"id":    call.ID,
+		"delta": text,
+	}
+	if snapshot {
+		data["snapshot"] = true
+	}
+	return s.Append(ctx, session.NewEvent(s.ID(), session.ToolOutputDelta, data))
 }
 
 func messageTextFromParts(parts []llm.ContentPart) string {

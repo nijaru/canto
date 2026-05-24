@@ -27,6 +27,7 @@ framework-owned issues as advanced integrations are reintroduced.
 
 | Area | Resolution | Notes |
 | --- | --- | --- |
+| Streaming tool snapshots | `tool.StreamingUpdateTool` allows tools to emit append deltas or snapshot replacements; `runTools`, tracing, and run lifecycle metadata preserve the snapshot flag. | Unblocks Ion's Pi-parity bash output: long command results can show the final tail and full-output path instead of append-only head chunks. |
 | Image content tool results | Canto `eae32b9` added image content parts, `tool.ContentTool`, structured tool-result preservation, tracing wrapper support, and OpenAI/Anthropic image conversion. | Unblocks Ion Pi-parity `read(image)` so image files are not treated as UTF-8 text. |
 | Session write boundary | `Session.Append`, `SQLiteStore.Save`, and `JSONLStore.Save` reject empty/no-payload assistant `MessageAdded` rows while preserving content, reasoning, thinking-only, and tool-only assistant payloads. | Prevents future invalid provider history at both live-session and direct-store write boundaries; projection sanitation remains a legacy/corrupt-history defense. |
 | Empty/no-payload assistant rows in effective history | Canto effective history filters invalid assistant rows from raw history, snapshots, and appended events. | Projection sanitation is a legacy/corrupt-history defense. |

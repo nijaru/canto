@@ -69,6 +69,7 @@ type RunToolLifecycle struct {
 	IdempotencyKey string `json:"idempotency_key,omitzero"`
 	Output         string `json:"output,omitzero"`
 	Delta          string `json:"delta,omitzero"`
+	Snapshot       bool   `json:"snapshot,omitzero"`
 	Error          string `json:"error,omitzero"`
 }
 
@@ -764,17 +765,19 @@ func isCancellationErrorText(errText string) bool {
 
 func toolDeltaLifecycle(event session.Event) (RunToolLifecycle, bool) {
 	var data struct {
-		Tool  string `json:"tool"`
-		ID    string `json:"id"`
-		Delta string `json:"delta"`
+		Tool     string `json:"tool"`
+		ID       string `json:"id"`
+		Delta    string `json:"delta"`
+		Snapshot bool   `json:"snapshot"`
 	}
 	if err := event.UnmarshalData(&data); err != nil {
 		return RunToolLifecycle{}, false
 	}
 	return RunToolLifecycle{
-		ID:    data.ID,
-		Name:  data.Tool,
-		Delta: data.Delta,
+		ID:       data.ID,
+		Name:     data.Tool,
+		Delta:    data.Delta,
+		Snapshot: data.Snapshot,
 	}, true
 }
 

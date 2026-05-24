@@ -21,14 +21,18 @@ type wrappedTool struct {
 func (*wrappedTool) tracingWrapped() {}
 
 // WrapTool returns a Tool that records a "canto.tool.{name}" child span on
-// every Execute call. If the tool is a StreamingTool, the returned tool
-// will also implement StreamingTool and instrument ExecuteStreaming. If the
-// tool is a ContentTool, the returned tool preserves ExecuteContent.
+// every Execute call. If the tool is a StreamingUpdateTool or StreamingTool,
+// the returned tool will also implement the same streaming surface and
+// instrument it. If the tool is a ContentTool, the returned tool preserves
+// ExecuteContent.
 func WrapTool(t tool.Tool) tool.Tool {
 	if _, ok := t.(interface{ tracingWrapped() }); ok {
 		return t
 	}
 	w := wrappedTool{inner: t}
+	if st, ok := t.(tool.StreamingUpdateTool); ok {
+		return &wrappedStreamingUpdateTool{wrappedTool: w, innerStreamingUpdates: st}
+	}
 	if st, ok := t.(tool.StreamingTool); ok {
 		return &wrappedStreamingTool{wrappedTool: w, innerStreaming: st}
 	}
@@ -147,5 +151,73 @@ func (w *wrappedStreamingTool) ExecuteStreaming(
 			}
 		}
 		span.SetAttributes(attribute.Int("canto.tool.output_len", buf.Len()))
+	}
+}
+
+type wrappedStreamingUpdateTool struct {
+	wrappedTool
+	innerStreamingUpdates tool.StreamingUpdateTool
+}
+
+func (*wrappedStreamingUpdateTool) tracingWrapped() {}
+
+func (w *wrappedStreamingUpdateTool) ExecuteStreamingUpdates(
+	ctx context.Context,
+	args string,
+) iter.Seq2[tool.StreamUpdate, error] {
+	name := w.inner.Spec().Name
+
+	return func(yield func(tool.StreamUpdate, error) bool) {
+		ctx, span := Tracer().Start(
+			ctx, "canto.tool."+name,
+			trace.WithAttributes(
+				attribute.String("canto.tool.name", name),
+				attribute.Bool("canto.tool.streaming", true),
+				attribute.Bool("canto.tool.streaming_updates", true),
+			),
+		)
+		streamCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		defer span.End()
+		var buf strings.Builder
+		for update, err := range w.innerStreamingUpdates.ExecuteStreamingUpdates(streamCtx, args) {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+				if !yield(tool.StreamUpdate{}, err) {
+					cancel()
+					return
+				}
+				return
+			}
+			if update.Snapshot {
+				buf.Reset()
+			}
+			buf.WriteString(update.Text)
+			if !yield(update, nil) {
+				cancel()
+				return
+			}
+		}
+		span.SetAttributes(attribute.Int("canto.tool.output_len", buf.Len()))
+	}
+}
+
+func (w *wrappedStreamingUpdateTool) ExecuteStreaming(
+	ctx context.Context,
+	args string,
+) iter.Seq2[string, error] {
+	return func(yield func(string, error) bool) {
+		for update, err := range w.ExecuteStreamingUpdates(ctx, args) {
+			if err != nil {
+				if !yield("", err) {
+					return
+				}
+				return
+			}
+			if !yield(update.Text, nil) {
+				return
+			}
+		}
 	}
 }

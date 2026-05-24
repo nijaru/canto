@@ -139,6 +139,10 @@ lane is selected.
   `runTools` preserves content parts on tool-result messages, tracing preserves
   the content-tool interface, and OpenAI/Anthropic converters emit image
   content for provider-visible messages.
+- `canto-dasc` is closed in this slice: `tool.StreamingUpdateTool` adds
+  snapshot updates so framework hosts can show live tool output while replacing
+  provider-visible final output with a rolling summary. This closes the
+  framework side of Ion's Pi-parity bash-output gap.
 - `canto-vhjg` is closed in Canto `5f313f6`: `RunEvent` now carries envelope
   metadata plus one typed payload, and Ion imported that exact revision in
   `9ff72a4`.

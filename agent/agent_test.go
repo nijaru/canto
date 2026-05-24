@@ -219,6 +219,43 @@ func (t *streamingTool) ExecuteStreaming(
 	}
 }
 
+type streamingUpdateTool struct {
+	name    string
+	updates []tool.StreamUpdate
+}
+
+func (t *streamingUpdateTool) Spec() llm.Spec {
+	return llm.Spec{
+		Name:        t.name,
+		Description: "A streaming update test tool",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+	}
+}
+
+func (t *streamingUpdateTool) Execute(_ context.Context, _ string) (string, error) {
+	var out strings.Builder
+	for _, update := range t.updates {
+		if update.Snapshot {
+			out.Reset()
+		}
+		out.WriteString(update.Text)
+	}
+	return out.String(), nil
+}
+
+func (t *streamingUpdateTool) ExecuteStreamingUpdates(
+	_ context.Context,
+	_ string,
+) iter.Seq2[tool.StreamUpdate, error] {
+	return func(yield func(tool.StreamUpdate, error) bool) {
+		for _, update := range t.updates {
+			if !yield(update, nil) {
+				return
+			}
+		}
+	}
+}
+
 type blockingTool struct {
 	name     string
 	metadata tool.Metadata
@@ -1343,6 +1380,85 @@ func TestRunTools_StreamingToolRecordsDeltasAndFinalOutput(t *testing.T) {
 	if completed.Tool != "stream" ||
 		completed.ID != "c1" ||
 		completed.Output != "alphabetagamma" ||
+		completed.Error != "" {
+		t.Fatalf("unexpected completed tool event: %#v", completed)
+	}
+}
+
+func TestRunTools_StreamingUpdateToolSnapshotsReplaceFinalOutput(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&streamingUpdateTool{
+		name: "stream",
+		updates: []tool.StreamUpdate{
+			{Text: "old head\n"},
+			{Text: "tail snapshot\n", Snapshot: true},
+			{Text: "status"},
+		},
+	})
+
+	s := session.New("s-streaming-update-tool")
+	call := llm.Call{
+		ID:   "c1",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "stream", Arguments: `{}`},
+	}
+	appendAssistantToolCalls(t, s, []llm.Call{call})
+
+	res, err := runTools(
+		t.Context(),
+		s,
+		[]llm.Call{call},
+		reg,
+		nil,
+		nil,
+		nil,
+		10,
+		"step-1",
+	)
+	if err != nil {
+		t.Fatalf("runTools: %v", err)
+	}
+	if len(res.ToolResults) != 1 || res.ToolResults[0].Content != "tail snapshot\nstatus" {
+		t.Fatalf("unexpected tool results: %#v", res.ToolResults)
+	}
+
+	var snapshots []bool
+	var completed session.ToolCompletedData
+	for _, ev := range s.Events() {
+		switch ev.Type {
+		case session.ToolOutputDelta:
+			var payload struct {
+				Tool     string `json:"tool"`
+				ID       string `json:"id"`
+				Delta    string `json:"delta"`
+				Snapshot bool   `json:"snapshot"`
+			}
+			if err := ev.UnmarshalData(&payload); err != nil {
+				t.Fatalf("decode tool output update: %v", err)
+			}
+			if payload.Tool != "stream" || payload.ID != "c1" {
+				t.Fatalf("unexpected tool output update payload: %#v", payload)
+			}
+			snapshots = append(snapshots, payload.Snapshot)
+		case session.ToolCompleted:
+			data, ok, err := ev.ToolCompletedData()
+			if err != nil {
+				t.Fatalf("decode tool completed: %v", err)
+			}
+			if ok {
+				completed = data
+			}
+		}
+	}
+	if !slices.Equal(snapshots, []bool{false, true, false}) {
+		t.Fatalf("tool output update snapshots = %#v, want false/true/false", snapshots)
+	}
+	if completed.Tool != "stream" ||
+		completed.ID != "c1" ||
+		completed.Output != "tail snapshot\nstatus" ||
 		completed.Error != "" {
 		t.Fatalf("unexpected completed tool event: %#v", completed)
 	}

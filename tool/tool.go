@@ -24,6 +24,18 @@ type StreamingTool interface {
 	ExecuteStreaming(ctx context.Context, args string) iter.Seq2[string, error]
 }
 
+type StreamUpdate struct {
+	Text     string
+	Snapshot bool
+}
+
+type StreamingUpdateTool interface {
+	Tool
+	// ExecuteStreamingUpdates runs the tool and returns text updates. Snapshot
+	// updates replace the current displayed/provider-visible tool output.
+	ExecuteStreamingUpdates(ctx context.Context, args string) iter.Seq2[StreamUpdate, error]
+}
+
 // ContentTool is implemented by tools that can return structured model-visible
 // content such as text plus images. Execute remains the compatibility fallback.
 type ContentTool interface {
