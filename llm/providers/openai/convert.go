@@ -12,10 +12,12 @@ import (
 func (b *Base) ConvertRequest(req *llm.Request) openai.ChatCompletionRequest {
 	messages := make([]openai.ChatCompletionMessage, len(req.Messages))
 	for i, m := range req.Messages {
+		content, multiContent := b.convertMessageContent(m)
 		msg := openai.ChatCompletionMessage{
-			Role:    string(m.Role),
-			Content: m.TextContent(),
-			Name:    m.Name,
+			Role:         string(m.Role),
+			Content:      content,
+			MultiContent: multiContent,
+			Name:         m.Name,
 		}
 		if len(m.Calls) > 0 {
 			msg.ToolCalls = make([]openai.ToolCall, len(m.Calls))
@@ -93,6 +95,73 @@ func (b *Base) ConvertRequest(req *llm.Request) openai.ChatCompletionRequest {
 		}
 	}
 	return cr
+}
+
+func (b *Base) convertMessageContent(m llm.Message) (string, []openai.ChatMessagePart) {
+	if !hasImageParts(m.Parts) {
+		return m.TextContent(), nil
+	}
+
+	parts := make([]openai.ChatMessagePart, 0, len(m.Parts))
+	sawText := false
+	for _, part := range m.Parts {
+		switch part.Type {
+		case "", llm.ContentPartText:
+			if part.Text == "" {
+				continue
+			}
+			sawText = true
+			parts = append(parts, openai.ChatMessagePart{
+				Type: openai.ChatMessagePartTypeText,
+				Text: part.Text,
+			})
+		case llm.ContentPartImage:
+			imageURL := imagePartURL(part)
+			if imageURL == "" {
+				continue
+			}
+			parts = append(parts, openai.ChatMessagePart{
+				Type: openai.ChatMessagePartTypeImageURL,
+				ImageURL: &openai.ChatMessageImageURL{
+					URL:    imageURL,
+					Detail: openai.ImageURLDetailAuto,
+				},
+			})
+		}
+	}
+	if !sawText && m.Content != "" {
+		parts = append([]openai.ChatMessagePart{{
+			Type: openai.ChatMessagePartTypeText,
+			Text: m.Content,
+		}}, parts...)
+	}
+	if len(parts) == 0 {
+		return m.TextContent(), nil
+	}
+	return "", parts
+}
+
+func hasImageParts(parts []llm.ContentPart) bool {
+	for _, part := range parts {
+		if part.Type == llm.ContentPartImage {
+			return true
+		}
+	}
+	return false
+}
+
+func imagePartURL(part llm.ContentPart) string {
+	if part.URL != "" {
+		return part.URL
+	}
+	if part.Data == "" {
+		return ""
+	}
+	mimeType := part.MIMEType
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+	return "data:" + mimeType + ";base64," + part.Data
 }
 
 func reasoningToggleEnabled(value string) bool {

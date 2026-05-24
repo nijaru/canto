@@ -13,6 +13,7 @@ import (
 type toolResult struct {
 	call   llm.Call
 	output string
+	parts  []llm.ContentPart
 	err    error
 }
 
@@ -55,9 +56,11 @@ func runTools(
 		if r.err != nil {
 			return StepResult{}, r.err
 		}
+		parts := cloneContentParts(r.parts)
 		toolMsg := llm.Message{
 			Role:    llm.RoleTool,
 			Content: r.output,
+			Parts:   parts,
 			ToolID:  r.call.ID,
 			Name:    r.call.Function.Name,
 		}
@@ -72,4 +75,11 @@ func runTools(
 		Handoff:     handoff,
 		ToolResults: toolMsgs,
 	}, nil
+}
+
+func cloneContentParts(parts []llm.ContentPart) []llm.ContentPart {
+	if len(parts) == 0 {
+		return nil
+	}
+	return append([]llm.ContentPart(nil), parts...)
 }

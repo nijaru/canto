@@ -106,6 +106,47 @@ func TestConvertSchema_NonObjectParams(t *testing.T) {
 	}
 }
 
+func TestConvertRequestPreservesImageParts(t *testing.T) {
+	req := &llm.Request{
+		Model: "claude-test",
+		Messages: []llm.Message{{
+			Role: llm.RoleTool,
+			Parts: []llm.ContentPart{
+				llm.TextPart("Read image file [image/png]"),
+				llm.ImagePart("image/png", "aW1hZ2U="),
+			},
+			ToolID: "call-1",
+			Name:   "read",
+		}},
+	}
+
+	params := provider().convertRequest(req)
+	if len(params.Messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(params.Messages))
+	}
+	msg := params.Messages[0]
+	if len(msg.Content) != 1 || msg.Content[0].OfToolResult == nil {
+		t.Fatalf("message content = %+v, want tool result", msg.Content)
+	}
+	toolResult := msg.Content[0].OfToolResult
+	if toolResult.ToolUseID != "call-1" {
+		t.Fatalf("tool use id = %q, want call-1", toolResult.ToolUseID)
+	}
+	if len(toolResult.Content) != 2 {
+		t.Fatalf("tool result content = %+v, want text and image", toolResult.Content)
+	}
+	if got := toolResult.Content[0].OfText.Text; got != "Read image file [image/png]" {
+		t.Fatalf("text part = %q", got)
+	}
+	image := toolResult.Content[1].OfImage
+	if image == nil ||
+		image.Source.OfBase64 == nil ||
+		image.Source.OfBase64.MediaType != sdk.Base64ImageSourceMediaTypeImagePNG ||
+		image.Source.OfBase64.Data != "aW1hZ2U=" {
+		t.Fatalf("image part = %+v", toolResult.Content[1])
+	}
+}
+
 func TestIsContextOverflowMessage(t *testing.T) {
 	if !isContextOverflowMessage("Prompt is too long: max TOKENS exceeded") {
 		t.Fatal("expected mixed-case prompt/token message to match")

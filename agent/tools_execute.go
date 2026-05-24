@@ -140,6 +140,7 @@ func executeTool(
 	var output strings.Builder
 	output.WriteString(pf.output) // hook context from preflight
 	var execErr error
+	var parts []llm.ContentPart
 	if st, ok := t.(tool.StreamingTool); ok {
 		for delta, err := range st.ExecuteStreaming(ctx, call.Function.Arguments) {
 			if err != nil {
@@ -158,6 +159,15 @@ func executeTool(
 				return toolResult{call: call, output: output.String(), err: err}
 			}
 		}
+	} else if ct, ok := t.(tool.ContentTool); ok {
+		if prefix := output.String(); prefix != "" {
+			parts = append(parts, llm.TextPart(prefix))
+		}
+		var contentParts []llm.ContentPart
+		contentParts, execErr = ct.ExecuteContent(ctx, call.Function.Arguments)
+		parts = append(parts, contentParts...)
+		output.Reset()
+		output.WriteString(messageTextFromParts(parts))
 	} else {
 		var execOutput string
 		execOutput, execErr = t.Execute(ctx, call.Function.Arguments)
@@ -208,7 +218,7 @@ func executeTool(
 		)
 	}
 
-	res := toolResult{call: call, output: outputText}
+	res := toolResult{call: call, output: outputText, parts: parts}
 	var errorText string
 	if execErr != nil {
 		errorText = execErr.Error()
@@ -224,6 +234,10 @@ func executeTool(
 		res.err = err
 	}
 	return res
+}
+
+func messageTextFromParts(parts []llm.ContentPart) string {
+	return llm.Message{Parts: parts}.TextContent()
 }
 
 func toolIdempotencyKey(sessionID, assistantMessageID string, call llm.Call, index int) string {

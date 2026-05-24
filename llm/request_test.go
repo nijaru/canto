@@ -9,6 +9,7 @@ func TestRequestCloneKeepsOriginalNeutral(t *testing.T) {
 		Messages: []Message{{
 			Role:           RoleSystem,
 			Content:        "system",
+			Parts:          []ContentPart{TextPart("system"), ImagePart("image/png", "abc123")},
 			ThinkingBlocks: []ThinkingBlock{{Type: "thinking", Thinking: "secret"}},
 			Calls: []Call{{
 				ID:   "call 1",
@@ -50,6 +51,7 @@ func TestRequestCloneKeepsOriginalNeutral(t *testing.T) {
 
 	clone := req.Clone()
 	clone.Messages[0].Role = RoleUser
+	clone.Messages[0].Parts[1].Data = "changed"
 	clone.Messages[0].ThinkingBlocks[0].Thinking = "changed"
 	clone.Messages[0].Calls[0].ID = "changed"
 	clone.Messages[0].CacheControl.Type = "changed"
@@ -75,6 +77,7 @@ func TestRequestCloneKeepsOriginalNeutral(t *testing.T) {
 	originalModeConst := originalToolProps["mode"].([]any)[0].(map[string]any)
 	originalFormatOK := req.ResponseFormat.Schema["properties"].(map[string]any)["ok"].(map[string]any)
 	if req.Messages[0].Role != RoleSystem ||
+		req.Messages[0].Parts[1].Data != "abc123" ||
 		req.Messages[0].ThinkingBlocks[0].Thinking != "secret" ||
 		req.Messages[0].Calls[0].ID != "call 1" ||
 		req.Messages[0].CacheControl.Type != "ephemeral" ||

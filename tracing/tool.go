@@ -22,7 +22,8 @@ func (*wrappedTool) tracingWrapped() {}
 
 // WrapTool returns a Tool that records a "canto.tool.{name}" child span on
 // every Execute call. If the tool is a StreamingTool, the returned tool
-// will also implement StreamingTool and instrument ExecuteStreaming.
+// will also implement StreamingTool and instrument ExecuteStreaming. If the
+// tool is a ContentTool, the returned tool preserves ExecuteContent.
 func WrapTool(t tool.Tool) tool.Tool {
 	if _, ok := t.(interface{ tracingWrapped() }); ok {
 		return t
@@ -30,6 +31,9 @@ func WrapTool(t tool.Tool) tool.Tool {
 	w := wrappedTool{inner: t}
 	if st, ok := t.(tool.StreamingTool); ok {
 		return &wrappedStreamingTool{wrappedTool: w, innerStreaming: st}
+	}
+	if ct, ok := t.(tool.ContentTool); ok {
+		return &wrappedContentTool{wrappedTool: w, innerContent: ct}
 	}
 	return &w
 }
@@ -64,6 +68,41 @@ func (w *wrappedTool) Execute(ctx context.Context, args string) (string, error) 
 		span.SetStatus(codes.Error, err.Error())
 	}
 	return out, err
+}
+
+type wrappedContentTool struct {
+	wrappedTool
+	innerContent tool.ContentTool
+}
+
+func (*wrappedContentTool) tracingWrapped() {}
+
+func (w *wrappedContentTool) ExecuteContent(
+	ctx context.Context,
+	args string,
+) ([]llm.ContentPart, error) {
+	name := w.inner.Spec().Name
+	ctx, span := Tracer().Start(
+		ctx,
+		"canto.tool."+name,
+		trace.WithAttributes(
+			attribute.String("canto.tool.name", name),
+			attribute.Bool("canto.tool.content_parts", true),
+		),
+	)
+	defer span.End()
+
+	parts, err := w.innerContent.ExecuteContent(ctx, args)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return parts, err
+	}
+	span.SetAttributes(
+		attribute.Int("canto.tool.parts", len(parts)),
+		attribute.Int("canto.tool.output_len", len(llm.Message{Parts: parts}.TextContent())),
+	)
+	return parts, nil
 }
 
 type wrappedStreamingTool struct {

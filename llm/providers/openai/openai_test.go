@@ -1,8 +1,10 @@
 package openai
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/nijaru/canto/llm"
@@ -57,6 +59,68 @@ func TestNewProviderRespectsConfig(t *testing.T) {
 	if len(gotModels) != 1 || gotModels[0].ID != "custom" {
 		t.Fatalf("models = %#v, want custom", gotModels)
 	}
+}
+
+func TestConvertRequestPreservesImageParts(t *testing.T) {
+	p := NewProvider(llm.ProviderConfig{})
+
+	req := &llm.Request{
+		Model: "gpt-test",
+		Messages: []llm.Message{{
+			Role:    llm.RoleTool,
+			Content: "Read image file [image/png]",
+			Parts: []llm.ContentPart{
+				llm.TextPart("Read image file [image/png]"),
+				llm.ImagePart("image/png", "aW1hZ2U="),
+			},
+			ToolID: "call-1",
+			Name:   "read",
+		}},
+	}
+
+	converted := p.ConvertRequest(req)
+	if len(converted.Messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(converted.Messages))
+	}
+	msg := converted.Messages[0]
+	if msg.Content != "" {
+		t.Fatalf("content = %q, want empty when multi-content is set", msg.Content)
+	}
+	if msg.ToolCallID != "call-1" {
+		t.Fatalf("tool call id = %q, want call-1", msg.ToolCallID)
+	}
+	if len(msg.MultiContent) != 2 {
+		t.Fatalf("multi-content = %+v, want text and image", msg.MultiContent)
+	}
+	if got := msg.MultiContent[0].Text; got != "Read image file [image/png]" {
+		t.Fatalf("text part = %q", got)
+	}
+	image := msg.MultiContent[1].ImageURL
+	if image == nil || image.URL != "data:image/png;base64,aW1hZ2U=" {
+		t.Fatalf("image part = %+v", msg.MultiContent[1])
+	}
+
+	raw, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatalf("marshal message: %v", err)
+	}
+	if got := string(raw); !containsAll(
+		got,
+		`"content":[`,
+		`"image_url"`,
+		`"tool_call_id":"call-1"`,
+	) {
+		t.Fatalf("marshaled message = %s", got)
+	}
+}
+
+func containsAll(s string, needles ...string) bool {
+	for _, needle := range needles {
+		if !strings.Contains(s, needle) {
+			return false
+		}
+	}
+	return true
 }
 
 func TestGeneratePreservesReasoningContent(t *testing.T) {

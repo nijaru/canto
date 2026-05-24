@@ -15,7 +15,7 @@ func (p *Provider) convertRequest(req *llm.Request) sdk.MessageNewParams {
 		m := req.Messages[i]
 		if m.Role == llm.RoleSystem {
 			block := sdk.TextBlockParam{
-				Text: m.Content,
+				Text: m.TextContent(),
 				Type: constant.Text("text"),
 			}
 			if m.CacheControl != nil {
@@ -33,7 +33,7 @@ func (p *Provider) convertRequest(req *llm.Request) sdk.MessageNewParams {
 					i = j - 1
 					break
 				}
-				block := sdk.NewToolResultBlock(curr.ToolID, curr.Content, false)
+				block := p.convertToolResultBlock(curr)
 				if curr.CacheControl != nil {
 					block.OfToolResult.CacheControl = sdk.NewCacheControlEphemeralParam()
 				}
@@ -99,7 +99,9 @@ func (p *Provider) convertContentBlocks(m llm.Message) []sdk.ContentBlockParamUn
 			blocks = append(blocks, sdk.NewRedactedThinkingBlock(tb.Signature))
 		}
 	}
-	if text := m.TextContent(); text != "" {
+	if hasImageParts(m.Parts) {
+		blocks = append(blocks, p.convertContentParts(m)...)
+	} else if text := m.TextContent(); text != "" {
 		block := sdk.NewTextBlock(text)
 		if m.CacheControl != nil {
 			block.OfText.CacheControl = sdk.NewCacheControlEphemeralParam()
@@ -114,6 +116,126 @@ func (p *Provider) convertContentBlocks(m llm.Message) []sdk.ContentBlockParamUn
 		blocks = append(blocks, block)
 	}
 	return blocks
+}
+
+func (p *Provider) convertContentParts(m llm.Message) []sdk.ContentBlockParamUnion {
+	blocks := make([]sdk.ContentBlockParamUnion, 0, len(m.Parts))
+	sawText := false
+	for _, part := range m.Parts {
+		switch part.Type {
+		case "", llm.ContentPartText:
+			if part.Text == "" {
+				continue
+			}
+			sawText = true
+			block := sdk.NewTextBlock(part.Text)
+			if m.CacheControl != nil {
+				block.OfText.CacheControl = sdk.NewCacheControlEphemeralParam()
+			}
+			blocks = append(blocks, block)
+		case llm.ContentPartImage:
+			block, ok := anthropicImageBlock(part)
+			if !ok {
+				continue
+			}
+			if m.CacheControl != nil {
+				block.OfImage.CacheControl = sdk.NewCacheControlEphemeralParam()
+			}
+			blocks = append(blocks, block)
+		}
+	}
+	if !sawText && m.Content != "" {
+		block := sdk.NewTextBlock(m.Content)
+		if m.CacheControl != nil {
+			block.OfText.CacheControl = sdk.NewCacheControlEphemeralParam()
+		}
+		blocks = append([]sdk.ContentBlockParamUnion{block}, blocks...)
+	}
+	return blocks
+}
+
+func (p *Provider) convertToolResultBlock(m llm.Message) sdk.ContentBlockParamUnion {
+	if !hasImageParts(m.Parts) {
+		return sdk.NewToolResultBlock(m.ToolID, m.TextContent(), false)
+	}
+	content := make([]sdk.ToolResultBlockParamContentUnion, 0, len(m.Parts))
+	sawText := false
+	for _, part := range m.Parts {
+		switch part.Type {
+		case "", llm.ContentPartText:
+			if part.Text == "" {
+				continue
+			}
+			sawText = true
+			content = append(content, sdk.ToolResultBlockParamContentUnion{
+				OfText: &sdk.TextBlockParam{Text: part.Text},
+			})
+		case llm.ContentPartImage:
+			image, ok := anthropicImageParam(part)
+			if !ok {
+				continue
+			}
+			content = append(content, sdk.ToolResultBlockParamContentUnion{OfImage: &image})
+		}
+	}
+	if !sawText && m.Content != "" {
+		content = append([]sdk.ToolResultBlockParamContentUnion{{
+			OfText: &sdk.TextBlockParam{Text: m.Content},
+		}}, content...)
+	}
+	if len(content) == 0 {
+		return sdk.NewToolResultBlock(m.ToolID, m.TextContent(), false)
+	}
+	return sdk.ContentBlockParamUnion{
+		OfToolResult: &sdk.ToolResultBlockParam{
+			ToolUseID: m.ToolID,
+			Content:   content,
+			IsError:   sdk.Bool(false),
+		},
+	}
+}
+
+func hasImageParts(parts []llm.ContentPart) bool {
+	for _, part := range parts {
+		if part.Type == llm.ContentPartImage {
+			return true
+		}
+	}
+	return false
+}
+
+func anthropicImageBlock(part llm.ContentPart) (sdk.ContentBlockParamUnion, bool) {
+	image, ok := anthropicImageParam(part)
+	if !ok {
+		return sdk.ContentBlockParamUnion{}, false
+	}
+	return sdk.ContentBlockParamUnion{OfImage: &image}, true
+}
+
+func anthropicImageParam(part llm.ContentPart) (sdk.ImageBlockParam, bool) {
+	switch {
+	case part.Data != "":
+		mimeType := part.MIMEType
+		if mimeType == "" {
+			mimeType = "application/octet-stream"
+		}
+		return sdk.ImageBlockParam{
+			Source: sdk.ImageBlockParamSourceUnion{
+				OfBase64: &sdk.Base64ImageSourceParam{
+					Data:      part.Data,
+					MediaType: sdk.Base64ImageSourceMediaType(mimeType),
+				},
+			},
+		}, true
+	case part.URL != "":
+		return sdk.ImageBlockParam{
+			Source: sdk.ImageBlockParamSourceUnion{
+				OfURL: &sdk.URLImageSourceParam{URL: part.URL},
+			},
+		}, true
+	default:
+		return sdk.ImageBlockParam{}, false
+	}
 }
 
 func (p *Provider) convertTools(tools []*llm.Spec) []sdk.ToolUnionParam {

@@ -24,6 +24,13 @@ type StreamingTool interface {
 	ExecuteStreaming(ctx context.Context, args string) iter.Seq2[string, error]
 }
 
+// ContentTool is implemented by tools that can return structured model-visible
+// content such as text plus images. Execute remains the compatibility fallback.
+type ContentTool interface {
+	Tool
+	ExecuteContent(ctx context.Context, args string) ([]llm.ContentPart, error)
+}
+
 type ApprovalTool interface {
 	Tool
 	ApprovalRequirement(args string) (approval.Requirement, bool, error)

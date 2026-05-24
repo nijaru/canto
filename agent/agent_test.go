@@ -168,6 +168,27 @@ func (t *simpleTool) Execute(_ context.Context, _ string) (string, error) {
 	return t.output, nil
 }
 
+type contentTool struct {
+	name  string
+	parts []llm.ContentPart
+}
+
+func (t *contentTool) Spec() llm.Spec {
+	return llm.Spec{
+		Name:        t.name,
+		Description: "A structured content test tool",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+	}
+}
+
+func (t *contentTool) Execute(_ context.Context, _ string) (string, error) {
+	return llm.Message{Parts: t.parts}.TextContent(), nil
+}
+
+func (t *contentTool) ExecuteContent(_ context.Context, _ string) ([]llm.ContentPart, error) {
+	return append([]llm.ContentPart(nil), t.parts...), nil
+}
+
 type streamingTool struct {
 	name   string
 	chunks []string
@@ -901,6 +922,59 @@ func TestStepWithToolCallAndRegistry(t *testing.T) {
 	}
 	if last.Content != "pong" {
 		t.Errorf("expected tool content 'pong', got '%s'", last.Content)
+	}
+}
+
+func TestRunToolsContentToolPreservesParts(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Register(&contentTool{
+		name: "read",
+		parts: []llm.ContentPart{
+			llm.TextPart("Read image file [image/png]"),
+			llm.ImagePart("image/png", "aW1hZ2U="),
+		},
+	})
+
+	s := session.New("s-content-tool")
+	call := llm.Call{
+		ID:   "c1",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "read", Arguments: `{}`},
+	}
+	appendAssistantToolCalls(t, s, []llm.Call{call})
+
+	res, err := runTools(
+		t.Context(),
+		s,
+		[]llm.Call{call},
+		reg,
+		nil,
+		nil,
+		nil,
+		10,
+		"step-content",
+	)
+	if err != nil {
+		t.Fatalf("runTools: %v", err)
+	}
+	if len(res.ToolResults) != 1 {
+		t.Fatalf("tool results = %d, want 1", len(res.ToolResults))
+	}
+	got := res.ToolResults[0]
+	if got.Content != "Read image file [image/png]" {
+		t.Fatalf("tool result content = %q", got.Content)
+	}
+	if len(got.Parts) != 2 || got.Parts[1].Type != llm.ContentPartImage {
+		t.Fatalf("tool result parts = %+v, want text plus image", got.Parts)
+	}
+
+	messages := s.Messages()
+	last := messages[len(messages)-1]
+	if len(last.Parts) != 2 || last.Parts[1].Data != "aW1hZ2U=" {
+		t.Fatalf("stored tool message = %+v, want image part preserved", last)
 	}
 }
 

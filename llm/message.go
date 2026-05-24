@@ -33,17 +33,34 @@ type ContentPartType string
 
 const (
 	ContentPartText ContentPartType = "text"
+	// ContentPartImage represents image input encoded as base64 data or a
+	// provider-readable URL. Providers that do not support image parts should
+	// fall back to the surrounding text content.
+	ContentPartImage ContentPartType = "image"
 )
 
 // ContentPart represents structured model-visible message content.
 type ContentPart struct {
-	Type ContentPartType `json:"type"`
-	Text string          `json:"text,omitzero"`
+	Type     ContentPartType `json:"type"`
+	Text     string          `json:"text,omitzero"`
+	MIMEType string          `json:"mime_type,omitzero"`
+	Data     string          `json:"data,omitzero"`
+	URL      string          `json:"url,omitzero"`
 }
 
 // TextPart creates a text content part.
 func TextPart(text string) ContentPart {
 	return ContentPart{Type: ContentPartText, Text: text}
+}
+
+// ImagePart creates an image content part backed by base64-encoded data.
+func ImagePart(mimeType, data string) ContentPart {
+	return ContentPart{Type: ContentPartImage, MIMEType: mimeType, Data: data}
+}
+
+// ImageURLPart creates an image content part backed by a provider-readable URL.
+func ImageURLPart(mimeType, url string) ContentPart {
+	return ContentPart{Type: ContentPartImage, MIMEType: mimeType, URL: url}
 }
 
 // Message represents a single message in the LLM conversation.
