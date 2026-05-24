@@ -7,14 +7,10 @@ import (
 	"sync"
 	"time"
 
-	agentskills "github.com/nijaru/agentskills"
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
-	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/skill"
-	"github.com/nijaru/canto/tool"
 )
 
 // ChildSpec defines a single child run request. Agent selection, initial
@@ -30,9 +26,8 @@ type ChildSpec struct {
 	SharedPrefixKey string
 	InitialMessages []llm.Message
 	Metadata        map[string]any
-	Tools           *tool.Registry
+	Runtime         agent.RuntimeConfig
 	Worktree        *WorktreeSpec
-	Skills          []*agentskills.Skill
 	// Detached keeps child execution running even if the Spawn context is
 	// canceled. The default is attached execution, which inherits cancellation.
 	Detached bool
@@ -135,24 +130,7 @@ func (r *ChildRunner) Spawn(
 		return ChildRef{}, err
 	}
 
-	runtimeCfg := agent.RuntimeConfig{Tools: spec.Tools}
-	if len(spec.Skills) > 0 {
-		securityHooks := skill.DefaultSecurityHooks()
-		if err := securityHooks.Validate(ctx, spec.Skills...); err != nil {
-			return ChildRef{}, err
-		}
-		scopedTools, err := securityHooks.ScopeRegistry(spec.Tools, spec.Skills...)
-		if err != nil {
-			return ChildRef{}, err
-		}
-		runtimeCfg.Tools = scopedTools
-	}
-	if len(spec.Skills) > 0 {
-		runtimeCfg.RequestProcessors = []prompt.RequestProcessor{
-			skill.PreloadPrompt(spec.Skills...),
-		}
-	}
-	childAgent, err := configureChildAgentWithRuntime(spec.Agent, runtimeCfg)
+	childAgent, err := configureChildAgentWithRuntime(spec.Agent, spec.Runtime)
 	if err != nil {
 		return ChildRef{}, err
 	}

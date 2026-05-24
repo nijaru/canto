@@ -136,7 +136,7 @@ go test ./... -count=1
 - Promoted `x/tracing` to `tracing/` and updated core/importing packages. This is a clean pre-alpha rename with no compatibility shim.
 - Remaining reviewed boundaries so far:
   - `runtime.Bootstrap` depends on `workspace/` for explicit workspace snapshots; that is a core mechanism.
-  - `runtime.ChildRunner` depends on `skill/` only when child specs carry skills; child execution is table-stakes framework machinery but not active in Ion's current native baseline.
+  - `runtime.ChildRunner` now accepts generic `agent.RuntimeConfig` for scoped child execution instead of owning skill policy directly; child skill validation, tool scoping, and preload composition moved to `skill.RuntimeConfig`.
   - `prompt.MemoryPrompt` was moved to `memory/memoryprompt.New`; core `prompt` no longer imports `memory/`, and hosts opt into memory-backed retrieval through the explicit adapter package.
   - `tool.NewTyped` / `tool.MustTyped` were moved to `tool/typedtool`, and approval-capable tools now implement `approval.RequirementProvider`; core `tool` no longer imports approval state.
   - `tool/mcp` depends on `safety/`/`workspace/`, but MCP registration remains deferred in Ion and is not part of the native minimal loop.
@@ -175,6 +175,8 @@ Recent concrete fixes from the follow-up pass:
 - Core memory block retrieval now uses namespace-qualified synthetic memory IDs
   so same-name core blocks from multiple namespaces do not collapse during RRF
   fusion.
+- `runtime.ChildRunner` no longer imports `skill/` or `agentskills`; hosts that
+  want skill-scoped child agents compose `skill.RuntimeConfig` before spawning.
 - File-reference expansion no longer treats email addresses as `@file`
   references and handles angle-bracketed references.
 - Approval policy errors append a terminal `ApprovalCanceled` event so sessions
@@ -226,9 +228,7 @@ go test ./... -count=1
 
 ## Current Outcome
 
-No known Canto-owned native-loop blocker remains after C1-C6 and the Phase 5
-whole-codebase follow-up. The latest checkpoint passed `go vet ./...`,
-`go test ./...`, `go build ./...`, and the broad race subset over core plus
-framework-adjacent packages. Further work should come from concrete Ion
-feedback, M1 docs readiness, or scoped public API decisions rather than keeping
-this audit open.
+The original C1-C6 native-loop blocker list is closed, but the Ion-first P1
+kernel-reduction lane remains active. Keep reducing optional dependencies from
+core packages while Ion is still pre-release and using Pi as the phase-1
+control.

@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	agentskills "github.com/nijaru/agentskills"
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
 )
@@ -854,10 +854,10 @@ func TestChildRunnerSpawn_FailsClosedWhenScopingNonConfigurableAgent(t *testing.
 	reg.Register(agent.HandoffTool("reviewer"))
 
 	_, err = childRunner.Spawn(t.Context(), parent, ChildSpec{
-		ID:    "child-scope",
-		Agent: &echoAgent{},
-		Mode:  session.ChildModeFresh,
-		Tools: reg,
+		ID:      "child-scope",
+		Agent:   &echoAgent{},
+		Mode:    session.ChildModeFresh,
+		Runtime: agent.RuntimeConfig{Tools: reg},
 	})
 	if err == nil {
 		t.Fatal("expected scoped child spawn to fail for non-configurable agent")
@@ -887,10 +887,10 @@ func TestChildRunnerRun_AppliesScopedRegistryToBaseAgent(t *testing.T) {
 	childAgent := agent.New("child-base", "sys", "m", provider, full)
 
 	result, err := childRunner.Run(t.Context(), parent, ChildSpec{
-		ID:    "child-scope-ok",
-		Agent: childAgent,
-		Mode:  session.ChildModeFresh,
-		Tools: scoped,
+		ID:      "child-scope-ok",
+		Agent:   childAgent,
+		Mode:    session.ChildModeFresh,
+		Runtime: agent.RuntimeConfig{Tools: scoped},
 		InitialMessages: []llm.Message{
 			{Role: llm.RoleUser, Content: "go"},
 		},
@@ -906,7 +906,7 @@ func TestChildRunnerRun_AppliesScopedRegistryToBaseAgent(t *testing.T) {
 	}
 }
 
-func TestChildRunnerRun_PreloadsSkillsIntoBaseAgent(t *testing.T) {
+func TestChildRunnerRun_AppliesRuntimeRequestProcessorsToBaseAgent(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -921,14 +921,14 @@ func TestChildRunnerRun_PreloadsSkillsIntoBaseAgent(t *testing.T) {
 	childAgent := agent.New("child-skill", "sys", "m", provider, nil)
 
 	result, err := childRunner.Run(t.Context(), parent, ChildSpec{
-		ID:    "child-skill",
+		ID:    "child-runtime-processor",
 		Agent: childAgent,
 		Mode:  session.ChildModeFresh,
-		Skills: []*agentskills.Skill{{
-			Name:         "debug",
-			Description:  "Debugging workflow",
-			Instructions: "Follow the debugger checklist.",
-		}},
+		Runtime: agent.RuntimeConfig{
+			RequestProcessors: []prompt.RequestProcessor{
+				prompt.Instructions("Follow the debugger checklist."),
+			},
+		},
 		InitialMessages: []llm.Message{
 			{Role: llm.RoleUser, Content: "go"},
 		},
@@ -938,86 +938,9 @@ func TestChildRunnerRun_PreloadsSkillsIntoBaseAgent(t *testing.T) {
 	}
 	if result.Status != session.ChildStatusCompleted {
 		t.Fatalf("child status = %q, want %q", result.Status, session.ChildStatusCompleted)
-	}
-	if !strings.Contains(provider.lastSystem, "# Skill: debug") {
-		t.Fatalf("preloaded system prompt missing skill heading: %q", provider.lastSystem)
 	}
 	if !strings.Contains(provider.lastSystem, "Follow the debugger checklist.") {
-		t.Fatalf("preloaded system prompt missing skill instructions: %q", provider.lastSystem)
-	}
-}
-
-func TestChildRunnerRun_ScopesToolsFromPreloadedSkillAllowedTools(t *testing.T) {
-	store, err := session.NewSQLiteStore(":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-
-	parent := session.New("parent-skill-scope").WithWriter(store)
-	childRunner := NewChildRunner(store)
-	defer childRunner.Close()
-
-	full := tool.NewRegistry()
-	full.Register(&scopedTool{name: "alpha", output: "a"})
-	full.Register(&scopedTool{name: "beta", output: "b"})
-
-	provider := &childRecordingProvider{}
-	childAgent := agent.New("child-skill-scope", "sys", "m", provider, full)
-
-	result, err := childRunner.Run(t.Context(), parent, ChildSpec{
-		ID:    "child-skill-scope",
-		Agent: childAgent,
-		Mode:  session.ChildModeFresh,
-		Tools: full,
-		Skills: []*agentskills.Skill{{
-			Name:         "debug",
-			Description:  "Debugging workflow",
-			Instructions: "Follow the debugger checklist.",
-			AllowedTools: agentskills.ToolList{"beta"},
-		}},
-		InitialMessages: []llm.Message{
-			{Role: llm.RoleUser, Content: "go"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("run child: %v", err)
-	}
-	if result.Status != session.ChildStatusCompleted {
-		t.Fatalf("child status = %q, want %q", result.Status, session.ChildStatusCompleted)
-	}
-	if got := provider.lastTools; len(got) != 1 || got[0] != "beta" {
-		t.Fatalf("child prompt tool set = %#v, want [beta]", got)
-	}
-}
-
-func TestChildRunnerSpawn_FailsClosedWhenSkillRestrictsToolsWithoutRegistry(t *testing.T) {
-	store, err := session.NewSQLiteStore(":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-
-	parent := session.New("parent-skill-missing-reg").WithWriter(store)
-	childRunner := NewChildRunner(store)
-	defer childRunner.Close()
-
-	provider := &childRecordingProvider{}
-	childAgent := agent.New("child-skill-missing-reg", "sys", "m", provider, tool.NewRegistry())
-
-	_, err = childRunner.Spawn(t.Context(), parent, ChildSpec{
-		ID:    "child-skill-missing-reg",
-		Agent: childAgent,
-		Mode:  session.ChildModeFresh,
-		Skills: []*agentskills.Skill{{
-			Name:         "debug",
-			Description:  "Debugging workflow",
-			Instructions: "Follow the debugger checklist.",
-			AllowedTools: agentskills.ToolList{"beta"},
-		}},
-	})
-	if err == nil {
-		t.Fatal("expected spawn to fail without registry for restricted skill")
+		t.Fatalf("runtime prompt processor did not update system prompt: %q", provider.lastSystem)
 	}
 }
 

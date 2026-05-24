@@ -86,9 +86,11 @@ lane is selected.
   durable event `TurnID`/`Seq`, and `canto-iq8h`, `canto-uduq`, `canto-dvtd`,
   and `canto-xz1w` are complete.
 - Current `canto-iusu` slices: memory-backed prompt retrieval moved out of
-  core `prompt` into `memory/memoryprompt`, and approval-capable typed tool
-  authoring moved out of core `tool` into `tool/typedtool`; `prompt` no longer
-  imports `memory/`, and `tool` no longer imports the approval state machine.
+  core `prompt` into `memory/memoryprompt`, approval-capable typed tool
+  authoring moved out of core `tool` into `tool/typedtool`, and child skill
+  validation/scoping/preload moved out of `runtime` into `skill.RuntimeConfig`;
+  `prompt` no longer imports `memory/`, `tool` no longer imports the approval
+  state machine, and `runtime` no longer imports `skill` or `agentskills`.
 - `canto-wuev` found a real public-surface mismatch: public harness docs and
   examples should teach native `Submit` / `Turn` as the common path.
 - `canto-uduq` landed the first executable contract slice: `RunEvent` now
@@ -206,12 +208,11 @@ lane is selected.
   `prompt.InjectContextBlock` as the generic cache-safe insertion helper, and
   updated the memory example/docs. Then moved typed tool authoring from
   `tool.NewTyped` / `tool.MustTyped` to `tool/typedtool`, and moved the
-  approval declaration interface to `approval.RequirementProvider`. Focused
-  package tests pass for `prompt`, `memory/memoryprompt`, `tool`,
-  `tool/typedtool`, `agent`, `tracing`, `service`, `executortool`, and
-  `tool/mcp`. `go list -deps github.com/nijaru/canto/prompt` no longer
-  includes `memory`, and `go list -deps github.com/nijaru/canto/tool` no
-  longer includes `approval`.
+  approval declaration interface to `approval.RequirementProvider`. The latest
+  slice moved child skill validation/scoping/preload out of `runtime` and into
+  `skill.RuntimeConfig`. Focused package tests pass for `prompt`,
+  `memory/memoryprompt`, `tool`, `tool/typedtool`, `agent`, `tracing`,
+  `service`, `executortool`, `tool/mcp`, `runtime`, and `skill`.
 - `canto-sqtc` — framework-owned bounded event reads: `EventQueryStore.EventsAfter`
   is implemented for SQLite and JSONL stores so hosts can update typed
   projections after a durable sequence cutoff without querying store internals.

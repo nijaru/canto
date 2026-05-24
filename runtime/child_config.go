@@ -7,7 +7,6 @@ import (
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -20,10 +19,6 @@ func validateChildSpec(spec ChildSpec) error {
 	default:
 		return fmt.Errorf("spawn child: unsupported mode %q", spec.Mode)
 	}
-}
-
-func configureChildAgent(a agent.Agent, reg *tool.Registry) (agent.Agent, error) {
-	return configureChildAgentWithRuntime(a, agent.RuntimeConfig{Tools: reg})
 }
 
 func configureChildAgentWithRuntime(

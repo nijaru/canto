@@ -96,9 +96,11 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 package no longer imports the optional memory subsystem. Typed tool authoring
 is now `typedtool.New` / `typedtool.Must`, and approval-capable tools implement
 `approval.RequirementProvider`, so the core `tool` package no longer imports
-the approval state machine. Continue this audit with remaining optional
-dependencies embedded in otherwise-core packages: `runtime` -> `skill` and
-session/governor artifact surfaces.
+the approval state machine. Child skill validation, tool scoping, and prompt
+preload now live behind `skill.RuntimeConfig`; `runtime.ChildSpec` accepts a
+generic `agent.RuntimeConfig` and no longer imports `skill` or `agentskills`.
+Continue this audit with the remaining optional dependencies embedded in
+otherwise-core packages, especially session/governor artifact surfaces.
 
 ### Deferred Or Conditional
 
