@@ -27,6 +27,7 @@ framework-owned issues as advanced integrations are reintroduced.
 
 | Area | Resolution | Notes |
 | --- | --- | --- |
+| Image content tool results | Canto `eae32b9` added image content parts, `tool.ContentTool`, structured tool-result preservation, tracing wrapper support, and OpenAI/Anthropic image conversion. | Unblocks Ion Pi-parity `read(image)` so image files are not treated as UTF-8 text. |
 | Session write boundary | `Session.Append`, `SQLiteStore.Save`, and `JSONLStore.Save` reject empty/no-payload assistant `MessageAdded` rows while preserving content, reasoning, thinking-only, and tool-only assistant payloads. | Prevents future invalid provider history at both live-session and direct-store write boundaries; projection sanitation remains a legacy/corrupt-history defense. |
 | Empty/no-payload assistant rows in effective history | Canto effective history filters invalid assistant rows from raw history, snapshots, and appended events. | Projection sanitation is a legacy/corrupt-history defense. |
 | Mid-conversation privileged messages | Prompt/session boundary now separates transcript, model-visible context, and hidden events; provider request validation rejects privileged messages after transcript messages. | Fixed the Fedora/local-api `System message must be at the beginning` failure class without promoting UI notices into system prompts. |

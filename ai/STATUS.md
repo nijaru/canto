@@ -5,7 +5,7 @@
 session-scoped harness design before Ion promotes any Pi+ work.
 **Blockers:** Ion P1 remains open; deterministic acceptance is green, but live
 and full exit gates are still explicit opt-ins.
-**Updated:** 2026-05-23
+**Updated:** 2026-05-24
 
 ## Context
 
@@ -134,6 +134,11 @@ lane is selected.
   absolute/traversal/malformed path error classes as normal rooted file paths,
   and `Root.Glob` supports recursive `**` matching for host tool authors that
   need Pi-like workspace search behavior.
+- `canto-9p8k` is closed in Canto `eae32b9`: `llm.ContentPart` now supports
+  image data/URL parts, `tool.ContentTool` can return structured parts,
+  `runTools` preserves content parts on tool-result messages, tracing preserves
+  the content-tool interface, and OpenAI/Anthropic converters emit image
+  content for provider-visible messages.
 - `canto-vhjg` is closed in Canto `5f313f6`: `RunEvent` now carries envelope
   metadata plus one typed payload, and Ion imported that exact revision in
   `9ff72a4`.

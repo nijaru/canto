@@ -64,6 +64,7 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 | 0 active | `canto-iusu` Ion-proven P1 kernel reduction | Audit Ion-used Canto surfaces and reduce, rewrite, delete, or re-extract primitives based on Ion's Pi-level acceptance evidence before M1 posture resumes |
 | 0 done | `canto-x8d0` runtime cancellation and timeout semantics | Runtime execution timeout is now opt-in; normal root/child runner turns no longer inherit a hidden whole-turn wall-clock deadline |
 | 0 done | `canto-y88u` workspace/path contracts | Workspace glob patterns now reject absolute/traversal/malformed inputs like normal rooted paths and support recursive `**` matching |
+| 0 done | `canto-9p8k` image content parts for Ion read parity | `llm.ContentPart` supports image data/URL, `tool.ContentTool` preserves structured tool results, and OpenAI/Anthropic converters emit image content |
 | 0 done | `canto-01ge` native Turn/Submit facade | Promoted the accepted turn transaction to the primary host API before Ion deleted adapter fallbacks |
 | 0 done | `canto-sqtc` sequence-bounded event reads | Expose framework-owned `EventsAfter` so hosts can maintain typed projections without reaching into store internals |
 | 0 done | `canto-d6kl` durable turn transaction identity and sequence | Moved turn identity/session sequence from host-only `RunEvent` metadata into durable session events/logs, aligned with AX `seq`/`exec_id` and Pi session-owned prompt lifecycle |
