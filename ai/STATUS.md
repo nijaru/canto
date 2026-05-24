@@ -94,7 +94,10 @@ lane is selected.
   The latest slice moved artifact body-storage helpers out of `session` into
   `artifact.StoreSessionArtifact` and moved approval circuit-breaker prompt
   injection from `governor` into `approval`; `session` no longer imports
-  `artifact`, and `governor` no longer imports `approval`.
+  `artifact`, and `governor` no longer imports `approval`. The follow-up
+  boundary slice moved `WithBudgetGuard` into `agent` and recognizes budget
+  exhaustion through a small marker interface, so the base agent no longer
+  imports `governor` just to enforce cost limits.
 - `canto-wuev` found a real public-surface mismatch: public harness docs and
   examples should teach native `Submit` / `Turn` as the common path.
 - `canto-uduq` landed the first executable contract slice: `RunEvent` now
@@ -222,7 +225,10 @@ lane is selected.
   `memory/memoryprompt`, `tool`, `tool/typedtool`, `agent`, `tracing`,
   `service`, `executortool`, `tool/mcp`, `runtime`, `skill`, `session`,
   `artifact`, `governor`, and `approval`; full `go test ./...`, `go vet
-  ./...`, and `git diff --check` pass after the compaction fix.
+  ./...`, and `git diff --check` pass after the compaction fix. The next
+  boundary slice moved agent budget-guard enforcement into `agent` and kept
+  `governor.BudgetExceededError` interoperable through the marker interface,
+  removing `governor` and `artifact` from the base agent dependency graph.
 - `canto-sqtc` — framework-owned bounded event reads: `EventQueryStore.EventsAfter`
   is implemented for SQLite and JSONL stores so hosts can update typed
   projections after a durable sequence cutoff without querying store internals.

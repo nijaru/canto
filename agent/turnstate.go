@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -103,7 +102,7 @@ func (ts *turnState) handleStepError(
 		return stepOutcome{}
 	}
 
-	var budgetErr *governor.BudgetExceededError
+	var budgetErr budgetExceeded
 	if errors.As(err, &budgetErr) {
 		ts.stopReason = TurnStopBudgetExhausted
 		return stepOutcome{

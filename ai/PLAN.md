@@ -107,8 +107,12 @@ longer imports approval. The governor review kept artifact-backed offload in
 core because Ion uses `governor.CompactSession` for `/compact`, proactive
 compaction, and overflow recovery, matching Pi's P1 context-governance class.
 That review also fixed `MinKeepTurns` so offload and summarize retain complete
-recent user turns rather than a raw message suffix. Continue this audit with
-remaining optional dependencies embedded in otherwise-core packages.
+recent user turns rather than a raw message suffix. `agent.WithBudgetGuard`
+now uses an agent-local cost guard and recognizes budget exhaustion through a
+small marker interface; external `governor.NewBudgetGuard` processors still
+settle as budget exhaustion, but the base agent no longer imports `governor`.
+Continue this audit with remaining optional dependencies embedded in
+otherwise-core packages.
 
 ### Deferred Or Conditional
 

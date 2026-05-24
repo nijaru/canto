@@ -147,6 +147,11 @@ go test ./... -count=1
     compaction, and overflow recovery. `MinKeepTurns` now keeps complete
     recent user turns for offload and summarize instead of keeping a raw
     message suffix.
+  - `agent.WithBudgetGuard` now uses an agent-local request processor instead
+    of importing `governor`. `turnState` maps any error implementing the small
+    budget-exceeded marker to `TurnStopBudgetExhausted`, and
+    `governor.BudgetExceededError` implements that marker for hosts that still
+    install `governor.NewBudgetGuard` explicitly.
   - `prompt.MemoryPrompt` was moved to `memory/memoryprompt.New`; core `prompt` no longer imports `memory/`, and hosts opt into memory-backed retrieval through the explicit adapter package.
   - `tool.NewTyped` / `tool.MustTyped` were moved to `tool/typedtool`, and approval-capable tools now implement `approval.RequirementProvider`; core `tool` no longer imports approval state.
   - `tool/mcp` depends on `safety/`/`workspace/`, but MCP registration remains deferred in Ion and is not part of the native minimal loop.

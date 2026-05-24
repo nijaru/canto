@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/session"
 )
@@ -49,7 +48,7 @@ func TestTurnStateHandleStepErrorBudgetStopsWithoutError(t *testing.T) {
 		"agent",
 		nil,
 		2,
-		&governor.BudgetExceededError{},
+		&BudgetExceededError{},
 	)
 
 	if outcome.err != nil {

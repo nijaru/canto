@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/nijaru/canto/approval"
-	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	prompt "github.com/nijaru/canto/prompt"
@@ -175,7 +174,7 @@ func WithMutators(ms ...prompt.ContextMutator) Option {
 // WithBudgetGuard halts turns cleanly once the session's accumulated cost hits
 // the configured budget limit.
 func WithBudgetGuard(limit float64) Option {
-	return WithRequestProcessors(governor.NewBudgetGuard(limit))
+	return WithRequestProcessors(&budgetGuard{Limit: limit})
 }
 
 // WithModel overrides the model used for LLM calls.
