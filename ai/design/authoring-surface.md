@@ -310,7 +310,7 @@ weather := service.Tool[WeatherArgs, WeatherResult]{
 
 Design requirements:
 
-- Tool still implements `tool.Tool` / `tool.ApprovalTool`.
+- Tool still implements `tool.Tool` / `approval.RequirementProvider`.
 - Structured result is encoded consistently.
 - Secrets are injected through `safety.SecretInjector`, not environment leaks.
 - HTTP/API retries are opt-in and visible.

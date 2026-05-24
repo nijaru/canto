@@ -1,4 +1,4 @@
-package tool
+package typedtool
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
+	basetool "github.com/nijaru/canto/tool"
 )
 
 // Handler executes a typed tool operation.
@@ -17,33 +18,33 @@ type Handler[A, R any] func(context.Context, A) (R, error)
 // ApprovalFunc maps typed tool arguments to an optional approval requirement.
 type ApprovalFunc[A any] func(A) (approval.Requirement, bool, error)
 
-// TypedConfig describes one typed Go-authored tool.
-type TypedConfig[A, R any] struct {
+// Config describes one typed Go-authored tool.
+type Config[A, R any] struct {
 	Name        string
 	Description string
 	Schema      any
-	Metadata    Metadata
+	Metadata    basetool.Metadata
 	Execute     Handler[A, R]
 	Approval    ApprovalFunc[A]
 }
 
-// TypedTool adapts a typed Go handler to Canto's raw provider-facing tool
-// contract. JSON decoding and encoding stay at this boundary.
-type TypedTool[A, R any] struct {
+// Tool adapts a typed Go handler to Canto's raw provider-facing tool contract.
+// JSON decoding and encoding stay at this boundary.
+type Tool[A, R any] struct {
 	spec     llm.Spec
-	metadata Metadata
+	metadata basetool.Metadata
 	execute  Handler[A, R]
 	approval ApprovalFunc[A]
 }
 
 var (
-	_ Tool         = (*TypedTool[struct{}, struct{}])(nil)
-	_ MetadataTool = (*TypedTool[struct{}, struct{}])(nil)
-	_ ApprovalTool = (*TypedTool[struct{}, struct{}])(nil)
+	_ basetool.Tool                = (*Tool[struct{}, struct{}])(nil)
+	_ basetool.MetadataTool        = (*Tool[struct{}, struct{}])(nil)
+	_ approval.RequirementProvider = (*Tool[struct{}, struct{}])(nil)
 )
 
-// NewTyped constructs a tool from a typed Go handler.
-func NewTyped[A, R any](cfg TypedConfig[A, R]) (*TypedTool[A, R], error) {
+// New constructs a tool from a typed Go handler.
+func New[A, R any](cfg Config[A, R]) (*Tool[A, R], error) {
 	if cfg.Name == "" {
 		return nil, errors.New("typed tool: name is required")
 	}
@@ -57,13 +58,13 @@ func NewTyped[A, R any](cfg TypedConfig[A, R]) (*TypedTool[A, R], error) {
 	schema := cfg.Schema
 	if schema == nil {
 		var err error
-		schema, err = SchemaFor[A]()
+		schema, err = basetool.SchemaFor[A]()
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return &TypedTool[A, R]{
+	return &Tool[A, R]{
 		spec: llm.Spec{
 			Name:        cfg.Name,
 			Description: cfg.Description,
@@ -75,21 +76,21 @@ func NewTyped[A, R any](cfg TypedConfig[A, R]) (*TypedTool[A, R], error) {
 	}, nil
 }
 
-// MustTyped constructs a typed tool and panics if the configuration is invalid.
-func MustTyped[A, R any](cfg TypedConfig[A, R]) *TypedTool[A, R] {
-	t, err := NewTyped(cfg)
+// Must constructs a typed tool and panics if the configuration is invalid.
+func Must[A, R any](cfg Config[A, R]) *Tool[A, R] {
+	t, err := New(cfg)
 	if err != nil {
 		panic(err)
 	}
 	return t
 }
 
-// RegisterTyped constructs and registers a typed tool.
-func RegisterTyped[A, R any](r *Registry, cfg TypedConfig[A, R]) (*TypedTool[A, R], error) {
+// Register constructs and registers a typed tool.
+func Register[A, R any](r *basetool.Registry, cfg Config[A, R]) (*Tool[A, R], error) {
 	if r == nil {
 		return nil, errors.New("typed tool: registry is required")
 	}
-	t, err := NewTyped(cfg)
+	t, err := New(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -97,11 +98,11 @@ func RegisterTyped[A, R any](r *Registry, cfg TypedConfig[A, R]) (*TypedTool[A, 
 	return t, nil
 }
 
-func (t *TypedTool[A, R]) Spec() llm.Spec { return t.spec }
+func (t *Tool[A, R]) Spec() llm.Spec { return t.spec }
 
-func (t *TypedTool[A, R]) Metadata() Metadata { return t.metadata }
+func (t *Tool[A, R]) Metadata() basetool.Metadata { return t.metadata }
 
-func (t *TypedTool[A, R]) Execute(ctx context.Context, args string) (string, error) {
+func (t *Tool[A, R]) Execute(ctx context.Context, args string) (string, error) {
 	var input A
 	if err := json.Unmarshal([]byte(args), &input); err != nil {
 		return "", fmt.Errorf("typed tool %s: decode args: %w", t.spec.Name, err)
@@ -118,7 +119,7 @@ func (t *TypedTool[A, R]) Execute(ctx context.Context, args string) (string, err
 	return string(out), nil
 }
 
-func (t *TypedTool[A, R]) ApprovalRequirement(args string) (approval.Requirement, bool, error) {
+func (t *Tool[A, R]) ApprovalRequirement(args string) (approval.Requirement, bool, error) {
 	if t.approval == nil {
 		return approval.Requirement{}, false, nil
 	}

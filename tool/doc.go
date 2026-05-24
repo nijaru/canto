@@ -1,8 +1,9 @@
 // Package tool defines executable tool contracts and registry helpers.
 //
-// The common authoring path is NewTyped or MustTyped, which adapt typed Go
-// handlers to the provider-facing JSON boundary. Raw Tool implementations and
-// Func remain available for dynamic adapters and externally supplied schemas.
+// Raw Tool implementations and Func remain available for dynamic adapters and
+// externally supplied schemas. Typed Go handlers live in the typedtool
+// subpackage so optional approval support does not make the base tool registry
+// depend on approval state.
 //
 // A Tool provides an llm.Spec and an Execute method that accepts JSON
 // arguments. Registry stores tools by name, exposes deterministic model-facing

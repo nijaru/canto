@@ -28,6 +28,12 @@ type Requirement struct {
 	Metadata  map[string]any
 }
 
+// RequirementProvider is implemented by tools that can declare an approval
+// requirement for a provider-supplied argument payload.
+type RequirementProvider interface {
+	ApprovalRequirement(args string) (Requirement, bool, error)
+}
+
 type Request struct {
 	ID        string
 	SessionID string

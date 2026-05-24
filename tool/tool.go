@@ -4,7 +4,6 @@ import (
 	"context"
 	"iter"
 
-	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/llm"
 )
 
@@ -41,9 +40,4 @@ type StreamingUpdateTool interface {
 type ContentTool interface {
 	Tool
 	ExecuteContent(ctx context.Context, args string) ([]llm.ContentPart, error)
-}
-
-type ApprovalTool interface {
-	Tool
-	ApprovalRequirement(args string) (approval.Requirement, bool, error)
 }

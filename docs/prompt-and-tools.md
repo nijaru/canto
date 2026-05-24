@@ -175,7 +175,7 @@ Available tool modules:
 
 | Module | Tools |
 | :--- | :--- |
-| `tool.NewTyped` / `tool.MustTyped` | First-class typed Go tool authoring. JSON stays at the tool boundary. |
+| `typedtool.New` / `typedtool.Must` | First-class typed Go tool authoring. JSON stays at the tool boundary. |
 | `workspacetool.NewReadFileTool(root)` | `read_file`. |
 | `workspacetool.NewWriteFileTool(root)` | `write_file`. |
 | `workspacetool.NewListDirTool(root)` | `list_dir`. |

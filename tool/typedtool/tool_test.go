@@ -1,4 +1,4 @@
-package tool
+package typedtool
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/nijaru/canto/approval"
+	basetool "github.com/nijaru/canto/tool"
 )
 
 type typedWeatherArgs struct {
@@ -16,11 +17,11 @@ type typedWeatherResult struct {
 	Forecast string `json:"forecast"`
 }
 
-func TestNewTypedExecutesTypedHandler(t *testing.T) {
-	weather, err := NewTyped(TypedConfig[typedWeatherArgs, typedWeatherResult]{
+func TestNewExecutesTypedHandler(t *testing.T) {
+	weather, err := New(Config[typedWeatherArgs, typedWeatherResult]{
 		Name:        "weather",
 		Description: "Get weather.",
-		Metadata: Metadata{
+		Metadata: basetool.Metadata{
 			Category: "service",
 			ReadOnly: true,
 		},
@@ -39,7 +40,7 @@ func TestNewTypedExecutesTypedHandler(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("NewTyped: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 
 	if weather.Spec().Name != "weather" {
@@ -48,7 +49,7 @@ func TestNewTypedExecutesTypedHandler(t *testing.T) {
 	if weather.Spec().Parameters == nil {
 		t.Fatal("schema was not inferred")
 	}
-	if got := MetadataFor(weather); got.Category != "service" || !got.ReadOnly {
+	if got := basetool.MetadataFor(weather); got.Category != "service" || !got.ReadOnly {
 		t.Fatalf("metadata = %#v", got)
 	}
 
@@ -69,10 +70,10 @@ func TestNewTypedExecutesTypedHandler(t *testing.T) {
 	}
 }
 
-func TestRegisterTypedRequiresRegistry(t *testing.T) {
-	_, err := RegisterTyped[typedWeatherArgs, typedWeatherResult](
+func TestRegisterRequiresRegistry(t *testing.T) {
+	_, err := Register[typedWeatherArgs, typedWeatherResult](
 		nil,
-		TypedConfig[typedWeatherArgs, typedWeatherResult]{
+		Config[typedWeatherArgs, typedWeatherResult]{
 			Name:        "weather",
 			Description: "Get weather.",
 			Execute: func(context.Context, typedWeatherArgs) (typedWeatherResult, error) {
@@ -81,6 +82,6 @@ func TestRegisterTypedRequiresRegistry(t *testing.T) {
 		},
 	)
 	if err == nil || !strings.Contains(err.Error(), "registry is required") {
-		t.Fatalf("RegisterTyped error = %v", err)
+		t.Fatalf("Register error = %v", err)
 	}
 }

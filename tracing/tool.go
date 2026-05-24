@@ -52,7 +52,7 @@ func (w *wrappedTool) Metadata() tool.Metadata {
 }
 
 func (w *wrappedTool) ApprovalRequirement(args string) (approval.Requirement, bool, error) {
-	if at, ok := w.inner.(tool.ApprovalTool); ok {
+	if at, ok := w.inner.(approval.RequirementProvider); ok {
 		return at.ApprovalRequirement(args)
 	}
 	return approval.Requirement{}, false, nil

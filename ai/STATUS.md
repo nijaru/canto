@@ -85,10 +85,10 @@ lane is selected.
   `canto-01ge` landed the native `Turn`/`Submit` facade, `canto-d6kl` landed
   durable event `TurnID`/`Seq`, and `canto-iq8h`, `canto-uduq`, `canto-dvtd`,
   and `canto-xz1w` are complete.
-- Current `canto-iusu` slice: memory-backed prompt retrieval moved out of the
-  core `prompt` package into `memory/memoryprompt`; `prompt` no longer imports
-  `memory/`, while hosts that opt into memory still compose the same request
-  processor explicitly.
+- Current `canto-iusu` slices: memory-backed prompt retrieval moved out of
+  core `prompt` into `memory/memoryprompt`, and approval-capable typed tool
+  authoring moved out of core `tool` into `tool/typedtool`; `prompt` no longer
+  imports `memory/`, and `tool` no longer imports the approval state machine.
 - `canto-wuev` found a real public-surface mismatch: public harness docs and
   examples should teach native `Submit` / `Turn` as the common path.
 - `canto-uduq` landed the first executable contract slice: `RunEvent` now
@@ -142,10 +142,12 @@ lane is selected.
 - `canto-vhjg` is closed in Canto `5f313f6`: `RunEvent` now carries envelope
   metadata plus one typed payload, and Ion imported that exact revision in
   `9ff72a4`.
-- `canto-33aq` is closed in Canto `0962930`: typed Go tool authoring now
-  lives in `tool.NewTyped` / `tool.MustTyped`, and
-  `HarnessBuilder.ToolsFromEnvironment` wires workspace/executor capability
-  tools from `Environment` on explicit request.
+- `canto-33aq` is closed in Canto `0962930`: typed Go tool authoring landed.
+  During the later kernel-reduction pass, it moved from core `tool` to
+  `tool/typedtool` so optional approval support does not make the base tool
+  registry depend on approval state. `HarnessBuilder.ToolsFromEnvironment`
+  wires workspace/executor capability tools from `Environment` on explicit
+  request.
 - `canto-re2x` is closed in Canto `1be9c57`: root `canto.Session` now exposes
   replay, sequence-bounded events, compaction, projection snapshots, and fork
   methods for normal host maintenance.
@@ -199,14 +201,17 @@ lane is selected.
 
 ## Recently landed
 
-- `canto-iusu` first kernel-reduction slice — moved `prompt.MemoryPrompt` to
+- `canto-iusu` kernel-reduction slices — moved `prompt.MemoryPrompt` to
   `memory/memoryprompt.New` as a clean pre-M1 API break, exported
   `prompt.InjectContextBlock` as the generic cache-safe insertion helper, and
-  updated the memory example/docs. `go test ./prompt ./memory/memoryprompt
-  -count=1 -timeout 120s`, `go test ./... -count=1 -timeout 300s`,
-  `go vet ./...`, and `git diff --check` pass. `go list -deps
-  github.com/nijaru/canto/prompt` no longer includes `memory` or
-  `memory/memoryprompt`.
+  updated the memory example/docs. Then moved typed tool authoring from
+  `tool.NewTyped` / `tool.MustTyped` to `tool/typedtool`, and moved the
+  approval declaration interface to `approval.RequirementProvider`. Focused
+  package tests pass for `prompt`, `memory/memoryprompt`, `tool`,
+  `tool/typedtool`, `agent`, `tracing`, `service`, `executortool`, and
+  `tool/mcp`. `go list -deps github.com/nijaru/canto/prompt` no longer
+  includes `memory`, and `go list -deps github.com/nijaru/canto/tool` no
+  longer includes `approval`.
 - `canto-sqtc` — framework-owned bounded event reads: `EventQueryStore.EventsAfter`
   is implemented for SQLite and JSONL stores so hosts can update typed
   projections after a durable sequence cutoff without querying store internals.

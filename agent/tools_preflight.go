@@ -88,7 +88,7 @@ func preflightTools(
 
 		// Approval check.
 		if approvals != nil {
-			if gated, ok := t.(tool.ApprovalTool); ok {
+			if gated, ok := t.(approval.RequirementProvider); ok {
 				req, needsApproval, err := gated.ApprovalRequirement(call.Function.Arguments)
 				if err != nil {
 					results[i].output = hookOutput + fmt.Sprintf(

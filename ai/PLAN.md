@@ -91,12 +91,14 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 | 3 | `canto-khhl` Docs completeness pass | Fill only the docs needed for a new user to build a non-trivial agent and understand supported providers |
 | 3 | `canto-2if9` First-alpha package contract | Publish the one-page alpha scope once blockers are named and validation is acceptable |
 
-`canto-iusu` first implemented reduction: memory prompt retrieval is now
+`canto-iusu` implemented reductions so far: memory prompt retrieval is now
 `memory/memoryprompt.New`, not `prompt.MemoryPrompt`, so the core `prompt`
-package no longer imports the optional memory subsystem. Continue this audit
-with the remaining optional dependencies embedded in otherwise-core packages:
-`tool` -> `approval`, `runtime` -> `skill`, and session/governor artifact
-surfaces.
+package no longer imports the optional memory subsystem. Typed tool authoring
+is now `typedtool.New` / `typedtool.Must`, and approval-capable tools implement
+`approval.RequirementProvider`, so the core `tool` package no longer imports
+the approval state machine. Continue this audit with remaining optional
+dependencies embedded in otherwise-core packages: `runtime` -> `skill` and
+session/governor artifact surfaces.
 
 ### Deferred Or Conditional
 
@@ -139,7 +141,7 @@ Framework is usable by one real consumer (Ion) end-to-end. No formal API-stabili
   durability, usage, and lifecycle envelope metadata plus one typed payload
   (`RunChunkPayload`, `RunSessionPayload`, `RunRetryPayload`,
   `RunResultPayload`, or `RunErrorPayload`). Ion imports this in `9ff72a4`.
-- **Typed tool authoring:** `tool.NewTyped` / `tool.MustTyped` adapt typed Go
+- **Typed tool authoring:** `typedtool.New` / `typedtool.Must` adapt typed Go
   handlers to the provider-facing JSON boundary; `service.New` remains the
   service/API retry layer.
 - **Environment toolkit wiring:** `ToolsFromEnvironment` is the opt-in bridge

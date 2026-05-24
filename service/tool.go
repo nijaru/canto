@@ -36,9 +36,9 @@ type Tool[A, R any] struct {
 }
 
 var (
-	_ tool.Tool         = (*Tool[struct{}, struct{}])(nil)
-	_ tool.MetadataTool = (*Tool[struct{}, struct{}])(nil)
-	_ tool.ApprovalTool = (*Tool[struct{}, struct{}])(nil)
+	_ tool.Tool                    = (*Tool[struct{}, struct{}])(nil)
+	_ tool.MetadataTool            = (*Tool[struct{}, struct{}])(nil)
+	_ approval.RequirementProvider = (*Tool[struct{}, struct{}])(nil)
 )
 
 // New constructs a typed service/API tool.
