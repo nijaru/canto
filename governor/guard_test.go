@@ -176,7 +176,7 @@ func TestCircuitBreakerGuard(t *testing.T) {
 	}
 
 	// 2. Test guard injection
-	guard := governor.NewCircuitBreakerGuard(mgr)
+	guard := approval.NewCircuitBreakerGuard(mgr)
 	req := &llm.Request{}
 	if err := guard.ApplyRequest(ctx, pr, "", sess, req); err != nil {
 		t.Fatalf("ApplyRequest: %v", err)

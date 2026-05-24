@@ -3,10 +3,22 @@ package session
 import (
 	"context"
 	"fmt"
-	"io"
-
-	"github.com/nijaru/canto/artifact"
 )
+
+// ArtifactRef identifies an artifact emitted by a session or child run.
+// Storage, merge policy, and UI treatment are left to higher-level apps.
+type ArtifactRef struct {
+	ID                string         `json:"id"`
+	Kind              string         `json:"kind"`
+	URI               string         `json:"uri"`
+	Label             string         `json:"label,omitzero"`
+	MIMEType          string         `json:"mime_type,omitzero"`
+	Size              int64          `json:"size,omitzero"`
+	Digest            string         `json:"digest,omitzero"`
+	ProducerSessionID string         `json:"producer_session_id,omitzero"`
+	ProducerEventID   string         `json:"producer_event_id,omitzero"`
+	Metadata          map[string]any `json:"metadata,omitzero"`
+}
 
 // RecordArtifact appends an artifact_recorded event for an existing durable
 // artifact descriptor or external artifact reference.
@@ -23,42 +35,10 @@ func RecordArtifact(
 	return sess.Append(ctx, NewArtifactRecordedEvent(sess.ID(), data))
 }
 
-// StoreArtifact persists an artifact body behind store, fills the common
-// provenance defaults, and records the resulting descriptor in the session.
-func StoreArtifact(
-	ctx context.Context,
-	sess *Session,
-	store artifact.Store,
-	data ArtifactRecordedData,
-	body io.Reader,
-) (ArtifactRef, error) {
-	if sess == nil {
-		return ArtifactRef{}, fmt.Errorf("store artifact: nil session")
-	}
-	if store == nil {
-		return ArtifactRef{}, fmt.Errorf("store artifact: nil store")
-	}
-	if body == nil {
-		return ArtifactRef{}, fmt.Errorf("store artifact: nil body")
-	}
-
-	desc := withDefaultArtifactProvenance(data.Artifact, sess.ID())
-	desc, err := store.Put(ctx, desc, body)
-	if err != nil {
-		return ArtifactRef{}, fmt.Errorf("store artifact: %w", err)
-	}
-
-	data.Artifact = desc
-	if err := sess.Append(ctx, NewArtifactRecordedEvent(sess.ID(), data)); err != nil {
-		return ArtifactRef{}, fmt.Errorf("store artifact record: %w", err)
-	}
-	return desc, nil
-}
-
 func withDefaultArtifactProvenance(
-	desc artifact.Descriptor,
+	desc ArtifactRef,
 	sessionID string,
-) artifact.Descriptor {
+) ArtifactRef {
 	if desc.ProducerSessionID == "" {
 		desc.ProducerSessionID = sessionID
 	}

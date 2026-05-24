@@ -91,6 +91,10 @@ lane is selected.
   validation/scoping/preload moved out of `runtime` into `skill.RuntimeConfig`;
   `prompt` no longer imports `memory/`, `tool` no longer imports the approval
   state machine, and `runtime` no longer imports `skill` or `agentskills`.
+  The latest slice moved artifact body-storage helpers out of `session` into
+  `artifact.StoreSessionArtifact` and moved approval circuit-breaker prompt
+  injection from `governor` into `approval`; `session` no longer imports
+  `artifact`, and `governor` no longer imports `approval`.
 - `canto-wuev` found a real public-surface mismatch: public harness docs and
   examples should teach native `Submit` / `Turn` as the common path.
 - `canto-uduq` landed the first executable contract slice: `RunEvent` now
@@ -210,9 +214,11 @@ lane is selected.
   `tool.NewTyped` / `tool.MustTyped` to `tool/typedtool`, and moved the
   approval declaration interface to `approval.RequirementProvider`. The latest
   slice moved child skill validation/scoping/preload out of `runtime` and into
-  `skill.RuntimeConfig`. Focused package tests pass for `prompt`,
-  `memory/memoryprompt`, `tool`, `tool/typedtool`, `agent`, `tracing`,
-  `service`, `executortool`, `tool/mcp`, `runtime`, and `skill`.
+  `skill.RuntimeConfig`, artifact storage helpers out of `session`, and
+  approval circuit-breaker prompt injection out of `governor`. Focused package
+  tests pass for `prompt`, `memory/memoryprompt`, `tool`, `tool/typedtool`,
+  `agent`, `tracing`, `service`, `executortool`, `tool/mcp`, `runtime`,
+  `skill`, `session`, `artifact`, `governor`, and `approval`.
 - `canto-sqtc` — framework-owned bounded event reads: `EventQueryStore.EventsAfter`
   is implemented for SQLite and JSONL stores so hosts can update typed
   projections after a durable sequence cutoff without querying store internals.

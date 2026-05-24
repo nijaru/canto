@@ -1,9 +1,6 @@
 package session
 
-import (
-	"github.com/nijaru/canto/artifact"
-	"github.com/nijaru/canto/llm"
-)
+import "github.com/nijaru/canto/llm"
 
 // ChildMode identifies how a child session was created.
 type ChildMode string
@@ -26,10 +23,6 @@ const (
 	ChildStatusCanceled  ChildStatus = "canceled"
 	ChildStatusMerged    ChildStatus = "merged"
 )
-
-// ArtifactRef identifies an artifact emitted by a session or child run.
-// Storage, merge policy, and UI treatment are left to higher-level apps.
-type ArtifactRef = artifact.Descriptor
 
 // ArtifactKindWorkspaceFileRef marks durable file-reference records that
 // should stay internal to the framework and not surface as child artifacts.

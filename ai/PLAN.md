@@ -99,8 +99,13 @@ is now `typedtool.New` / `typedtool.Must`, and approval-capable tools implement
 the approval state machine. Child skill validation, tool scoping, and prompt
 preload now live behind `skill.RuntimeConfig`; `runtime.ChildSpec` accepts a
 generic `agent.RuntimeConfig` and no longer imports `skill` or `agentskills`.
-Continue this audit with the remaining optional dependencies embedded in
-otherwise-core packages, especially session/governor artifact surfaces.
+Artifact descriptors are now session-owned event references while artifact body
+storage lives behind `artifact.StoreSessionArtifact`, so `session` no longer
+imports `artifact`. Approval circuit-breaker prompt injection now lives in
+`approval.CircuitBreakerGuard`, so budget/compaction-oriented `governor` no
+longer imports approval. Continue this audit with remaining optional
+dependencies embedded in otherwise-core packages, especially whether
+governor's artifact-backed offload path should stay in core.
 
 ### Deferred Or Conditional
 

@@ -137,6 +137,11 @@ go test ./... -count=1
 - Remaining reviewed boundaries so far:
   - `runtime.Bootstrap` depends on `workspace/` for explicit workspace snapshots; that is a core mechanism.
   - `runtime.ChildRunner` now accepts generic `agent.RuntimeConfig` for scoped child execution instead of owning skill policy directly; child skill validation, tool scoping, and preload composition moved to `skill.RuntimeConfig`.
+  - `session` owns artifact event descriptors directly; artifact body storage
+    helpers moved to `artifact.StoreSessionArtifact`, so durable sessions no
+    longer depend on the artifact store package.
+  - `governor` owns token/budget/compaction prompt machinery; approval
+    circuit-breaker prompt injection moved to `approval.CircuitBreakerGuard`.
   - `prompt.MemoryPrompt` was moved to `memory/memoryprompt.New`; core `prompt` no longer imports `memory/`, and hosts opt into memory-backed retrieval through the explicit adapter package.
   - `tool.NewTyped` / `tool.MustTyped` were moved to `tool/typedtool`, and approval-capable tools now implement `approval.RequirementProvider`; core `tool` no longer imports approval state.
   - `tool/mcp` depends on `safety/`/`workspace/`, but MCP registration remains deferred in Ion and is not part of the native minimal loop.
@@ -177,6 +182,12 @@ Recent concrete fixes from the follow-up pass:
   fusion.
 - `runtime.ChildRunner` no longer imports `skill/` or `agentskills`; hosts that
   want skill-scoped child agents compose `skill.RuntimeConfig` before spawning.
+- Durable session artifact descriptors no longer make `session` import
+  `artifact/`; artifact body storage and record helper composition now live in
+  the artifact package.
+- Approval circuit-breaker prompt injection no longer makes `governor` import
+  `approval/`; hosts install `approval.CircuitBreakerGuard` when they need
+  that prompt guard.
 - File-reference expansion no longer treats email addresses as `@file`
   references and handles angle-bracketed references.
 - Approval policy errors append a terminal `ApprovalCanceled` event so sessions

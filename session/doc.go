@@ -21,9 +21,9 @@
 //     originating event IDs and context markers when known.
 //   - Artifact events carry durable artifact descriptors and provenance rather
 //     than embedding artifact bodies directly in the log.
-//   - RecordArtifact and StoreArtifact provide the standard path for
-//     recording external descriptors or persisting new artifact bodies while
-//     emitting artifact_recorded events.
+//   - RecordArtifact records external descriptors. The artifact package owns
+//     body storage helpers that can persist new artifacts while emitting
+//     artifact_recorded events.
 //
 // Forked sessions preserve lineage by minting fresh event IDs and recording
 // fork_origin metadata that points back to the parent session and event.
