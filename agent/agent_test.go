@@ -1582,6 +1582,71 @@ func TestRunTools_ACRFenceRejectsStartedOnlyExecution(t *testing.T) {
 	}
 }
 
+func TestRunToolsPreflightErrorPersistsToolCompletedForRecovery(t *testing.T) {
+	reg := tool.NewRegistry()
+	s := session.New("s-preflight-tool-recovery")
+	call := llm.Call{
+		ID:   "missing-call",
+		Type: "function",
+		Function: struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		}{Name: "missing", Arguments: `{}`},
+	}
+	appendAssistantToolCalls(t, s, []llm.Call{call})
+
+	writerErr := errors.New("tool result write failed")
+	writer := &eventTypeFailingWriter{failType: session.MessageAdded, err: writerErr}
+	s.WithWriter(writer)
+
+	_, err := runTools(
+		context.Background(),
+		s,
+		[]llm.Call{call},
+		reg,
+		nil,
+		nil,
+		nil,
+		10,
+		"assistant-msg-1",
+	)
+	if !errors.Is(err, writerErr) {
+		t.Fatalf("runTools error = %v, want %v", err, writerErr)
+	}
+
+	var completed session.ToolCompletedData
+	for _, ev := range writer.events {
+		data, ok, err := ev.ToolCompletedData()
+		if err != nil {
+			t.Fatalf("decode tool completed: %v", err)
+		}
+		if ok {
+			completed = data
+		}
+	}
+	if completed.ID != "missing-call" ||
+		completed.Tool != "missing" ||
+		!strings.Contains(completed.Error, `tool "missing" not found`) {
+		t.Fatalf("tool completed data = %#v, want missing-tool preflight error", completed)
+	}
+
+	entries, err := s.EffectiveEntries()
+	if err != nil {
+		t.Fatalf("EffectiveEntries: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entries = %#v, want assistant plus recovered tool result", entries)
+	}
+	if entries[1].Message.Role != llm.RoleTool ||
+		entries[1].Message.ToolID != "missing-call" ||
+		!strings.Contains(entries[1].Message.Content, `tool "missing" not found`) {
+		t.Fatalf("recovered preflight tool result = %#v", entries[1])
+	}
+	if entries[1].Tool == nil || !entries[1].Tool.IsError {
+		t.Fatalf("recovered preflight tool metadata = %#v, want error metadata", entries[1].Tool)
+	}
+}
+
 func TestStepToolConcurrencyPartitioningPreservesSerializedBarriers(t *testing.T) {
 	newBlocking := func(name string, mode tool.ConcurrencyMode) *blockingTool {
 		return &blockingTool{

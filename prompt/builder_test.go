@@ -99,6 +99,59 @@ func TestHistoryUsesLatestCompactionSnapshot(t *testing.T) {
 	}
 }
 
+func TestHistoryPreservesRecoveredToolContentParts(t *testing.T) {
+	sess := session.New("content-tool-history")
+	call := llm.Call{ID: "call-image", Type: "function"}
+	call.Function.Name = "read"
+	call.Function.Arguments = `{"path":"screen.png"}`
+
+	if err := sess.Append(t.Context(), session.NewMessage(sess.ID(), llm.Message{
+		Role:  llm.RoleAssistant,
+		Calls: []llm.Call{call},
+	})); err != nil {
+		t.Fatalf("append assistant call: %v", err)
+	}
+	if err := sess.Append(t.Context(), session.NewToolStartedEvent(sess.ID(), session.ToolStartedData{
+		ID:        "call-image",
+		Tool:      "read",
+		Arguments: `{"path":"screen.png"}`,
+	})); err != nil {
+		t.Fatalf("append tool started: %v", err)
+	}
+	if err := sess.Append(t.Context(), session.NewToolCompletedEvent(sess.ID(), session.ToolCompletedData{
+		ID:     "call-image",
+		Tool:   "read",
+		Output: "image read",
+		Parts: []llm.ContentPart{
+			llm.TextPart("image read"),
+			llm.ImagePart("image/png", "aW1hZ2U="),
+		},
+	})); err != nil {
+		t.Fatalf("append tool completed: %v", err)
+	}
+
+	req := &llm.Request{}
+	if err := History().ApplyRequest(t.Context(), nil, "", sess, req); err != nil {
+		t.Fatalf("History: %v", err)
+	}
+
+	if len(req.Messages) != 2 {
+		t.Fatalf("request history = %#v, want assistant plus recovered tool result", req.Messages)
+	}
+	toolResult := req.Messages[1]
+	if toolResult.Role != llm.RoleTool ||
+		toolResult.ToolID != "call-image" ||
+		toolResult.Name != "read" ||
+		toolResult.Content != "image read" {
+		t.Fatalf("unexpected recovered tool result: %#v", toolResult)
+	}
+	if len(toolResult.Parts) != 2 ||
+		toolResult.Parts[1].Type != llm.ContentPartImage ||
+		toolResult.Parts[1].Data != "aW1hZ2U=" {
+		t.Fatalf("recovered request parts = %+v, want text plus image", toolResult.Parts)
+	}
+}
+
 func TestHistoryPlacesPrefixContextBeforeTranscript(t *testing.T) {
 	sess := session.New("prefix-context")
 	if err := sess.AppendUser(t.Context(), "first user"); err != nil {

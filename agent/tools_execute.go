@@ -27,8 +27,13 @@ func executeTools(
 	results := make([]toolResult, len(preflight))
 	for i := 0; i < len(preflight); {
 		pf := preflight[i]
-		if pf.skipExecute || pf.err != nil {
+		if pf.err != nil {
 			results[i] = toolResult{call: pf.call, output: pf.output, err: pf.err}
+			i++
+			continue
+		}
+		if pf.skipExecute {
+			results[i] = completeSkippedTool(ctx, s, pf)
 			i++
 			continue
 		}
@@ -46,6 +51,26 @@ func executeTools(
 	}
 
 	return results
+}
+
+func completeSkippedTool(ctx context.Context, s *session.Session, pf preflightResult) toolResult {
+	res := toolResult{call: pf.call, output: pf.output}
+	if pf.completionError == "" {
+		return res
+	}
+	if err := s.Append(context.WithoutCancel(ctx), session.NewToolCompletedEvent(
+		s.ID(),
+		session.ToolCompletedData{
+			Tool:           pf.call.Function.Name,
+			ID:             pf.call.ID,
+			IdempotencyKey: pf.idempotencyKey,
+			Output:         pf.output,
+			Error:          pf.completionError,
+		},
+	)); err != nil {
+		res.err = err
+	}
+	return res
 }
 
 func canRunInParallel(pf preflightResult) bool {

@@ -19,13 +19,14 @@ type toolResult struct {
 
 // preflightResult holds the outcome of sequential validation for one tool call.
 type preflightResult struct {
-	call           llm.Call
-	idempotencyKey string
-	tool           tool.Tool
-	metadata       tool.Metadata
-	output         string // non-empty if preflight produced output (error or hook context)
-	err            error  // non-nil if preflight blocked execution
-	skipExecute    bool   // true if execution should be skipped (preflight handled it)
+	call            llm.Call
+	idempotencyKey  string
+	tool            tool.Tool
+	metadata        tool.Metadata
+	output          string // non-empty if preflight produced output (error or hook context)
+	err             error  // non-nil if preflight blocked execution
+	skipExecute     bool   // true if execution should be skipped (preflight handled it)
+	completionError string // non-empty when skipped output should persist as ToolCompleted error
 }
 
 func runTools(

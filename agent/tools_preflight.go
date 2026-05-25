@@ -52,19 +52,18 @@ func preflightTools(
 					results[i].err = err
 					continue
 				}
-				results[i].output = hookOutput + fmt.Sprintf("Error: %v", err)
-				results[i].skipExecute = true
+				setPreflightCompletionError(&results[i], hookOutput, err.Error())
 				continue
 			}
 		}
 
 		// Registry lookup.
 		if r == nil {
-			results[i].output = hookOutput + fmt.Sprintf(
-				"Error: no tool registry configured; cannot execute %q",
-				call.Function.Name,
+			setPreflightCompletionError(
+				&results[i],
+				hookOutput,
+				fmt.Sprintf("no tool registry configured; cannot execute %q", call.Function.Name),
 			)
-			results[i].skipExecute = true
 			continue
 		}
 		t, ok := r.Get(call.Function.Name)
@@ -73,11 +72,11 @@ func preflightTools(
 			ok = true
 		}
 		if !ok {
-			results[i].output = hookOutput + fmt.Sprintf(
-				"Error: tool %q not found",
-				call.Function.Name,
+			setPreflightCompletionError(
+				&results[i],
+				hookOutput,
+				fmt.Sprintf("tool %q not found", call.Function.Name),
 			)
-			results[i].skipExecute = true
 			continue
 		}
 		metadata = tool.MetadataFor(t)
@@ -91,12 +90,11 @@ func preflightTools(
 			if gated, ok := t.(approval.RequirementProvider); ok {
 				req, needsApproval, err := gated.ApprovalRequirement(call.Function.Arguments)
 				if err != nil {
-					results[i].output = hookOutput + fmt.Sprintf(
-						"Error: approval requirement for %q: %v",
-						call.Function.Name,
-						err,
+					setPreflightCompletionError(
+						&results[i],
+						hookOutput,
+						fmt.Sprintf("approval requirement for %q: %v", call.Function.Name, err),
 					)
-					results[i].skipExecute = true
 					continue
 				}
 				if needsApproval {
@@ -112,13 +110,11 @@ func preflightTools(
 							results[i].err = err
 							continue
 						}
-						results[i].output = hookOutput + fmt.Sprintf("Error: %v", err)
-						results[i].skipExecute = true
+						setPreflightCompletionError(&results[i], hookOutput, err.Error())
 						continue
 					}
 					if denyErr := res.Error(); denyErr != nil {
-						results[i].output = hookOutput + fmt.Sprintf("Error: %v", denyErr)
-						results[i].skipExecute = true
+						setPreflightCompletionError(&results[i], hookOutput, denyErr.Error())
 						continue
 					}
 				}
@@ -129,8 +125,7 @@ func preflightTools(
 		results[i].idempotencyKey = idempotencyKey
 		decision, err := fence.Validate(s, idempotencyKey)
 		if err != nil {
-			results[i].output = hookOutput + fmt.Sprintf("Error: %v", err)
-			results[i].skipExecute = true
+			setPreflightCompletionError(&results[i], hookOutput, err.Error())
 			continue
 		}
 		if decision.Action == tool.ReplayReuse {
@@ -143,6 +138,12 @@ func preflightTools(
 	}
 
 	return results
+}
+
+func setPreflightCompletionError(res *preflightResult, hookOutput, errorText string) {
+	res.output = hookOutput + fmt.Sprintf("Error: %s", errorText)
+	res.completionError = errorText
+	res.skipExecute = true
 }
 
 func isPreflightAbort(err error) bool {
