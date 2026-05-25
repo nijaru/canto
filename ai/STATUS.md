@@ -1,37 +1,40 @@
 # Status
 
-**Phase:** Post-Ion-P1 kernel support
-**Focus:** no active Canto P1 kernel-reduction item remains; resume M1
-docs/release posture or add only focused framework tasks from new Ion evidence.
-**Blockers:** none for current Ion P1 support. Future Ion findings should
-create focused Canto tasks only when the issue is framework-owned.
+**Phase:** Ion-driven P1 primitive audit reopened
+**Focus:** reassess Canto session/event/tool/runtime primitives wherever Ion's
+Pi-level architecture cannot be simple, ordered, durable, and host-friendly.
+**Blockers:** Ion P1 is not release-usable. Canto M1 docs/release posture is
+paused until framework-owned primitive gaps from Ion's ideal-first audit are
+classified, fixed, or explicitly rejected.
 **Updated:** 2026-05-25
 
 ## Context
 
 Sprints 01-06 and the Phase 4 architecture-correction tranche are complete. The primitives are load-bearing: durable sessions with replay/projections, identity-first workspace (WorkspaceFS, ContentRef, dedup, search, OverlayFS, MultiFS+memory.FS), tiered compaction, cache-aware mutations, subagent delegation, progressive-disclosure skills, MCP tools, approval/auto-mode with circuit breaker, OTel tracing, and eval harnesses.
 
-Phase 5 still has SOTA and DX inputs, but the active operating mode is now
-supporting Ion's pre-v0 design-closure review after the Ion-driven optimal-core
-work:
+Phase 5 still has SOTA and DX inputs, but the active operating mode is now an
+Ion-driven primitive audit. Canto is supposed to provide the basic durable
+mechanisms every serious agent host needs:
 
 - **Canto owns mechanism:** durable sessions, prompt/runtime boundaries, tool execution, workspace capability, compaction, approval state-machine seams, provider normalization, and examples that prove the pieces compose.
 - **Ion owns product policy:** terminal UX, task/planner behavior, approval delivery and thresholds, shell classifier heuristics, memory aggressiveness, command catalog choices, and end-user workflow.
-- **Ion is the flagship consumer:** Ion should expose missing or awkward
-  primitives through design review or real product use, but Ion work is not
-  active in this repo. Do not keep standing Ion product tasks in Canto; add a
-  Canto task only when separate Ion work identifies a concrete framework issue.
-- **Canto API audit:** resolved core-contract review lives in `ai/review/core-api-contract-audit-2026-04-30.md`; reopen only from concrete Canto-owned evidence.
+- **Ion is the flagship consumer:** Ion's current P1 architecture audit is
+  active Canto evidence when it touches reusable session, event, provider
+  context, tool lifecycle, replay, queue/steer/follow-up, compaction, or
+  timeout/error primitives. Do not treat Ion-local workarounds as proof that
+  Canto is done.
+- **Canto API audit:** resolved core-contract review lives in `ai/review/core-api-contract-audit-2026-04-30.md`; reopen Canto design from Ion primitive evidence, not only from a finished Ion patch.
 - **Ion feedback tracker:** confirmed Ion-derived framework issues live in `ai/review/ion-feedback-tracker-2026-04-28.md`.
 - **Ion as framework pressure:** Ion's prior ideal-core lane is no longer final
   proof. Pi is the P1 design control, and Canto should close framework-owned
   gaps where Pi has one session-scoped harness owner instead of split
   Canto/Ion ownership.
-- **Ion-first kernel rule:** Ion's Pi-level scenario matrix passed with
-  deterministic, tmux, race, live backend/provider, and live TUI/provider gates
-  on 2026-05-25. Canto remains pre-M1, but no active P1 framework blocker is
-  known. Keep reusable primitives in Canto only when Ion needs and proves them.
-- **Next-phase roadmap:** [ai/design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) remains the sequencing source, amended by `canto-2vxb`: make the harness facade clear before polishing M1 docs/release language.
+- **Ion-first kernel rule:** Ion's prior full P1 wrapper pass is historical
+  evidence, not closure. The current audit asks whether Canto's primitives make
+  Ion's P1 controller/projection/tool/runtime path simple enough to trust.
+  Keep reusable primitives in Canto when Ion needs them, but redesign them if
+  Ion has to reconstruct framework semantics locally.
+- **Next-phase roadmap:** [ai/design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) is superseded for active work by the reopened Ion P1 primitive audit. Resume M1 docs/release only after this audit closes.
 
 SOTA/DX research is part of the Canto pre-Ion gate when it can change stable API or primitives. New research remains delta-based and must name the Canto primitive it would change.
 
@@ -57,7 +60,29 @@ lane is selected.
 
 ## Next
 
-**Audit outcome:**
+**Active primitive audit:**
+
+- `canto-fnag` reviews Ion's ideal-first P1 target at
+  `/Users/nick/github/nijaru/ion/ai/design/p1-from-scratch-ideal-architecture-2026-05-25.md`
+  from the Canto side. Initial classification lives in
+  `ai/review/ion-p1-primitive-audit-2026-05-25.md`.
+- `canto-21o6` validates the Canto session/event spine against Ion's planned
+  product session controller.
+- `canto-wfim` validates replay, projection, and provider-context primitives.
+- `canto-ta4w` validates tool lifecycle and result primitives.
+- `canto-pqk5` validates timeout and error surfaces for normal hosts.
+- For each Ion gap, classify the owner as Canto primitive, Ion product policy,
+  temporary Ion-local glue with Canto re-extraction, or rejected/non-P1.
+- Fix or redesign Canto first when the issue is general to agent hosts:
+  ordered run events, durable session/replay, provider-visible context,
+  tool lifecycle/results, turn settlement, queue/steer/follow-up, compaction,
+  and timeout/error surfacing.
+- Keep TUI rendering, slash command UX, provider/model picker behavior,
+  default coding-tool catalog, and product settings in Ion.
+- M1 docs/release tasks remain deferred until the primitive audit says no
+  framework-owned P1 gap is hiding behind Ion.
+
+**Historical audit outcome:**
 
 - `canto-hr9r` reviewed and refactored framework packages in green slices:
   root harness/session APIs, prompt, providers, session stores/rebuilder/export,
@@ -168,16 +193,15 @@ lane is selected.
   replay, sequence-bounded events, projection snapshots, and fork methods for
   normal host maintenance. Context compaction remains explicit through
   `governor.CompactSession`.
-- The old "no known P1 framework seam remains" status is restored with better
-  evidence: Pi-like steering/follow-up and session facade primitives landed,
-  the Canto kernel-reduction pass closed, and Ion passed the full P1
-  acceptance wrapper with race/live gates. Branch/tree product policy stays
-  parked unless Ion explicitly promotes it.
+- The old "no known P1 framework seam remains" status is superseded. Pi-like
+  steering/follow-up and session facade primitives landed, the Canto
+  kernel-reduction pass closed, and Ion passed the full P1 wrapper, but later
+  first-minutes Ion use reopened the architecture question.
 
 **Ion pre-v0 design-closure support:**
 
-- Canto M1 docs/release work is selectable again when the user wants release
-  posture. It is not the active milestone unless selected.
+- Canto M1 docs/release work is not the active milestone. It should resume
+  only after Ion's P1 primitive audit has classified framework-owned gaps.
 - `canto-wuev` found a real public-surface mismatch: Canto code had the native
   `Session.Submit` / `Turn` transaction, but README, prompt docs, and examples
   still taught `Prompt` / `PromptStream` as primary. The fix makes `Submit`
@@ -193,14 +217,16 @@ lane is selected.
   around a framework `Harness`, durable session handle, and one ordered
   run-event stream. The review output is captured in
   `ai/design/authoring-surface.md`.
-- The Ion import/removal proof is closed: Ion imported Canto session/turn
-  revisions, removed generic terminal lifecycle reconstruction, moved runtime
-  transitions into its controller, and now maintains bounded typed display
-  projections over Canto event sequence.
+- The earlier Ion import/removal proof is historical evidence: Ion imported
+  Canto session/turn revisions, removed some generic terminal lifecycle
+  reconstruction, moved runtime transitions into its controller, and maintains
+  bounded typed display projections over Canto event sequence. The current
+  audit still needs to prove those seams are ideal and minimal.
 - Work should continue as clean pre-alpha breaks, not compatibility wrappers.
 - Do not create Canto implementation work from Mesa/Archil/OpenHands/DSPy/GEPA
-  research alone. Those are roadmap inputs; implementation starts only when M1
-  readiness or continued Ion use exposes a concrete framework seam.
+  research alone. Those are roadmap inputs; implementation starts when Ion's
+  P1 audit, M1 readiness, or another serious host exposes a concrete framework
+  seam.
 
 **Release/doc gate:**
 

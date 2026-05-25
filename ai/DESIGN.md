@@ -12,6 +12,15 @@ Canto is the primitives layer for building durable agent backends. It sits _belo
 
 The test: if you can build an overnight autoresearch loop, a long-horizon SWE agent, a Claude Code/Codex/Cursor-class coding agent, or an agent that safely acts across external services/APIs using these primitives, the framework is correct.
 
+Ion is the first serious host exercising the whole local coding-agent path. If
+Ion cannot build a simple Pi-level controller over a Canto primitive, that is
+evidence the primitive may fail other hosts too. Treat Ion-local reconstruction
+of ordered events, turn settlement, provider-visible history, durable replay,
+tool lifecycle/results, queue/steer/follow-up state, compaction, or
+timeout/error surfacing as a Canto design issue until proven product-specific.
+TUI rendering, slash command UX, provider/model picker behavior, product
+settings, and default coding workflow policy remain Ion-owned.
+
 ## 1.1. Reference Discipline
 
 Ion is the active first-party consumer and a first-class product built on

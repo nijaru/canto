@@ -27,11 +27,17 @@ _Distilled from resolved decisions. Stable, load-bearing context._
 19. **Ion acceptance before framework purity during P1.** Until Ion's
     Pi-level scenario matrix is green, Canto is a pre-M1 kernel. Its APIs may
     be reduced, broken, or rewritten when Ion proves the surface is wrong.
+20. **Ion primitive failures are framework evidence.** If Ion cannot use a
+    Canto mechanism cleanly for session ownership, ordered events, provider
+    context, replay, tool lifecycle, queue/steer/follow-up, compaction, or
+    timeout/error semantics, assume the primitive design is suspect until
+    proven Ion-product-specific.
 
 ## Log
 
 _Recent decisions, ~20 entries max. Format: `[date] Context → Decision → Rationale`_
 
+- [2026-05-25] Ion's ideal-first P1 audit reopened after first-minutes TUI/tool failures despite prior wrapper passes. → Treat Ion failures in shared primitives as Canto design evidence, not as things to permanently hide behind Ion-local glue. → Canto is supposed to provide basic durable agent mechanisms for all hosts; if Ion cannot build a Pi-like controller over Canto session/event/tool/replay/settlement primitives, other hosts are likely to hit the same design weakness.
 - [2026-05-23] Ion's reopened P1 dogfood found basic failures after earlier closure claims, while Canto still carries framework-owned questions like whole-turn timeout defaults and host path contracts. → Continue Canto+Ion together, but make Ion the P1 acceptance owner and treat Canto as an unstable kernel rather than a stable upstream dependency. → A fully standalone Ion would duplicate runtime/session/tool lifecycle and make later extraction risky, while Canto-first framework polish would slow the product; the correct split is Ion-proven primitives in Canto, product UX and uncertain behavior in Ion, and clean-break Canto changes before M1.
 - [2026-05-22] Ion's reopened architecture review found Canto's host stream still exposed two semantic channels: `RunEvent.Type` plus side fields such as `Event`, `Chunk`, `Result`, and `Err`. → Collapse `RunEvent` to envelope metadata plus one typed payload interface. → Hosts should switch on the payload and use lifecycle/usage as projection metadata, not reconstruct generic stream semantics from multiple nullable fields.
 - [2026-05-21] Ion pre-v0 design closure found Canto's public teaching surface lagged the implemented harness contract. → README, prompt docs, examples, and godoc should present `Session.Submit` / `Turn` as the common host path, with `Prompt` and `PromptStream` as convenience wrappers. → The framework code already owned native turn identity, ordered events, cancellation, and result settlement; docs/examples that lead with helper APIs would pull future hosts back toward the older composition model.

@@ -20,8 +20,12 @@ from the Canto `ai/` root. Do not recreate root-level Ion intake files.
 
 ## Open Confirmed Framework Issues
 
-None as of 2026-05-02. Ion's active I4 pass is still checking for
-framework-owned issues as advanced integrations are reintroduced.
+Reopened 2026-05-25: Ion's ideal-first P1 audit must classify every gap in
+session ownership, ordered events, provider-visible context, durable replay,
+tool lifecycle/results, queue/steer/follow-up, compaction, and timeout/error
+surfacing as Canto primitive, Ion product policy, temporary Ion-local glue with
+re-extraction, or rejected/non-P1. Create or update Canto `tk` tasks for each
+framework-owned gap.
 
 ## Resolved Ion-Derived Fixes
 

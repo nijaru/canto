@@ -22,11 +22,12 @@ The Canto/Ion split is:
 - **Shared boundary:** if every serious host would need to reimplement state-machine or durability plumbing, it belongs in Canto. If the choice expresses taste, UX, environment assumptions, or Ion's workflow, it belongs in Ion and plugs into a Canto seam.
 
 Current correction: Ion's reopened P1 dogfood failures made Ion the acceptance
-owner. Canto kept the long-term framework split and stayed a pre-M1 kernel
-while Ion's Pi-level scenario matrix was red. Ion's full P1 gate passed on
-2026-05-25 with deterministic, tmux, race, live backend/provider, and live
-TUI/provider checks. Future Canto P1 work should start from a concrete
-framework-owned Ion regression, not from broad kernel-reduction churn.
+owner. The later full-wrapper pass is historical evidence, not P1 closure.
+Ion's ideal-first P1 audit is active again, and Canto is directly implicated
+when Ion cannot use a general session, event, provider-context, tool lifecycle,
+replay, queue/steer/follow-up, compaction, or timeout/error primitive cleanly.
+Future Canto P1 work should start from those primitive gaps, not from broad
+kernel-reduction churn or M1 documentation polish.
 
 The next-phase roadmap lives in [design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md). Use it to keep work ordered: C0 Ion product validation, C1 M1 docs/examples/API readiness, C2 API/DX simplification, C3 workspace/sandbox, C4 eval/optimizer artifacts, C5 multi-agent/extensibility. Do not let C3-C5 research jump ahead of C0-C1.
 
@@ -36,19 +37,22 @@ Existing research already covers LangGraph, PydanticAI, AutoGen, Vercel AI SDK, 
 similar systems reinforce the same direction: durable state,
 versioned/isolated workspaces, snapshots/rehydration, sandbox/process
 boundaries, and rich traces matter. They do not change the immediate order.
-Canto can now resume M1 readiness when explicitly selected; external
-workspace/storage systems are future adapters or design references, not core
-dependencies.
+Canto cannot resume M1 readiness as the main lane until the reopened Ion P1
+primitive audit closes; external workspace/storage systems are future adapters
+or design references, not core dependencies.
 
 ### Canto Stabilization Roadmap
 
-The earlier Ion-driven optimal-core closure is superseded by Ion's Pi-first P1
-migration. Add Canto implementation work when it closes a concrete gap between
-the current Canto/Ion split and Pi's proven session-scoped harness/session
-shape.
+The earlier Ion-driven optimal-core closure and later wrapper pass are
+superseded by Ion's ideal-first P1 architecture audit. Add Canto
+implementation work when it closes a concrete gap between the current
+Canto/Ion split and Pi's proven session-scoped harness/session shape, or when
+Ion has had to reconstruct a primitive that any serious host would need.
 
 Design source:
 [`design/optimal-core-redesign-2026-05.md`](design/optimal-core-redesign-2026-05.md).
+Current Ion target:
+`/Users/nick/github/nijaru/ion/ai/design/p1-from-scratch-ideal-architecture-2026-05-25.md`.
 P1 stays Pi-level, with Pi as the primary core control. Codex app/CLI and
 Claude Code inform P1 performance, UX, and lifecycle ergonomics. AX, DSPy,
 GEPA, Slate, Droid, richer Codex/Claude workflows, and similar systems are
@@ -88,6 +92,11 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 | 2 done | `canto-q56s` Coding tool-surface audit | Removed preset helpers and glob/search aliases; kept shell configurable |
 | 3 | `canto-khhl` Docs completeness pass | Fill only the docs needed for a new user to build a non-trivial agent and understand supported providers |
 | 3 | `canto-2if9` First-alpha package contract | Publish the one-page alpha scope once blockers are named and validation is acceptable |
+| 1 active | `canto-fnag` Ion ideal-first primitive audit | Classify each Ion P1 design gap as Canto primitive, Ion product policy, temporary Ion-local glue with re-extraction, or rejected/non-P1 before M1 docs resume |
+| 1 active | `canto-21o6` session/event spine validation | Validate Harness.Session, Submit/Turn, RunEvent, terminal settlement, save points, abort, and queue/steer/follow-up against Ion's planned product session controller |
+| 1 active | `canto-wfim` replay/provider-context validation | Validate replay, bounded event reads, snapshots, effective history, provider request construction, and compaction outputs against Ion's unified projection goal |
+| 1 active | `canto-ta4w` tool lifecycle/result validation | Validate tool authoring, lifecycle events, streaming snapshots, content results, errors, cancellation, ordered persistence, and display-neutral metadata |
+| 1 active | `canto-pqk5` timeout/error surface validation | Validate host-facing wait, retry, cancel, tool, overflow, and compaction error surfaces so interactive hosts do not see opaque deadlines or ambiguous settlement |
 
 `canto-iusu` implemented reductions so far: memory prompt retrieval is now
 `memory/memoryprompt.New`, not `prompt.MemoryPrompt`, so the core `prompt`
@@ -144,9 +153,10 @@ The initial authoring seam, typed service helper, coding-agent reference, core-v
 durable session handle, ordered run-event stream, and explicit environment
 capabilities. That is now the authoring seam to preserve during M1 readiness.
 
-Next selectable work after the Ion P1 kernel lane is Canto docs/release
-posture plus any concrete framework issues returned from later Ion validation.
-The session/turn rewrite, kernel reduction, and Ion import proof are done.
+Next work is the Canto primitive audit from Ion's ideal-first P1 plan. Canto
+docs/release posture resumes only after framework-owned gaps are fixed,
+explicitly deferred, or rejected as Ion-specific. The session/turn rewrite,
+kernel reduction, and Ion import proof remain historical evidence, not closure.
 
 ## Definition of Complete
 
@@ -158,7 +168,11 @@ Framework is usable by one real consumer (Ion) end-to-end. No formal API-stabili
 
 - **Primitives:** All DESIGN.md pillars landed and load-bearing. (Done.)
 - **DX:** Hello-agent ≤25 lines; declarative authoring surface has at least one implemented seam; the seam scales to Claude Code/Codex/Cursor-class coding-agent composition and external service/API tools. The no-credential hello path and reference coding agent are already landed; remaining DX work is cleanup and validation.
-- **Consumer validation:** Ion validation is driven from the Ion repo. Before release, any Ion-discovered Canto framework issue must either be fixed here or explicitly deferred here; do not keep speculative Ion tasks in the Canto queue.
+- **Consumer validation:** Ion validation is driven from the Ion repo, but Ion
+  primitive gaps are Canto work when they touch general session, event,
+  provider-context, tool lifecycle, replay, compaction, queue/steer/follow-up,
+  or timeout/error semantics. Before release, each such issue must be fixed
+  here, explicitly deferred here, or rejected with evidence as Ion-specific.
 - **Docs:** README, examples, and per-package godoc are sufficient for a new user to build a non-trivial agent; at least one maintained Claude Code/Codex/Cursor-class reference coding/service-agent example is buildable without provider credentials.
 - **Test coverage:** Load-bearing paths (agent loop, session replay, projection rebuild, workspace ops, tool execution, context mutation) covered by unit or integration tests.
 - **Provider matrix:** Named providers explicitly supported; others explicitly deferred.
@@ -203,9 +217,12 @@ The mature milestone is not a planned exit; it's a retrospective marker. Canto c
 
 ### Current position
 
-- M1 primitives: largely done. Remaining M1 work is docs, release posture, and any confirmed consumer-framework issues that come back from external validation.
+- M1 primitives: reopened for Ion P1 primitive audit. Earlier kernel-reduction
+  work is complete, but Canto cannot claim M1 readiness until Ion's current
+  controller/projection/tool/runtime gaps are classified.
 - M1 blocker: `canto-2vxb` identified a small but real harness-facade cleanup
-  before docs are worth polishing.
+  before docs are worth polishing; the reopened Ion P1 primitive audit is now
+  the higher-priority blocker.
 - M2: not yet planned. Enters scope once M1 ships.
 - Phase 5 exit is the bridge from "primitives landed" to "M1 shippable."
 
@@ -214,7 +231,9 @@ The mature milestone is not a planned exit; it's a retrospective marker. Canto c
 - **DX:** Hello-agent is ≤25 lines with no visible runtime wiring; advanced cases retain full composition with no lossy shortcuts forced. This is substantively landed and now needs consumer validation rather than another greenfield design pass.
 - **DX:** Declarative agent/tool authoring surface has a landed design sketch and at least one implemented seam.
 - **SOTA:** Existing framework research is treated as baseline; new reviews are delta-based and do not block Ion restart unless they identify a concrete M1 correctness or stability issue.
-- **Consumer loop:** Ion migration happens outside this repo. Only confirmed Canto framework pain points become local tasks.
+- **Consumer loop:** Ion migration happens outside this repo, but the Canto
+  side actively classifies Ion's ideal-first gaps. Only Ion product policy
+  stays out of this repo.
 - **Research:** DSPy/GEPA implications are captured as Canto optimizer/eval-trace guidance, with no new pre-Ion runtime primitive required.
 - **Release:** `canto-2if9` has either shipped or has explicit named blockers in its description.
 - **Narrative:** `AGENTS.md`, `ai/DESIGN.md`, and `ai/README.md` consistently describe the same framework.
