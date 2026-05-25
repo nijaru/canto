@@ -245,6 +245,10 @@ lane is selected.
   `runtime.WithOverflowRecovery` when they want proactive compaction or
   overflow recovery, and the base root import graph no longer includes
   `governor` or `artifact`.
+- The root approval shortcut is also removed: hosts that need approval gating
+  now pass `agent.WithApprovalGate(approval.NewGate(...))` through
+  `HarnessBuilder.AgentOptions`, keeping approval policy explicit instead of
+  another root builder convenience.
 - `canto-sqtc` — framework-owned bounded event reads: `EventQueryStore.EventsAfter`
   is implemented for SQLite and JSONL stores so hosts can update typed
   projections after a durable sequence cutoff without querying store internals.

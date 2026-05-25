@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	prompt "github.com/nijaru/canto/prompt"
@@ -101,13 +100,6 @@ func (b *HarnessBuilder) AgentOptions(opts ...agent.Option) *HarnessBuilder {
 
 func (b *HarnessBuilder) RuntimeOptions(opts ...runtime.Option) *HarnessBuilder {
 	b.runtimeOptions = append(b.runtimeOptions, opts...)
-	return b
-}
-
-func (b *HarnessBuilder) Approvals(manager *approval.Gate) *HarnessBuilder {
-	if manager != nil {
-		b.agentOptions = append(b.agentOptions, agent.WithApprovalGate(manager))
-	}
 	return b
 }
 

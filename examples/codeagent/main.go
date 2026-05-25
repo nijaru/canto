@@ -121,9 +121,11 @@ func run(ctx context.Context, w io.Writer) error {
 		Provider(scriptedProvider()).
 		SessionStore(store).
 		Tools(referenceTools(root, rootDir, exec, webSearch)...).
-		Approvals(approval.NewGate(safety.NewConfig(safety.ModeAuto))).
 		Hooks(hooks).
-		AgentOptions(agent.WithMaxSteps(8)).
+		AgentOptions(
+			agent.WithApprovalGate(approval.NewGate(safety.NewConfig(safety.ModeAuto))),
+			agent.WithMaxSteps(8),
+		).
 		RuntimeOptions(runtime.WithExecutionTimeout(15 * time.Second)).
 		Build()
 	if err != nil {

@@ -162,6 +162,9 @@ go test ./... -count=1
     `governor.CompactSession` through `runtime.WithBeforeRun` and
     `runtime.WithOverflowRecovery`, which is the path Ion already uses. The
     base root package no longer imports `governor` or `artifact`.
+  - Root `HarnessBuilder.Approvals` was removed. Approval gating remains a
+    base agent capability, but hosts now install it explicitly through
+    `HarnessBuilder.AgentOptions(agent.WithApprovalGate(...))`.
   - `approval.Gate` no longer imports the generic `audit` package. It emits
     approval-local audit events through `approval.AuditLogger`; hosts that want
     the shared JSONL audit format opt in through `approvalaudit.New`.

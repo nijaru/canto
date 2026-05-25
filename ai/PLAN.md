@@ -121,7 +121,8 @@ imports pull in the generic `audit` package. Root `HarnessBuilder.Compaction`
 and `Session.Compact` were removed as pre-alpha convenience APIs; compaction is
 now an explicit host composition of `governor.CompactSession` with runtime
 hooks, which matches Ion's current path and keeps the base `canto` import graph
-free of `governor` and `artifact`.
+free of `governor` and `artifact`. Root `HarnessBuilder.Approvals` was also
+removed; hosts wire approval gates through `AgentOptions(agent.WithApprovalGate(...))`.
 Continue this audit with remaining optional dependencies embedded in
 otherwise-core packages.
 

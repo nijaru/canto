@@ -241,8 +241,8 @@ h, err := canto.NewHarness("code").
         &executortool.ShellTool{Executor: exec, Dir: workspaceDir},
         serviceTool,
     ).
-    Approvals(approvalManager).
-    Memory(memoryManager).
+    AgentOptions(agent.WithApprovalGate(approvalManager)).
+    RequestProcessors(memoryprompt.New(memoryManager, memoryprompt.Options{})).
     Build()
 
 res, err := h.Session("proj").Prompt(ctx, "fix the failing tests")
