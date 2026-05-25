@@ -91,6 +91,11 @@ Latest code slice:
   ordered spine through save-point/settled and then final result/error.
   Focused root tests, `go test ./... -count=1 -timeout 300s`, `go vet ./...`,
   and `git diff --check` pass in Canto.
+- Ion imported this slice as `github.com/nijaru/canto
+  v0.0.0-20260525094343-8a32cd379a80` and removed the active-turn
+  `RuntimeEvents()` merge assumption. Ion focused backend tests, full repo
+  tests, and deterministic/tmux Phase 1 wrapper gates passed; race/live were
+  skipped by wrapper defaults.
 
 **Historical audit outcome:**
 
