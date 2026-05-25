@@ -585,23 +585,27 @@ func (s *harnessSessionState) enqueue(
 
 	var event HarnessEvent
 	s.mu.Lock()
+	turnID := ""
 	switch kind {
 	case queueKindSteer:
 		if s.phase == HarnessPhaseIdle {
 			s.mu.Unlock()
 			return fmt.Errorf("%w: cannot steer while idle", ErrSessionBusy)
 		}
+		turnID = s.activeTurnID
 		s.steerQueue = append(s.steerQueue, prompt)
 	case queueKindFollowUp:
 		if s.phase == HarnessPhaseIdle {
 			s.mu.Unlock()
 			return fmt.Errorf("%w: cannot follow up while idle", ErrSessionBusy)
 		}
+		turnID = s.activeTurnID
 		s.followUpQueue = append(s.followUpQueue, prompt)
 	case queueKindNextTurn:
+		turnID = s.activeTurnID
 		s.nextTurnQueue = append(s.nextTurnQueue, prompt)
 	}
-	event = s.newEventLocked("", QueueUpdatedPayload{Queue: s.queueSnapshotLocked()})
+	event = s.newEventLocked(turnID, QueueUpdatedPayload{Queue: s.queueSnapshotLocked()})
 	s.publishLocked(event)
 	s.mu.Unlock()
 	return nil

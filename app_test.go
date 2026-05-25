@@ -135,6 +135,146 @@ func TestHarnessSessionSubmitTurn(t *testing.T) {
 	}
 }
 
+func TestHarnessSessionSubmitTurnStreamCarriesFacadeSettlement(t *testing.T) {
+	h, err := NewHarness("submit-settlement").
+		Model("faux").
+		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "ok"})).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	turn, err := h.Session("submit-settlement-session").Submit(t.Context(), TextPrompt("hi"))
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+
+	events := collectRunEvents(turn.Events())
+	if len(events) < 3 {
+		t.Fatalf("events = %#v, want settlement tail", events)
+	}
+	for i, event := range events {
+		wantSeq := int64(i + 1)
+		if event.Seq != wantSeq {
+			t.Fatalf("event %d seq = %d, want %d", i, event.Seq, wantSeq)
+		}
+		if event.TurnID != turn.ID() {
+			t.Fatalf("event %d turn id = %q, want %q", i, event.TurnID, turn.ID())
+		}
+	}
+
+	tail := events[len(events)-3:]
+	savePoint, ok := tail[0].HarnessEvent()
+	if !ok || savePoint.Kind() != HarnessEventSavePoint || savePoint.TurnID != turn.ID() {
+		t.Fatalf("tail[0] = %#v, want save-point harness event", tail[0])
+	}
+	settled, ok := tail[1].HarnessEvent()
+	if !ok || settled.Kind() != HarnessEventSettled || settled.TurnID != turn.ID() {
+		t.Fatalf("tail[1] = %#v, want settled harness event", tail[1])
+	}
+	if tail[0].Durability != RunEventTerminal || tail[1].Durability != RunEventTerminal {
+		t.Fatalf(
+			"settlement durability = %q/%q, want terminal",
+			tail[0].Durability,
+			tail[1].Durability,
+		)
+	}
+	if tail[2].Kind() != RunEventResult || tail[2].Durability != RunEventTerminal {
+		t.Fatalf("tail[2] = %#v, want terminal result after settlement", tail[2])
+	}
+}
+
+func TestHarnessSessionSubmitTurnStreamCarriesQueueUpdates(t *testing.T) {
+	call := llm.Call{ID: "tool-1", Type: "function"}
+	call.Function.Name = "wait"
+	call.Function.Arguments = `{}`
+	provider := llm.NewFauxProvider(
+		"faux",
+		llm.FauxStep{Calls: []llm.Call{call}},
+		llm.FauxStep{Content: "done"},
+	)
+	toolStarted := make(chan struct{})
+	releaseTool := make(chan struct{})
+	waitTool := tool.Func(
+		"wait",
+		"waits until released",
+		nil,
+		func(ctx context.Context, _ string) (string, error) {
+			close(toolStarted)
+			select {
+			case <-releaseTool:
+				return "tool done", nil
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		},
+	)
+	h, err := NewHarness("submit-queue-events").
+		Model("faux").
+		Provider(provider).
+		Tools(waitTool).
+		Ephemeral().
+		Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	defer h.Close()
+
+	turn, err := h.Session("submit-queue-events-session").Submit(t.Context(), TextPrompt("start"))
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	eventsDone := make(chan []RunEvent, 1)
+	go func() {
+		eventsDone <- collectRunEvents(turn.Events())
+	}()
+
+	select {
+	case <-toolStarted:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for tool start")
+	}
+	if err := h.Session("submit-queue-events-session").SteerText(t.Context(), "steer"); err != nil {
+		t.Fatalf("SteerText: %v", err)
+	}
+	if err := h.Session("submit-queue-events-session").FollowUpText(t.Context(), "follow"); err != nil {
+		t.Fatalf("FollowUpText: %v", err)
+	}
+	close(releaseTool)
+
+	var events []RunEvent
+	select {
+	case events = <-eventsDone:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for turn events")
+	}
+	var sawSteer, sawFollow bool
+	for _, event := range events {
+		harnessEvent, ok := event.HarnessEvent()
+		if !ok || harnessEvent.Kind() != HarnessEventQueueUpdated {
+			continue
+		}
+		if harnessEvent.TurnID != turn.ID() {
+			t.Fatalf("queue event turn id = %q, want %q", harnessEvent.TurnID, turn.ID())
+		}
+		if event.Durability != RunEventLiveOnly {
+			t.Fatalf("queue event durability = %q, want live-only", event.Durability)
+		}
+		queue := harnessEvent.Payload.(QueueUpdatedPayload).Queue
+		if len(queue.Steer) == 1 {
+			sawSteer = true
+		}
+		if len(queue.FollowUp) == 1 {
+			sawFollow = true
+		}
+	}
+	if !sawSteer || !sawFollow {
+		t.Fatalf("queue updates saw steer=%v follow=%v in events %#v", sawSteer, sawFollow, events)
+	}
+}
+
 func TestHarnessSessionSubmitTurnCancel(t *testing.T) {
 	store, err := session.NewSQLiteStore(":memory:")
 	if err != nil {
@@ -717,6 +857,14 @@ func drainHarnessEvents(events <-chan HarnessEvent) []HarnessEvent {
 			return out
 		}
 	}
+}
+
+func collectRunEvents(events <-chan RunEvent) []RunEvent {
+	out := make([]RunEvent, 0)
+	for event := range events {
+		out = append(out, event)
+	}
+	return out
 }
 
 func harnessEventKinds(events []HarnessEvent) []HarnessEventKind {

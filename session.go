@@ -107,6 +107,7 @@ type RunEventKind string
 const (
 	RunEventChunk   RunEventKind = "chunk"
 	RunEventSession RunEventKind = "session"
+	RunEventHarness RunEventKind = "harness"
 	RunEventRetry   RunEventKind = "retry"
 	RunEventResult  RunEventKind = "result"
 	RunEventError   RunEventKind = "error"
@@ -148,6 +149,16 @@ type RunSessionPayload struct {
 func (RunSessionPayload) runEventPayload() {}
 func (RunSessionPayload) Kind() RunEventKind {
 	return RunEventSession
+}
+
+// RunHarnessPayload carries a session-scoped harness facade event.
+type RunHarnessPayload struct {
+	Event HarnessEvent
+}
+
+func (RunHarnessPayload) runEventPayload() {}
+func (RunHarnessPayload) Kind() RunEventKind {
+	return RunEventHarness
 }
 
 // RunRetryPayload carries live provider retry metadata.
@@ -227,6 +238,21 @@ func (e RunEvent) SessionEvent() (session.Event, bool) {
 		return session.Event{}, false
 	}
 	return session.Event{}, false
+}
+
+// HarnessEvent returns the session-scoped harness event payload when present.
+func (e RunEvent) HarnessEvent() (HarnessEvent, bool) {
+	switch payload := e.Payload.(type) {
+	case RunHarnessPayload:
+		return payload.Event, true
+	case *RunHarnessPayload:
+		if payload != nil {
+			return payload.Event, true
+		}
+	default:
+		return HarnessEvent{}, false
+	}
+	return HarnessEvent{}, false
 }
 
 // Retry returns the retry payload when this is a retry event.
@@ -311,6 +337,20 @@ func (e *runEventEmitter) emitSession(ctx context.Context, event session.Event) 
 	)
 }
 
+func (e *runEventEmitter) emitHarness(event HarnessEvent) bool {
+	durability := RunEventLiveOnly
+	switch event.Kind() {
+	case HarnessEventSavePoint, HarnessEventSettled, HarnessEventAbort:
+		durability = RunEventTerminal
+	}
+	return e.emit(
+		context.Background(),
+		RunEvent{Payload: RunHarnessPayload{Event: event}},
+		durability,
+		false,
+	)
+}
+
 func (e *runEventEmitter) emitFinal(event RunEvent) bool {
 	return e.emit(context.Background(), event, RunEventTerminal, false)
 }
@@ -386,13 +426,28 @@ func (s *Session) Submit(ctx context.Context, prompt Prompt) (*Turn, error) {
 		detach()
 		return nil, err
 	}
+	harnessCtx, stopHarnessEvents := context.WithCancel(context.Background())
+	harnessEvents := s.state.subscribe(harnessCtx)
+	harnessDone := make(chan struct{})
+	go func() {
+		defer close(harnessDone)
+		for event := range harnessEvents {
+			if event.TurnID != "" && event.TurnID != turnID {
+				continue
+			}
+			emitter.emitHarness(event)
+		}
+	}()
 
 	resultCh := make(chan turnOutcome, 1)
 	go func() {
 		defer close(out)
 		defer detach()
+		defer cancel()
 		finish := func() {
 			s.state.finishTurn(turnID, false)
+			stopHarnessEvents()
+			<-harnessDone
 		}
 
 		runCtx := llm.WithRetryObserver(ctx, func(event llm.RetryEvent) {
@@ -401,8 +456,8 @@ func (s *Session) Submit(ctx context.Context, prompt Prompt) (*Turn, error) {
 		runPrompt := s.state.consumeNextTurn(prompt)
 		activeTools, cfgErr := s.activeToolRegistry(runCtx)
 		if cfgErr != nil {
-			emitter.emitFinal(RunEvent{Payload: RunErrorPayload{Err: cfgErr}})
 			finish()
+			emitter.emitFinal(RunEvent{Payload: RunErrorPayload{Err: cfgErr}})
 			resultCh <- turnOutcome{err: cfgErr}
 			return
 		}
@@ -419,13 +474,13 @@ func (s *Session) Submit(ctx context.Context, prompt Prompt) (*Turn, error) {
 			agent.RuntimeConfig{Tools: activeTools},
 		)
 		if err != nil {
-			emitter.emitFinal(RunEvent{Payload: RunErrorPayload{Err: err}})
 			finish()
+			emitter.emitFinal(RunEvent{Payload: RunErrorPayload{Err: err}})
 			resultCh <- turnOutcome{err: err}
 			return
 		}
-		emitter.emitFinal(RunEvent{Payload: RunResultPayload{Result: result}})
 		finish()
+		emitter.emitFinal(RunEvent{Payload: RunResultPayload{Result: result}})
 		resultCh <- turnOutcome{result: result}
 	}()
 	return &Turn{

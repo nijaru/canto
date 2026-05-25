@@ -38,6 +38,25 @@ a Canto design issue until proven Ion-product-specific.
 | Acceptance gates | Ion with Canto contract hooks | No separate Canto gate unless an Ion scenario exposes missing Canto contract coverage; then add Canto tests in the owning primitive task. |
 | Repo split | Shared governance | `canto-fnag`: every temporary Ion-local framework workaround needs a Canto fix, redesign, or explicit rejection. |
 
+## Findings
+
+### 2026-05-25 - Active turn stream must carry facade settlement
+
+Owner: Canto primitive.
+
+Ion currently has to merge `Turn.Events()` with a separate
+`Session.RuntimeEvents()` stream to know about queue updates, save-points, and
+settled state. That is framework reconstruction in the host: terminal result
+and facade settlement can race across two channels, so Ion needs local
+`terminal` plus `settled` tracking.
+
+Fix direction landed in Canto code: `RunEvent` now has a `RunHarnessPayload`
+for `HarnessEvent` values. The active `Turn.Events()` stream receives
+queue-update events for the current turn and receives save-point/settled events
+before the final result/error event. `RuntimeEvents()` remains for out-of-turn
+or multi-subscriber observers, but a normal live host can project one active
+turn from one ordered stream.
+
 ## First Execution Order
 
 1. Run `canto-21o6` beside Ion `tk-1xl1` and `tk-v45v`.

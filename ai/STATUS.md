@@ -82,6 +82,16 @@ lane is selected.
 - M1 docs/release tasks remain deferred until the primitive audit says no
   framework-owned P1 gap is hiding behind Ion.
 
+Latest code slice:
+
+- `canto-21o6` found a concrete primitive flaw: active hosts had to merge the
+  turn stream with separate session `RuntimeEvents()` to observe queue updates,
+  save-points, and settled state. `RunEvent` now carries typed
+  `RunHarnessPayload` facade events so the active `Turn.Events()` stream is the
+  ordered spine through save-point/settled and then final result/error.
+  Focused root tests, `go test ./... -count=1 -timeout 300s`, `go vet ./...`,
+  and `git diff --check` pass in Canto.
+
 **Historical audit outcome:**
 
 - `canto-hr9r` reviewed and refactored framework packages in green slices:
