@@ -298,6 +298,10 @@ func TestRebuilderRecoversMissingToolMessageFromCompletedLifecycle(t *testing.T)
 		ID:             "call-recovered",
 		IdempotencyKey: "turn-1:call-recovered",
 		Output:         "file contents",
+		Parts: []llm.ContentPart{
+			llm.TextPart("file contents"),
+			llm.ImagePart("image/png", "aW1hZ2U="),
+		},
 	})
 	if err := sess.Append(t.Context(), completed); err != nil {
 		t.Fatalf("append tool completed: %v", err)
@@ -321,6 +325,11 @@ func TestRebuilderRecoversMissingToolMessageFromCompletedLifecycle(t *testing.T)
 		entries[1].Message.ToolID != "call-recovered" ||
 		entries[1].Message.Content != "file contents" {
 		t.Fatalf("unexpected recovered tool message: %#v", entries[1].Message)
+	}
+	if len(entries[1].Message.Parts) != 2 ||
+		entries[1].Message.Parts[1].Type != llm.ContentPartImage ||
+		entries[1].Message.Parts[1].Data != "aW1hZ2U=" {
+		t.Fatalf("recovered tool parts = %+v, want text plus image", entries[1].Message.Parts)
 	}
 	tool := entries[1].Tool
 	if tool == nil || tool.Name != "read" || tool.Arguments != `{"file_path":"AGENTS.md"}` {

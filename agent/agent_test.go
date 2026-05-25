@@ -1013,6 +1013,19 @@ func TestRunToolsContentToolPreservesParts(t *testing.T) {
 	if len(last.Parts) != 2 || last.Parts[1].Data != "aW1hZ2U=" {
 		t.Fatalf("stored tool message = %+v, want image part preserved", last)
 	}
+	var completed session.ToolCompletedData
+	for _, event := range s.Events() {
+		data, ok, err := event.ToolCompletedData()
+		if err != nil {
+			t.Fatalf("tool completed data: %v", err)
+		}
+		if ok {
+			completed = data
+		}
+	}
+	if len(completed.Parts) != 2 || completed.Parts[1].Data != "aW1hZ2U=" {
+		t.Fatalf("tool completion parts = %+v, want image part preserved", completed.Parts)
+	}
 }
 
 func TestStepPreToolHookCanRewriteCall(t *testing.T) {

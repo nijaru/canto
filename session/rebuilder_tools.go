@@ -119,6 +119,7 @@ func toolEntryFromLifecycle(call llm.Call, record toolLifecycle) HistoryEntry {
 			ToolID:  call.ID,
 			Name:    name,
 			Content: content,
+			Parts:   append([]llm.ContentPart(nil), record.completed.Parts...),
 		},
 		Tool: &tool,
 	}

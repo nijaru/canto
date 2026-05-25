@@ -250,6 +250,7 @@ func executeTool(
 		ID:             call.ID,
 		IdempotencyKey: pf.idempotencyKey,
 		Output:         outputText,
+		Parts:          cloneContentParts(parts),
 		Error:          errorText,
 	})); err != nil {
 		res.err = err
