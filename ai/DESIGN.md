@@ -21,6 +21,11 @@ timeout/error surfacing as a Canto design issue until proven product-specific.
 TUI rendering, slash command UX, provider/model picker behavior, product
 settings, and default coding workflow policy remain Ion-owned.
 
+During the reopened Ion P1 audit, this is not a minimal-patch exercise. If a
+Canto primitive forces Ion's Pi-like product controller to split lifecycle
+ownership or rebuild framework state, redesign the primitive rather than
+teaching Ion another workaround.
+
 ## 1.1. Reference Discipline
 
 Ion is the active first-party consumer and a first-class product built on

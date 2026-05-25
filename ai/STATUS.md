@@ -34,6 +34,11 @@ mechanisms every serious agent host needs:
   Ion's P1 controller/projection/tool/runtime path simple enough to trust.
   Keep reusable primitives in Canto when Ion needs them, but redesign them if
   Ion has to reconstruct framework semantics locally.
+- **Project-wide P1 correction rule:** the current Ion/Canto pass should not
+  settle for the smallest compatibility patch when a primitive boundary is
+  wrong. Rewrite or replace framework-owned session, event, replay, tool,
+  timeout, or compaction surfaces when that is what makes Ion's Pi-like core
+  simple and reliable.
 - **Next-phase roadmap:** [ai/design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) is superseded for active work by the reopened Ion P1 primitive audit. Resume M1 docs/release only after this audit closes.
 
 SOTA/DX research is part of the Canto pre-Ion gate when it can change stable API or primitives. New research remains delta-based and must name the Canto primitive it would change.
@@ -100,6 +105,11 @@ Latest code slice:
   Canto contract errors. Accepted Canto turns must expose terminal settlement
   through `RunResultPayload` or `RunErrorPayload` on `Turn.Events()`, not only
   through `Turn.Result()`.
+- Ion `tk-1xl1` has started collapsing product session control into
+  `internal/app/session_controller.go`. Canto should use that as pressure on
+  `canto-21o6`: the Ion controller should be able to consume one ordered turn
+  stream and simple queue/steer/follow-up primitives without reconstructing
+  framework state locally.
 
 **Historical audit outcome:**
 

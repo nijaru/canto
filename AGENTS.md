@@ -37,12 +37,14 @@ P1 correctness.
 Do not expand Canto's public-framework surface or SOTA primitives just because
 Ion's current phase-1 bar is green. When Ion's long-term foundation requires a
 stronger core, proactively rewrite or replace flawed Canto session/turn
-surfaces instead of waiting for each flaw to appear as dogfood failure. Keep
-Canto as the source of truth for framework-owned mechanisms only when those
-mechanisms are small, proven, and useful to Ion. Make fixes prove themselves
-through Ion's acceptance harness, and resume docs/release posture only when the
-M1 lane is explicitly selected. Prefer targeted rewrites of load-bearing flawed
-modules over isolated symptom patches or whole-repo rewrites.
+surfaces instead of waiting for each flaw to appear as dogfood failure. This is
+a project-wide P1 rule: do not stop at the smallest compatibility patch when
+the primitive boundary is wrong. Keep Canto as the source of truth for
+framework-owned mechanisms only when those mechanisms are simple, proven, and
+useful to Ion. Make fixes prove themselves through Ion's acceptance harness,
+and resume docs/release posture only when the M1 lane is explicitly selected.
+Prefer aggressive targeted rewrites of load-bearing flawed modules over
+isolated symptom patches or broad unrelated churn.
 
 ## Project Structure
 
@@ -171,8 +173,10 @@ During Ion stabilization:
 - After a Canto fix, run the focused package test and `go test ./...`; then
   import the commit into Ion and verify Ion.
 - If Canto's current abstraction slows Ion P1, prefer a clean break over
-  compatibility shims. Ion's P1 acceptance result decides whether the primitive
-  stays in Canto, moves to Ion, or is deleted.
+  compatibility shims. If the abstraction is structurally wrong, redesign it
+  now rather than leaving Ion to carry a permanent workaround. Ion's P1
+  acceptance result decides whether the primitive stays in Canto, moves to
+  Ion, or is deleted.
 
 ## Current Focus
 

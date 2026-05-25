@@ -29,6 +29,10 @@ replay, queue/steer/follow-up, compaction, or timeout/error primitive cleanly.
 Future Canto P1 work should start from those primitive gaps, not from broad
 kernel-reduction churn or M1 documentation polish.
 
+This correction applies project-wide. If a Canto primitive on Ion's P1 path is
+structurally wrong, redesign or replace that primitive now instead of landing
+the smallest adapter-compatible patch and leaving Ion to carry the complexity.
+
 The next-phase roadmap lives in [design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md). Use it to keep work ordered: C0 Ion product validation, C1 M1 docs/examples/API readiness, C2 API/DX simplification, C3 workspace/sandbox, C4 eval/optimizer artifacts, C5 multi-agent/extensibility. Do not let C3-C5 research jump ahead of C0-C1.
 
 Existing research already covers LangGraph, PydanticAI, AutoGen, Vercel AI SDK, provider SDKs, HITL, durability, graph workflows, tool orchestration, context engineering, memory, and security. The framework reference map should remain broader and current: OpenAI Agents SDK, Anthropic/Claude Agent SDK, MCP, A2A, Google ADK, Microsoft Agent Framework, Semantic Kernel, AutoGen, LangGraph/LangChain, Pydantic AI, LlamaIndex, CrewAI, Agno, Mastra, Vercel AI SDK, BeeAI, Letta, Flue, DSPy/GEPA, and Temporal/DBOS/Inngest-style durable execution systems are all valid inputs. Do not restart a broad framework survey unless a concrete gap appears. Current framework references are examples for Canto primitives, not blueprints; mixed reviews are expected. Ion is tracking a deferred recent-paper delta scan as `tk-k4y8`; it is no longer blocked by phase-1 stabilization, but it should wait until a phase-2 research lane is selected. DSPy and GEPA remain inputs for the optimization surface (signatures/modules/compilers vs. reflective prompt evolution), not the center of the design.
@@ -97,6 +101,12 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 | 1 active | `canto-wfim` replay/provider-context validation | Validate replay, bounded event reads, snapshots, effective history, provider request construction, and compaction outputs against Ion's unified projection goal |
 | 1 active | `canto-ta4w` tool lifecycle/result validation | Validate tool authoring, lifecycle events, streaming snapshots, content results, errors, cancellation, ordered persistence, and display-neutral metadata |
 | 1 active | `canto-pqk5` timeout/error surface validation | Validate host-facing wait, retry, cancel, tool, overflow, and compaction error surfaces so interactive hosts do not see opaque deadlines or ambiguous settlement |
+
+Current Ion-side controller evidence: Ion `tk-1xl1` has moved submit/cancel,
+steer/follow-up, queue recall, event reads, stream-close settlement, and
+turn-finish settlement into one product session controller module. Canto
+`canto-21o6` should continue validating that this controller can stay thin over
+Canto's ordered turn stream instead of rebuilding framework lifecycle state.
 
 `canto-iusu` implemented reductions so far: memory prompt retrieval is now
 `memory/memoryprompt.New`, not `prompt.MemoryPrompt`, so the core `prompt`
