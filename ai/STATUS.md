@@ -96,6 +96,10 @@ Latest code slice:
   `RuntimeEvents()` merge assumption. Ion focused backend tests, full repo
   tests, and deterministic/tmux Phase 1 wrapper gates passed; race/live were
   skipped by wrapper defaults.
+- Ion's adapter now also treats missing terminal stream payloads as visible
+  Canto contract errors. Accepted Canto turns must expose terminal settlement
+  through `RunResultPayload` or `RunErrorPayload` on `Turn.Events()`, not only
+  through `Turn.Result()`.
 
 **Historical audit outcome:**
 
