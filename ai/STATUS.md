@@ -1,11 +1,11 @@
 # Status
 
-**Phase:** Ion Pi-first P1 migration support
-**Focus:** reduce Canto to the Ion-proven P1 kernel before M1 docs/release
-posture resumes.
-**Blockers:** Ion P1 remains open; Canto should only keep or add P1 work when
-Ion acceptance evidence identifies a framework-owned gap.
-**Updated:** 2026-05-24
+**Phase:** Post-Ion-P1 kernel support
+**Focus:** no active Canto P1 kernel-reduction item remains; resume M1
+docs/release posture or add only focused framework tasks from new Ion evidence.
+**Blockers:** none for current Ion P1 support. Future Ion findings should
+create focused Canto tasks only when the issue is framework-owned.
+**Updated:** 2026-05-25
 
 ## Context
 
@@ -21,17 +21,16 @@ work:
   primitives through design review or real product use, but Ion work is not
   active in this repo. Do not keep standing Ion product tasks in Canto; add a
   Canto task only when separate Ion work identifies a concrete framework issue.
-- **Canto API audit:** active core-contract review lives in `ai/review/core-api-contract-audit-2026-04-30.md`; use it to track which core packages have actually been reviewed.
+- **Canto API audit:** resolved core-contract review lives in `ai/review/core-api-contract-audit-2026-04-30.md`; reopen only from concrete Canto-owned evidence.
 - **Ion feedback tracker:** confirmed Ion-derived framework issues live in `ai/review/ion-feedback-tracker-2026-04-28.md`.
 - **Ion as framework pressure:** Ion's prior ideal-core lane is no longer final
   proof. Pi is the P1 design control, and Canto should close framework-owned
   gaps where Pi has one session-scoped harness owner instead of split
   Canto/Ion ownership.
-- **Ion-first kernel rule:** Until Ion passes its Pi-level scenario matrix,
-  Canto is a pre-M1 kernel, not a stable upstream dependency. Keep reusable
-  primitives in Canto only when Ion needs and proves them. If a Canto boundary
-  slows Ion P1, Ion may carry a clean local path while Canto tracks whether to
-  re-extract, simplify, or delete the primitive after acceptance.
+- **Ion-first kernel rule:** Ion's Pi-level scenario matrix passed with
+  deterministic, tmux, race, live backend/provider, and live TUI/provider gates
+  on 2026-05-25. Canto remains pre-M1, but no active P1 framework blocker is
+  known. Keep reusable primitives in Canto only when Ion needs and proves them.
 - **Next-phase roadmap:** [ai/design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) remains the sequencing source, amended by `canto-2vxb`: make the harness facade clear before polishing M1 docs/release language.
 
 SOTA/DX research is part of the Canto pre-Ion gate when it can change stable API or primitives. New research remains delta-based and must name the Canto primitive it would change.
@@ -76,16 +75,15 @@ lane is selected.
   `/Users/nick/github/nijaru/ion/ai/sprints/02-ideal-core-completion.md`.
   The refreshed Pi/AX comparison drove durable turn identity and session
   sequence; that P1 architecture blocker is closed.
-- Active task graph: `canto-iusu` is the current Canto P1 task: audit Ion-used
-  surfaces and reduce, rewrite, delete, or explicitly defer framework
-  primitives based on Ion P1 acceptance evidence. `canto-wuev` remains the
-  public-surface docs/examples slice when docs posture is selected. The prior
-  `canto-98el` facade slice is now closed. `canto-sqtc` added the
+- Active task graph: `canto-iusu` is closed after the final dependency audit
+  and Ion's full P1 acceptance gate. `canto-wuev` remains the public-surface
+  docs/examples slice when docs posture is selected. The prior `canto-98el`
+  facade slice is now closed. `canto-sqtc` added the
   sequence-bounded event-read API required by Ion's typed display projection,
   `canto-01ge` landed the native `Turn`/`Submit` facade, `canto-d6kl` landed
   durable event `TurnID`/`Seq`, and `canto-iq8h`, `canto-uduq`, `canto-dvtd`,
   and `canto-xz1w` are complete.
-- Current `canto-iusu` slices: memory-backed prompt retrieval moved out of
+- Completed `canto-iusu` slices: memory-backed prompt retrieval moved out of
   core `prompt` into `memory/memoryprompt`, approval-capable typed tool
   authoring moved out of core `tool` into `tool/typedtool`, and child skill
   validation/scoping/preload moved out of `runtime` into `skill.RuntimeConfig`;
@@ -103,7 +101,11 @@ lane is selected.
   imports executor/safety/workspace tool packages. The follow-up approval slice
   moved generic audit-log adaptation to `approvalaudit`, so `agent` still
   imports the approval state machine for gated tools but no longer imports the
-  generic `audit` package transitively.
+  generic `audit` package transitively. The final dependency audit found no
+  remaining concrete P1 cleanup: approval lifecycle remains base typed-tool
+  machinery, runtime workspace bootstrap remains explicit snapshot machinery,
+  governor artifact offload remains Ion's P1 context-governance path, and
+  optional service/tool packages remain opt-in.
 - `canto-wuev` found a real public-surface mismatch: public harness docs and
   examples should teach native `Submit` / `Turn` as the common path.
 - `canto-uduq` landed the first executable contract slice: `RunEvent` now
@@ -166,11 +168,11 @@ lane is selected.
   replay, sequence-bounded events, projection snapshots, and fork methods for
   normal host maintenance. Context compaction remains explicit through
   `governor.CompactSession`.
-- The old "no known P1 framework seam remains" status is superseded by the
-  Pi-first migration. The concrete Pi-like steering/follow-up and session
-  facade primitives are landed; the remaining Canto P1 work is kernel
-  reduction against Ion-proven usage. Branch/tree product policy stays parked
-  unless Ion explicitly promotes it.
+- The old "no known P1 framework seam remains" status is restored with better
+  evidence: Pi-like steering/follow-up and session facade primitives landed,
+  the Canto kernel-reduction pass closed, and Ion passed the full P1
+  acceptance wrapper with race/live gates. Branch/tree product policy stays
+  parked unless Ion explicitly promotes it.
 
 **Ion pre-v0 design-closure support:**
 

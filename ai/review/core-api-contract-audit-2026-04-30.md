@@ -1,7 +1,7 @@
 ---
 date: 2026-04-30
 summary: Focused Canto core API contract audit under Ion validation.
-status: active
+status: resolved
 ---
 
 # Canto Core API Contract Audit
@@ -171,6 +171,13 @@ go test ./... -count=1
   - `prompt.MemoryPrompt` was moved to `memory/memoryprompt.New`; core `prompt` no longer imports `memory/`, and hosts opt into memory-backed retrieval through the explicit adapter package.
   - `tool.NewTyped` / `tool.MustTyped` were moved to `tool/typedtool`, and approval-capable tools now implement `approval.RequirementProvider`; core `tool` no longer imports approval state.
   - `tool/mcp` depends on `safety/`/`workspace/`, but MCP registration remains deferred in Ion and is not part of the native minimal loop.
+- 2026-05-25 closure: after Ion passed the full P1 gate with deterministic,
+  tmux, race, live backend/provider, and live TUI/provider checks, the final
+  dependency audit found no remaining concrete P1 cleanup. `approval` remains
+  base typed-tool lifecycle machinery, `runtime.Bootstrap` intentionally uses
+  `workspace` for explicit workspace snapshots, `governor` intentionally keeps
+  artifact-backed offload for Ion's compaction and overflow path, and optional
+  service/tool adapters remain outside the base root/agent path.
 - Verification:
 
 ```sh

@@ -21,14 +21,12 @@ The Canto/Ion split is:
 - **Ion:** policy and product. Terminal UX, command palette, planner/task behavior, approval copy and delivery, default shell classifier heuristics, memory aggressiveness, model choice defaults, and user workflow.
 - **Shared boundary:** if every serious host would need to reimplement state-machine or durability plumbing, it belongs in Canto. If the choice expresses taste, UX, environment assumptions, or Ion's workflow, it belongs in Ion and plugs into a Canto seam.
 
-Current correction: Ion's reopened P1 dogfood failures make Ion the acceptance
-owner. Canto should keep the long-term framework split, but it is a pre-M1
-kernel until Ion's Pi-level scenario matrix is green. Do not make Ion fully
-standalone by default; that would duplicate runtime/session/tool lifecycle and
-make later extraction risky. Also do not optimize for Canto public-framework
-purity while Ion's basic loop is failing. If a Canto surface blocks Ion P1,
-Ion may carry a clean local path and Canto should track whether the primitive
-is re-extracted, simplified, or deleted after Ion proves the behavior.
+Current correction: Ion's reopened P1 dogfood failures made Ion the acceptance
+owner. Canto kept the long-term framework split and stayed a pre-M1 kernel
+while Ion's Pi-level scenario matrix was red. Ion's full P1 gate passed on
+2026-05-25 with deterministic, tmux, race, live backend/provider, and live
+TUI/provider checks. Future Canto P1 work should start from a concrete
+framework-owned Ion regression, not from broad kernel-reduction churn.
 
 The next-phase roadmap lives in [design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md). Use it to keep work ordered: C0 Ion product validation, C1 M1 docs/examples/API readiness, C2 API/DX simplification, C3 workspace/sandbox, C4 eval/optimizer artifacts, C5 multi-agent/extensibility. Do not let C3-C5 research jump ahead of C0-C1.
 
@@ -60,7 +58,7 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 
 | Gate | Task | Intent |
 | :--- | :--- | :--- |
-| 0 active | `canto-iusu` Ion-proven P1 kernel reduction | Audit Ion-used Canto surfaces and reduce, rewrite, delete, or re-extract primitives based on Ion's Pi-level acceptance evidence before M1 posture resumes |
+| 0 done | `canto-iusu` Ion-proven P1 kernel reduction | Audited Ion-used Canto surfaces and reduced, rewrote, deleted, or explicitly retained primitives based on Ion's Pi-level acceptance evidence before M1 posture resumes |
 | 0 done | `canto-98el` Pi-like session facade state | `Harness.Session(id)` owns phase, active run, queue updates, save-point, settled, abort, wait-for-idle, queued prompt state, Pi-like steering/follow-up drain modes, and Ion-imported P1 facade primitives |
 | 0 done | `canto-x8d0` runtime cancellation and timeout semantics | Runtime execution timeout is now opt-in; normal root/child runner turns no longer inherit a hidden whole-turn wall-clock deadline |
 | 0 done | `canto-y88u` workspace/path contracts | Workspace glob patterns now reject absolute/traversal/malformed inputs like normal rooted paths and support recursive `**` matching |
@@ -123,8 +121,12 @@ now an explicit host composition of `governor.CompactSession` with runtime
 hooks, which matches Ion's current path and keeps the base `canto` import graph
 free of `governor` and `artifact`. Root `HarnessBuilder.Approvals` was also
 removed; hosts wire approval gates through `AgentOptions(agent.WithApprovalGate(...))`.
-Continue this audit with remaining optional dependencies embedded in
-otherwise-core packages.
+Final dependency audit found no remaining concrete P1 cleanup in
+otherwise-core packages. `approval` remains a base typed-tool lifecycle
+mechanism, `runtime.Bootstrap` intentionally uses `workspace` for explicit
+workspace snapshots, `governor` intentionally keeps artifact-backed offload for
+Ion's compaction/overflow path, and optional service/tool adapters remain
+outside the base root/agent path.
 
 ### Deferred Or Conditional
 
@@ -142,9 +144,9 @@ The initial authoring seam, typed service helper, coding-agent reference, core-v
 durable session handle, ordered run-event stream, and explicit environment
 capabilities. That is now the authoring seam to preserve during M1 readiness.
 
-Next selectable work after the optimal-core lane is Canto docs/release posture
-plus any concrete framework issues returned from Ion design closure or later
-validation. The session/turn rewrite and Ion import proof are done.
+Next selectable work after the Ion P1 kernel lane is Canto docs/release
+posture plus any concrete framework issues returned from later Ion validation.
+The session/turn rewrite, kernel reduction, and Ion import proof are done.
 
 ## Definition of Complete
 
