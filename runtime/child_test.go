@@ -733,6 +733,8 @@ func TestChildRunnerSpawn_DetachedIgnoresSpawnContextCancellation(t *testing.T) 
 	defer waitCancel()
 	if _, err := childRunner.Wait(waitCtx, ref.ID); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("wait before release = %v, want context.DeadlineExceeded", err)
+	} else if !strings.Contains(err.Error(), "wait for child") {
+		t.Fatalf("wait before release = %v, want actionable child wait timeout", err)
 	}
 
 	close(release)

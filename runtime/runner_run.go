@@ -152,10 +152,11 @@ func (r *Runner) run(
 
 		var err error
 		result, err = r.execute(execCtx, sess, chunkFn, mutate, cfg)
-		return err
+		return wrapExecutionTimeoutError(err, execCtx, r.executionTimeout)
 	})
 	err := <-errCh
 	if err != nil && !started.Load() {
+		err = wrapWaitTimeoutError(err, sess.ID(), r.waitTimeout)
 		r.appendTurnCompletedError(ctx, sess, err)
 	}
 	return result, err
@@ -181,11 +182,13 @@ func (r *Runner) executeWithCoordinator(
 
 	ticket, err := r.coordinator.Enqueue(waitCtx, sess.ID())
 	if err != nil {
+		err = wrapWaitTimeoutError(err, sess.ID(), r.waitTimeout)
 		r.appendTurnCompletedError(ctx, sess, err)
 		return agent.StepResult{}, err
 	}
 	lease, err := r.coordinator.Await(waitCtx, ticket)
 	if err != nil {
+		err = wrapWaitTimeoutError(err, sess.ID(), r.waitTimeout)
 		r.appendTurnCompletedError(ctx, sess, err)
 		return agent.StepResult{}, err
 	}
@@ -198,6 +201,7 @@ func (r *Runner) executeWithCoordinator(
 	}
 
 	result, execErr := r.executeUnderLease(execCtx, sess, chunkFn, lease, mutate, cfg)
+	execErr = wrapExecutionTimeoutError(execErr, execCtx, r.executionTimeout)
 	return result, execErr
 }
 

@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -31,7 +32,11 @@ func (t *scheduledTask) Wait(ctx context.Context) error {
 		defer t.mu.Unlock()
 		return t.err
 	case <-ctx.Done():
-		return ctx.Err()
+		return wrapTimeoutError(
+			ctx.Err(),
+			fmt.Sprintf("wait for scheduled task %q", t.ref.ID),
+			0,
+		)
 	}
 }
 

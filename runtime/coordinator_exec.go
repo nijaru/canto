@@ -89,6 +89,7 @@ func (r *Runner) executeUnderLease(
 	}()
 
 	result, execErr := r.execute(execCtx, sess, chunkFn, mutate, cfg)
+	execErr = wrapExecutionTimeoutError(execErr, execCtx, 0)
 	close(stopRenew)
 
 	leaseMu.Lock()

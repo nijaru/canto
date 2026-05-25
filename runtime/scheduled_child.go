@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/nijaru/canto/session"
@@ -60,7 +61,11 @@ func (h *scheduledChildHandle) Wait(ctx context.Context) (ChildResult, error) {
 		defer h.mu.Unlock()
 		return h.result, nil
 	case <-ctx.Done():
-		return ChildResult{}, ctx.Err()
+		return ChildResult{}, wrapTimeoutError(
+			ctx.Err(),
+			fmt.Sprintf("wait for scheduled child %q", h.ChildRef().ID),
+			0,
+		)
 	}
 }
 

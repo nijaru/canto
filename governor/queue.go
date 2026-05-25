@@ -2,6 +2,8 @@ package governor
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -81,6 +83,13 @@ func (q *CompactQueue) Mutate(
 		}()
 
 		err := q.mutator.Mutate(bgCtx, p, model, sess)
+		if err != nil && errors.Is(bgCtx.Err(), context.DeadlineExceeded) {
+			err = fmt.Errorf(
+				"background compaction timed out after %s: %w",
+				defaultCompactTimeout,
+				err,
+			)
+		}
 
 		q.mu.Lock()
 		q.err = err
@@ -118,6 +127,10 @@ func (q *CompactQueue) Wait(ctx context.Context) error {
 		defer q.mu.Unlock()
 		return q.err
 	case <-ctx.Done():
-		return ctx.Err()
+		err := ctx.Err()
+		if errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("wait for background compaction timed out: %w", err)
+		}
+		return err
 	}
 }

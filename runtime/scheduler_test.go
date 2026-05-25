@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -78,5 +79,42 @@ func TestLocalScheduler_CancelBeforeStart(t *testing.T) {
 
 	if err := task.Wait(t.Context()); !errors.Is(err, context.Canceled) {
 		t.Fatalf("wait error = %v, want context.Canceled", err)
+	}
+}
+
+func TestLocalScheduler_WaitDeadlineIsActionable(t *testing.T) {
+	scheduler := NewLocalScheduler()
+	defer scheduler.Close()
+
+	release := make(chan struct{})
+	task, err := scheduler.Schedule(
+		t.Context(),
+		time.Now(),
+		func(ctx context.Context) error {
+			select {
+			case <-release:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+	)
+	if err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+
+	waitCtx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
+	defer cancel()
+	err = task.Wait(waitCtx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("wait error = %v, want context deadline exceeded", err)
+	}
+	if !strings.Contains(err.Error(), "wait for scheduled task") {
+		t.Fatalf("wait error = %v, want actionable scheduler wait timeout", err)
+	}
+
+	close(release)
+	if err := task.Wait(t.Context()); err != nil {
+		t.Fatalf("final wait: %v", err)
 	}
 }

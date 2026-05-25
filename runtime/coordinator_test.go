@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -235,6 +236,8 @@ func TestLocalCoordinator_CanceledQueuedTicketDoesNotBlockLane(t *testing.T) {
 	defer cancel()
 	if _, err := coord.Await(waitCtx, second); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("await canceled queued ticket error = %v, want context deadline exceeded", err)
+	} else if !strings.Contains(err.Error(), "await coordination ticket") {
+		t.Fatalf("await canceled queued ticket error = %v, want actionable wait timeout", err)
 	}
 
 	third, err := coord.Enqueue(t.Context(), "s1")

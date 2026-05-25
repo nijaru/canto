@@ -133,7 +133,15 @@ func (c *LocalCoordinator) Await(ctx context.Context, ticket Ticket) (Lease, err
 	for {
 		if err := ctx.Err(); err != nil {
 			c.cancelQueuedTicket(ticket)
-			return Lease{}, err
+			return Lease{}, wrapTimeoutError(
+				err,
+				fmt.Sprintf(
+					"await coordination ticket %q for session %q",
+					ticket.RequestID,
+					ticket.SessionID,
+				),
+				0,
+			)
 		}
 
 		c.mu.Lock()
@@ -161,7 +169,15 @@ func (c *LocalCoordinator) Await(ctx context.Context, ticket Ticket) (Lease, err
 		select {
 		case <-ctx.Done():
 			c.cancelQueuedTicket(ticket)
-			return Lease{}, ctx.Err()
+			return Lease{}, wrapTimeoutError(
+				ctx.Err(),
+				fmt.Sprintf(
+					"await coordination ticket %q for session %q",
+					ticket.RequestID,
+					ticket.SessionID,
+				),
+				0,
+			)
 		case <-waitCh:
 		case <-timer:
 		}

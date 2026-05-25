@@ -3,6 +3,7 @@ package governor_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -94,6 +95,29 @@ func TestCompactQueue_PropagatesError(t *testing.T) {
 
 	if !errors.Is(err, expectedErr) {
 		t.Fatalf("expected %v, got %v", expectedErr, err)
+	}
+}
+
+func TestCompactQueue_WaitDeadlineIsActionable(t *testing.T) {
+	mutator := &mockMutator{delay: 50 * time.Millisecond}
+	queue := governor.NewCompactQueue(mutator)
+
+	if err := queue.Mutate(context.Background(), nil, "model", nil); err != nil {
+		t.Fatalf("mutate: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+
+	err := queue.Wait(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("wait error = %v, want context deadline exceeded", err)
+	}
+	if !strings.Contains(err.Error(), "wait for background compaction timed out") {
+		t.Fatalf("wait error = %v, want actionable compaction wait timeout", err)
+	}
+
+	if err := queue.Wait(context.Background()); err != nil {
+		t.Fatalf("final wait: %v", err)
 	}
 }
 

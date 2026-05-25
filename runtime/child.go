@@ -215,7 +215,11 @@ func (r *ChildRunner) Wait(ctx context.Context, childID string) (ChildResult, er
 		r.mu.Unlock()
 		return handle.result, nil
 	case <-ctx.Done():
-		return ChildResult{}, ctx.Err()
+		return ChildResult{}, wrapTimeoutError(
+			ctx.Err(),
+			fmt.Sprintf("wait for child %q", childID),
+			0,
+		)
 	}
 }
 

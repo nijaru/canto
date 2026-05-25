@@ -798,6 +798,12 @@ func TestRunnerQueuedTurnWaitTimeoutRecordsTerminalEvent(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("queued SendStream error = %v, want context deadline exceeded", err)
 	}
+	if !strings.Contains(
+		err.Error(),
+		`wait for session "queued-wait-timeout" execution slot timed out after 10ms`,
+	) {
+		t.Fatalf("queued SendStream error = %v, want actionable wait timeout", err)
+	}
 
 	close(provider.release)
 	select {
@@ -823,12 +829,50 @@ func TestRunnerQueuedTurnWaitTimeoutRecordsTerminalEvent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("decode turn completed: %v", err)
 		}
-		if ok && data.Error == context.DeadlineExceeded.Error() {
+		if ok && strings.Contains(
+			data.Error,
+			`wait for session "queued-wait-timeout" execution slot timed out after 10ms`,
+		) {
 			terminalErrors++
+		}
+		if ok && data.Error == context.DeadlineExceeded.Error() {
+			t.Fatalf("terminal timeout error was opaque: %q", data.Error)
 		}
 	}
 	if terminalErrors != 1 {
 		t.Fatalf("terminal timeout errors = %d, want 1", terminalErrors)
+	}
+}
+
+func TestRunnerExecutionTimeoutReturnsActionableError(t *testing.T) {
+	store, err := session.NewSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	provider := &blockingStreamProvider{
+		started: make(chan struct{}, 1),
+		release: make(chan struct{}),
+	}
+	runner := NewRunner(
+		store,
+		agent.New("test-agent", "", "test-model", provider, nil),
+		WithExecutionTimeout(10*time.Millisecond),
+	)
+	defer runner.Close()
+
+	_, err = runner.SendTextStream(
+		t.Context(),
+		"execution-timeout",
+		"run until timeout",
+		func(*llm.Chunk) {},
+	)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("SendStream error = %v, want context deadline exceeded", err)
+	}
+	if !strings.Contains(err.Error(), "agent execution timed out after 10ms") {
+		t.Fatalf("SendStream error = %v, want actionable execution timeout", err)
 	}
 }
 
@@ -946,11 +990,13 @@ func TestRunnerCoordinator_WaitTimeoutDoesNotPoisonLane(t *testing.T) {
 		t.Fatal("timed out waiting for first run to start")
 	}
 
-	if _, err := runner.Run(t.Context(), "coord-timeout"); !errors.Is(
-		err,
-		context.DeadlineExceeded,
-	) {
+	_, err = runner.Run(t.Context(), "coord-timeout")
+	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("second Run error = %v, want context deadline exceeded", err)
+	}
+	if !strings.Contains(err.Error(), `await coordination ticket`) ||
+		!strings.Contains(err.Error(), `session "coord-timeout"`) {
+		t.Fatalf("second Run error = %v, want actionable coordinator wait timeout", err)
 	}
 
 	close(release)
