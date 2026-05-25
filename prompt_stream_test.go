@@ -1388,10 +1388,14 @@ func TestPromptStreamKeepsStableTurnIDAcrossOverflowRecovery(t *testing.T) {
 		Model("faux").
 		Provider(provider).
 		Ephemeral().
-		Compaction(governor.CompactOptions{
-			MaxTokens:  1000,
-			OffloadDir: t.TempDir(),
-		}).
+		RuntimeOptions(runtime.WithOverflowRecovery(
+			provider.IsContextOverflow,
+			harnessCompactor(t, provider, "faux", governor.CompactOptions{
+				MaxTokens:  1000,
+				OffloadDir: t.TempDir(),
+			}),
+			1,
+		)).
 		Build()
 	if err != nil {
 		t.Fatalf("Build: %v", err)

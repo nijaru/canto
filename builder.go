@@ -1,12 +1,10 @@
 package canto
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/approval"
-	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
 	"github.com/nijaru/canto/llm"
 	prompt "github.com/nijaru/canto/prompt"
@@ -26,7 +24,6 @@ type HarnessBuilder struct {
 	tools        []tool.Tool
 	store        session.Store
 	ephemeral    bool
-	compaction   *governor.CompactOptions
 	environment  Environment
 
 	agentOptions   []agent.Option
@@ -138,13 +135,6 @@ func (b *HarnessBuilder) Mutators(mutators ...prompt.ContextMutator) *HarnessBui
 	return b
 }
 
-// Compaction enables proactive compaction before each runner execution and
-// overflow recovery retry on context overflow errors.
-func (b *HarnessBuilder) Compaction(opts governor.CompactOptions) *HarnessBuilder {
-	b.compaction = &opts
-	return b
-}
-
 func (b *HarnessBuilder) Build() (*Harness, error) {
 	if b == nil {
 		return nil, fmt.Errorf("canto harness: nil builder")
@@ -157,11 +147,6 @@ func (b *HarnessBuilder) Build() (*Harness, error) {
 	}
 	if b.model == "" {
 		return nil, fmt.Errorf("canto harness: model is required")
-	}
-	if b.compaction != nil {
-		if err := validateCompactionOptions(*b.compaction); err != nil {
-			return nil, err
-		}
 	}
 
 	registry := b.registry
@@ -191,18 +176,6 @@ func (b *HarnessBuilder) Build() (*Harness, error) {
 
 	provider := b.provider
 	runtimeOptions := append([]runtime.Option(nil), b.runtimeOptions...)
-	if b.compaction != nil {
-		opts := *b.compaction
-		compact := func(ctx context.Context, sess *session.Session) error {
-			_, err := governor.CompactSession(ctx, provider, b.model, sess, opts)
-			return err
-		}
-		runtimeOptions = append(
-			runtimeOptions,
-			runtime.WithBeforeRun(compact),
-			runtime.WithOverflowRecovery(provider.IsContextOverflow, compact, 1),
-		)
-	}
 
 	h := &Harness{
 		Provider:    provider,
@@ -230,14 +203,4 @@ func (b *HarnessBuilder) Build() (*Harness, error) {
 func cloneEnvironment(env Environment) Environment {
 	env.Bootstrap = append([]session.ContextEntry(nil), env.Bootstrap...)
 	return env
-}
-
-func validateCompactionOptions(opts governor.CompactOptions) error {
-	if opts.MaxTokens <= 0 {
-		return fmt.Errorf("canto harness: compaction max tokens must be > 0")
-	}
-	if (opts.Artifacts == nil) == (opts.OffloadDir == "") {
-		return fmt.Errorf("canto harness: compaction requires exactly one offload target")
-	}
-	return nil
 }

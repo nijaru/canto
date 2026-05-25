@@ -72,7 +72,7 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 | 0 active | `canto-wuev` Submit/Turn public surface alignment | Make README, prompt docs, examples, and godoc teach native `Submit` / `Turn` as the common host path; `Prompt` and `PromptStream` are convenience wrappers |
 | 0 done | `canto-vhjg` unified run-event envelope | Replaced `RunEvent.Type` and payload side fields with one typed payload under envelope metadata; Ion imported the exact revision |
 | 0 done | `canto-33aq` typed tool authoring and environment toolkits | Promoted typed Go tool authoring and opt-in workspace/executor tools constructed from `Environment` |
-| 0 done | `canto-re2x` session maintenance facade | Exposed replay, sequence-bounded events, compaction, projection snapshots, and fork on root `canto.Session` |
+| 0 done | `canto-re2x` session maintenance facade | Exposed replay, sequence-bounded events, projection snapshots, and fork on root `canto.Session`; compaction stays explicit through `governor.CompactSession` |
 | 0 done | `canto-uduq` optimal-core contract tests | Added stream metadata and tests for ordered run events, usage-before-result, yielding hook settlement, and overflow-recovery stream identity |
 | 1 done | `canto-dvtd` optimal-core turn transaction | Replaced `PromptStream` snapshot/watch/callback repair with an ordered session observer stream |
 | 2 done | `canto-xz1w` optimal-core lifecycle events | Added typed RunEvent lifecycle/usage metadata plus compaction-start and overflow-retry events |
@@ -117,7 +117,11 @@ wiring now lives in `environmenttool`, and hosts can still register explicit
 tools through `HarnessBuilder.Tools`. Approval audit logging now uses
 approval-local audit events plus the opt-in `approvalaudit` adapter, so the
 approval state machine stays available to `agent` without making base agent
-imports pull in the generic `audit` package.
+imports pull in the generic `audit` package. Root `HarnessBuilder.Compaction`
+and `Session.Compact` were removed as pre-alpha convenience APIs; compaction is
+now an explicit host composition of `governor.CompactSession` with runtime
+hooks, which matches Ion's current path and keeps the base `canto` import graph
+free of `governor` and `artifact`.
 Continue this audit with remaining optional dependencies embedded in
 otherwise-core packages.
 
@@ -165,12 +169,13 @@ Framework is usable by one real consumer (Ion) end-to-end. No formal API-stabili
 - **Typed tool authoring:** `typedtool.New` / `typedtool.Must` adapt typed Go
   handlers to the provider-facing JSON boundary; `service.New` remains the
   service/API retry layer.
-- **Environment toolkit wiring:** `ToolsFromEnvironment` is the opt-in bridge
+- **Environment toolkit wiring:** `environmenttool.Tools` is the opt-in bridge
   from `Environment` workspace/executor capabilities to Canto workspace and
   executor tool modules.
 - **Session maintenance facade:** root `canto.Session` exposes `Replay`,
-  `EventsAfter`, `Compact`, `Snapshot`, `SnapshotIfNeeded`, and `Fork` so
-  normal host maintenance does not reach into store/runtime internals.
+  `EventsAfter`, `Snapshot`, `SnapshotIfNeeded`, and `Fork` so normal host
+  maintenance does not reach into store/runtime internals. Compaction stays in
+  `governor.CompactSession`.
 
 ### M2: Stable (v1.0) — compatibility commitment
 

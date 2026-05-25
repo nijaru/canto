@@ -160,12 +160,12 @@ lane is selected.
 - `canto-33aq` is closed in Canto `0962930`: typed Go tool authoring landed.
   During the later kernel-reduction pass, it moved from core `tool` to
   `tool/typedtool` so optional approval support does not make the base tool
-  registry depend on approval state. `HarnessBuilder.ToolsFromEnvironment`
-  wires workspace/executor capability tools from `Environment` on explicit
-  request.
+  registry depend on approval state. Environment capability-tool construction
+  now lives in the opt-in `environmenttool` package.
 - `canto-re2x` is closed in Canto `1be9c57`: root `canto.Session` now exposes
-  replay, sequence-bounded events, compaction, projection snapshots, and fork
-  methods for normal host maintenance.
+  replay, sequence-bounded events, projection snapshots, and fork methods for
+  normal host maintenance. Context compaction remains explicit through
+  `governor.CompactSession`.
 - The old "no known P1 framework seam remains" status is superseded by the
   Pi-first migration. The concrete Pi-like steering/follow-up and session
   facade primitives are landed; the remaining Canto P1 work is kernel
@@ -239,7 +239,12 @@ lane is selected.
   capability fields and moved environment tool construction to the opt-in
   `environmenttool` package. Approval audit logging now emits approval-local
   audit events and adapts to generic audit loggers through `approvalaudit`,
-  removing `audit` from the base agent dependency graph.
+  removing `audit` from the base agent dependency graph. The root session and
+  harness compaction shortcuts are now removed; hosts compose
+  `governor.CompactSession` with `runtime.WithBeforeRun` and
+  `runtime.WithOverflowRecovery` when they want proactive compaction or
+  overflow recovery, and the base root import graph no longer includes
+  `governor` or `artifact`.
 - `canto-sqtc` — framework-owned bounded event reads: `EventQueryStore.EventsAfter`
   is implemented for SQLite and JSONL stores so hosts can update typed
   projections after a durable sequence cutoff without querying store internals.

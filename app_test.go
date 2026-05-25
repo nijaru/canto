@@ -1070,42 +1070,6 @@ func TestHarnessSessionActiveToolsScopesProviderRequest(t *testing.T) {
 	}
 }
 
-func TestHarnessSessionCompactFacade(t *testing.T) {
-	h, err := NewHarness("compact-facade").
-		Model("faux").
-		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "summary"})).
-		Ephemeral().
-		Build()
-	if err != nil {
-		t.Fatalf("Build: %v", err)
-	}
-	defer h.Close()
-
-	sess := session.New("compact-facade-session").WithWriter(h.Store)
-	appendCompactionHistory(t, sess)
-
-	result, err := h.Session(sess.ID()).Compact(t.Context(), governor.CompactOptions{
-		MaxTokens:    20,
-		ThresholdPct: 0.10,
-		MinKeepTurns: 1,
-		OffloadDir:   t.TempDir(),
-	})
-	if err != nil {
-		t.Fatalf("Compact: %v", err)
-	}
-	if !result.Compacted {
-		t.Fatal("Compact result = false, want compaction")
-	}
-
-	loaded, err := h.Store.Load(t.Context(), sess.ID())
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if countCompactions(loaded) == 0 {
-		t.Fatal("expected durable compaction event")
-	}
-}
-
 func TestHarnessBuilderRequiresModel(t *testing.T) {
 	_, err := NewHarness("missing-model").
 		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
@@ -1158,7 +1122,7 @@ func TestHarnessCloseLeavesExternalStoreOpen(t *testing.T) {
 	}
 }
 
-func TestHarnessBuilderCompactionRecoversOverflow(t *testing.T) {
+func TestHarnessBuilderRuntimeOptionsRecoverOverflowAfterCompaction(t *testing.T) {
 	overflow := errors.New("context_length_exceeded")
 	provider := llm.NewFauxProvider(
 		"faux",
@@ -1168,15 +1132,16 @@ func TestHarnessBuilderCompactionRecoversOverflow(t *testing.T) {
 	provider.IsContextOverflowFn = func(err error) bool {
 		return errors.Is(err, overflow)
 	}
+	compact := harnessCompactor(t, provider, "faux", governor.CompactOptions{
+		MaxTokens:  1000,
+		OffloadDir: t.TempDir(),
+	})
 
 	h, err := NewHarness("recover").
 		Model("faux").
 		Provider(provider).
 		Ephemeral().
-		Compaction(governor.CompactOptions{
-			MaxTokens:  1000,
-			OffloadDir: t.TempDir(),
-		}).
+		RuntimeOptions(runtime.WithOverflowRecovery(provider.IsContextOverflow, compact, 1)).
 		Build()
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -1195,22 +1160,23 @@ func TestHarnessBuilderCompactionRecoversOverflow(t *testing.T) {
 	}
 }
 
-func TestHarnessBuilderCompactionRunsBeforePrompt(t *testing.T) {
+func TestHarnessBuilderRuntimeOptionsRunCompactionBeforePrompt(t *testing.T) {
 	provider := llm.NewFauxProvider(
 		"faux",
 		llm.FauxStep{Content: "summary"},
 		llm.FauxStep{Content: "answer"},
 	)
+	compact := harnessCompactor(t, provider, "faux", governor.CompactOptions{
+		MaxTokens:    20,
+		ThresholdPct: 0.10,
+		MinKeepTurns: 1,
+		OffloadDir:   t.TempDir(),
+	})
 	h, err := NewHarness("compact").
 		Model("faux").
 		Provider(provider).
 		Ephemeral().
-		Compaction(governor.CompactOptions{
-			MaxTokens:    20,
-			ThresholdPct: 0.10,
-			MinKeepTurns: 1,
-			OffloadDir:   t.TempDir(),
-		}).
+		RuntimeOptions(runtime.WithBeforeRun(compact)).
 		Build()
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -1248,19 +1214,20 @@ func TestHarnessBuilderCompactionRunsBeforePrompt(t *testing.T) {
 	}
 }
 
-func TestHarnessBuilderCompactionFailureDoesNotAppendPrompt(t *testing.T) {
+func TestHarnessBuilderRuntimeOptionsCompactionFailureDoesNotAppendPrompt(t *testing.T) {
 	compactErr := errors.New("compact failed")
 	provider := llm.NewFauxProvider("faux", llm.FauxStep{Err: compactErr})
+	compact := harnessCompactor(t, provider, "faux", governor.CompactOptions{
+		MaxTokens:    20,
+		ThresholdPct: 0.10,
+		MinKeepTurns: 1,
+		OffloadDir:   t.TempDir(),
+	})
 	h, err := NewHarness("compact-failure").
 		Model("faux").
 		Provider(provider).
 		Ephemeral().
-		Compaction(governor.CompactOptions{
-			MaxTokens:    20,
-			ThresholdPct: 0.10,
-			MinKeepTurns: 1,
-			OffloadDir:   t.TempDir(),
-		}).
+		RuntimeOptions(runtime.WithBeforeRun(compact)).
 		Build()
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -1286,6 +1253,19 @@ func TestHarnessBuilderCompactionFailureDoesNotAppendPrompt(t *testing.T) {
 	}
 }
 
+func harnessCompactor(
+	t *testing.T,
+	provider llm.Provider,
+	model string,
+	opts governor.CompactOptions,
+) func(context.Context, *session.Session) error {
+	t.Helper()
+	return func(ctx context.Context, sess *session.Session) error {
+		_, err := governor.CompactSession(ctx, provider, model, sess, opts)
+		return err
+	}
+}
+
 func appendCompactionHistory(t *testing.T, sess *session.Session) {
 	t.Helper()
 	for _, msg := range []llm.Message{
@@ -1307,18 +1287,6 @@ func requestMessagesContain(req *llm.Request, content string) bool {
 		}
 	}
 	return false
-}
-
-func TestHarnessBuilderCompactionValidatesOptions(t *testing.T) {
-	_, err := NewHarness("bad-compact").
-		Model("faux").
-		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "done"})).
-		Ephemeral().
-		Compaction(governor.CompactOptions{MaxTokens: 100}).
-		Build()
-	if err == nil {
-		t.Fatal("expected compaction validation error")
-	}
 }
 
 func countCompactions(sess *session.Session) int {

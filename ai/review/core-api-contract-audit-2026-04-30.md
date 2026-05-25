@@ -157,6 +157,11 @@ go test ./... -count=1
     Capability-tool construction moved to the opt-in `environmenttool`
     package, while root hosts keep registering explicit tools through
     `HarnessBuilder.Tools`.
+  - Root `HarnessBuilder.Compaction` and `Session.Compact` were removed. Hosts
+    that want proactive compaction or overflow recovery now explicitly compose
+    `governor.CompactSession` through `runtime.WithBeforeRun` and
+    `runtime.WithOverflowRecovery`, which is the path Ion already uses. The
+    base root package no longer imports `governor` or `artifact`.
   - `approval.Gate` no longer imports the generic `audit` package. It emits
     approval-local audit events through `approval.AuditLogger`; hosts that want
     the shared JSONL audit format opt in through `approvalaudit.New`.

@@ -49,14 +49,16 @@ hosts that do not need a `Turn` handle. New live hosts should prefer typed
 separately.
 
 The session facade also exposes normal maintenance operations so hosts do not
-need to reach through the harness store for routine replay, compaction,
-snapshots, or branching:
+need to reach through the harness store for routine replay, snapshots, or
+branching. Context compaction stays in the opt-in `governor` package; hosts
+load the session facade with `Replay` and call `governor.CompactSession`
+explicitly so compaction policy does not become part of the root harness API.
 
 ```go
 sess := h.Session("session-1")
 events, err := sess.EventsAfter(ctx, lastSeq)
 replayed, err := sess.Replay(ctx)
-compactResult, err := sess.Compact(ctx, governor.CompactOptions{MaxTokens: 20_000, OffloadDir: ".canto/offload"})
+compactResult, err := governor.CompactSession(ctx, provider, "gpt-5.4", replayed, governor.CompactOptions{MaxTokens: 20_000, OffloadDir: ".canto/offload"})
 snapshotted, err := sess.SnapshotIfNeeded(ctx, canto.SnapshotOptions{MaxEvents: 100})
 branch, err := sess.Fork(ctx, "session-1-review", session.ForkOptions{BranchLabel: "review"})
 ```
@@ -80,9 +82,9 @@ turn, err := h.Session("session-1").Submit(ctx, prompt)
 
 `Environment(...)` groups optional capabilities such as workspace, executor,
 sandbox, secrets, and bootstrap context. It does not register tools or make
-approval decisions by itself. `ToolsFromEnvironment(...)` is the opt-in bridge
-for capability toolkits when a host wants Canto to construct workspace or
-executor-backed tools from the environment.
+approval decisions by itself. `environmenttool.Tools(...)` is the opt-in
+bridge for capability toolkits when a host wants Canto to construct workspace
+or executor-backed tools from the environment.
 
 Use `agent.New` when you need the lower-level `agent.Agent` without the root
 harness assembling a `runtime.Runner`, `tool.Registry`, and `session.Store`.
@@ -193,14 +195,20 @@ Available tool modules:
 Canto does not provide coding-agent tool presets. Hosts assemble the exact tool
 set they want. Search and glob behavior should usually come from the configured
 shell, a host-owned code index, or MCP tools rather than a Canto default.
-For capability-oriented defaults, use `ToolsFromEnvironment` explicitly:
+For capability-oriented defaults, use `environmenttool.Tools` explicitly:
 
 ```go
+env := canto.Environment{Workspace: root, Executor: exec}
+tools, err := environmenttool.Tools(env, environmenttool.Config{Workspace: true, Executor: true})
+if err != nil {
+	return err
+}
+
 h, err := canto.NewHarness("assistant").
 	Model("gpt-5.4").
 	Provider(provider).
-	Environment(canto.Environment{Workspace: root, Executor: exec}).
-	ToolsFromEnvironment(canto.EnvironmentToolConfig{Workspace: true, Executor: true}).
+	Environment(env).
+	Tools(tools...).
 	SessionStore(store).
 	Build()
 ```

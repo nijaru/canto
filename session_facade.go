@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/session"
 )
 
@@ -176,34 +175,6 @@ func (s *Session) publishRuntimeEvent(payload HarnessEventPayload) {
 	event := s.state.newEventLocked("", payload)
 	s.state.publishLocked(event)
 	s.state.mu.Unlock()
-}
-
-// Compact runs durable manual compaction for this session using the harness
-// provider and model.
-func (s *Session) Compact(
-	ctx context.Context,
-	opts governor.CompactOptions,
-) (governor.CompactResult, error) {
-	if err := s.validateMaintenanceHandle(); err != nil {
-		return governor.CompactResult{}, err
-	}
-	if s.harness.Provider == nil {
-		return governor.CompactResult{}, fmt.Errorf("canto session: nil provider")
-	}
-	if s.harness.Model == "" {
-		return governor.CompactResult{}, fmt.Errorf("canto session: model is required")
-	}
-	replayed, err := s.Replay(ctx)
-	if err != nil {
-		return governor.CompactResult{}, err
-	}
-	return governor.CompactSession(
-		ctx,
-		s.harness.Provider,
-		s.harness.Model,
-		replayed,
-		opts,
-	)
 }
 
 // Snapshot appends a durable projection snapshot for this session.
