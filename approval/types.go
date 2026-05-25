@@ -15,6 +15,14 @@ const (
 	DecisionDeny  Decision = "deny"
 )
 
+const (
+	AuditKindApprovalRequested = "security.approval.requested"
+	AuditKindApprovalResolved  = "security.approval.resolved"
+	AuditKindApprovalCanceled  = "security.approval.canceled"
+	AuditKindToolAllowed       = "security.tool.allowed"
+	AuditKindToolDenied        = "security.tool.denied"
+)
+
 var (
 	ErrRequestNotFound = errors.New("approval request not found")
 	ErrRequestResolved = errors.New("approval request already resolved")
@@ -54,6 +62,26 @@ type Result struct {
 
 type Policy interface {
 	Decide(ctx context.Context, sess *session.Session, req Request) (Result, bool, error)
+}
+
+// AuditEvent is one approval lifecycle fact emitted by Gate when an audit
+// logger is configured.
+type AuditEvent struct {
+	Kind      string
+	SessionID string
+	Tool      string
+	Category  string
+	Operation string
+	Resource  string
+	Decision  string
+	Reason    string
+	Metadata  map[string]any
+}
+
+// AuditLogger appends approval audit facts. Use package approvalaudit to adapt
+// these facts to the generic audit package.
+type AuditLogger interface {
+	Log(ctx context.Context, event AuditEvent) error
 }
 
 func (r Result) Allowed() bool {

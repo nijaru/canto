@@ -114,7 +114,10 @@ settle as budget exhaustion, but the base agent no longer imports `governor`.
 The root harness facade no longer owns concrete workspace/executor/safety
 capabilities or capability-tool construction; opt-in workspace/executor tool
 wiring now lives in `environmenttool`, and hosts can still register explicit
-tools through `HarnessBuilder.Tools`.
+tools through `HarnessBuilder.Tools`. Approval audit logging now uses
+approval-local audit events plus the opt-in `approvalaudit` adapter, so the
+approval state machine stays available to `agent` without making base agent
+imports pull in the generic `audit` package.
 Continue this audit with remaining optional dependencies embedded in
 otherwise-core packages.
 

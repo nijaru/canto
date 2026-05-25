@@ -100,7 +100,10 @@ lane is selected.
   imports `governor` just to enforce cost limits. The latest root-facade slice
   moved capability-tool construction out of the root package and into
   `environmenttool`, so importing `github.com/nijaru/canto` no longer directly
-  imports executor/safety/workspace tool packages.
+  imports executor/safety/workspace tool packages. The follow-up approval slice
+  moved generic audit-log adaptation to `approvalaudit`, so `agent` still
+  imports the approval state machine for gated tools but no longer imports the
+  generic `audit` package transitively.
 - `canto-wuev` found a real public-surface mismatch: public harness docs and
   examples should teach native `Submit` / `Turn` as the common path.
 - `canto-uduq` landed the first executable contract slice: `RunEvent` now
@@ -234,7 +237,9 @@ lane is selected.
   removing `governor` and `artifact` from the base agent dependency graph.
   The root harness facade also stopped retaining concrete workspace/executor
   capability fields and moved environment tool construction to the opt-in
-  `environmenttool` package.
+  `environmenttool` package. Approval audit logging now emits approval-local
+  audit events and adapts to generic audit loggers through `approvalaudit`,
+  removing `audit` from the base agent dependency graph.
 - `canto-sqtc` — framework-owned bounded event reads: `EventQueryStore.EventsAfter`
   is implemented for SQLite and JSONL stores so hosts can update typed
   projections after a durable sequence cutoff without querying store internals.

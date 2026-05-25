@@ -157,6 +157,9 @@ go test ./... -count=1
     Capability-tool construction moved to the opt-in `environmenttool`
     package, while root hosts keep registering explicit tools through
     `HarnessBuilder.Tools`.
+  - `approval.Gate` no longer imports the generic `audit` package. It emits
+    approval-local audit events through `approval.AuditLogger`; hosts that want
+    the shared JSONL audit format opt in through `approvalaudit.New`.
   - `prompt.MemoryPrompt` was moved to `memory/memoryprompt.New`; core `prompt` no longer imports `memory/`, and hosts opt into memory-backed retrieval through the explicit adapter package.
   - `tool.NewTyped` / `tool.MustTyped` were moved to `tool/typedtool`, and approval-capable tools now implement `approval.RequirementProvider`; core `tool` no longer imports approval state.
   - `tool/mcp` depends on `safety/`/`workspace/`, but MCP registration remains deferred in Ion and is not part of the native minimal loop.

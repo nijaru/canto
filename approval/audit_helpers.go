@@ -2,11 +2,9 @@ package approval
 
 import (
 	"context"
-
-	"github.com/nijaru/canto/audit"
 )
 
-func (m *Gate) logAudit(ctx context.Context, event audit.Event) {
+func (m *Gate) logAudit(ctx context.Context, event AuditEvent) {
 	if m == nil {
 		return
 	}
@@ -23,12 +21,12 @@ func auditEventForApprovalResolution(
 	sessionID, toolName string,
 	requirement Requirement,
 	result Result,
-) audit.Event {
-	kind := audit.KindToolAllowed
+) AuditEvent {
+	kind := AuditKindToolAllowed
 	if result.Decision == DecisionDeny {
-		kind = audit.KindToolDenied
+		kind = AuditKindToolDenied
 	}
-	return audit.Event{
+	return AuditEvent{
 		Kind:      kind,
 		SessionID: sessionID,
 		Tool:      toolName,

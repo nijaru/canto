@@ -86,6 +86,7 @@ attached to one transaction.
 | `executortool` | Shell and code execution tools | Active |
 | `environmenttool` | Opt-in helper for wiring host capabilities into workspace/executor tools | Active |
 | `service` | Typed service/API tool helpers | Active |
+| `approvalaudit` | Adapter from approval audit events to generic audit loggers | Active |
 | `governor` | Context offloading and guards | New |
 | `safety` | Execution modes and tool gating | New |
 | `artifact` | Blob storage and registry | Semi-stable |

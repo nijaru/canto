@@ -5,7 +5,6 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/nijaru/canto/audit"
 	"github.com/nijaru/canto/session"
 	"github.com/oklog/ulid/v2"
 )
@@ -15,7 +14,7 @@ import (
 // disables automated policies after N consecutive denials.
 type Gate struct {
 	policy    Policy
-	audit     audit.Logger
+	audit     AuditLogger
 	threshold int
 
 	mu                    sync.Mutex
@@ -50,7 +49,7 @@ func (m *Gate) WithThreshold(n int) *Gate {
 }
 
 // WithAuditLogger configures an append-only security audit logger.
-func (m *Gate) WithAuditLogger(logger audit.Logger) *Gate {
+func (m *Gate) WithAuditLogger(logger AuditLogger) *Gate {
 	if m == nil {
 		return nil
 	}
@@ -105,8 +104,8 @@ func (m *Gate) Request(
 	if err := sess.Append(ctx, session.NewEvent(sess.ID(), session.ApprovalRequested, req)); err != nil {
 		return Result{}, err
 	}
-	m.logAudit(context.Background(), audit.Event{
-		Kind:      audit.KindApprovalRequested,
+	m.logAudit(context.Background(), AuditEvent{
+		Kind:      AuditKindApprovalRequested,
 		SessionID: sess.ID(),
 		Tool:      toolName,
 		Category:  requirement.Category,
@@ -123,8 +122,8 @@ func (m *Gate) Request(
 		res, handled, err := m.policy.Decide(ctx, sess, req)
 		if err != nil {
 			cancelErr := m.appendCanceled(context.Background(), sess, req, err.Error())
-			m.logAudit(context.Background(), audit.Event{
-				Kind:      audit.KindApprovalCanceled,
+			m.logAudit(context.Background(), AuditEvent{
+				Kind:      AuditKindApprovalCanceled,
 				SessionID: sess.ID(),
 				Tool:      toolName,
 				Category:  requirement.Category,
@@ -177,8 +176,8 @@ func (m *Gate) Request(
 		delete(m.pending, req.ID)
 		m.mu.Unlock()
 		_ = m.appendCanceled(context.Background(), sess, req, ctx.Err().Error())
-		m.logAudit(context.Background(), audit.Event{
-			Kind:      audit.KindApprovalCanceled,
+		m.logAudit(context.Background(), AuditEvent{
+			Kind:      AuditKindApprovalCanceled,
 			SessionID: sess.ID(),
 			Tool:      toolName,
 			Category:  requirement.Category,
@@ -220,11 +219,11 @@ func (m *Gate) Resolve(requestID string, decision Decision, reason string) error
 		Decision:  decision,
 		Reason:    reason,
 	}
-	kind := audit.KindToolAllowed
+	kind := AuditKindToolAllowed
 	if decision == DecisionDeny {
-		kind = audit.KindToolDenied
+		kind = AuditKindToolDenied
 	}
-	event := audit.Event{
+	event := AuditEvent{
 		Kind:      kind,
 		SessionID: pending.req.SessionID,
 		Tool:      pending.req.Tool,
