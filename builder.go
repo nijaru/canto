@@ -28,7 +28,6 @@ type HarnessBuilder struct {
 	ephemeral    bool
 	compaction   *governor.CompactOptions
 	environment  Environment
-	envTools     *EnvironmentToolConfig
 
 	agentOptions   []agent.Option
 	runtimeOptions []runtime.Option
@@ -87,18 +86,6 @@ func (b *HarnessBuilder) SessionStore(store session.Store) *HarnessBuilder {
 
 func (b *HarnessBuilder) Environment(env Environment) *HarnessBuilder {
 	b.environment = cloneEnvironment(env)
-	return b
-}
-
-func (b *HarnessBuilder) ToolsFromEnvironment(cfg EnvironmentToolConfig) *HarnessBuilder {
-	if b.envTools == nil {
-		b.envTools = &EnvironmentToolConfig{}
-	}
-	b.envTools.Workspace = b.envTools.Workspace || cfg.Workspace
-	b.envTools.Executor = b.envTools.Executor || cfg.Executor
-	if cfg.CodeLanguage != "" {
-		b.envTools.CodeLanguage = cfg.CodeLanguage
-	}
 	return b
 }
 
@@ -182,15 +169,6 @@ func (b *HarnessBuilder) Build() (*Harness, error) {
 		registry = tool.NewRegistry()
 	}
 	env := cloneEnvironment(b.environment)
-	if b.envTools != nil {
-		tools, err := ToolsFromEnvironment(env, *b.envTools)
-		if err != nil {
-			return nil, err
-		}
-		for _, t := range tools {
-			registry.Register(t)
-		}
-	}
 	for _, t := range b.tools {
 		registry.Register(t)
 	}

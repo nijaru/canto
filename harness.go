@@ -4,23 +4,16 @@ import (
 	"sync"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/executor"
 	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
-	"github.com/nijaru/canto/safety"
 	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/tool"
-	"github.com/nijaru/canto/workspace"
 )
 
-// Environment groups host-provided capabilities that tools and bootstrap
-// logic can use while a harness runs. It describes where effects happen; it
-// does not encode product policy.
+// Environment groups host-provided durable context for a harness. Capability
+// tools stay opt-in through their concrete packages instead of being retained
+// by the root facade.
 type Environment struct {
-	Workspace workspace.WorkspaceFS
-	Executor  *executor.Executor
-	Sandbox   safety.Sandbox
-	Secrets   safety.SecretInjector
 	Bootstrap []session.ContextEntry
 }
 

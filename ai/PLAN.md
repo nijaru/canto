@@ -111,6 +111,10 @@ recent user turns rather than a raw message suffix. `agent.WithBudgetGuard`
 now uses an agent-local cost guard and recognizes budget exhaustion through a
 small marker interface; external `governor.NewBudgetGuard` processors still
 settle as budget exhaustion, but the base agent no longer imports `governor`.
+The root harness facade no longer owns concrete workspace/executor/safety
+capabilities or capability-tool construction; opt-in workspace/executor tool
+wiring now lives in `environmenttool`, and hosts can still register explicit
+tools through `HarnessBuilder.Tools`.
 Continue this audit with remaining optional dependencies embedded in
 otherwise-core packages.
 

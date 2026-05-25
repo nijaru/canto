@@ -97,7 +97,10 @@ lane is selected.
   `artifact`, and `governor` no longer imports `approval`. The follow-up
   boundary slice moved `WithBudgetGuard` into `agent` and recognizes budget
   exhaustion through a small marker interface, so the base agent no longer
-  imports `governor` just to enforce cost limits.
+  imports `governor` just to enforce cost limits. The latest root-facade slice
+  moved capability-tool construction out of the root package and into
+  `environmenttool`, so importing `github.com/nijaru/canto` no longer directly
+  imports executor/safety/workspace tool packages.
 - `canto-wuev` found a real public-surface mismatch: public harness docs and
   examples should teach native `Submit` / `Turn` as the common path.
 - `canto-uduq` landed the first executable contract slice: `RunEvent` now
@@ -229,6 +232,9 @@ lane is selected.
   boundary slice moved agent budget-guard enforcement into `agent` and kept
   `governor.BudgetExceededError` interoperable through the marker interface,
   removing `governor` and `artifact` from the base agent dependency graph.
+  The root harness facade also stopped retaining concrete workspace/executor
+  capability fields and moved environment tool construction to the opt-in
+  `environmenttool` package.
 - `canto-sqtc` — framework-owned bounded event reads: `EventQueryStore.EventsAfter`
   is implemented for SQLite and JSONL stores so hosts can update typed
   projections after a durable sequence cutoff without querying store internals.

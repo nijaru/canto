@@ -84,6 +84,7 @@ attached to one transaction.
 | `executor` | Bounded host command execution | Active |
 | `workspacetool` | Workspace read/write/list/edit tools | Active |
 | `executortool` | Shell and code execution tools | Active |
+| `environmenttool` | Opt-in helper for wiring host capabilities into workspace/executor tools | Active |
 | `service` | Typed service/API tool helpers | Active |
 | `governor` | Context offloading and guards | New |
 | `safety` | Execution modes and tool gating | New |

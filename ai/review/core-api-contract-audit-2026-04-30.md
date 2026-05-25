@@ -152,6 +152,11 @@ go test ./... -count=1
     budget-exceeded marker to `TurnStopBudgetExhausted`, and
     `governor.BudgetExceededError` implements that marker for hosts that still
     install `governor.NewBudgetGuard` explicitly.
+  - The root harness facade no longer retains concrete workspace/executor/
+    safety capability fields or builds workspace/executor tools directly.
+    Capability-tool construction moved to the opt-in `environmenttool`
+    package, while root hosts keep registering explicit tools through
+    `HarnessBuilder.Tools`.
   - `prompt.MemoryPrompt` was moved to `memory/memoryprompt.New`; core `prompt` no longer imports `memory/`, and hosts opt into memory-backed retrieval through the explicit adapter package.
   - `tool.NewTyped` / `tool.MustTyped` were moved to `tool/typedtool`, and approval-capable tools now implement `approval.RequirementProvider`; core `tool` no longer imports approval state.
   - `tool/mcp` depends on `safety/`/`workspace/`, but MCP registration remains deferred in Ion and is not part of the native minimal loop.

@@ -1,4 +1,4 @@
-package canto
+package environmenttool
 
 import (
 	"testing"
@@ -9,22 +9,22 @@ import (
 	"github.com/nijaru/canto/safety"
 )
 
-func TestToolsFromEnvironmentBuildsExecutorTools(t *testing.T) {
+func TestToolsBuildsExecutorTools(t *testing.T) {
 	exec := executor.NewExecutor(time.Second, 1024)
 	secrets := safety.StaticSecretInjector{"TOKEN": "secret"}
 
-	tools, err := ToolsFromEnvironment(
-		Environment{
+	tools, err := Tools(
+		Capabilities{
 			Executor: exec,
 			Secrets:  secrets,
 		},
-		EnvironmentToolConfig{
+		Config{
 			Executor:     true,
 			CodeLanguage: "python",
 		},
 	)
 	if err != nil {
-		t.Fatalf("ToolsFromEnvironment: %v", err)
+		t.Fatalf("Tools: %v", err)
 	}
 	if len(tools) != 2 {
 		t.Fatalf("tools = %d, want 2", len(tools))
@@ -48,8 +48,8 @@ func TestToolsFromEnvironmentBuildsExecutorTools(t *testing.T) {
 	}
 }
 
-func TestToolsFromEnvironmentRequiresExecutor(t *testing.T) {
-	_, err := ToolsFromEnvironment(Environment{}, EnvironmentToolConfig{Executor: true})
+func TestToolsRequiresExecutor(t *testing.T) {
+	_, err := Tools(Capabilities{}, Config{Executor: true})
 	if err == nil || err.Error() != "canto environment tools: executor is required" {
 		t.Fatalf("error = %v, want executor requirement", err)
 	}
