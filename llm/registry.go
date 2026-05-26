@@ -1,116 +1,199 @@
 package llm
 
 import (
-	"context"
-	"fmt"
-	"log/slog"
+	"path/filepath"
+	"strings"
 	"sync"
 )
 
-// Registry manages the available LLM providers and models.
+// ModelPreset defines standard capability profiles.
+type ModelPreset string
+
+const (
+	PresetChat            ModelPreset = "chat"
+	PresetReasoning       ModelPreset = "reasoning"
+	PresetOpenAIReasoning ModelPreset = "openai-reasoning"
+)
+
+// ModelDef represents a model capability mapping definition.
+type ModelDef struct {
+	Pattern      string        `json:"pattern"                toml:"pattern"` // glob pattern (e.g. "deepseek-*") or exact name
+	Preset       ModelPreset   `json:"preset,omitempty"       toml:"preset,omitempty"`
+	Capabilities *Capabilities `json:"capabilities,omitempty" toml:"capabilities,omitempty"`
+}
+
+// Registry manages thread-safe resolution of model capabilities.
 type Registry struct {
-	mu        sync.RWMutex
-	providers map[string]Provider
-	models    map[string]Model    // modelID -> Model
-	resolver  map[string][]string // modelID -> []providerID
+	mu   sync.RWMutex
+	defs []ModelDef
 }
 
-// NewRegistry creates a new registry.
+// NewRegistry creates a new Model Capability Registry.
 func NewRegistry() *Registry {
-	r := &Registry{
-		providers: make(map[string]Provider),
-		models:    make(map[string]Model),
-		resolver:  make(map[string][]string),
+	return &Registry{
+		defs: make([]ModelDef, 0),
 	}
-	return r
 }
 
-// Register adds a provider to the registry.
-func (r *Registry) Register(p Provider) {
-	// Fetch models before acquiring the lock to avoid blocking concurrent
-	// registry operations during a potentially slow network call.
-	models, err := p.Models(context.Background())
-	if err != nil {
-		slog.Warn("registry: failed to fetch models", "provider", p.ID(), "error", err)
-	}
-
+// Clear clears all registered model definitions.
+func (r *Registry) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.providers[p.ID()] = p
-
-	for _, m := range models {
-		r.models[m.ID] = m
-		r.addResolver(m.ID, p.ID())
-	}
+	r.defs = r.defs[:0]
 }
 
-func (r *Registry) addResolver(modelID, providerID string) {
-	ids := r.resolver[modelID]
-	for _, id := range ids {
-		if id == providerID {
-			return
-		}
-	}
-	r.resolver[modelID] = append(ids, providerID)
+// Register registers a new model capability definition.
+func (r *Registry) Register(def ModelDef) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.defs = append(r.defs, def)
 }
 
-// GetProvider returns a provider by its ID.
-func (r *Registry) GetProvider(id string) (Provider, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	p, ok := r.providers[id]
-	return p, ok
-}
-
-// AllProviders returns all registered providers.
-func (r *Registry) AllProviders() []Provider {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	res := make([]Provider, 0, len(r.providers))
-	for _, p := range r.providers {
-		res = append(res, p)
-	}
-	return res
-}
-
-// ResolveModel finds which provider(s) can handle the given model ID.
-// Returns a SmartResolver if multiple providers are available.
-func (r *Registry) ResolveModel(modelID string) (Provider, error) {
+// Resolve resolves capabilities for a given model ID.
+func (r *Registry) Resolve(modelID string) Capabilities {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	providerIDs, ok := r.resolver[modelID]
-	if !ok || len(providerIDs) == 0 {
-		return nil, fmt.Errorf("model not found: %s", modelID)
-	}
+	modelLower := strings.ToLower(strings.TrimSpace(modelID))
+	for _, def := range r.defs {
+		patternLower := strings.ToLower(strings.TrimSpace(def.Pattern))
 
-	if len(providerIDs) == 1 {
-		provider, ok := r.providers[providerIDs[0]]
-		if !ok {
-			return nil, fmt.Errorf(
-				"provider %s not registered for model %s",
-				providerIDs[0],
-				modelID,
-			)
+		// Try glob matching first
+		if matched, err := filepath.Match(patternLower, modelLower); err == nil && matched {
+			return r.capabilitiesFromDef(def, modelLower)
 		}
-		return provider, nil
-	}
 
-	// Multiple providers available, return a SmartResolver
-	var providers []Provider
-	for _, id := range providerIDs {
-		if p, ok := r.providers[id]; ok {
-			providers = append(providers, p)
+		// Fallback to substring matching if the pattern is in the model ID
+		if strings.Contains(modelLower, patternLower) {
+			return r.capabilitiesFromDef(def, modelLower)
 		}
 	}
 
-	if len(providers) == 0 {
-		return nil, fmt.Errorf("no registered providers found for model %s", modelID)
+	// Fallback to dynamic naming heuristics
+	if isReasoningModelHeuristic(modelLower) {
+		return reasoningCapabilitiesHeuristic(modelLower)
 	}
 
-	if len(providers) == 1 {
-		return providers[0], nil
+	return DefaultCapabilities()
+}
+
+func (r *Registry) capabilitiesFromDef(def ModelDef, modelID string) Capabilities {
+	if def.Capabilities != nil {
+		return *def.Capabilities
 	}
 
-	return NewSmartResolver(StrategyPriority, providers...), nil
+	switch def.Preset {
+	case PresetChat:
+		return DefaultCapabilities()
+	case PresetReasoning:
+		return Capabilities{
+			Streaming:   true,
+			Tools:       true,
+			Temperature: false,
+			SystemRole:  RoleSystem,
+			Reasoning: ReasoningCapabilities{
+				Kind:       ReasoningKindEffort,
+				Efforts:    []string{"minimal", "low", "medium", "high"},
+				CanDisable: true,
+			},
+		}
+	case PresetOpenAIReasoning:
+		role := RoleSystem
+		if strings.Contains(modelID, "o1") {
+			role = RoleUser
+		} else if strings.Contains(modelID, "o3") || strings.Contains(modelID, "o4") {
+			role = RoleDeveloper
+		}
+		return Capabilities{
+			Streaming:   true,
+			Tools:       true,
+			Temperature: false,
+			SystemRole:  role,
+			Reasoning: ReasoningCapabilities{
+				Kind:       ReasoningKindEffort,
+				Efforts:    []string{"minimal", "low", "medium", "high"},
+				CanDisable: true,
+			},
+		}
+	default:
+		return DefaultCapabilities()
+	}
+}
+
+// DefaultRegistry is the framework-wide capability registry.
+var DefaultRegistry = NewRegistry()
+
+// RegisterModel registers a model capability definition globally.
+func RegisterModel(def ModelDef) {
+	DefaultRegistry.Register(def)
+}
+
+// ResolveCapabilities resolves model capabilities globally.
+func ResolveCapabilities(model string) Capabilities {
+	return DefaultRegistry.Resolve(model)
+}
+
+// ClearRegistry clears all definitions from the global registry.
+func ClearRegistry() {
+	DefaultRegistry.Clear()
+}
+
+// isReasoningModelHeuristic is the fallback dynamic reasoning model naming check.
+func isReasoningModelHeuristic(model string) bool {
+	if strings.Contains(model, "reasoner") || strings.Contains(model, "reasoning") ||
+		strings.Contains(model, "thinking") ||
+		strings.Contains(model, "mimo") {
+		return true
+	}
+	segments := strings.FieldsFunc(model, func(r rune) bool {
+		return r == '/' || r == ':' || r == '-' || r == '_' || r == '.'
+	})
+	for _, seg := range segments {
+		if seg == "o1" || seg == "o3" || seg == "o4" {
+			return true
+		}
+		if len(seg) >= 2 && seg[0] == 'r' && isDigits(seg[1:]) {
+			return true
+		}
+	}
+	return false
+}
+
+func isDigits(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// reasoningCapabilitiesHeuristic builds capability defaults for heuristically-detected reasoning models.
+func reasoningCapabilitiesHeuristic(model string) Capabilities {
+	role := RoleSystem
+	segments := strings.FieldsFunc(model, func(r rune) bool {
+		return r == '/' || r == ':' || r == '-' || r == '_' || r == '.'
+	})
+	for _, seg := range segments {
+		if seg == "o1" {
+			role = RoleUser
+			break
+		} else if seg == "o3" || seg == "o4" {
+			role = RoleDeveloper
+			break
+		}
+	}
+	return Capabilities{
+		Streaming:  true,
+		Tools:      true,
+		SystemRole: role,
+		Reasoning: ReasoningCapabilities{
+			Kind:       ReasoningKindEffort,
+			Efforts:    []string{"minimal", "low", "medium", "high"},
+			CanDisable: true,
+		},
+	}
 }

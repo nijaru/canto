@@ -1,83 +1,18 @@
 package openai
 
 import (
-	"strings"
-
 	"github.com/nijaru/canto/llm"
 )
 
 // Capabilities returns the feature set for the given model.
-// It consults ModelCaps first; unknown models get DefaultCapabilities.
+// It consults ModelCaps first, then falls back to Canto's default model capability registry.
 func (b *Base) Capabilities(model string) llm.Capabilities {
 	if b.ModelCaps != nil {
 		if caps, ok := b.ModelCaps[model]; ok {
 			return caps
 		}
 	}
-	if isReasoningModel(model) {
-		return reasoningCapabilitiesForModel(model)
-	}
-	return llm.DefaultCapabilities()
-}
-
-func isReasoningModel(model string) bool {
-	m := strings.ToLower(model)
-	if strings.Contains(m, "reasoner") || strings.Contains(m, "reasoning") ||
-		strings.Contains(m, "thinking") ||
-		strings.Contains(m, "mimo") {
-		return true
-	}
-	segments := strings.FieldsFunc(m, func(r rune) bool {
-		return r == '/' || r == ':' || r == '-' || r == '_' || r == '.'
-	})
-	for _, seg := range segments {
-		if seg == "o1" || seg == "o3" || seg == "o4" {
-			return true
-		}
-		if len(seg) >= 2 && seg[0] == 'r' && isDigits(seg[1:]) {
-			return true
-		}
-	}
-	return false
-}
-
-func isDigits(s string) bool {
-	if len(s) == 0 {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func reasoningCapabilitiesForModel(model string) llm.Capabilities {
-	m := strings.ToLower(model)
-	role := llm.RoleSystem
-	segments := strings.FieldsFunc(m, func(r rune) bool {
-		return r == '/' || r == ':' || r == '-' || r == '_' || r == '.'
-	})
-	for _, seg := range segments {
-		if seg == "o1" {
-			role = llm.RoleUser
-			break
-		} else if seg == "o3" || seg == "o4" {
-			role = llm.RoleDeveloper
-			break
-		}
-	}
-	return llm.Capabilities{
-		Streaming:  true,
-		Tools:      true,
-		SystemRole: role,
-		Reasoning: llm.ReasoningCapabilities{
-			Kind:       llm.ReasoningKindEffort,
-			Efforts:    []string{"minimal", "low", "medium", "high"},
-			CanDisable: true,
-		},
-	}
+	return llm.ResolveCapabilities(model)
 }
 
 // DefaultModelCaps returns capability entries for well-known OpenAI reasoning
