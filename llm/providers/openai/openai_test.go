@@ -32,9 +32,14 @@ func TestCompatibleProviderDefaultsToNoReasoningCaps(t *testing.T) {
 		DefaultAPIEndpoint: "http://localhost:8080/v1",
 	})
 
-	if caps := p.Capabilities("o4-mini"); caps.Reasoning.Kind != llm.ReasoningKindNone ||
+	if caps := p.Capabilities("gpt-4o"); caps.Reasoning.Kind != llm.ReasoningKindNone ||
 		caps.SupportsReasoningEffort("high") {
-		t.Fatalf("compatible provider caps = %#v, want no reasoning by default", caps)
+		t.Fatalf("compatible provider caps = %#v, want no reasoning by default for gpt-4o", caps)
+	}
+
+	if caps := p.Capabilities("xiaomi/mimo-v2.5-pro"); caps.Reasoning.Kind != llm.ReasoningKindEffort ||
+		!caps.SupportsReasoningEffort("high") {
+		t.Fatalf("compatible provider caps = %#v, want reasoning capabilities for mimo", caps)
 	}
 }
 

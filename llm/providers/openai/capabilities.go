@@ -1,6 +1,10 @@
 package openai
 
-import "github.com/nijaru/canto/llm"
+import (
+	"strings"
+
+	"github.com/nijaru/canto/llm"
+)
 
 // Capabilities returns the feature set for the given model.
 // It consults ModelCaps first; unknown models get DefaultCapabilities.
@@ -10,7 +14,47 @@ func (b *Base) Capabilities(model string) llm.Capabilities {
 			return caps
 		}
 	}
+	if isReasoningModel(model) {
+		return reasoningCapabilitiesForModel(model)
+	}
 	return llm.DefaultCapabilities()
+}
+
+func isReasoningModel(model string) bool {
+	m := strings.ToLower(model)
+	return strings.Contains(m, "mimo") ||
+		strings.Contains(m, "o1-") ||
+		strings.Contains(m, "o3-") ||
+		strings.Contains(m, "o4-") ||
+		strings.Contains(m, "deepseek-reasoner") ||
+		strings.Contains(m, "deepseek-r1") ||
+		strings.Contains(m, "r1-") ||
+		strings.Contains(m, "reasoner") ||
+		strings.Contains(m, "reasoning") ||
+		m == "o1" || m == "o3" || m == "o4" ||
+		strings.HasPrefix(m, "o1/") || strings.HasPrefix(m, "o3/") || strings.HasPrefix(m, "o4/") ||
+		strings.HasSuffix(m, "/o1") || strings.HasSuffix(m, "/o3") || strings.HasSuffix(m, "/o4") ||
+		strings.Contains(m, "/o1-") || strings.Contains(m, "/o3-") || strings.Contains(m, "/o4-")
+}
+
+func reasoningCapabilitiesForModel(model string) llm.Capabilities {
+	m := strings.ToLower(model)
+	role := llm.RoleSystem
+	if strings.Contains(m, "o1") {
+		role = llm.RoleUser
+	} else if strings.Contains(m, "o3") || strings.Contains(m, "o4") {
+		role = llm.RoleDeveloper
+	}
+	return llm.Capabilities{
+		Streaming:  true,
+		Tools:      true,
+		SystemRole: role,
+		Reasoning: llm.ReasoningCapabilities{
+			Kind:       llm.ReasoningKindEffort,
+			Efforts:    []string{"minimal", "low", "medium", "high"},
+			CanDisable: true,
+		},
+	}
 }
 
 // DefaultModelCaps returns capability entries for well-known OpenAI reasoning
