@@ -37,9 +37,21 @@ func TestCompatibleProviderDefaultsToNoReasoningCaps(t *testing.T) {
 		t.Fatalf("compatible provider caps = %#v, want no reasoning by default for gpt-4o", caps)
 	}
 
-	if caps := p.Capabilities("xiaomi/mimo-v2.5-pro"); caps.Reasoning.Kind != llm.ReasoningKindEffort ||
-		!caps.SupportsReasoningEffort("high") {
-		t.Fatalf("compatible provider caps = %#v, want reasoning capabilities for mimo", caps)
+	for _, model := range []string{
+		"xiaomi/mimo-v2.5-pro",
+		"deepseek/deepseek-r1",
+		"deepseek/deepseek-r2-preview",
+		"llama-3.3-r3",
+		"o3-pro",
+	} {
+		if caps := p.Capabilities(model); caps.Reasoning.Kind != llm.ReasoningKindEffort ||
+			!caps.SupportsReasoningEffort("high") {
+			t.Fatalf(
+				"compatible provider caps = %#v, want reasoning capabilities for %s",
+				caps,
+				model,
+			)
+		}
 	}
 }
 

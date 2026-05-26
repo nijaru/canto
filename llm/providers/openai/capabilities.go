@@ -22,28 +22,51 @@ func (b *Base) Capabilities(model string) llm.Capabilities {
 
 func isReasoningModel(model string) bool {
 	m := strings.ToLower(model)
-	return strings.Contains(m, "mimo") ||
-		strings.Contains(m, "o1-") ||
-		strings.Contains(m, "o3-") ||
-		strings.Contains(m, "o4-") ||
-		strings.Contains(m, "deepseek-reasoner") ||
-		strings.Contains(m, "deepseek-r1") ||
-		strings.Contains(m, "r1-") ||
-		strings.Contains(m, "reasoner") ||
-		strings.Contains(m, "reasoning") ||
-		m == "o1" || m == "o3" || m == "o4" ||
-		strings.HasPrefix(m, "o1/") || strings.HasPrefix(m, "o3/") || strings.HasPrefix(m, "o4/") ||
-		strings.HasSuffix(m, "/o1") || strings.HasSuffix(m, "/o3") || strings.HasSuffix(m, "/o4") ||
-		strings.Contains(m, "/o1-") || strings.Contains(m, "/o3-") || strings.Contains(m, "/o4-")
+	if strings.Contains(m, "reasoner") || strings.Contains(m, "reasoning") ||
+		strings.Contains(m, "thinking") ||
+		strings.Contains(m, "mimo") {
+		return true
+	}
+	segments := strings.FieldsFunc(m, func(r rune) bool {
+		return r == '/' || r == ':' || r == '-' || r == '_' || r == '.'
+	})
+	for _, seg := range segments {
+		if seg == "o1" || seg == "o3" || seg == "o4" {
+			return true
+		}
+		if len(seg) >= 2 && seg[0] == 'r' && isDigits(seg[1:]) {
+			return true
+		}
+	}
+	return false
+}
+
+func isDigits(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func reasoningCapabilitiesForModel(model string) llm.Capabilities {
 	m := strings.ToLower(model)
 	role := llm.RoleSystem
-	if strings.Contains(m, "o1") {
-		role = llm.RoleUser
-	} else if strings.Contains(m, "o3") || strings.Contains(m, "o4") {
-		role = llm.RoleDeveloper
+	segments := strings.FieldsFunc(m, func(r rune) bool {
+		return r == '/' || r == ':' || r == '-' || r == '_' || r == '.'
+	})
+	for _, seg := range segments {
+		if seg == "o1" {
+			role = llm.RoleUser
+			break
+		} else if seg == "o3" || seg == "o4" {
+			role = llm.RoleDeveloper
+			break
+		}
 	}
 	return llm.Capabilities{
 		Streaming:  true,
