@@ -219,10 +219,11 @@ type Usage struct {
 
 // Model describes an LLM model exposed by a provider.
 type Model struct {
-	ID            string  `json:"id"`
-	ContextWindow int     `json:"context_window,omitzero"`
-	CostPer1MIn   float64 `json:"cost_per_1m_in,omitzero"`
-	CostPer1MOut  float64 `json:"cost_per_1m_out,omitzero"`
+	ID            string        `json:"id"                       toml:"id"`
+	ContextWindow int           `json:"context_window,omitzero"  toml:"context_window,omitzero"`
+	CostPer1MIn   float64       `json:"cost_per_1m_in,omitzero"  toml:"cost_per_1m_in,omitzero"`
+	CostPer1MOut  float64       `json:"cost_per_1m_out,omitzero" toml:"cost_per_1m_out,omitzero"`
+	Capabilities  *Capabilities `json:"capabilities,omitzero"    toml:"capabilities,omitzero"`
 }
 
 // ProviderConfig captures the shared endpoint/auth/model metadata used by

@@ -92,22 +92,31 @@ func TestRegistryCustomCapabilities(t *testing.T) {
 	}
 }
 
-func TestRegistryFallbackHeuristic(t *testing.T) {
-	reg := NewRegistry() // Empty registry, should fall back to heuristic
+func TestRegistryFallbackDefault(t *testing.T) {
+	reg := NewRegistry() // Empty registry
 
-	// Model that should match standard chat (no reasoning keywords)
+	// Model that should match standard chat (default fallback)
 	caps := reg.Resolve("gpt-4o")
 	if !caps.Temperature {
 		t.Errorf("expected fallback to default standard chat with temperature")
 	}
 
-	// Model that contains reasoning indicators
+	// Unknown model should also default to standard chat deterministically with no heuristic
 	caps = reg.Resolve("xiaomi/mimo-v2.5-pro")
+	if !caps.Temperature {
+		t.Errorf("expected unrecognized model to resolve to standard chat by default")
+	}
+
+	// 3. Test global registry pre-registered matches
+	RegisterModel(ModelDef{Pattern: "deepseek-r1", Preset: PresetReasoning})
+	defer ClearRegistry()
+
+	caps = ResolveCapabilities("deepseek-r1")
 	if caps.Temperature {
-		t.Errorf("expected mimo model to fall back to reasoning caps")
+		t.Errorf("expected pre-registered deepseek-r1 to disable temperature")
 	}
 	if caps.Reasoning.Kind != ReasoningKindEffort {
-		t.Errorf("expected mimo model to support reasoning effort")
+		t.Errorf("expected pre-registered deepseek-r1 to have reasoning effort")
 	}
 }
 

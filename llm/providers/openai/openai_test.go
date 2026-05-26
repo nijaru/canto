@@ -11,7 +11,21 @@ import (
 )
 
 func TestNewProviderDefaults(t *testing.T) {
-	p := NewProvider(llm.ProviderConfig{})
+	reasoningCaps := llm.Capabilities{
+		Streaming:  true,
+		Tools:      true,
+		SystemRole: llm.RoleDeveloper,
+		Reasoning: llm.ReasoningCapabilities{
+			Kind:       llm.ReasoningKindEffort,
+			Efforts:    []string{"minimal", "low", "medium", "high"},
+			CanDisable: true,
+		},
+	}
+	p := NewProvider(llm.ProviderConfig{
+		Models: []llm.Model{
+			{ID: "o4-mini", Capabilities: &reasoningCaps},
+		},
+	})
 
 	if got, want := p.ID(), "openai"; got != want {
 		t.Fatalf("ID = %q, want %q", got, want)
@@ -27,7 +41,23 @@ func TestNewProviderDefaults(t *testing.T) {
 }
 
 func TestCompatibleProviderDefaultsToNoReasoningCaps(t *testing.T) {
-	p := NewCompatibleProvider(llm.ProviderConfig{ID: "local-api"}, CompatibleSpec{
+	reasoningCaps := llm.Capabilities{
+		Streaming: true,
+		Tools:     true,
+		Reasoning: llm.ReasoningCapabilities{
+			Kind:       llm.ReasoningKindEffort,
+			Efforts:    []string{"minimal", "low", "medium", "high"},
+			CanDisable: true,
+		},
+	}
+	p := NewCompatibleProvider(llm.ProviderConfig{
+		ID: "local-api",
+		Models: []llm.Model{
+			{ID: "xiaomi/mimo-v2.5-pro", Capabilities: &reasoningCaps},
+			{ID: "deepseek/deepseek-r1", Capabilities: &reasoningCaps},
+			{ID: "o3-pro", Capabilities: &reasoningCaps},
+		},
+	}, CompatibleSpec{
 		ID:                 "local-api",
 		DefaultAPIEndpoint: "http://localhost:8080/v1",
 	})
@@ -37,11 +67,10 @@ func TestCompatibleProviderDefaultsToNoReasoningCaps(t *testing.T) {
 		t.Fatalf("compatible provider caps = %#v, want no reasoning by default for gpt-4o", caps)
 	}
 
+	// 1. Configured reasoning models should resolve correctly out of the box
 	for _, model := range []string{
 		"xiaomi/mimo-v2.5-pro",
 		"deepseek/deepseek-r1",
-		"deepseek/deepseek-r2-preview",
-		"llama-3.3-r3",
 		"o3-pro",
 	} {
 		if caps := p.Capabilities(model); caps.Reasoning.Kind != llm.ReasoningKindEffort ||
@@ -50,6 +79,20 @@ func TestCompatibleProviderDefaultsToNoReasoningCaps(t *testing.T) {
 				"compatible provider caps = %#v, want reasoning capabilities for %s",
 				caps,
 				model,
+			)
+		}
+	}
+
+	// 2. Unregistered models (like r3/r2 variants) now default to standard chat deterministically
+	for _, model := range []string{
+		"deepseek/deepseek-r2-preview",
+		"llama-3.3-r3",
+	} {
+		if caps := p.Capabilities(model); caps.Reasoning.Kind != llm.ReasoningKindNone {
+			t.Fatalf(
+				"expected unregistered model %s to default to standard chat, got %s reasoning kind",
+				model,
+				caps.Reasoning.Kind,
 			)
 		}
 	}

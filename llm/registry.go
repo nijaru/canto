@@ -63,15 +63,11 @@ func (r *Registry) Resolve(modelID string) Capabilities {
 			return r.capabilitiesFromDef(def, modelLower)
 		}
 
-		// Fallback to substring matching if the pattern is in the model ID
-		if strings.Contains(modelLower, patternLower) {
+		// Fallback to substring matching by stripping wildcards
+		cleanPattern := strings.Trim(patternLower, "*")
+		if cleanPattern != "" && strings.Contains(modelLower, cleanPattern) {
 			return r.capabilitiesFromDef(def, modelLower)
 		}
-	}
-
-	// Fallback to dynamic naming heuristics
-	if isReasoningModelHeuristic(modelLower) {
-		return reasoningCapabilitiesHeuristic(modelLower)
 	}
 
 	return DefaultCapabilities()
@@ -123,6 +119,11 @@ func (r *Registry) capabilitiesFromDef(def ModelDef, modelID string) Capabilitie
 // DefaultRegistry is the framework-wide capability registry.
 var DefaultRegistry = NewRegistry()
 
+func init() {
+	// Start with an empty registry. All capability presets and matching definitions
+	// should be registered dynamically by the host application or dynamically discovered.
+}
+
 // RegisterModel registers a model capability definition globally.
 func RegisterModel(def ModelDef) {
 	DefaultRegistry.Register(def)
@@ -136,64 +137,4 @@ func ResolveCapabilities(model string) Capabilities {
 // ClearRegistry clears all definitions from the global registry.
 func ClearRegistry() {
 	DefaultRegistry.Clear()
-}
-
-// isReasoningModelHeuristic is the fallback dynamic reasoning model naming check.
-func isReasoningModelHeuristic(model string) bool {
-	if strings.Contains(model, "reasoner") || strings.Contains(model, "reasoning") ||
-		strings.Contains(model, "thinking") ||
-		strings.Contains(model, "mimo") {
-		return true
-	}
-	segments := strings.FieldsFunc(model, func(r rune) bool {
-		return r == '/' || r == ':' || r == '-' || r == '_' || r == '.'
-	})
-	for _, seg := range segments {
-		if seg == "o1" || seg == "o3" || seg == "o4" {
-			return true
-		}
-		if len(seg) >= 2 && seg[0] == 'r' && isDigits(seg[1:]) {
-			return true
-		}
-	}
-	return false
-}
-
-func isDigits(s string) bool {
-	if len(s) == 0 {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-// reasoningCapabilitiesHeuristic builds capability defaults for heuristically-detected reasoning models.
-func reasoningCapabilitiesHeuristic(model string) Capabilities {
-	role := RoleSystem
-	segments := strings.FieldsFunc(model, func(r rune) bool {
-		return r == '/' || r == ':' || r == '-' || r == '_' || r == '.'
-	})
-	for _, seg := range segments {
-		if seg == "o1" {
-			role = RoleUser
-			break
-		} else if seg == "o3" || seg == "o4" {
-			role = RoleDeveloper
-			break
-		}
-	}
-	return Capabilities{
-		Streaming:  true,
-		Tools:      true,
-		SystemRole: role,
-		Reasoning: ReasoningCapabilities{
-			Kind:       ReasoningKindEffort,
-			Efforts:    []string{"minimal", "low", "medium", "high"},
-			CanDisable: true,
-		},
-	}
 }

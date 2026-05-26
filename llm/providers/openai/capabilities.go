@@ -5,11 +5,16 @@ import (
 )
 
 // Capabilities returns the feature set for the given model.
-// It consults ModelCaps first, then falls back to Canto's default model capability registry.
+// It consults ModelCaps first, then b.Config.Models, then falls back to Canto's default model capability registry.
 func (b *Base) Capabilities(model string) llm.Capabilities {
 	if b.ModelCaps != nil {
 		if caps, ok := b.ModelCaps[model]; ok {
 			return caps
+		}
+	}
+	for _, m := range b.Config.Models {
+		if m.ID == model && m.Capabilities != nil {
+			return *m.Capabilities
 		}
 	}
 	return llm.ResolveCapabilities(model)
@@ -19,28 +24,5 @@ func (b *Base) Capabilities(model string) llm.Capabilities {
 // models. Pass to Base.ModelCaps (or merge with your own overrides) when
 // constructing a provider that will use these models.
 func DefaultModelCaps() map[string]llm.Capabilities {
-	reasoning := func(systemRole llm.Role) llm.Capabilities {
-		return llm.Capabilities{
-			Streaming:  true,
-			Tools:      true,
-			SystemRole: systemRole,
-			Reasoning: llm.ReasoningCapabilities{
-				Kind:       llm.ReasoningKindEffort,
-				Efforts:    []string{"minimal", "low", "medium", "high"},
-				CanDisable: true,
-			},
-			// Temperature is false (zero value) — reasoning models ignore it.
-		}
-	}
-	return map[string]llm.Capabilities{
-		// o1 family: no system role — instructions become user messages.
-		"o1":         reasoning(llm.RoleUser),
-		"o1-mini":    reasoning(llm.RoleUser),
-		"o1-preview": reasoning(llm.RoleUser),
-		// o3/o4 families: privileged instruction role.
-		"o3":      reasoning(llm.RoleDeveloper),
-		"o3-mini": reasoning(llm.RoleDeveloper),
-		"o3-pro":  reasoning(llm.RoleDeveloper),
-		"o4-mini": reasoning(llm.RoleDeveloper),
-	}
+	return map[string]llm.Capabilities{}
 }
