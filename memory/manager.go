@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/ion/llm"
 )
 
 type Scope string

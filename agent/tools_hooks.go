@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/nijaru/canto/hook"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/tool"
 )
 
 func hookContextOutput(event hook.Event, results []*hook.Result) string {

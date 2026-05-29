@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 // HarnessTaskSpec captures the common inputs used by external eval harnesses.

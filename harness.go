@@ -4,10 +4,10 @@ import (
 	"sync"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
 )
 
 // Environment groups host-provided durable context for a harness. Capability

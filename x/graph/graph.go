@@ -8,8 +8,8 @@ import (
 	"context"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 // Edge connects two nodes in the graph. The Condition is evaluated on the

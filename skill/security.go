@@ -6,7 +6,7 @@ import (
 	"slices"
 
 	agentskills "github.com/nijaru/agentskills"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/tool"
 )
 
 type Validator interface {

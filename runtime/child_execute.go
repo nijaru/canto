@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 func (r *ChildRunner) runChild(

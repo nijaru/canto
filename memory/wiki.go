@@ -6,7 +6,7 @@ import (
 	"io/fs"
 	"strings"
 
-	"github.com/nijaru/canto/workspace"
+	"github.com/nijaru/ion/workspace"
 )
 
 // IngestWiki walks a workspace directory of markdown files and writes them

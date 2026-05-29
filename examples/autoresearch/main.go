@@ -22,10 +22,10 @@ import (
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/executortool"
-	"github.com/nijaru/canto/llm/providers"
 	"github.com/nijaru/canto/runtime"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/providers"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
 )
 
 const (

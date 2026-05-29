@@ -8,8 +8,8 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/go-json-experiment/json/jsontext"
 
-	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/memory"
+	"github.com/nijaru/ion/llm"
 )
 
 type RememberTool struct {

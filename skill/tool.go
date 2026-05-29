@@ -9,7 +9,7 @@ import (
 	"github.com/go-json-experiment/json"
 
 	agentskills "github.com/nijaru/agentskills"
-	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/ion/llm"
 )
 
 // ReadSkillTool allows an agent to read the full content of a skill.

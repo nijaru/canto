@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/nijaru/canto"
-	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/ion/llm"
 )
 
 func main() {

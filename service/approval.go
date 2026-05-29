@@ -1,8 +1,8 @@
 package service
 
 import (
-	"github.com/nijaru/canto/approval"
-	"github.com/nijaru/canto/safety"
+	"github.com/nijaru/ion/approval"
+	"github.com/nijaru/ion/safety"
 )
 
 // ApprovalFunc returns the approval requirement for a typed invocation.

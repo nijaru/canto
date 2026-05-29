@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/nijaru/canto/agent"
-	xtest "github.com/nijaru/canto/x/testing"
+	xtest "github.com/nijaru/ion/cantotesting"
 )
 
 func TestRun_Empty(t *testing.T) {

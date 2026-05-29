@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-json-experiment/json"
 
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 // TurnEvaluator evaluates a single transcript turn and returns a score in [0, 1].

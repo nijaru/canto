@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-json-experiment/json"
 
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 func TestInputGate_RequestProvide(t *testing.T) {

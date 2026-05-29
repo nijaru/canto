@@ -12,8 +12,8 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/go-json-experiment/json/jsontext"
 
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/tool"
 )
 
 const taskRefAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"

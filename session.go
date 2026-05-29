@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 // Session is a host-facing handle for one durable conversation in a Harness.

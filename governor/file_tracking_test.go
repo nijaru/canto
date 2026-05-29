@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/ion/llm"
 )
 
 func TestExtractFilePathsTracksCommonCodingToolNames(t *testing.T) {

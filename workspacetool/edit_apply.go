@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/nijaru/canto/workspace"
+	"github.com/nijaru/ion/workspace"
 )
 
 type editReplacement struct {

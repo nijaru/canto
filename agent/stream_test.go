@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nijaru/canto/llm"
-	prompt "github.com/nijaru/canto/prompt"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/llm"
+	prompt "github.com/nijaru/ion/prompt"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
 )
 
 // streamMockProvider extends mockProvider with a scripted Stream implementation.

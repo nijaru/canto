@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/go-json-experiment/json"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
 )
 
 // StepResult carries the outcome of a single Step or Turn execution.

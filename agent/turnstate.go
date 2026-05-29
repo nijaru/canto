@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 type turnState struct {

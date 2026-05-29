@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 func TestStoreSessionArtifactPersistsAndRecords(t *testing.T) {

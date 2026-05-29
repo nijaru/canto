@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nijaru/canto/workspace"
+	"github.com/nijaru/ion/workspace"
 )
 
 // FS exposes a memory Manager as a read-only workspace.WorkspaceFS.

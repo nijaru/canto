@@ -18,14 +18,14 @@ import (
 	"strings"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm/providers"
 	"github.com/nijaru/canto/memory"
 	"github.com/nijaru/canto/memory/memoryprompt"
-	"github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/runtime"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
 	"github.com/nijaru/canto/x/tools"
+	"github.com/nijaru/ion/prompt"
+	"github.com/nijaru/ion/providers"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
 )
 
 const (

@@ -1,6 +1,6 @@
 package memory
 
-import "github.com/nijaru/canto/llm"
+import "github.com/nijaru/ion/llm"
 
 // RetrievalPostprocessor can reorder, filter, or otherwise adjust retrieved
 // memories after the manager's built-in retrieval pipeline.

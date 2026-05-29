@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 type escalationError struct {

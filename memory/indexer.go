@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	"github.com/go-json-experiment/json"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 // Indexer monitors sessions and automatically indexes new text messages

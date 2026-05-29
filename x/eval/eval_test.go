@@ -8,9 +8,9 @@ import (
 
 	"github.com/go-json-experiment/json"
 
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/x/eval"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 // buildSession creates a session with a known sequence of events for testing.

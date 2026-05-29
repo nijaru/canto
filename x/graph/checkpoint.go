@@ -5,7 +5,7 @@ import (
 	"slices"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm"
+	"github.com/nijaru/ion/llm"
 )
 
 // CheckpointStore persists graph superstep progress between node turns.

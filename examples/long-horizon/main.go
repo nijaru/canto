@@ -13,10 +13,10 @@ import (
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/governor"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/llm/providers"
-	prompt "github.com/nijaru/canto/prompt"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	prompt "github.com/nijaru/ion/prompt"
+	"github.com/nijaru/ion/providers"
+	"github.com/nijaru/ion/session"
 )
 
 func main() {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 // ScheduledChild is the handle returned by scheduled child delegation.

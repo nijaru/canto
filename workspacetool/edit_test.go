@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nijaru/canto/safety"
-	"github.com/nijaru/canto/workspace"
+	"github.com/nijaru/ion/safety"
+	"github.com/nijaru/ion/workspace"
 )
 
 func openEditRoot(t *testing.T) *workspace.Root {

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
 )
 
 // ErrSessionBusy reports that the session-scoped harness facade already owns an

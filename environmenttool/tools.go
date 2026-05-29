@@ -5,10 +5,10 @@ import (
 
 	"github.com/nijaru/canto/executor"
 	"github.com/nijaru/canto/executortool"
-	"github.com/nijaru/canto/safety"
-	"github.com/nijaru/canto/tool"
-	"github.com/nijaru/canto/workspace"
 	"github.com/nijaru/canto/workspacetool"
+	"github.com/nijaru/ion/safety"
+	"github.com/nijaru/ion/tool"
+	"github.com/nijaru/ion/workspace"
 )
 
 // Capabilities groups host-provided effect boundaries for optional capability

@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 func TestMemoryBlackboard(t *testing.T) {

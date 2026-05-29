@@ -3,11 +3,11 @@ package agent
 import (
 	"context"
 
-	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/hook"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/approval"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
 )
 
 type toolResult struct {

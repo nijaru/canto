@@ -6,7 +6,7 @@ import (
 
 	"github.com/nijaru/canto/executor"
 	"github.com/nijaru/canto/executortool"
-	"github.com/nijaru/canto/safety"
+	"github.com/nijaru/ion/safety"
 )
 
 func TestToolsBuildsExecutorTools(t *testing.T) {

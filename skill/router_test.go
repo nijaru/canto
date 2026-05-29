@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	agentskills "github.com/nijaru/agentskills"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 func TestLexicalRouter_UsesBodySignal(t *testing.T) {

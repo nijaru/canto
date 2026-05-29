@@ -5,8 +5,8 @@ import (
 
 	agentskills "github.com/nijaru/agentskills"
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/prompt"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/prompt"
+	"github.com/nijaru/ion/tool"
 )
 
 // RuntimeConfig validates and preloads skills for a runtime-scoped agent view.

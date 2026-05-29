@@ -1,6 +1,6 @@
 package agent
 
-import "github.com/nijaru/canto/session"
+import "github.com/nijaru/ion/session"
 
 // TurnStopReason explains why a turn stopped.
 type TurnStopReason string

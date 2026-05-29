@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 // StoreSessionArtifact persists an artifact body behind store and records the

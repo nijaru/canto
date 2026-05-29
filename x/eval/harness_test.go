@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/x/eval"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 func TestHarborConnectorBootstrapsHarnessContext(t *testing.T) {

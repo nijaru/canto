@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/nijaru/canto/governor"
-	"github.com/nijaru/canto/llm"
-	xtesting "github.com/nijaru/canto/x/testing"
+	xtesting "github.com/nijaru/ion/cantotesting"
+	"github.com/nijaru/ion/llm"
 )
 
 func overflowProvider(steps ...xtesting.Step) *xtesting.FauxProvider {

@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-json-experiment/json"
 
-	"github.com/nijaru/canto/approval"
-	"github.com/nijaru/canto/audit"
+	"github.com/nijaru/ion/approval"
+	"github.com/nijaru/ion/audit"
 )
 
 func TestLoggerAdaptsApprovalEvents(t *testing.T) {

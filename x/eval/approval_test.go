@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nijaru/canto/approval"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/approval"
+	"github.com/nijaru/ion/session"
 )
 
 func TestEvaluateApprovalCases(t *testing.T) {

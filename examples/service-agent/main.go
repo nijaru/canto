@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 
 	"github.com/nijaru/canto"
-	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/service"
-	"github.com/nijaru/canto/session"
-	cantotool "github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
+	cantotool "github.com/nijaru/ion/tool"
 )
 
 type searchArgs struct {

@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/governor"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/approval"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 type mockGuardProvider struct {

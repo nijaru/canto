@@ -11,9 +11,9 @@ import (
 	"log"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/llm/providers"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/providers"
+	"github.com/nijaru/ion/session"
 )
 
 func main() {

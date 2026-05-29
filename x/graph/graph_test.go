@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/x/graph"
-	ctesting "github.com/nijaru/canto/x/testing"
+	ctesting "github.com/nijaru/ion/cantotesting"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 type mockProvider struct {

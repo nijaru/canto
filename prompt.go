@@ -1,6 +1,6 @@
 package canto
 
-import "github.com/nijaru/canto/llm"
+import "github.com/nijaru/ion/llm"
 
 // Prompt is typed host input for one model turn.
 type Prompt = llm.Prompt

@@ -4,13 +4,13 @@ import (
 	"context"
 	"iter"
 
-	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/hook"
-	"github.com/nijaru/canto/llm"
-	prompt "github.com/nijaru/canto/prompt"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
-	"github.com/nijaru/canto/tracing"
+	"github.com/nijaru/ion/approval"
+	"github.com/nijaru/ion/llm"
+	prompt "github.com/nijaru/ion/prompt"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
+	"github.com/nijaru/ion/tracing"
 )
 
 type stepConfig struct {

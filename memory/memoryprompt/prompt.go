@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/memory"
-	"github.com/nijaru/canto/prompt"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/prompt"
+	"github.com/nijaru/ion/session"
 )
 
 type Options struct {

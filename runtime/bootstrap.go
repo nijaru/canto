@@ -7,9 +7,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
-	"github.com/nijaru/canto/workspace"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
+	"github.com/nijaru/ion/workspace"
 )
 
 // Bootstrap captures the initial workspace and tool context for a session.

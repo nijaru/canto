@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nijaru/canto/workspace"
+	"github.com/nijaru/ion/workspace"
 )
 
 func openTestRoot(t *testing.T) *workspace.Root {

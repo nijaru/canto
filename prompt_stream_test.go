@@ -9,10 +9,10 @@ import (
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/governor"
 	"github.com/nijaru/canto/hook"
-	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
 )
 
 type burstEventAgent struct {

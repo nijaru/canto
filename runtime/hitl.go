@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-json-experiment/json"
 
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
 )
 
 // InputGate coordinates between an agent waiting for human input and the

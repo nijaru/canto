@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/nijaru/canto/hook"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 type options struct {

@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	agentskills "github.com/nijaru/agentskills"
-	"github.com/nijaru/canto/llm"
-	prompt "github.com/nijaru/canto/prompt"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	prompt "github.com/nijaru/ion/prompt"
+	"github.com/nijaru/ion/session"
 )
 
 // ListPrompt injects a summary list of all available skills.

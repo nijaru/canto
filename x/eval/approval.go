@@ -3,8 +3,8 @@ package eval
 import (
 	"context"
 
-	"github.com/nijaru/canto/approval"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/approval"
+	"github.com/nijaru/ion/session"
 )
 
 type ApprovalCase struct {

@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/nijaru/canto/artifact"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 type compactTestProvider struct {

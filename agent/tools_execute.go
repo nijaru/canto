@@ -9,9 +9,9 @@ import (
 	"sync"
 
 	"github.com/nijaru/canto/hook"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
 )
 
 // executeTools runs approved tool calls concurrently with a semaphore.

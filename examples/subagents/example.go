@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm"
 	"github.com/nijaru/canto/runtime"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 type workerTask struct {

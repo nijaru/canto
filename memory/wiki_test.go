@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/nijaru/canto/workspace"
+	"github.com/nijaru/ion/workspace"
 )
 
 func TestIngestWiki(t *testing.T) {

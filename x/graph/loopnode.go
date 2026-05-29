@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 // LoopNode wraps an agent and allows bounded iteration inside a single graph

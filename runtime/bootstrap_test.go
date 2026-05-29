@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
-	"github.com/nijaru/canto/workspace"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
+	"github.com/nijaru/ion/workspace"
 )
 
 func TestCaptureBootstrapBuildsDeterministicSnapshot(t *testing.T) {

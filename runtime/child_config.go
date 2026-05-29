@@ -6,7 +6,7 @@ import (
 	"slices"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 	"github.com/oklog/ulid/v2"
 )
 

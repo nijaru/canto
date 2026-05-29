@@ -9,8 +9,8 @@ import (
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/hook"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 // ChildSpec defines a single child run request. Agent selection, initial

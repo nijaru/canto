@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 // SnapshotOptions configures durable projection snapshot creation through the

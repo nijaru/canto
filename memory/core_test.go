@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 func TestCoreStore_Blocks(t *testing.T) {

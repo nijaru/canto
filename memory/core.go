@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-json-experiment/json"
 
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 	_ "modernc.org/sqlite"
 )
 

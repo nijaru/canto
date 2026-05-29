@@ -5,11 +5,11 @@ import (
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/hook"
-	"github.com/nijaru/canto/llm"
-	prompt "github.com/nijaru/canto/prompt"
 	"github.com/nijaru/canto/runtime"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tool"
+	"github.com/nijaru/ion/llm"
+	prompt "github.com/nijaru/ion/prompt"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tool"
 )
 
 // HarnessBuilder assembles the common agent + runner wiring while preserving

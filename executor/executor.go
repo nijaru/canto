@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nijaru/canto/audit"
-	"github.com/nijaru/canto/safety"
+	"github.com/nijaru/ion/audit"
+	"github.com/nijaru/ion/safety"
 )
 
 // OutputStream identifies which stream produced a chunk.

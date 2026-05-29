@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 // Task is a unit of work dispatched to a pool agent.

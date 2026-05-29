@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/x/eval"
-	xtest "github.com/nijaru/canto/x/testing"
+	xtest "github.com/nijaru/ion/cantotesting"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 func TestParallelRunnerRun(t *testing.T) {

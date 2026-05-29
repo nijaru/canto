@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 func TestRunExample(t *testing.T) {

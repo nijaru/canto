@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nijaru/canto/session"
 	"github.com/nijaru/canto/x/eval"
-	xtest "github.com/nijaru/canto/x/testing"
+	xtest "github.com/nijaru/ion/cantotesting"
+	"github.com/nijaru/ion/session"
 )
 
 func TestPlanAdherence(t *testing.T) {

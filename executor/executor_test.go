@@ -12,8 +12,8 @@ import (
 
 	"github.com/go-json-experiment/json"
 
-	"github.com/nijaru/canto/audit"
-	"github.com/nijaru/canto/safety"
+	"github.com/nijaru/ion/audit"
+	"github.com/nijaru/ion/safety"
 )
 
 type fakeSandbox struct {

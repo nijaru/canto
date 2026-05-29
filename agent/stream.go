@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/nijaru/canto/hook"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tracing"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tracing"
 )
 
 // Streamer is implemented by agents that support token-by-token streaming.

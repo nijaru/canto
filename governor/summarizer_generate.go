@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 func (p *Summarizer) generateSummary(

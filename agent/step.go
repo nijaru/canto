@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/nijaru/canto/llm"
-	prompt "github.com/nijaru/canto/prompt"
-	"github.com/nijaru/canto/session"
-	"github.com/nijaru/canto/tracing"
+	"github.com/nijaru/ion/llm"
+	prompt "github.com/nijaru/ion/prompt"
+	"github.com/nijaru/ion/session"
+	"github.com/nijaru/ion/tracing"
 )
 
 var ErrEmptyAssistantResponse = errors.New(

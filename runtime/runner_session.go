@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 // getOrLoad returns the cached session for sessionID, loading it from the

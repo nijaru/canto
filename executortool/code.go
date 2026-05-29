@@ -8,10 +8,10 @@ import (
 
 	"github.com/go-json-experiment/json"
 
-	"github.com/nijaru/canto/approval"
 	"github.com/nijaru/canto/executor"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/safety"
+	"github.com/nijaru/ion/approval"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/safety"
 )
 
 // CodeExecutionTool executes arbitrary code in a sandboxed environment.

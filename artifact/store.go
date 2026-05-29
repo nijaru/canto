@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 // Descriptor identifies a durable artifact emitted by a session, tool, or run.

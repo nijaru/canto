@@ -6,7 +6,7 @@ import (
 
 	"github.com/nijaru/canto/agent"
 	"github.com/nijaru/canto/hook"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 const defaultWaitTimeout = 30 * time.Second

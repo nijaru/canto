@@ -3,7 +3,7 @@ package eval
 import (
 	"context"
 
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/session"
 )
 
 // ToolCorrectness scores how accurately a turn used the expected tools.

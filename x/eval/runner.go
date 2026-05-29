@@ -8,8 +8,8 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"github.com/nijaru/canto/agent"
-	"github.com/nijaru/canto/llm"
-	"github.com/nijaru/canto/session"
+	"github.com/nijaru/ion/llm"
+	"github.com/nijaru/ion/session"
 )
 
 // AgentFactory constructs a fresh agent for a task/run pair.
