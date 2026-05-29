@@ -1,28 +1,28 @@
 # Status
 
-**Phase:** Ion-driven P1 primitive audit reopened
-**Focus:** reassess Canto session/event/tool/runtime primitives wherever Ion's
-Pi-level architecture cannot be simple, ordered, durable, and host-friendly.
-**Blockers:** Ion P1 is not release-usable. Canto M1 docs/release posture is
-paused until framework-owned primitive gaps from Ion's ideal-first audit are
-classified, fixed, or explicitly rejected.
+**Phase:** Ion-driven P1 primitive audit closeout
+**Focus:** keep Canto's P1 primitives simple enough for Ion's Pi-level
+controller: one ordered turn stream, durable replay/provider history, durable
+tool lifecycle recovery, and actionable timeout/error surfaces.
+**Blockers:** no active Canto P1 primitive blocker is known after the
+2026-05-25 audit pass. Ion has imported the latest primitive fixes and its P1
+scenario trace gate is green, so Canto can return to M1 docs/release posture.
 **Updated:** 2026-05-25
 
 ## Context
 
 Sprints 01-06 and the Phase 4 architecture-correction tranche are complete. The primitives are load-bearing: durable sessions with replay/projections, identity-first workspace (WorkspaceFS, ContentRef, dedup, search, OverlayFS, MultiFS+memory.FS), tiered compaction, cache-aware mutations, subagent delegation, progressive-disclosure skills, MCP tools, approval/auto-mode with circuit breaker, OTel tracing, and eval harnesses.
 
-Phase 5 still has SOTA and DX inputs, but the active operating mode is now an
+Phase 5 still has SOTA and DX inputs, and the latest operating mode was the
 Ion-driven primitive audit. Canto is supposed to provide the basic durable
 mechanisms every serious agent host needs:
 
 - **Canto owns mechanism:** durable sessions, prompt/runtime boundaries, tool execution, workspace capability, compaction, approval state-machine seams, provider normalization, and examples that prove the pieces compose.
 - **Ion owns product policy:** terminal UX, task/planner behavior, approval delivery and thresholds, shell classifier heuristics, memory aggressiveness, command catalog choices, and end-user workflow.
-- **Ion is the flagship consumer:** Ion's current P1 architecture audit is
-  active Canto evidence when it touches reusable session, event, provider
-  context, tool lifecycle, replay, queue/steer/follow-up, compaction, or
-  timeout/error primitives. Do not treat Ion-local workarounds as proof that
-  Canto is done.
+- **Ion is the flagship consumer:** Ion's P1 architecture audit is Canto
+  evidence when it touches reusable session, event, provider context, tool
+  lifecycle, replay, queue/steer/follow-up, compaction, or timeout/error
+  primitives. Do not treat Ion-local workarounds as proof that Canto is done.
 - **Canto API audit:** resolved core-contract review lives in `ai/review/core-api-contract-audit-2026-04-30.md`; reopen Canto design from Ion primitive evidence, not only from a finished Ion patch.
 - **Ion feedback tracker:** confirmed Ion-derived framework issues live in `ai/review/ion-feedback-tracker-2026-04-28.md`.
 - **Ion as framework pressure:** Ion's prior ideal-core lane is no longer final
@@ -30,16 +30,16 @@ mechanisms every serious agent host needs:
   gaps where Pi has one session-scoped harness owner instead of split
   Canto/Ion ownership.
 - **Ion-first kernel rule:** Ion's prior full P1 wrapper pass is historical
-  evidence, not closure. The current audit asks whether Canto's primitives make
-  Ion's P1 controller/projection/tool/runtime path simple enough to trust.
-  Keep reusable primitives in Canto when Ion needs them, but redesign them if
-  Ion has to reconstruct framework semantics locally.
-- **Project-wide P1 correction rule:** the current Ion/Canto pass should not
-  settle for the smallest compatibility patch when a primitive boundary is
+  evidence. The closed audit asked whether Canto's primitives make Ion's P1
+  controller/projection/tool/runtime path simple enough to trust. Keep reusable
+  primitives in Canto when Ion needs them, but redesign them if Ion has to
+  reconstruct framework semantics locally.
+- **Project-wide P1 correction rule:** future Ion/Canto P1 regressions should
+  not settle for the smallest compatibility patch when a primitive boundary is
   wrong. Rewrite or replace framework-owned session, event, replay, tool,
   timeout, or compaction surfaces when that is what makes Ion's Pi-like core
   simple and reliable.
-- **Next-phase roadmap:** [ai/design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) is superseded for active work by the reopened Ion P1 primitive audit. Resume M1 docs/release only after this audit closes.
+- **Next-phase roadmap:** [ai/design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) is back to being the next Canto guide now that the Ion P1 primitive audit is closed.
 
 SOTA/DX research is part of the Canto pre-Ion gate when it can change stable API or primitives. New research remains delta-based and must name the Canto primitive it would change.
 
@@ -65,30 +65,56 @@ lane is selected.
 
 ## Next
 
-**Active primitive audit:**
+**Primitive audit outcome:**
 
-- `canto-fnag` reviews Ion's ideal-first P1 target at
-  `/Users/nick/github/nijaru/ion/ai/design/p1-from-scratch-ideal-architecture-2026-05-25.md`
-  from the Canto side. Initial classification lives in
-  `ai/review/ion-p1-primitive-audit-2026-05-25.md`.
-- `canto-21o6` validates the Canto session/event spine against Ion's planned
-  product session controller.
-- `canto-wfim` validates replay, projection, and provider-context primitives.
-- `canto-ta4w` validates tool lifecycle and result primitives.
-- `canto-pqk5` validates timeout and error surfaces for normal hosts.
-- For each Ion gap, classify the owner as Canto primitive, Ion product policy,
-  temporary Ion-local glue with Canto re-extraction, or rejected/non-P1.
-- Fix or redesign Canto first when the issue is general to agent hosts:
-  ordered run events, durable session/replay, provider-visible context,
-  tool lifecycle/results, turn settlement, queue/steer/follow-up, compaction,
-  and timeout/error surfacing.
-- Keep TUI rendering, slash command UX, provider/model picker behavior,
-  default coding-tool catalog, and product settings in Ion.
-- M1 docs/release tasks remain deferred until the primitive audit says no
-  framework-owned P1 gap is hiding behind Ion.
+- `canto-21o6` closed the session/event spine validation. Active hosts consume
+  queue updates, save-point, settled, and terminal result/error from the
+  ordered `Turn.Events()` stream; `RuntimeEvents()` is no longer required for
+  active-turn semantics.
+- `canto-wfim` closed replay/provider-context validation. `prompt.History`
+  uses `session.EffectiveEntries()`, matching Ion replay's durable rebuilt
+  history source, and content-part recovery is covered for provider-visible
+  tool results.
+- `canto-ta4w` closed tool lifecycle/result validation. Tool completions now
+  persist structured content parts and skipped preflight errors persist
+  `ToolCompleted` lifecycle events so recovery can rebuild provider-visible
+  tool results even if final message append fails.
+- `canto-pqk5` closed timeout/error surface validation. Canto-owned waits now
+  produce operation-specific timeout errors while preserving deadline
+  classification.
+- `canto-fnag` is closed. Current P1 gaps are either fixed in Canto, Ion
+  product policy, or deferred non-P1 work. TUI rendering, slash command UX,
+  provider/model picker behavior, default coding-tool catalog, and product
+  settings remain Ion-owned.
+- M1 docs/release tasks may resume. Ion has imported the final primitive slice
+  as `github.com/nijaru/canto v0.0.0-20260525221147-96b068bc3275`, and its P1
+  scenario trace gate passed.
 
 Latest code slice:
 
+- `canto-ta4w` fixed a tool lifecycle recovery gap exposed by Ion's
+  persistence/replay audit. `ToolCompletedData` now stores `llm.ContentPart`
+  values, agent tool execution writes content parts into the lifecycle event,
+  and the session rebuilder preserves those parts when it recovers a missing
+  provider-visible tool-result message from lifecycle events. This keeps image
+  read results durable across resume/replay recovery. Focused session/agent
+  tests, `go test ./... -count=1 -timeout 300s`, `go vet ./...`, and
+  `git diff --check` passed in Canto; Ion imported the final closeout as
+  `github.com/nijaru/canto v0.0.0-20260525221147-96b068bc3275`.
+- `canto-ta4w` also fixed the remaining lifecycle recovery gap for skipped
+  preflight errors. Missing tools, approval denials, ACR ambiguity, and hook or
+  preflight errors now persist `ToolCompletedData` before the final tool-result
+  message is appended. If the message append fails, session recovery can still
+  rebuild the provider-visible error tool result. Context-canceled/deadline
+  preflight aborts still preserve the no-tool-result contract. Focused
+  failure-injection tests plus full Canto gates passed.
+- `canto-pqk5` fixed the host-facing timeout surfaces Ion's P1 audit exposed.
+  Runtime queue waits, coordinator awaits, opt-in execution caps, child waits,
+  scheduled-task waits, scheduled-child waits, and background compaction waits
+  now return operation-specific timeout errors while preserving
+  `errors.Is(err, context.DeadlineExceeded)`. Raw `context deadline exceeded`
+  should no longer be the persisted/user-visible Canto error for those owned
+  runtime/compaction waits.
 - `canto-21o6` found a concrete primitive flaw: active hosts had to merge the
   turn stream with separate session `RuntimeEvents()` to observe queue updates,
   save-points, and settled state. `RunEvent` now carries typed
@@ -105,6 +131,12 @@ Latest code slice:
   Canto contract errors. Accepted Canto turns must expose terminal settlement
   through `RunResultPayload` or `RunErrorPayload` on `Turn.Events()`, not only
   through `Turn.Result()`.
+- Ion `tk-0dns` now consumes that contract more strictly: active Ion turns
+  finish only on final `RunResultPayload` or `RunErrorPayload`. Durable
+  `TurnCompleted` / `RunLifecycleTurn` may project usage/status, but does not
+  claim product completion; `SettledPayload` remains framework lifecycle state.
+  This removes Ion's local terminal+settled reconstruction and keeps final
+  settlement semantics owned by Canto's ordered stream.
 - Ion `tk-1xl1` has started collapsing product session control into
   `internal/app/session_controller.go`. Canto should use that as pressure on
   `canto-21o6`: the Ion controller should be able to consume one ordered turn
@@ -222,15 +254,15 @@ Latest code slice:
   replay, sequence-bounded events, projection snapshots, and fork methods for
   normal host maintenance. Context compaction remains explicit through
   `governor.CompactSession`.
-- The old "no known P1 framework seam remains" status is superseded. Pi-like
-  steering/follow-up and session facade primitives landed, the Canto
-  kernel-reduction pass closed, and Ion passed the full P1 wrapper, but later
-  first-minutes Ion use reopened the architecture question.
+- The old "no known P1 framework seam remains" status was superseded by the
+  2026-05-25 architecture audit. That audit is now closed for known P1
+  primitive gaps; future reopenings should start from a concrete Ion scenario
+  failure or a new serious-host primitive defect.
 
 **Ion pre-v0 design-closure support:**
 
-- Canto M1 docs/release work is not the active milestone. It should resume
-  only after Ion's P1 primitive audit has classified framework-owned gaps.
+- Canto M1 docs/release work can resume now that Ion's P1 primitive audit has
+  classified and closed the framework-owned gaps from this pass.
 - `canto-wuev` found a real public-surface mismatch: Canto code had the native
   `Session.Submit` / `Turn` transaction, but README, prompt docs, and examples
   still taught `Prompt` / `PromptStream` as primary. The fix makes `Submit`

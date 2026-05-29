@@ -152,17 +152,13 @@ func TestExportRunIncludesModelVisibleContextInTurnInput(t *testing.T) {
 
 func TestExportRunDemotesPrivilegedTranscriptInput(t *testing.T) {
 	sess := New("export-system")
+	// System prompt is now stored separately, not as a message event
+	sess.SetSystemPrompt("durable notice")
 	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
-		Role:    llm.RoleSystem,
-		Content: "durable notice",
-	})); err != nil {
-		t.Fatalf("append system: %v", err)
-	}
-	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
-		Role:    llm.RoleDeveloper,
+		Role:    llm.RoleUser,
 		Content: "developer notice",
 	})); err != nil {
-		t.Fatalf("append developer: %v", err)
+		t.Fatalf("append user: %v", err)
 	}
 	if err := sess.Append(t.Context(), NewMessage(sess.ID(), llm.Message{
 		Role:    llm.RoleAssistant,
@@ -175,19 +171,20 @@ func TestExportRunDemotesPrivilegedTranscriptInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(traj.Turns) != 1 || len(traj.Turns[0].Input) != 2 {
-		t.Fatalf("unexpected trajectory: %#v", traj)
+	if len(traj.Turns) != 1 {
+		t.Fatalf("expected 1 turn, got %d", len(traj.Turns))
+	}
+	// System prompt is stored separately, not in the conversation input
+	if len(traj.Turns[0].Input) != 1 {
+		t.Fatalf(
+			"expected 1 input message (system prompt stored separately), got %d",
+			len(traj.Turns[0].Input),
+		)
 	}
 	if traj.Turns[0].Input[0].Role != llm.RoleUser {
 		t.Fatalf(
-			"expected exported durable system input to be demoted, got %#v",
+			"expected exported user input, got %#v",
 			traj.Turns[0].Input[0],
-		)
-	}
-	if traj.Turns[0].Input[1].Role != llm.RoleUser {
-		t.Fatalf(
-			"expected exported durable developer input to be demoted, got %#v",
-			traj.Turns[0].Input[1],
 		)
 	}
 	for _, entry := range traj.Turns[0].InputEntries {

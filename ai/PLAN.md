@@ -21,19 +21,19 @@ The Canto/Ion split is:
 - **Ion:** policy and product. Terminal UX, command palette, planner/task behavior, approval copy and delivery, default shell classifier heuristics, memory aggressiveness, model choice defaults, and user workflow.
 - **Shared boundary:** if every serious host would need to reimplement state-machine or durability plumbing, it belongs in Canto. If the choice expresses taste, UX, environment assumptions, or Ion's workflow, it belongs in Ion and plugs into a Canto seam.
 
-Current correction: Ion's reopened P1 dogfood failures made Ion the acceptance
-owner. The later full-wrapper pass is historical evidence, not P1 closure.
-Ion's ideal-first P1 audit is active again, and Canto is directly implicated
-when Ion cannot use a general session, event, provider-context, tool lifecycle,
-replay, queue/steer/follow-up, compaction, or timeout/error primitive cleanly.
-Future Canto P1 work should start from those primitive gaps, not from broad
-kernel-reduction churn or M1 documentation polish.
+Current correction: Ion's reopened P1 failures made Ion the acceptance owner.
+The later full-wrapper pass is historical evidence, not enough by itself. The
+2026-05-25 ideal-first P1 audit closed the known Canto-owned primitive gaps in
+session/event spine, replay/provider context, tool lifecycle recovery, and
+timeout/error surfacing. Future Canto P1 work should start from concrete Ion
+scenario failures or serious-host primitive gaps, not from broad
+kernel-reduction churn.
 
 This correction applies project-wide. If a Canto primitive on Ion's P1 path is
 structurally wrong, redesign or replace that primitive now instead of landing
 the smallest adapter-compatible patch and leaving Ion to carry the complexity.
 
-The next-phase roadmap lives in [design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md). Use it to keep work ordered: C0 Ion product validation, C1 M1 docs/examples/API readiness, C2 API/DX simplification, C3 workspace/sandbox, C4 eval/optimizer artifacts, C5 multi-agent/extensibility. Do not let C3-C5 research jump ahead of C0-C1.
+The next-phase roadmap lives in [design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md). Use it to keep work ordered: C1 M1 docs/examples/API readiness, C2 API/DX simplification, C3 workspace/sandbox, C4 eval/optimizer artifacts, C5 multi-agent/extensibility. Do not let C3-C5 research jump ahead of C1-C2.
 
 Existing research already covers LangGraph, PydanticAI, AutoGen, Vercel AI SDK, provider SDKs, HITL, durability, graph workflows, tool orchestration, context engineering, memory, and security. The framework reference map should remain broader and current: OpenAI Agents SDK, Anthropic/Claude Agent SDK, MCP, A2A, Google ADK, Microsoft Agent Framework, Semantic Kernel, AutoGen, LangGraph/LangChain, Pydantic AI, LlamaIndex, CrewAI, Agno, Mastra, Vercel AI SDK, BeeAI, Letta, Flue, DSPy/GEPA, and Temporal/DBOS/Inngest-style durable execution systems are all valid inputs. Do not restart a broad framework survey unless a concrete gap appears. Current framework references are examples for Canto primitives, not blueprints; mixed reviews are expected. Ion is tracking a deferred recent-paper delta scan as `tk-k4y8`; it is no longer blocked by phase-1 stabilization, but it should wait until a phase-2 research lane is selected. DSPy and GEPA remain inputs for the optimization surface (signatures/modules/compilers vs. reflective prompt evolution), not the center of the design.
 
@@ -41,17 +41,18 @@ Existing research already covers LangGraph, PydanticAI, AutoGen, Vercel AI SDK, 
 similar systems reinforce the same direction: durable state,
 versioned/isolated workspaces, snapshots/rehydration, sandbox/process
 boundaries, and rich traces matter. They do not change the immediate order.
-Canto cannot resume M1 readiness as the main lane until the reopened Ion P1
-primitive audit closes; external workspace/storage systems are future adapters
-or design references, not core dependencies.
+Canto can resume M1 readiness as the main lane because the reopened Ion P1
+primitive audit is closed; external workspace/storage systems remain future
+adapters or design references, not core dependencies.
 
 ### Canto Stabilization Roadmap
 
-The earlier Ion-driven optimal-core closure and later wrapper pass are
-superseded by Ion's ideal-first P1 architecture audit. Add Canto
-implementation work when it closes a concrete gap between the current
-Canto/Ion split and Pi's proven session-scoped harness/session shape, or when
-Ion has had to reconstruct a primitive that any serious host would need.
+The earlier Ion-driven optimal-core closure and later wrapper pass were
+superseded by Ion's ideal-first P1 architecture audit. That audit is now closed
+for known P1 primitive gaps. Add new Canto implementation work only when it
+closes a concrete gap between the current Canto/Ion split and Pi's proven
+session-scoped harness/session shape, or when Ion has had to reconstruct a
+primitive that any serious host would need.
 
 Design source:
 [`design/optimal-core-redesign-2026-05.md`](design/optimal-core-redesign-2026-05.md).
@@ -96,17 +97,21 @@ cost, and host-side assembly overhead are design inputs, not polish items.
 | 2 done | `canto-q56s` Coding tool-surface audit | Removed preset helpers and glob/search aliases; kept shell configurable |
 | 3 | `canto-khhl` Docs completeness pass | Fill only the docs needed for a new user to build a non-trivial agent and understand supported providers |
 | 3 | `canto-2if9` First-alpha package contract | Publish the one-page alpha scope once blockers are named and validation is acceptable |
-| 1 active | `canto-fnag` Ion ideal-first primitive audit | Classify each Ion P1 design gap as Canto primitive, Ion product policy, temporary Ion-local glue with re-extraction, or rejected/non-P1 before M1 docs resume |
-| 1 active | `canto-21o6` session/event spine validation | Validate Harness.Session, Submit/Turn, RunEvent, terminal settlement, save points, abort, and queue/steer/follow-up against Ion's planned product session controller |
-| 1 active | `canto-wfim` replay/provider-context validation | Validate replay, bounded event reads, snapshots, effective history, provider request construction, and compaction outputs against Ion's unified projection goal |
-| 1 active | `canto-ta4w` tool lifecycle/result validation | Validate tool authoring, lifecycle events, streaming snapshots, content results, errors, cancellation, ordered persistence, and display-neutral metadata |
-| 1 active | `canto-pqk5` timeout/error surface validation | Validate host-facing wait, retry, cancel, tool, overflow, and compaction error surfaces so interactive hosts do not see opaque deadlines or ambiguous settlement |
+| 1 done | `canto-fnag` Ion ideal-first primitive audit | Classified Ion P1 gaps and closed the Canto-owned primitive work from this pass; remaining active work returns to Ion import/acceptance and later Canto M1 docs |
+| 1 done | `canto-21o6` session/event spine validation | `Turn.Events()` carries active-turn queue updates, save-point, settled, and final result/error in one ordered stream; hosts no longer need to merge `RuntimeEvents()` for active-turn semantics |
+| 1 done | `canto-wfim` replay/provider-context validation | Provider history and Ion replay share `session.EffectiveEntries()`; recovered tool content parts are covered in provider-visible history tests |
+| 1 done | `canto-ta4w` tool lifecycle/result validation | Content-part lifecycle recovery and preflight-error `ToolCompleted` recovery are fixed and covered; canceled/deadline preflight aborts preserve no-result semantics |
+| 1 done | `canto-pqk5` timeout/error surface validation | Runtime queue/coordinator waits, opt-in execution caps, child/scheduled waits, and compaction waits now surface operation-specific timeout errors while preserving deadline classification |
 
-Current Ion-side controller evidence: Ion `tk-1xl1` has moved submit/cancel,
+Current Ion-side controller evidence: Ion `tk-1xl1` moved submit/cancel,
 steer/follow-up, queue recall, event reads, stream-close settlement, and
-turn-finish settlement into one product session controller module. Canto
-`canto-21o6` should continue validating that this controller can stay thin over
-Canto's ordered turn stream instead of rebuilding framework lifecycle state.
+turn-finish settlement into one product session controller module. Ion
+`tk-0dns` tightened the boundary: active turns now finish only on final
+`RunResultPayload` / `RunErrorPayload`, while durable `TurnCompleted` and
+`SettledPayload` are lifecycle/status inputs. Canto's 2026-05-25 primitive
+audit closed the corresponding framework gaps so hosts can project active turns
+from one ordered turn stream and rebuild provider-visible history from durable
+session state.
 
 `canto-iusu` implemented reductions so far: memory prompt retrieval is now
 `memory/memoryprompt.New`, not `prompt.MemoryPrompt`, so the core `prompt`
@@ -163,10 +168,10 @@ The initial authoring seam, typed service helper, coding-agent reference, core-v
 durable session handle, ordered run-event stream, and explicit environment
 capabilities. That is now the authoring seam to preserve during M1 readiness.
 
-Next work is the Canto primitive audit from Ion's ideal-first P1 plan. Canto
-docs/release posture resumes only after framework-owned gaps are fixed,
-explicitly deferred, or rejected as Ion-specific. The session/turn rewrite,
-kernel reduction, and Ion import proof remain historical evidence, not closure.
+Next work returns to Canto M1 docs/release posture. The 2026-05-25 Canto
+primitive audit from Ion's ideal-first P1 plan is closed for known P1 gaps; the
+session/turn rewrite, kernel reduction, final Canto import, and Ion scenario
+trace are the closure evidence for this pass.
 
 ## Definition of Complete
 
@@ -227,12 +232,12 @@ The mature milestone is not a planned exit; it's a retrospective marker. Canto c
 
 ### Current position
 
-- M1 primitives: reopened for Ion P1 primitive audit. Earlier kernel-reduction
-  work is complete, but Canto cannot claim M1 readiness until Ion's current
-  controller/projection/tool/runtime gaps are classified.
-- M1 blocker: `canto-2vxb` identified a small but real harness-facade cleanup
-  before docs are worth polishing; the reopened Ion P1 primitive audit is now
-  the higher-priority blocker.
+- M1 primitives: the 2026-05-25 Ion-driven primitive audit closed the known
+  Canto-owned P1 gaps in session/event spine, replay/provider context, tool
+  lifecycle recovery, and timeout/error surfacing. Ion imported the final
+  Canto slice and its P1 scenario trace gate passed.
+- M1 blocker: return to `canto-wuev` public Submit/Turn docs and the
+  `canto-2if9` alpha contract wording.
 - M2: not yet planned. Enters scope once M1 ships.
 - Phase 5 exit is the bridge from "primitives landed" to "M1 shippable."
 

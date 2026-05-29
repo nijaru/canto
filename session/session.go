@@ -15,9 +15,14 @@ type Reducer func(state map[string]any, e Event) map[string]any
 
 // Session is a durable container for a conversation.
 // All state is derived from an append-only event log.
+//
+// System prompts are stored separately from conversation events.
+// They are added to provider requests at request time based on the
+// model's capabilities (e.g., system vs developer role).
 type Session struct {
 	mu           sync.RWMutex
 	id           string
+	systemPrompt string
 	events       []Event
 	activeLeafID string
 	nextSeq      int64
@@ -73,6 +78,22 @@ func (s *Session) WithWriter(w Writer) *Session {
 // ID returns the session identifier.
 func (s *Session) ID() string {
 	return s.id
+}
+
+// SetSystemPrompt sets the system prompt for the session.
+// The system prompt is not stored as a conversation event; it is added
+// to provider requests at request time based on the model's capabilities.
+func (s *Session) SetSystemPrompt(prompt string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.systemPrompt = prompt
+}
+
+// SystemPrompt returns the session's system prompt.
+func (s *Session) SystemPrompt() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.systemPrompt
 }
 
 func (s *Session) setWriterChannel(ch chan<- Event) {

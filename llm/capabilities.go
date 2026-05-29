@@ -49,7 +49,7 @@ func DefaultCapabilities() Capabilities {
 	return Capabilities{
 		Streaming:   true,
 		Tools:       true,
-		Temperature: true,
+		Temperature: false, // Match Pi: temperature is opt-in, not default
 		SystemRole:  RoleSystem,
 	}
 }

@@ -2241,8 +2241,12 @@ func TestBaseAgentDefaultBuilderLeavesProviderCapabilityPrepToProvider(t *testin
 	if len(provider.lastMessages) == 0 {
 		t.Fatal("expected provider request messages")
 	}
-	if got := provider.lastMessages[0].Role; got != llm.RoleSystem {
-		t.Fatalf("default builder preformatted provider role = %q, want neutral system", got)
+	// The provider's capabilities specify RoleDeveloper, so the builder should use that
+	if got := provider.lastMessages[0].Role; got != llm.RoleDeveloper {
+		t.Fatalf(
+			"default builder preformatted provider role = %q, want developer (from capabilities)",
+			got,
+		)
 	}
 }
 

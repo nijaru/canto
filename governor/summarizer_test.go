@@ -50,8 +50,9 @@ func (m *mockProvider) IsContextOverflow(_ error) bool         { return false }
 
 func TestSummarizer(t *testing.T) {
 	sess := session.New("test-session")
+	// System prompt is now stored separately
+	sess.SetSystemPrompt("System prompt")
 	history := []llm.Message{
-		{Role: llm.RoleSystem, Content: "System prompt"},
 		{Role: llm.RoleUser, Content: "Hello 1"},   // candidate
 		{Role: llm.RoleAssistant, Content: "Hi 1"}, // candidate
 		{Role: llm.RoleUser, Content: "Hello 2"},   // candidate

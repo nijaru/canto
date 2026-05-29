@@ -14,8 +14,8 @@ func TestRegistryPresets(t *testing.T) {
 	})
 
 	caps := reg.Resolve("standard-chat-gpt-4o")
-	if !caps.Temperature {
-		t.Errorf("expected standard-chat to support temperature")
+	if caps.Temperature {
+		t.Errorf("expected standard-chat to not support temperature by default")
 	}
 	if caps.SystemRole != RoleSystem {
 		t.Errorf("expected standard-chat system role to be RoleSystem, got %s", caps.SystemRole)
@@ -97,14 +97,14 @@ func TestRegistryFallbackDefault(t *testing.T) {
 
 	// Model that should match standard chat (default fallback)
 	caps := reg.Resolve("gpt-4o")
-	if !caps.Temperature {
-		t.Errorf("expected fallback to default standard chat with temperature")
+	if caps.Temperature {
+		t.Errorf("expected fallback to default standard chat without temperature")
 	}
 
 	// Unknown model should also default to standard chat deterministically with no heuristic
 	caps = reg.Resolve("xiaomi/mimo-v2.5-pro")
-	if !caps.Temperature {
-		t.Errorf("expected unrecognized model to resolve to standard chat by default")
+	if caps.Temperature {
+		t.Errorf("expected unrecognized model to resolve to standard chat without temperature")
 	}
 
 	// 3. Test global registry pre-registered matches

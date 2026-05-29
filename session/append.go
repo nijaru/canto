@@ -176,8 +176,11 @@ func validateWritableEvent(e *Event) error {
 
 func validateModelMessage(msg llm.Message) error {
 	switch msg.Role {
-	case llm.RoleSystem, llm.RoleDeveloper, llm.RoleUser, llm.RoleAssistant, llm.RoleTool:
+	case llm.RoleUser, llm.RoleAssistant, llm.RoleTool:
+		// Valid conversation roles
 	default:
+		// System and developer roles are not valid for session messages.
+		// Use Session.SetSystemPrompt() for system instructions.
 		return errInvalidMessageRole
 	}
 	if msg.Role == llm.RoleAssistant && !assistantMessageHasPayload(msg) {

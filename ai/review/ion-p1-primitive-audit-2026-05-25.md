@@ -1,7 +1,7 @@
 ---
 date: 2026-05-25
-summary: Reopened Canto-side classification of Ion P1 ideal-first gaps.
-status: active
+summary: Canto-side classification and closeout of Ion P1 ideal-first gaps.
+status: resolved
 ---
 
 # Ion P1 Primitive Audit
@@ -40,6 +40,24 @@ a Canto design issue until proven Ion-product-specific.
 
 ## Findings
 
+### 2026-05-25 - Closeout
+
+Owner: Canto primitive audit.
+
+The Canto-owned P1 gaps found in this pass are fixed or have explicit
+ownership:
+
+- Session/event spine: fixed by carrying facade queue/save-point/settled events
+  on the active `Turn.Events()` stream before final result/error.
+- Replay/provider context: validated that provider request construction and Ion
+  replay share `session.EffectiveEntries()`; added content-part recovery
+  coverage.
+- Tool lifecycle/results: fixed durable recovery for content parts and skipped
+  preflight error results.
+- Timeout/error surfaces: fixed Canto-owned waits to return operation-specific
+  timeout errors while preserving deadline classification.
+- Product/TUI/control plane: remains Ion-owned.
+
 ### 2026-05-25 - Active turn stream must carry facade settlement
 
 Owner: Canto primitive.
@@ -56,6 +74,26 @@ queue-update events for the current turn and receives save-point/settled events
 before the final result/error event. `RuntimeEvents()` remains for out-of-turn
 or multi-subscriber observers, but a normal live host can project one active
 turn from one ordered stream.
+
+### 2026-05-25 - Provider history must preserve recovered content parts
+
+Owner: Canto primitive.
+
+`prompt.History` already uses `session.EffectiveEntries()`, so provider request
+construction and Ion replay now share the same rebuilt durable history source.
+Added coverage proving a recovered tool-result message preserves
+`llm.ContentPart` image data from `ToolCompletedData`.
+
+### 2026-05-25 - Preflight tool errors need lifecycle recovery
+
+Owner: Canto primitive.
+
+Skipped preflight errors produced the same provider-visible tool-result message
+shape as executed tools, but lacked a durable `ToolCompleted` lifecycle event.
+That meant a failed final message append could lose the recoverable error
+observation. Canto now persists `ToolCompletedData` for skipped preflight error
+outputs before appending the tool-result message. Context-canceled/deadline
+preflight aborts still produce no tool result.
 
 ## First Execution Order
 

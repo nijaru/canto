@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/nijaru/canto/llm"
@@ -218,8 +219,9 @@ func TestLateInstructionsPreserveCachePrefixBoundary(t *testing.T) {
 
 func TestHistoryDemotesSessionSystemMessagesToTranscriptContext(t *testing.T) {
 	sess := session.New("system-history")
+	// System prompt is now stored separately, not as a message event
+	sess.SetSystemPrompt("app-local notice")
 	for _, msg := range []llm.Message{
-		{Role: llm.RoleSystem, Content: "app-local notice"},
 		{Role: llm.RoleUser, Content: "hello"},
 	} {
 		if err := sess.Append(t.Context(), session.NewMessage(sess.ID(), msg)); err != nil {
@@ -236,19 +238,21 @@ func TestHistoryDemotesSessionSystemMessagesToTranscriptContext(t *testing.T) {
 		t.Fatalf("Build: %v", err)
 	}
 
-	if len(req.Messages) != 3 {
-		t.Fatalf("expected 3 messages, got %d", len(req.Messages))
+	// System prompt from session is combined with instructions
+	if len(req.Messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(req.Messages))
 	}
 	if req.Messages[0].Role != llm.RoleSystem {
-		t.Fatalf("expected only leading privileged system message, got %#v", req.Messages)
+		t.Fatalf("expected leading system message, got %#v", req.Messages[0])
 	}
-	for i, msg := range req.Messages[1:] {
-		if msg.Role == llm.RoleSystem || msg.Role == llm.RoleDeveloper {
-			t.Fatalf("message %d remained privileged in transcript: %#v", i+1, req.Messages)
-		}
+	if !strings.Contains(req.Messages[0].Content, "privileged instruction") {
+		t.Fatalf("expected instructions in system message, got %#v", req.Messages[0])
 	}
-	if req.Messages[1].Role != llm.RoleUser || req.Messages[1].Content != "app-local notice" {
-		t.Fatalf("expected app notice as user transcript context, got %#v", req.Messages[1])
+	if !strings.Contains(req.Messages[0].Content, "app-local notice") {
+		t.Fatalf("expected session system prompt in system message, got %#v", req.Messages[0])
+	}
+	if req.Messages[1].Role != llm.RoleUser {
+		t.Fatalf("expected user message, got %#v", req.Messages[1])
 	}
 }
 

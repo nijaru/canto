@@ -2,10 +2,10 @@
 
 ## Root
 
-- [STATUS.md](STATUS.md) — reopened Ion-driven P1 primitive audit, active event-spine evidence, backlog, and blockers
+- [STATUS.md](STATUS.md) — Ion-driven P1 primitive audit closeout, latest evidence, and M1 restart conditions
 - [DESIGN.md](DESIGN.md) — canonical architecture, Ion boundary, run-event lifecycle contract, and package boundaries
 - [DECISIONS.md](DECISIONS.md) — stable principles plus recent architecture and planning decisions
-- [PLAN.md](PLAN.md) — sprint history, Ion/Canto framing, reopened P1 primitive audit, and M1 readiness path
+- [PLAN.md](PLAN.md) — sprint history, Ion/Canto framing, closed P1 primitive audit, and M1 readiness path
 
 ## Completed Sprints
 
@@ -40,7 +40,7 @@ All six sprints are complete. See [PLAN.md](PLAN.md) for full history.
 
 - [review/core-api-contract-audit-2026-04-30.md](review/core-api-contract-audit-2026-04-30.md) — resolved core API audit and Ion-driven kernel-reduction findings
 - [review/ion-feedback-tracker-2026-04-28.md](review/ion-feedback-tracker-2026-04-28.md) — single active tracker for confirmed Ion-derived Canto framework issues
-- [review/ion-p1-primitive-audit-2026-05-25.md](review/ion-p1-primitive-audit-2026-05-25.md) — active Canto-side classification of Ion ideal-first P1 gaps
+- [review/ion-p1-primitive-audit-2026-05-25.md](review/ion-p1-primitive-audit-2026-05-25.md) — resolved Canto-side classification of Ion ideal-first P1 primitive gaps
 - [design/authoring-surface.md](design/authoring-surface.md) — Phase 5 authoring design plus current harness/session facade refactor target
 - [design/optimal-core-redesign-2026-05.md](design/optimal-core-redesign-2026-05.md) — proactive Canto session/turn transaction rewrite plan for Ion's optimal core
 - [design/framework-readiness-roadmap-2026-05-01.md](design/framework-readiness-roadmap-2026-05-01.md) — roadmap now blocked behind reopened Ion P1 primitive acceptance
