@@ -1,8 +1,4 @@
-/target/
-/.scratch/
-/.canto/
-
-# Preserved local state from the previous application.
+# Preserved local-only context from earlier work.
 /.tasks/
 /.pi/
 /ai
