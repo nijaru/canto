@@ -1,121 +1,31 @@
 # Canto
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/nijaru/canto.svg)](https://pkg.go.dev/badge/github.com/nijaru/canto)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+Canto is becoming a local workspace for reviewing and combining parallel work
+while keeping your existing editor, coding agents and source control.
 
-Canto is a Go framework for durable agents. It provides primitives for append-only sessions, context construction, tool execution, workspace-safe tools, service/API tools, and multi-agent coordination.
+**Experimental restart.** The old Go agent framework has been retired. Its
+history remains available in Git. The Rust application is under construction;
+there is no stable storage format or release yet.
 
-> [!WARNING]
-> **Status: Pre-alpha.** Canto is under active development. APIs are unstable and subject to breaking changes.
+The first milestone is a headless source-continuity loop: attach a dirty Git
+project without changing its files, retain source, fork a workstream, apply a
+checked edit, and reconstruct the selected history after restart. Review UI,
+task checkouts and editor integrations come later.
 
-## Features
+## Development
 
-- **Append-only log**: Every interaction, tool call, and compaction is recorded as a permanent fact.
-- **Durable Sessions**: JSONL or SQLite (FTS5) stores for session persistence and search.
-- **Phased Context**: Separate request building (preview) from state mutation (commit).
-- **Capability Tools**: Optional workspace, edit, shell, and code-execution tools split by capability.
-- **Service Tools**: Typed service/API helpers with schemas, approval requirements, metadata, and retries.
-- **Subagent Primitives**: Spawn, monitor, and export child agent runs with linked history.
-- **MCP Support**: Integration with the Model Context Protocol for tool discovery.
-- **Context Governance**: Automated offloading and summarization via the `governor` package.
+Install stable Rust, then run:
 
-## Installation
-
-```shell
-go get github.com/nijaru/canto
+```sh
+cargo build --locked
+cargo test --locked
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo run -- --help
 ```
 
-## Quick Start
-
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-
-	"github.com/nijaru/canto"
-	"github.com/nijaru/canto/llm"
-)
-
-func main() {
-	h, err := canto.NewHarness("assistant").
-		Instructions("You are a concise assistant.").
-		Model("faux").
-		Provider(llm.NewFauxProvider("faux", llm.FauxStep{Content: "Hello from Canto."})).
-		Ephemeral().
-		Build()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer h.Close()
-
-	turn, err := h.Session("session-1").Submit(context.Background(), canto.TextPrompt("Say hello."))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for range turn.Events() {
-	}
-
-	res, err := turn.Result()
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println(res.Content)
-}
-```
-
-Use `SessionStore(store)` instead of `Ephemeral()` for durable applications.
-Use `Prompt(ctx, text)` only when a blocking text helper is enough; live hosts
-should use typed `Submit(ctx, canto.TextPrompt(text))` or `llm.NewPrompt(...)`
-so turn identity, ordered events, cancellation, and terminal settlement stay
-attached to one transaction.
-
-## Packages
-
-| Package | Description | Status |
-| :--- | :--- | :--- |
-| `llm` | Provider normalization and token tracking | Semi-stable |
-| `session` | Append-only event log and storage | Semi-stable |
-| `agent` | Core turn-based loops | Active |
-| `runtime` | Coordinator and runner execution | Active |
-| `executor` | Bounded host command execution | Active |
-| `workspacetool` | Workspace read/write/list/edit tools | Active |
-| `executortool` | Shell and code execution tools | Active |
-| `environmenttool` | Opt-in helper for wiring host capabilities into workspace/executor tools | Active |
-| `service` | Typed service/API tool helpers | Active |
-| `approvalaudit` | Adapter from approval audit events to generic audit loggers | Active |
-| `governor` | Context offloading and guards | New |
-| `safety` | Execution modes and tool gating | New |
-| `artifact` | Blob storage and registry | Semi-stable |
-| `x/` | Swarm, Graph, and evaluation patterns | Experimental |
-
-## Provider Support
-
-Canto's M1 provider contract is documented in
-[docs/providers.md](docs/providers.md). In short: `llm.NewFauxProvider`,
-OpenAI, and Anthropic are the supported alpha paths; OpenRouter, Gemini, and
-Ollama are provisional OpenAI-compatible adapters; custom OpenAI-compatible
-endpoints are bring-your-own validation.
-
-## Prompts and Tools
-
-Canto's prompt and tool contract is documented in
-[docs/prompt-and-tools.md](docs/prompt-and-tools.md). Canto provides the prompt pipeline,
-session history, lazy tool loading, and optional feature blocks; hosts provide
-agent instructions and choose which tools are registered.
-
-## Examples
-
-- [Hello](examples/hello/main.go): Minimal no-credential harness agent.
-- [Code Agent](examples/codeagent/main.go): No-credential Claude Code/Codex/Cursor-class reference using durable sessions, workspace tools, approvals, hooks, service tools, and resume.
-- [Service Agent](examples/service-agent/main.go): Typed service/API tool example.
-- [Quickstart](examples/quickstart/main.go): Lower-level durable agent loop.
-- [Subagents](examples/subagents/main.go): Parallel child runs and run-tree export.
-- [Long Horizon](examples/long-horizon/main.go): Context offloading using the `governor`.
+No account, hosted service, editor or agent harness is required.
 
 ## License
 
-[MIT](LICENSE)
+Apache-2.0; see [LICENSE](LICENSE).

@@ -1,24 +1,12 @@
-.PHONY: fmt test test-redis build check hooks
-
+.PHONY: fmt test build check
 fmt:
-	@files="$$(git ls-files '*.go' | while IFS= read -r f; do [ -f "$$f" ] && printf '%s\n' "$$f"; done)"; \
-	if [ -z "$$files" ]; then \
-		echo "no tracked Go files to format"; \
-	else \
-		goimports -w $$files; \
-		golines --base-formatter gofumpt -w $$files; \
-	fi
-
+	cargo fmt --all
 test:
-	go test ./...
-
-test-redis:
-	go test -tags redis ./x/redis
-
+	cargo test --locked --workspace
 build:
-	go build ./...
-
-check: fmt test build
-
-hooks:
-	git config core.hooksPath .githooks
+	cargo build --locked --workspace
+check:
+	cargo fmt --all -- --check
+	cargo clippy --locked --workspace --all-targets -- -D warnings
+	cargo test --locked --workspace
+	cargo build --locked --workspace
