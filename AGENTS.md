@@ -20,6 +20,9 @@ The previous Go agent framework has been retired; its source remains in Git hist
 - `cargo test --workspace`
 - `cargo build --workspace`
 
+Current behavior and unsupported inputs: `docs/source-continuity.md`.
+Native engine evidence and limitations: `docs/engine-qualification.md`.
+
 Use native Rust tests for Yrs claims; JavaScript Yjs results are not qualification.
 Do not promise stable codecs, remote synchronization, live editor undo or
 filesystem atomicity based on headless source tests.

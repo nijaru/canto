@@ -59,6 +59,7 @@ name = "canto"
 version = "0.0.1"
 dependencies = [
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",
